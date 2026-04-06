@@ -21,8 +21,6 @@ class MatchFactors(Enum):
     GENRE_SIMILARITY = "Genre Similarity"
     MOOD_CONTINUITY = "Mood Continuity"
     VOCAL_CLASH = "Vocal Clash"
-    DANCEABILITY = "Danceability"
-    TIMBRE = "Timbre"
     INSTRUMENT_SIMILARITY = "Instrument Similarity"
 
 

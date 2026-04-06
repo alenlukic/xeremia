@@ -409,12 +409,12 @@ class TestDisplayFilters:
     """Verify config-driven filter_genre / filter_mood / filter_instruments."""
 
     def test_filter_mood_threshold(self):
-        raw = {label: 0.12 for label in LABELS_MOOD_THEME}
+        raw = {label: 0.05 for label in LABELS_MOOD_THEME}
         result = filter_mood(raw)
-        assert len(result) == 0, "0.12 should be below MOOD_DISPLAY_THRESHOLD"
+        assert len(result) == 0, "0.05 should be below MOOD_DISPLAY_THRESHOLD (0.06)"
 
     def test_filter_mood_passes_above_threshold(self):
-        raw = {"dark": 0.30, "energetic": 0.25, "melodic": 0.05}
+        raw = {"dark": 0.30, "energetic": 0.25, "melodic": 0.04}
         result = filter_mood(raw)
         assert "dark" in result
         assert "energetic" in result

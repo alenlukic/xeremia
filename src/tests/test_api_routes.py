@@ -140,8 +140,8 @@ class TestTrackTraitsEndpoint:
         mock_trait.acoustic_electronic = None
         mock_trait.tonal_atonal = None
         mock_trait.reverb = None
-        mock_trait.onset_density = None
-        mock_trait.spectral_flatness = None
+        mock_trait.onset_density = 3.5
+        mock_trait.spectral_flatness = 0.12
         mock_trait.mood_theme = None
         mock_trait.genre = None
         mock_trait.instruments = None
@@ -170,7 +170,11 @@ class TestTrackTraitsEndpoint:
         assert data[0]["track_id"] == 1
         assert "traits" in data[0]
         assert data[0]["traits"]["voice_instrumental"] == pytest.approx(0.2)
-        assert data[0]["traits"]["danceability"] == pytest.approx(0.8)
+        assert "danceability" not in data[0]["traits"]
+        assert "bright_dark" not in data[0]["traits"]
+        assert "acoustic_electronic" not in data[0]["traits"]
+        assert "tonal_atonal" not in data[0]["traits"]
+        assert "reverb" not in data[0]["traits"]
 
     def test_returns_empty_list_when_no_traits(self):
         mock_session = MagicMock()
@@ -220,6 +224,34 @@ class TestGetWeightsEndpoint:
         data = client.get("/api/weights").json()
         for factor in MatchFactors:
             assert factor.name in data["raw_weights"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/weights/defaults
+# ---------------------------------------------------------------------------
+
+
+class TestGetWeightDefaultsEndpoint:
+    def test_returns_200_with_all_factors(self, client):
+        from src.harmonic_mixing.config import MatchFactors
+        resp = client.get("/api/weights/defaults")
+        assert resp.status_code == 200
+        data = resp.json()
+        for factor in MatchFactors:
+            assert factor.name in data
+
+    def test_returns_fusion_keys(self, client):
+        resp = client.get("/api/weights/defaults")
+        assert resp.status_code == 200
+        data = resp.json()
+        for key in ("FUSION_HARMONIC", "FUSION_RHYTHM", "FUSION_TIMBRE", "FUSION_ENERGY"):
+            assert key in data
+
+    def test_defaults_unchanged_after_update(self, client, mock_finder):
+        defaults_before = client.get("/api/weights/defaults").json()
+        client.put("/api/weights", json={"weights": {"BPM": 99}})
+        defaults_after = client.get("/api/weights/defaults").json()
+        assert defaults_before == defaults_after
 
 
 # ---------------------------------------------------------------------------

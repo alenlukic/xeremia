@@ -11,6 +11,15 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Prevent dual-OpenBLAS thread pool corruption: NumPy ships libopenblas64_
+# (ILP64) while SciPy ships libopenblas (LP64). Both initialise global
+# thread pools that can corrupt each other under contention. Limiting each
+# pool to a single thread eliminates the race.  BLAS-heavy work is rare in
+# the API server; actual throughput is unaffected.
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+
 REINDEX=false
 if [[ "${1:-}" == "--reindex" ]]; then
   REINDEX=true

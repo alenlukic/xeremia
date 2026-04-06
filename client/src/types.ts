@@ -32,8 +32,6 @@ export interface TransitionMatch {
   genre_similarity_score: number;
   mood_continuity_score: number;
   vocal_clash_score: number;
-  danceability_score: number;
-  timbre_score: number;
   instrument_similarity_score: number;
 }
 

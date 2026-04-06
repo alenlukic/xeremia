@@ -19,7 +19,7 @@ Required:
 - `prompt`: one complete DEVDSL prompt
 
 Optional:
-- `output_dir`: filesystem path; if provided, write child prompts here. If omitted, emit child prompts as markdown blocks in chat.
+- `output_dir`: filesystem path; if provided, write child prompts here. If omitted, write child prompts to `.harness/docs/prompts`. Prefix file names with current timestamp in 24-hour `YYYY-MM-DD-HH:MM:SS` format.
 
 ## SCOPE
 

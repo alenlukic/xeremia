@@ -56,8 +56,6 @@ def serialize_transition_match(match, bucket: str) -> dict:
         "genre_similarity_score": round(match.get_genre_similarity_score(), 4),
         "mood_continuity_score": round(match.get_mood_continuity_score(), 4),
         "vocal_clash_score": round(match.get_vocal_clash_score(), 4),
-        "danceability_score": round(match.get_danceability_score(), 4),
-        "timbre_score": round(match.get_timbre_score(), 4),
         "instrument_similarity_score": round(match.get_instrument_similarity_score(), 4),
     }
 
@@ -80,8 +78,7 @@ def serialize_trait_info(trait):
         return None
     result = {}
     for field in [
-        "voice_instrumental", "danceability", "bright_dark",
-        "acoustic_electronic", "tonal_atonal", "reverb",
+        "voice_instrumental",
         "onset_density", "spectral_flatness",
     ]:
         val = getattr(trait, field, None)

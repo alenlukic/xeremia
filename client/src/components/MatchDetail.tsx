@@ -4,6 +4,7 @@ import type {
   SearchSuggestion,
   TransitionMatch,
   MatchDetail as MatchDetailData,
+  MatchDetailTrackInfo,
 } from '../types';
 import type { TraitMap } from '../hooks/useCollectionCache';
 import { fetchMatchDetail } from '../api/http';
@@ -68,17 +69,39 @@ function renderValue(value: unknown): React.ReactNode {
 
 const TRAIT_LABELS: Record<string, string> = {
   voice_instrumental: 'Voice / Instrumental',
-  danceability: 'Danceability',
-  bright_dark: 'Bright / Dark',
-  acoustic_electronic: 'Acoustic / Electronic',
-  tonal_atonal: 'Tonal / Atonal',
-  reverb: 'Reverb',
   onset_density: 'Onset Density',
   spectral_flatness: 'Spectral Flatness',
   mood_theme: 'Mood / Theme',
   genre: 'Genre',
   instruments: 'Instruments',
 };
+
+type FieldDef = { label: string; getValue: (t: MatchDetailTrackInfo) => unknown };
+
+const FIXED_ROWS: FieldDef[][] = [
+  [
+    { label: 'Genre', getValue: (t) => displayGenre(t.genre) },
+    { label: 'Label', getValue: (t) => t.label },
+  ],
+  [
+    { label: 'BPM', getValue: (t) => t.bpm },
+    { label: 'Key', getValue: (t) => t.key },
+    { label: 'Camelot', getValue: (t) => t.camelot_code },
+    { label: 'Energy', getValue: (t) => t.energy },
+  ],
+  [
+    { label: 'Voice / Instrumental', getValue: (t) => t.traits?.['voice_instrumental'] },
+    { label: 'Onset Density', getValue: (t) => t.traits?.['onset_density'] },
+    { label: 'Spectral Flatness', getValue: (t) => t.traits?.['spectral_flatness'] },
+  ],
+];
+
+const VARIABLE_KEYS = ['mood_theme', 'genre', 'instruments'] as const;
+
+function capitalizeFirst(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
   const [{ loading, detail }, dispatch] = useReducer(detailReducer, {
@@ -154,7 +177,7 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
           <tbody>
             {detail.factors.map((f) => (
               <tr key={f.name}>
-                <td>{f.name === 'Similarity' ? 'Fusion' : f.name}</td>
+                <td>{f.name === 'Similarity' ? 'Spectral' : f.name}</td>
                 <td className="mono">{formatScore(f.score)}</td>
                 <td className="mono">{formatScore(f.weight)}</td>
                 <td className="mono">{formatScore(f.score * f.weight)}</td>
@@ -171,41 +194,69 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
             <div key={track.id} className="detail-track-card">
               <h4 className="detail-card-title">{track.title}</h4>
               <div className="detail-card-fields">
-                {[
-                  ['BPM', track.bpm],
-                  ['Key', track.key],
-                  ['Camelot', track.camelot_code],
-                  ['Energy', track.energy],
-                  ['Genre', displayGenre(track.genre)],
-                  ['Label', track.label],
-                ].map(([label, val]) => (
-                  <div key={label as string} className="detail-field">
-                    <span className="detail-field-label">{label as string}</span>
-                    {renderValue(val)}
+                {FIXED_ROWS.map((row, ri) => (
+                  <div key={ri} className={`detail-row detail-row--${row.length}`}>
+                    {row.map((field) => (
+                      <div key={field.label} className="detail-field-h">
+                        <span className="detail-field-label">{field.label}</span>
+                        {renderValue(field.getValue(track))}
+                      </div>
+                    ))}
                   </div>
                 ))}
                 {track.traits &&
-                  Object.entries(track.traits).map(([key, val]) => {
-                    const isTableTrait = key === 'genre' || key === 'instruments';
-                    let displayVal = val;
-                    if (key === 'genre' && val && typeof val === 'object') {
-                      const leafGenres: Record<string, unknown> = {};
-                      for (const [gk, gv] of Object.entries(val as Record<string, unknown>)) {
-                        leafGenres[displayGenre(gk) ?? gk] = gv;
-                      }
-                      displayVal = leafGenres;
+                  VARIABLE_KEYS.map((key) => {
+                    const rawVal = track.traits?.[key];
+                    if (rawVal === undefined || rawVal === null) return null;
+                    if (typeof rawVal !== 'object') {
+                      return (
+                        <div key={key} className="detail-var-section">
+                          <span className="detail-field-label">
+                            {TRAIT_LABELS[key] ?? key}
+                          </span>
+                          {renderValue(rawVal)}
+                        </div>
+                      );
                     }
+                    let entries = Object.entries(
+                      rawVal as Record<string, unknown>,
+                    );
+                    if (key === 'genre') {
+                      entries = entries.map(([k, v]) => [
+                        displayGenre(k) ?? k,
+                        v,
+                      ]);
+                    }
+                    entries.sort(
+                      ([, a], [, b]) => (Number(b) || 0) - (Number(a) || 0),
+                    );
+                    const totalCount = entries.length;
+                    entries = entries.slice(0, 10);
+                    if (entries.length === 0) return null;
+                    const remaining = totalCount - entries.length;
                     return (
-                      <div key={key} className="detail-field">
+                      <div key={key} className="detail-var-section">
                         <span className="detail-field-label">
                           {TRAIT_LABELS[key] ?? key}
                         </span>
-                        {isTableTrait ? (
-                          <div className="trait-table-wrapper">
-                            {renderValue(displayVal)}
-                          </div>
-                        ) : (
-                          renderValue(displayVal)
+                        <div className="detail-var-grid">
+                          {entries.map(([k, v]) => (
+                            <div key={k} className="detail-field-h">
+                              <span className="detail-var-key">
+                                {capitalizeFirst(k)}
+                              </span>
+                              <span className="mono detail-var-val">
+                                {typeof v === 'number'
+                                  ? formatFloat(v)
+                                  : capitalizeFirst(String(v))}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        {remaining > 0 && (
+                          <span className="text-muted detail-var-more">
+                            … {remaining} more
+                          </span>
                         )}
                       </div>
                     );

@@ -4,11 +4,12 @@ Run with:
     python -m pytest src/tests/test_weight_service.py -v
 """
 
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.harmonic_mixing.config import MatchFactors
+from src.harmonic_mixing.config import MATCH_WEIGHTS, MatchFactors
 
 
 def _make_service(**overrides):
@@ -64,6 +65,34 @@ class TestWeightFetch:
         assert result["is_sum_valid"] is False
         assert result["message"] is not None
         assert "normalized" in result["message"].lower()
+
+
+class TestDefaultWeights:
+    def test_returns_all_factor_keys(self):
+        svc = _make_service()
+        defaults = svc.get_default_weights()
+        for factor in MatchFactors:
+            assert factor.name in defaults
+
+    def test_returns_fusion_keys(self):
+        svc = _make_service()
+        defaults = svc.get_default_weights()
+        for key in ("FUSION_HARMONIC", "FUSION_RHYTHM", "FUSION_TIMBRE", "FUSION_ENERGY"):
+            assert key in defaults
+
+    def test_values_on_0_100_scale(self):
+        svc = _make_service()
+        defaults = svc.get_default_weights()
+        for v in defaults.values():
+            assert 0 <= v <= 100
+
+    def test_defaults_independent_of_current_state(self):
+        svc = _make_service()
+        with patch.object(svc, "_persist_to_db"):
+            svc.update_weights({"BPM": 99})
+        defaults = svc.get_default_weights()
+        current = svc.get_weights()
+        assert defaults["BPM"] != current["raw_weights"]["BPM"]
 
 
 class TestWeightUpdate:
@@ -205,3 +234,74 @@ class TestWeightPropagation:
         finally:
             WeightService.reset()
             TransitionMatch.effective_weights = None
+
+
+class TestStaleKeyMigration:
+    """When persisted weights contain keys removed from MatchFactors,
+    the load path must redistribute their weight mass to surviving keys."""
+
+    @staticmethod
+    def _even_weights() -> dict:
+        """Return weights that sum to exactly 1.0 for current MatchFactors."""
+        keys = [f.name for f in MatchFactors]
+        w = 1.0 / len(keys)
+        return {k: w for k in keys}
+
+    def _build_saved_payload(self, extra_keys: dict) -> str:
+        base = self._even_weights()
+        base.update(extra_keys)
+        return json.dumps(base)
+
+    @patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db")
+    def test_stale_keys_redistributed_on_load(self, mock_persist):
+        from src.harmonic_mixing.weight_service import WeightService
+
+        stale_weight = 0.05
+        payload = self._build_saved_payload({
+            "DANCEABILITY": stale_weight,
+            "TIMBRE": stale_weight,
+        })
+
+        mock_row = MagicMock()
+        mock_row.weights_json = payload
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_row
+
+        with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
+            svc = WeightService()
+
+        svc._load_from_db = WeightService._load_from_db.__get__(svc)
+
+        with patch("src.db.database.create_session", return_value=mock_session):
+            svc._load_from_db()
+
+        result = svc.get_weights()
+        expected_sum = 100.0 + (stale_weight * 2) * 100
+        assert result["raw_sum"] == pytest.approx(expected_sum, abs=0.1)
+        mock_persist.assert_called()
+
+    @patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db")
+    def test_stale_keys_with_zero_weight_no_change(self, mock_persist):
+        from src.harmonic_mixing.weight_service import WeightService
+
+        payload = self._build_saved_payload({
+            "OLD_REMOVED_FACTOR": 0.0,
+        })
+
+        mock_row = MagicMock()
+        mock_row.weights_json = payload
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_row
+
+        with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
+            svc = WeightService()
+
+        svc._load_from_db = WeightService._load_from_db.__get__(svc)
+
+        with patch("src.db.database.create_session", return_value=mock_session):
+            svc._load_from_db()
+
+        result = svc.get_weights()
+        assert result["raw_sum"] == pytest.approx(100.0, abs=0.1)

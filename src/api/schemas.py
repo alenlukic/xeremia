@@ -37,8 +37,6 @@ class TransitionMatchResponse(BaseModel):
     genre_similarity_score: float
     mood_continuity_score: float
     vocal_clash_score: float
-    danceability_score: float
-    timbre_score: float
     instrument_similarity_score: float
 
 

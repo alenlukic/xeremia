@@ -3,6 +3,54 @@ import os
 import sys
 from pathlib import Path
 
+# Must run before numpy (or any package that loads OpenBLAS) is imported.
+# NumPy and SciPy ship separate OpenBLAS builds (ILP64 vs LP64) whose
+# global thread-pool state can collide, causing SIGSEGV in ufunc inner
+# loops.  Pinning each pool to one thread removes the contention surface.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+
+def _invalidate_stale_numba_cache() -> None:
+    """Remove cached numba gufunc artefacts when numpy changes version.
+
+    Stale .nbc/.nbi files compiled against a previous numpy build cause
+    SIGSEGV in numba's GUFunc dispatch (e.g. librosa pitch tracking).
+    """
+    import glob
+    import site
+
+    try:
+        import numpy as np  # noqa: delayed — must not trigger at module scope
+    except ImportError:
+        return
+
+    sp = site.getsitepackages()
+    if not sp:
+        return
+    site_pkgs = Path(sp[0])
+    stamp_file = site_pkgs / ".numba_np_version"
+
+    current = np.__version__
+    if stamp_file.exists() and stamp_file.read_text().strip() == current:
+        return
+
+    for ext in ("*.nbc", "*.nbi"):
+        for p in glob.glob(str(site_pkgs / "**" / ext), recursive=True):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+    try:
+        stamp_file.write_text(current)
+    except OSError:
+        pass
+
+
+_invalidate_stale_numba_cache()
+
 from dotenv import load_dotenv
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -43,17 +91,15 @@ CONFIG = {
     "FEATURE_EXTRACTION": {},
     "HARMONIC_MIXING": {
         "TRANSITION_MATCH_WEIGHTS": {
-            "SIMILARITY": _float("HM_WEIGHT_SIMILARITY", 0.18),
-            "CAMELOT": _float("HM_WEIGHT_CAMELOT", 0.2),
-            "BPM": _float("HM_WEIGHT_BPM", 0.2),
-            "FRESHNESS": _float("HM_WEIGHT_FRESHNESS", 0.08),
-            "GENRE_SIMILARITY": _float("HM_WEIGHT_GENRE_SIMILARITY", 0.08),
-            "MOOD_CONTINUITY": _float("HM_WEIGHT_MOOD_CONTINUITY", 0.06),
-            "VOCAL_CLASH": _float("HM_WEIGHT_VOCAL_CLASH", 0.05),
-            "DANCEABILITY": _float("HM_WEIGHT_DANCEABILITY", 0.07),
-            "ENERGY": _float("HM_WEIGHT_ENERGY", 0.04),
-            "TIMBRE": _float("HM_WEIGHT_TIMBRE", 0.04),
-            "INSTRUMENT_SIMILARITY": _float("HM_WEIGHT_INSTRUMENT_SIMILARITY", 0.02),
+            "SIMILARITY": _float("HM_WEIGHT_SIMILARITY", 0.1922),
+            "CAMELOT": _float("HM_WEIGHT_CAMELOT", 0.2122),
+            "BPM": _float("HM_WEIGHT_BPM", 0.2122),
+            "FRESHNESS": _float("HM_WEIGHT_FRESHNESS", 0.0922),
+            "GENRE_SIMILARITY": _float("HM_WEIGHT_GENRE_SIMILARITY", 0.0922),
+            "MOOD_CONTINUITY": _float("HM_WEIGHT_MOOD_CONTINUITY", 0.0722),
+            "VOCAL_CLASH": _float("HM_WEIGHT_VOCAL_CLASH", 0.0622),
+            "ENERGY": _float("HM_WEIGHT_ENERGY", 0.0522),
+            "INSTRUMENT_SIMILARITY": _float("HM_WEIGHT_INSTRUMENT_SIMILARITY", 0.0322),
         },
         "MAX_RESULTS": _int("HM_MAX_RESULTS", 50),
         "SCORE_THRESHOLD": _int("HM_SCORE_THRESHOLD", 25),

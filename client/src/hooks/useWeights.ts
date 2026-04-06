@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { WeightsResponse } from '../types';
-import { fetchWeights, updateWeights } from '../api/http';
+import { fetchWeights, fetchDefaultWeights, updateWeights } from '../api/http';
 
 interface WeightsState {
   weights: Record<string, number>;
@@ -13,6 +13,7 @@ interface WeightsState {
   isSumValid: boolean;
   warningMessage: string | null;
   normalizeWeights: () => void;
+  resetWeights: () => void;
 }
 
 const FUSION_KEY_PREFIX = 'FUSION_';
@@ -125,6 +126,17 @@ export function useWeights(onSaveSuccess?: () => void): WeightsState {
     persistWeights(normalized);
   }, [weights, persistWeights]);
 
+  const resetWeights = useCallback(() => {
+    fetchDefaultWeights()
+      .then((defaults) => {
+        setWeights(defaults);
+        persistWeights(defaults);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to fetch defaults');
+      });
+  }, [persistWeights]);
+
   return {
     weights,
     serverState,
@@ -136,5 +148,6 @@ export function useWeights(onSaveSuccess?: () => void): WeightsState {
     isSumValid,
     warningMessage: displayWarning,
     normalizeWeights,
+    resetWeights,
   };
 }

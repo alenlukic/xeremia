@@ -39,7 +39,7 @@ TRAIT_STORAGE_THRESHOLD = 0.01
 
 # --- Display-layer filtering (applied at read/consumption time, not storage) ---
 
-MOOD_DISPLAY_THRESHOLD = 0.15
+MOOD_DISPLAY_THRESHOLD = 0.06
 GENRE_DISPLAY_THRESHOLD = 0.10
 INSTRUMENT_DISPLAY_THRESHOLD = 0.10
 MOOD_TOP_K = 5

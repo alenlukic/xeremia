@@ -9,12 +9,13 @@ interface Props {
   selectTrack: (track: Track | SearchSuggestion) => void;
   clearSelectedTrack: () => void;
   normalizeWeights: () => void;
+  resetWeights: () => void;
   isSumValid: boolean;
   rawSum: number;
   onSearchTextChange?: (text: string) => void;
 }
 
-export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, isSumValid, rawSum, onSearchTextChange }: Props) {
+export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange }: Props) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -149,13 +150,21 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           </ul>
         )}
       </div>
-      <button
-        className={`weight-normalize-btn${isSumValid ? ' inactive' : ''}`}
-        disabled={isSumValid}
-        onClick={normalizeWeights}
-      >
-        Normalize Weights{!isSumValid && ` (${parseFloat(rawSum.toFixed(1))})`}
-      </button>
+      <div className="search-actions">
+        <button
+          className="weight-normalize-btn weight-normalize-btn--secondary"
+          onClick={resetWeights}
+        >
+          Reset Weights
+        </button>
+        <button
+          className={`weight-normalize-btn${isSumValid ? ' inactive' : ''}`}
+          disabled={isSumValid}
+          onClick={normalizeWeights}
+        >
+          Normalize Weights{!isSumValid && ` (${parseFloat(rawSum.toFixed(1))})`}
+        </button>
+      </div>
     </div>
   );
 }
