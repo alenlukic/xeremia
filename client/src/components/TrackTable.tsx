@@ -9,13 +9,13 @@ import {
   type Updater,
 } from '@tanstack/react-table';
 import type { Track, SearchSuggestion } from '../types';
-import { cleanTitle, formatFloat, displayGenre } from '../utils';
+import { formatFloat, displayGenre } from '../utils';
 
 const col = createColumnHelper<Track>();
 
 const FIXED_PX = 90;
 const FIXED_COUNT = 4;
-const FLEX_MINS = [180, 140, 100, 100];
+const FLEX_MINS = [280, 100, 100];
 const TOTAL_FLEX = FLEX_MINS.reduce((a, b) => a + b, 0);
 const TOTAL_FIXED = FIXED_COUNT * FIXED_PX;
 
@@ -32,7 +32,7 @@ function computeColWidths(container: number): number[] {
 
 const COLUMN_IDS = [
   'camelot_code', 'key', 'bpm', 'energy',
-  'title', 'artist_names', 'label', 'genre',
+  'title', 'label', 'genre',
 ];
 
 const columns = [
@@ -63,23 +63,16 @@ const columns = [
   col.accessor('title', {
     header: 'Title',
     size: FLEX_MINS[0],
-    minSize: 80,
-    cell: (info) => cleanTitle(info.getValue()),
-  }),
-  col.accessor('artist_names', {
-    header: 'Artist',
-    size: FLEX_MINS[1],
-    minSize: 80,
-    cell: (info) => info.getValue().join(', '),
+    minSize: 120,
   }),
   col.accessor('label', {
     header: 'Label',
-    size: FLEX_MINS[2],
+    size: FLEX_MINS[1],
     minSize: 50,
   }),
   col.accessor('genre', {
     header: 'Genre',
-    size: FLEX_MINS[3],
+    size: FLEX_MINS[2],
     minSize: 50,
     cell: (info) => displayGenre(info.getValue()),
   }),
