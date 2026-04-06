@@ -11,8 +11,7 @@ _CONFIG_VARS = [
     "HM_WEIGHT_SIMILARITY", "HM_WEIGHT_CAMELOT", "HM_WEIGHT_BPM",
     "HM_WEIGHT_FRESHNESS", "HM_WEIGHT_GENRE_SIMILARITY",
     "HM_WEIGHT_MOOD_CONTINUITY", "HM_WEIGHT_VOCAL_CLASH",
-    "HM_WEIGHT_DANCEABILITY", "HM_WEIGHT_ENERGY", "HM_WEIGHT_TIMBRE",
-    "HM_WEIGHT_INSTRUMENT_SIMILARITY",
+    "HM_WEIGHT_ENERGY", "HM_WEIGHT_INSTRUMENT_SIMILARITY",
     "HM_MAX_RESULTS", "HM_SCORE_THRESHOLD", "HM_RESULT_THRESHOLD",
     "INGESTION_PIPELINE_ROOT", "INGESTION_PIPELINE_UNPROCESSED",
     "INGESTION_PIPELINE_PROCESSING", "INGESTION_PIPELINE_FINALIZED",
@@ -121,8 +120,8 @@ class TestConfigStructure:
         weights = mod.CONFIG["HARMONIC_MIXING"]["TRANSITION_MATCH_WEIGHTS"]
         expected = {
             "SIMILARITY", "CAMELOT", "BPM", "FRESHNESS", "GENRE_SIMILARITY",
-            "MOOD_CONTINUITY", "VOCAL_CLASH", "DANCEABILITY", "ENERGY",
-            "TIMBRE", "INSTRUMENT_SIMILARITY",
+            "MOOD_CONTINUITY", "VOCAL_CLASH", "ENERGY",
+            "INSTRUMENT_SIMILARITY",
         }
         assert expected == set(weights.keys())
 
@@ -156,17 +155,17 @@ class TestDefaults:
     def test_harmonic_mixing_weight_defaults(self):
         mod = _reload_config()
         weights = mod.CONFIG["HARMONIC_MIXING"]["TRANSITION_MATCH_WEIGHTS"]
-        assert weights["SIMILARITY"] == pytest.approx(0.18)
-        assert weights["CAMELOT"] == pytest.approx(0.2)
-        assert weights["BPM"] == pytest.approx(0.2)
-        assert weights["FRESHNESS"] == pytest.approx(0.08)
-        assert weights["GENRE_SIMILARITY"] == pytest.approx(0.08)
-        assert weights["MOOD_CONTINUITY"] == pytest.approx(0.06)
-        assert weights["VOCAL_CLASH"] == pytest.approx(0.05)
-        assert weights["DANCEABILITY"] == pytest.approx(0.07)
-        assert weights["ENERGY"] == pytest.approx(0.04)
-        assert weights["TIMBRE"] == pytest.approx(0.04)
-        assert weights["INSTRUMENT_SIMILARITY"] == pytest.approx(0.02)
+        assert weights["SIMILARITY"] == pytest.approx(0.1922)
+        assert weights["CAMELOT"] == pytest.approx(0.2122)
+        assert weights["BPM"] == pytest.approx(0.2122)
+        assert weights["FRESHNESS"] == pytest.approx(0.0922)
+        assert weights["GENRE_SIMILARITY"] == pytest.approx(0.0922)
+        assert weights["MOOD_CONTINUITY"] == pytest.approx(0.0722)
+        assert weights["VOCAL_CLASH"] == pytest.approx(0.0622)
+        assert weights["ENERGY"] == pytest.approx(0.0522)
+        assert weights["INSTRUMENT_SIMILARITY"] == pytest.approx(0.0322)
+        assert "DANCEABILITY" not in weights
+        assert "TIMBRE" not in weights
 
     def test_harmonic_mixing_threshold_defaults(self):
         mod = _reload_config()

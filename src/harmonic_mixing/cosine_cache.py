@@ -2,11 +2,16 @@ import logging
 import threading
 import time
 from collections import OrderedDict, deque
-from typing import Dict, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from src.db import database
+from src.feature_extraction.compact_descriptor import (
+    compute_similarity as _compute_sim,
+    unpack_vector,
+)
 from src.feature_extraction.config import DESCRIPTOR_VERSION
 from src.models.track_cosine_similarity import TrackCosineSimilarity
+from src.models.track_descriptor import TrackDescriptor
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +19,9 @@ _MAX_ENTRIES = 500_000
 _RECENT_EVENT_LIMIT = 10
 _WARMUP_DELAY = 10.0
 _MAX_BFS_DEPTH = 2
+_MAX_NEIGHBORS_PER_LEVEL = 500
+_MAX_COMPUTE_NEIGHBORS = 200
+_MAX_COMPUTE_PAIRS = 5000
 
 
 class CosineCache:
@@ -40,6 +48,7 @@ class CosineCache:
         self._warmup_lock = threading.Lock()
         self._warmup_timer: Optional[threading.Timer] = None
         self._warmup_cancel: Optional[threading.Event] = None
+        self._warmup_track_id: Optional[int] = None
 
     @staticmethod
     def _key(id1: int, id2: int) -> Tuple[int, int]:
@@ -54,6 +63,12 @@ class CosineCache:
                 return self._store[key]
             self._misses += 1
         return None
+
+    def _contains(self, id1: int, id2: int) -> bool:
+        """Check if a pair exists without affecting hit/miss stats."""
+        key = self._key(id1, id2)
+        with self._lock:
+            return key in self._store
 
     def put(self, id1: int, id2: int, value: float) -> None:
         key = self._key(id1, id2)
@@ -126,6 +141,7 @@ class CosineCache:
             if self._warmup_cancel is not None:
                 self._warmup_cancel.set()
                 self._warmup_cancel = None
+            self._warmup_track_id = None
         with self._lock:
             self._store.clear()
             self._hits = 0
@@ -181,17 +197,130 @@ class CosineCache:
             session.close()
 
     # ------------------------------------------------------------------
+    # Cross-similarity computation for BFS expansion
+    # ------------------------------------------------------------------
+
+    def _compute_cross_similarities(
+        self,
+        session,
+        neighbor_ids: Set[int],
+        cancel: threading.Event,
+    ) -> None:
+        """Compute pairwise similarities between neighbor tracks.
+
+        Loads TrackDescriptor records in a single batch query, computes
+        cosine similarity for pairs not already cached, then caches and
+        persists the results so future warmups find them via normal BFS
+        reads.
+        """
+        if not neighbor_ids or cancel.is_set():
+            return
+
+        ids_list = sorted(neighbor_ids)[:_MAX_COMPUTE_NEIGHBORS]
+
+        try:
+            descriptors = (
+                session.query(TrackDescriptor)
+                .filter(
+                    TrackDescriptor.track_id.in_(ids_list),
+                    TrackDescriptor.descriptor_version == DESCRIPTOR_VERSION,
+                )
+                .all()
+            )
+        except Exception:
+            logger.debug("Failed to load descriptors for cross-similarity computation")
+            return
+
+        desc_map = {d.track_id: d for d in descriptors}
+        del descriptors
+
+        if len(desc_map) < 2 or cancel.is_set():
+            return
+
+        vectors: Dict[int, object] = {}
+        for tid, desc in desc_map.items():
+            try:
+                vectors[tid] = unpack_vector(desc.global_vector)
+            except Exception:
+                pass
+        del desc_map
+
+        available = sorted(vectors.keys())
+        if len(available) < 2:
+            return
+
+        pairs_to_compute: List[Tuple[int, int]] = []
+        for i, a in enumerate(available):
+            if cancel.is_set():
+                return
+            for b in available[i + 1 :]:
+                if not self._contains(a, b):
+                    pairs_to_compute.append((a, b))
+                if len(pairs_to_compute) >= _MAX_COMPUTE_PAIRS:
+                    break
+            if len(pairs_to_compute) >= _MAX_COMPUTE_PAIRS:
+                break
+
+        if not pairs_to_compute or cancel.is_set():
+            return
+
+        logger.info(
+            "Computing %d cross-similarities for %d neighbors",
+            len(pairs_to_compute),
+            len(available),
+        )
+
+        new_rows: List[TrackCosineSimilarity] = []
+        for a, b in pairs_to_compute:
+            if cancel.is_set():
+                return
+            sim = _compute_sim(vectors[a], vectors[b])
+            self.put(a, b, sim)
+            lo, hi = min(a, b), max(a, b)
+            new_rows.append(
+                TrackCosineSimilarity(
+                    id1=lo,
+                    id2=hi,
+                    cosine_similarity=sim,
+                    descriptor_version=DESCRIPTOR_VERSION,
+                )
+            )
+
+        if new_rows and not cancel.is_set():
+            try:
+                session.add_all(new_rows)
+                session.commit()
+            except Exception:
+                session.rollback()
+                logger.debug(
+                    "Batch persist of %d cross-similarities failed, "
+                    "values remain in cache only",
+                    len(new_rows),
+                )
+
+        logger.info(
+            "Cross-similarity computation complete: %d new pairs cached",
+            len(new_rows),
+        )
+
+    # ------------------------------------------------------------------
     # Delayed BFS warm-up scheduler
     # ------------------------------------------------------------------
 
     def schedule_warmup(self, track_id: int) -> None:
         """Schedule a delayed BFS warm-up for *track_id*.
 
-        Cancels any pending scheduled warm-up and signals cancellation to
-        any actively running warm-up (without evicting already-added
-        cache entries).  A fresh 10-second delay begins for *track_id*.
+        If a warmup for the same *track_id* is already pending or running,
+        the call is a no-op so that an in-progress depth-2 traversal is
+        not interrupted by redundant API calls.
+
+        If a *different* track is requested, the previous warmup is
+        cancelled and a fresh delay begins for *track_id*.
         """
         with self._warmup_lock:
+            if self._warmup_track_id == track_id:
+                return
+
             if self._warmup_timer is not None:
                 self._warmup_timer.cancel()
                 self._warmup_timer = None
@@ -199,6 +328,7 @@ class CosineCache:
             if self._warmup_cancel is not None:
                 self._warmup_cancel.set()
 
+            self._warmup_track_id = track_id
             cancel_event = threading.Event()
             self._warmup_cancel = cancel_event
 
@@ -214,46 +344,66 @@ class CosineCache:
     def _warmup_worker(self, track_id: int, cancel: threading.Event) -> None:
         """BFS warm-up worker.  Populates cache incrementally to depth 2.
 
-        Checks *cancel* between nodes and between rows so a superseding
+        Uses level-by-level batch queries (one ``IN`` query per depth
+        level) instead of per-node queries so the BFS completes in
+        O(max_depth) round-trips rather than O(N).
+
+        Checks *cancel* between levels and between rows so a superseding
         search can stop the traversal promptly.  Already-added cache
         entries are never evicted on cancellation.
         """
         if cancel.is_set():
             return
 
+        logger.info("BFS cache warmup starting for track %s", track_id)
+
         session = database.create_session()
         try:
             explored: Set[int] = {track_id}
-            queue: deque = deque()
-            queue.append((track_id, 0))
+            current_ids: Set[int] = {track_id}
 
-            while queue:
+            for depth in range(_MAX_BFS_DEPTH + 1):
                 if cancel.is_set():
                     return
+                if not current_ids:
+                    break
 
-                current_id, depth = queue.popleft()
-
+                batch = list(current_ids)
                 rows = (
                     session.query(TrackCosineSimilarity)
                     .filter(
-                        (TrackCosineSimilarity.id1 == current_id)
-                        | (TrackCosineSimilarity.id2 == current_id),
+                        (TrackCosineSimilarity.id1.in_(batch))
+                        | (TrackCosineSimilarity.id2.in_(batch)),
                         TrackCosineSimilarity.descriptor_version == DESCRIPTOR_VERSION,
                     )
                     .all()
                 )
 
+                next_ids: Set[int] = set()
                 for row in rows:
                     if cancel.is_set():
                         return
                     self.put(row.id1, row.id2, row.cosine_similarity)
-                    neighbor_id = row.id2 if row.id1 == current_id else row.id1
-                    if depth + 1 < _MAX_BFS_DEPTH and neighbor_id not in explored:
-                        explored.add(neighbor_id)
-                        queue.append((neighbor_id, depth + 1))
+                    if depth < _MAX_BFS_DEPTH:
+                        for nid in (row.id1, row.id2):
+                            if nid not in explored:
+                                explored.add(nid)
+                                next_ids.add(nid)
 
                 del rows
 
+                if len(next_ids) > _MAX_NEIGHBORS_PER_LEVEL:
+                    next_ids = set(list(next_ids)[:_MAX_NEIGHBORS_PER_LEVEL])
+
+                if depth == 0 and next_ids:
+                    self._compute_cross_similarities(session, next_ids, cancel)
+
+                current_ids = next_ids
+
+            logger.info(
+                "BFS cache warmup completed for track %s, cache size: %d",
+                track_id, self.size(),
+            )
         except Exception:
             logger.exception("Error during BFS warm-up for track %s", track_id)
         finally:

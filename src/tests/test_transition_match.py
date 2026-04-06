@@ -197,21 +197,6 @@ class TestSameTrackTraitFactors:
             match = TransitionMatch(md, md, CamelotPriority.SAME_KEY)
             assert match.get_instrument_similarity_score() == pytest.approx(1.0, abs=1e-6)
 
-    def test_same_danceability_returns_one(self):
-        with _MatchFixture() as fx:
-            trait = _make_trait(danceability=0.7)
-            fx.seed_traits(1, trait)
-            md = _make_md(1)
-            match = TransitionMatch(md, md, CamelotPriority.SAME_KEY)
-            assert match.get_danceability_score() == pytest.approx(1.0)
-
-    def test_same_timbre_returns_one(self):
-        with _MatchFixture() as fx:
-            trait = _make_trait(bright_dark=0.6)
-            fx.seed_traits(1, trait)
-            md = _make_md(1)
-            match = TransitionMatch(md, md, CamelotPriority.SAME_KEY)
-            assert match.get_timbre_score() == pytest.approx(1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -340,8 +325,6 @@ class TestNonSelfScoring:
             assert score > 0
             assert match.factors[MatchFactors.BPM] > 0.5
             assert match.factors[MatchFactors.ENERGY] > 0.5
-            assert match.factors[MatchFactors.DANCEABILITY] > 0.5
-            assert match.factors[MatchFactors.TIMBRE] > 0.5
 
     def test_factors_dict_populated_after_get_score(self):
         """get_score() must populate self.factors for all factor types."""
@@ -364,8 +347,7 @@ class TestNonSelfScoring:
                 MatchFactors.BPM, MatchFactors.CAMELOT, MatchFactors.ENERGY,
                 MatchFactors.FRESHNESS, MatchFactors.SIMILARITY,
                 MatchFactors.GENRE_SIMILARITY, MatchFactors.MOOD_CONTINUITY,
-                MatchFactors.VOCAL_CLASH, MatchFactors.DANCEABILITY,
-                MatchFactors.TIMBRE, MatchFactors.INSTRUMENT_SIMILARITY,
+                MatchFactors.VOCAL_CLASH, MatchFactors.INSTRUMENT_SIMILARITY,
             }
             assert set(match.factors.keys()) == expected_factors
 
@@ -629,8 +611,6 @@ class TestTraitParticipationInScoring:
         MatchFactors.GENRE_SIMILARITY,
         MatchFactors.MOOD_CONTINUITY,
         MatchFactors.VOCAL_CLASH,
-        MatchFactors.DANCEABILITY,
-        MatchFactors.TIMBRE,
         MatchFactors.INSTRUMENT_SIMILARITY,
     }
 
@@ -761,7 +741,7 @@ class TestTraitVersionFiltering:
                 f"got: {mock_filter.call_args_list}"
             )
 
-    def test_all_six_trait_scorers_return_zero_when_trait_missing(self):
+    def test_all_trait_scorers_return_zero_when_trait_missing(self):
         """Each trait scorer independently returns 0.0 when no TrackTrait
         row is found — confirming no scorer has a hardcoded bypass."""
         with _MatchFixture():
@@ -774,6 +754,4 @@ class TestTraitVersionFiltering:
             assert match.get_genre_similarity_score() == 0.0
             assert match.get_mood_continuity_score() == 0.0
             assert match.get_vocal_clash_score() == 0.0
-            assert match.get_danceability_score() == 0.0
-            assert match.get_timbre_score() == 0.0
             assert match.get_instrument_similarity_score() == 0.0

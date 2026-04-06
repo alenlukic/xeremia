@@ -334,6 +334,12 @@ def api_get_weights():
     return WeightService.instance().get_weights()
 
 
+@router.get("/weights/defaults")
+def api_get_weight_defaults():
+    from src.harmonic_mixing.weight_service import WeightService
+    return WeightService.instance().get_default_weights()
+
+
 def _clear_similarity_cache():
     from src.db import database
     from src.models.track_cosine_similarity import TrackCosineSimilarity

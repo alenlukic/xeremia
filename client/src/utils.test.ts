@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { formatFloat, formatScore, formatOverallScore, displayGenre } from './utils';
+import {
+  formatFloat,
+  formatScore,
+  formatOverallScore,
+  displayGenre,
+  dragSensitivity,
+  DRAG_SENSITIVITY_BASE,
+  DRAG_DECAY,
+  RESISTANCE_THRESHOLD,
+} from './utils';
 
 describe('formatFloat', () => {
   it('returns em-dash for null', () => {
@@ -80,6 +89,62 @@ describe('formatOverallScore', () => {
   it('does not double-scale (no multiply by 100)', () => {
     expect(formatOverallScore(68.92)).toBe('69');
     expect(Number(formatOverallScore(68.92))).toBeLessThan(200);
+  });
+});
+
+describe('dragSensitivity', () => {
+  const sensAt0 = DRAG_SENSITIVITY_BASE;
+  const sensAt10 = DRAG_SENSITIVITY_BASE * Math.exp(-RESISTANCE_THRESHOLD * DRAG_DECAY);
+  const sensAtOldMax = DRAG_SENSITIVITY_BASE * Math.exp(-25 * DRAG_DECAY);
+
+  it('returns base sensitivity at weight 0', () => {
+    expect(dragSensitivity(0)).toBeCloseTo(sensAt0, 10);
+  });
+
+  it('matches legacy curve at threshold (weight 10)', () => {
+    expect(dragSensitivity(RESISTANCE_THRESHOLD)).toBeCloseTo(sensAt10, 10);
+  });
+
+  it('reaches the old max resistance at weight 100', () => {
+    expect(dragSensitivity(100)).toBeCloseTo(sensAtOldMax, 10);
+  });
+
+  it('is strictly decreasing across the full 0–100 range', () => {
+    for (let w = 0; w < 100; w++) {
+      expect(dragSensitivity(w)).toBeGreaterThan(dragSensitivity(w + 1));
+    }
+  });
+
+  it('has no fixed plateau — every integer step changes the value', () => {
+    for (let w = 0; w < 100; w++) {
+      const diff = Math.abs(dragSensitivity(w) - dragSensitivity(w + 1));
+      expect(diff).toBeGreaterThan(0);
+    }
+  });
+
+  it('is linear in the 10–100 segment', () => {
+    const s10 = dragSensitivity(10);
+    const s100 = dragSensitivity(100);
+    for (let w = 10; w <= 100; w++) {
+      const t = (w - 10) / 90;
+      const expected = s10 + t * (s100 - s10);
+      expect(dragSensitivity(w)).toBeCloseTo(expected, 10);
+    }
+  });
+
+  it('exponential segment 0–10 matches legacy formula exactly', () => {
+    for (let w = 0; w <= 10; w++) {
+      const legacy = DRAG_SENSITIVITY_BASE * Math.exp(-w * DRAG_DECAY);
+      expect(dragSensitivity(w)).toBeCloseTo(legacy, 10);
+    }
+  });
+
+  it('clamps negative weights to 0', () => {
+    expect(dragSensitivity(-5)).toBe(dragSensitivity(0));
+  });
+
+  it('clamps weights above 100 to the max-resistance value', () => {
+    expect(dragSensitivity(150)).toBeCloseTo(sensAtOldMax, 10);
   });
 });
 

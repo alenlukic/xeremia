@@ -97,8 +97,6 @@ class TransitionMatch:
                 (self.get_genre_similarity_score(), weights[MatchFactors.GENRE_SIMILARITY.name]),
                 (self.get_mood_continuity_score(), weights[MatchFactors.MOOD_CONTINUITY.name]),
                 (self.get_vocal_clash_score(), weights[MatchFactors.VOCAL_CLASH.name]),
-                (self.get_danceability_score(), weights[MatchFactors.DANCEABILITY.name]),
-                (self.get_timbre_score(), weights[MatchFactors.TIMBRE.name]),
                 (self.get_instrument_similarity_score(), weights[MatchFactors.INSTRUMENT_SIMILARITY.name]),
             ]
             self.score = 100 * sum(
@@ -407,47 +405,6 @@ class TransitionMatch:
         vi_candidate = candidate.voice_instrumental if candidate.voice_instrumental is not None else 0.0
         result = 1.0 - min(vi_on_deck, vi_candidate)
         self.factors[MatchFactors.VOCAL_CLASH] = result
-        return result
-
-    def get_danceability_score(self):
-        """Reward similar or gently building danceability.
-
-        Base score = 1.0 - abs(diff). Small bonus when candidate is higher
-        (building energy on the floor).
-        """
-        if MatchFactors.DANCEABILITY in self.factors:
-            return self.factors[MatchFactors.DANCEABILITY]
-
-        on_deck = self._get_on_deck_trait()
-        candidate = self._get_candidate_trait()
-        if on_deck is None or candidate is None:
-            self.factors[MatchFactors.DANCEABILITY] = 0.0
-            return 0.0
-
-        d_on = on_deck.danceability if on_deck.danceability is not None else 0.5
-        d_cand = candidate.danceability if candidate.danceability is not None else 0.5
-        diff = d_cand - d_on
-        base = 1.0 - abs(diff)
-        build_bonus = max(0.0, min(0.1, diff))
-        result = min(1.0, base + build_bonus)
-        self.factors[MatchFactors.DANCEABILITY] = result
-        return result
-
-    def get_timbre_score(self):
-        """Reward timbral continuity via bright_dark proximity."""
-        if MatchFactors.TIMBRE in self.factors:
-            return self.factors[MatchFactors.TIMBRE]
-
-        on_deck = self._get_on_deck_trait()
-        candidate = self._get_candidate_trait()
-        if on_deck is None or candidate is None:
-            self.factors[MatchFactors.TIMBRE] = 0.0
-            return 0.0
-
-        t_on = on_deck.bright_dark if on_deck.bright_dark is not None else 0.5
-        t_cand = candidate.bright_dark if candidate.bright_dark is not None else 0.5
-        result = 1.0 - abs(t_on - t_cand)
-        self.factors[MatchFactors.TIMBRE] = result
         return result
 
     def get_instrument_similarity_score(self):

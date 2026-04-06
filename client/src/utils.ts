@@ -46,6 +46,33 @@ const FILL_PTS: [number, number][] = [
   [0, 0], [5, 25], [10, 45], [15, 60], [20, 70], [25, 75],
 ];
 
+// --- Gauge drag/hold resistance ---
+// Single source of truth for all continuous gauge interactions (drag + hold).
+export const DRAG_SENSITIVITY_BASE = 0.18;
+export const DRAG_DECAY = 0.03;
+export const RESISTANCE_THRESHOLD = 10;
+
+const OLD_THRESHOLD = 25;
+const SENS_AT_THRESHOLD =
+  DRAG_SENSITIVITY_BASE * Math.exp(-RESISTANCE_THRESHOLD * DRAG_DECAY);
+const SENS_AT_MAX =
+  DRAG_SENSITIVITY_BASE * Math.exp(-OLD_THRESHOLD * DRAG_DECAY);
+
+/**
+ * Drag/hold sensitivity (weight-units per degree for drag, rate basis for hold).
+ *
+ *   0–10:  exponential decay identical to the legacy curve at every point.
+ *   10–100: linear fall from SENS_AT_THRESHOLD → SENS_AT_MAX (no plateau).
+ */
+export function dragSensitivity(weight: number): number {
+  const w = Math.max(0, weight);
+  if (w <= RESISTANCE_THRESHOLD) {
+    return DRAG_SENSITIVITY_BASE * Math.exp(-w * DRAG_DECAY);
+  }
+  const t = Math.min(1, (w - RESISTANCE_THRESHOLD) / (100 - RESISTANCE_THRESHOLD));
+  return SENS_AT_THRESHOLD + t * (SENS_AT_MAX - SENS_AT_THRESHOLD);
+}
+
 export function gaugeWeightToFill(weight: number): number {
   /*
    * Piecewise-linear mapping: weight (0–100) → visual fill % (0–100).

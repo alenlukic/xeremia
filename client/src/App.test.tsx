@@ -27,6 +27,7 @@ vi.mock('./api/http', () => ({
     raw_weights: {}, effective_weights: {}, raw_sum: 1, target_sum: 1,
     is_sum_valid: true, message: null,
   }),
+  fetchDefaultWeights: vi.fn().mockResolvedValue({}),
   fetchMatches: vi.fn().mockResolvedValue([]),
   fetchMatchDetail: vi.fn().mockResolvedValue({}),
   updateWeights: vi.fn().mockResolvedValue({}),
@@ -96,6 +97,68 @@ async function openBrowseTab() {
     screen.getByRole('button', { name: 'Browse' }).click();
   });
 }
+
+describe('Reset Weights', () => {
+  it('renders a Reset Weights button', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchWeights).mockResolvedValue({
+      raw_weights: { BPM: 50, CAMELOT: 50 },
+      effective_weights: { BPM: 50, CAMELOT: 50 },
+      raw_sum: 100,
+      target_sum: 100,
+      is_sum_valid: true,
+      message: null,
+    });
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    expect(screen.getByRole('button', { name: 'Reset Weights' })).toBeInTheDocument();
+  });
+
+  it('calls fetchDefaultWeights and persists via debounced updateWeights on click', async () => {
+    vi.useFakeTimers();
+    const httpMod = await import('./api/http');
+    const defaults = { BPM: 10, CAMELOT: 90 };
+    vi.mocked(httpMod.fetchWeights).mockResolvedValue({
+      raw_weights: { BPM: 50, CAMELOT: 50 },
+      effective_weights: { BPM: 50, CAMELOT: 50 },
+      raw_sum: 100,
+      target_sum: 100,
+      is_sum_valid: true,
+      message: null,
+    });
+    vi.mocked(httpMod.fetchDefaultWeights).mockResolvedValue(defaults);
+    vi.mocked(httpMod.updateWeights).mockResolvedValue({
+      raw_weights: defaults,
+      effective_weights: defaults,
+      raw_sum: 100,
+      target_sum: 100,
+      is_sum_valid: true,
+      message: null,
+    });
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Reset Weights' }).click();
+    });
+
+    expect(httpMod.fetchDefaultWeights).toHaveBeenCalled();
+    expect(httpMod.updateWeights).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+
+    expect(httpMod.updateWeights).toHaveBeenCalledWith(defaults);
+
+    vi.useRealTimers();
+  });
+});
 
 describe('Browse infinite scroll', () => {
   it('initially renders the first 250 tracks', async () => {

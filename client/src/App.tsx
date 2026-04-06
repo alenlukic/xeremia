@@ -59,6 +59,7 @@ export default function App() {
     rawSum,
     isSumValid,
     normalizeWeights,
+    resetWeights,
   } = useWeights(refetchMatches);
 
   const browsePages = useMemo(() => {
@@ -128,6 +129,7 @@ export default function App() {
         selectTrack={handleSelectTrack}
         clearSelectedTrack={clearSelectedTrack}
         normalizeWeights={normalizeWeights}
+        resetWeights={resetWeights}
         isSumValid={isSumValid}
         rawSum={rawSum}
         onSearchTextChange={setSearchText}

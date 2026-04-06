@@ -55,6 +55,12 @@ export async function fetchWeights(): Promise<WeightsResponse> {
   return res.json();
 }
 
+export async function fetchDefaultWeights(): Promise<Record<string, number>> {
+  const res = await fetch('/api/weights/defaults');
+  if (!res.ok) throw new Error(`Failed to fetch default weights: ${res.status}`);
+  return res.json();
+}
+
 export async function updateWeights(weights: Record<string, number>): Promise<WeightsResponse> {
   const res = await fetch('/api/weights', {
     method: 'PUT',

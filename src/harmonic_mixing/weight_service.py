@@ -52,6 +52,7 @@ class WeightService:
         cls._instance = None
 
     def _load_from_db(self) -> None:
+        needs_persist = False
         try:
             from src.db import database
             from src.models.scoring_weight_override import ScoringWeightOverride
@@ -74,15 +75,29 @@ class WeightService:
                         else:
                             stale_keys.append(k)
                     if stale_keys:
+                        stale_mass = sum(saved[k] for k in stale_keys)
+                        valid_main = [
+                            k for k in self._raw_weights if k in saved
+                        ]
+                        if valid_main and stale_mass > 0:
+                            per_key = stale_mass / len(valid_main)
+                            for k in valid_main:
+                                self._raw_weights[k] += per_key
                         logger.warning(
-                            "DB weight record contained stale factor(s) %s that are no longer "
-                            "in MatchFactors or fusion keys; ignoring them.",
+                            "DB weight record contained stale factor(s) %s; "
+                            "redistributed %.4f weight mass across %d remaining factors.",
                             stale_keys,
+                            stale_mass,
+                            len(valid_main),
                         )
+                        needs_persist = True
             finally:
                 session.close()
         except Exception:
             logger.debug("Could not load weight overrides from DB; using config defaults")
+
+        if needs_persist:
+            self._persist_to_db()
 
     def _persist_to_db(self) -> None:
         try:
@@ -114,6 +129,12 @@ class WeightService:
                 session.close()
         except Exception:
             logger.debug("DB unavailable for weight persistence")
+
+    def get_default_weights(self) -> Dict[str, float]:
+        """Return factory-default weights on the 0-100 scale."""
+        main = {k: round(v * 100, 4) for k, v in MATCH_WEIGHTS.items()}
+        fusion = {k: round(v * 100, 4) for k, v in _FUSION_WEIGHT_DEFAULTS.items()}
+        return {**main, **fusion}
 
     def get_weights(self) -> Dict:
         with self._lock:

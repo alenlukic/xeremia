@@ -1,5 +1,5 @@
-import { memo, useCallback, useRef, useState } from 'react';
-import { gaugeWeightToFill } from '../utils';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { dragSensitivity, gaugeWeightToFill } from '../utils';
 
 const FUSION_SUBFACTOR_KEYS = [
   { key: 'FUSION_HARMONIC', label: 'Harmonic' },
@@ -13,19 +13,17 @@ const FACTOR_LABELS: Record<string, string> = {
   BPM: 'BPM',
   SIMILARITY: 'Fusion',
   FRESHNESS: 'Freshness',
-  ENERGY: 'Energy',
+  ENERGY: 'Energy (MIK)',
   GENRE_SIMILARITY: 'Genre',
   MOOD_CONTINUITY: 'Mood',
   VOCAL_CLASH: 'Vocal',
-  DANCEABILITY: 'Dance',
-  TIMBRE: 'Timbre',
   INSTRUMENT_SIMILARITY: 'Instrument',
 };
 
 const GAUGE_ROWS: { factors: string[]; colorClass: string }[] = [
   { factors: ['BPM', 'CAMELOT', 'GENRE_SIMILARITY'], colorClass: 'weight-gauge--crimson' },
   {
-    factors: ['ENERGY', 'DANCEABILITY', 'MOOD_CONTINUITY', 'TIMBRE', 'INSTRUMENT_SIMILARITY', 'VOCAL_CLASH'],
+    factors: ['ENERGY', 'MOOD_CONTINUITY', 'INSTRUMENT_SIMILARITY', 'VOCAL_CLASH'],
     colorClass: 'weight-gauge--teal',
   },
 ];
@@ -46,12 +44,9 @@ const ARC_STROKE = 4;
 const START_ANGLE = -135;
 const END_ANGLE = 135;
 const SWEEP = END_ANGLE - START_ANGLE;
-// Drag sensitivity (weight units per degree) follows an exponential decay with a floor:
-//   sensitivity = max(FLOOR, BASE * exp(-weight * DECAY))
-// Profile:  weight=0 → 0.18,  weight=10 → ~0.13,  weight=25 → ~0.085,
-//           weight=50 → ~0.04, weight=100 → 0.03 (floor)
-const DRAG_SENSITIVITY_BASE = 0.18;
-const DRAG_DECAY = 0.03;
+
+const HOLD_INITIAL_DELAY_MS = 300;
+const HOLD_RATE_FACTOR = 55;
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -68,12 +63,11 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
 function WeightGaugeBase({ factor, value, onChange, colorClass, readOnly, label, hideLabel }: GaugeProps) {
   const [editing, setEditing] = useState(false);
   const [inputVal, setInputVal] = useState('');
-  // Local float drag state — keeps the visual smooth without triggering parent renders.
   const [dragValue, setDragValue] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clamped = Math.max(0, Math.min(100, value));
-  // During a drag use the local float; only fall back to parent value when idle.
   const displayValue = dragValue !== null ? dragValue : clamped;
   const fillPct = gaugeWeightToFill(displayValue);
   const valueAngle = START_ANGLE + (fillPct / 100) * SWEEP;
@@ -88,7 +82,6 @@ function WeightGaugeBase({ factor, value, onChange, colorClass, readOnly, label,
       e.preventDefault();
       (e.target as Element).setPointerCapture(e.pointerId);
 
-      // Work in weight-space so resistance is expressed as weight units per degree.
       let currentWeight = clamped;
 
       const getAngle = (clientX: number, clientY: number) => {
@@ -103,21 +96,16 @@ function WeightGaugeBase({ factor, value, onChange, colorClass, readOnly, label,
       const onMove = (ev: PointerEvent) => {
         const angle = getAngle(ev.clientX, ev.clientY);
         let rawDelta = angle - prevAngle;
-        // Clamp to [-180, 180] so crossing the atan2 ±180° seam never causes a wild swing.
         if (rawDelta > 180) rawDelta -= 360;
         if (rawDelta < -180) rawDelta += 360;
         prevAngle = angle;
 
-        // Resistance climbs as weight rises up to 25, then stays constant.
-        const sensitivity = DRAG_SENSITIVITY_BASE * Math.exp(-Math.min(currentWeight, 25) * DRAG_DECAY);
+        const sensitivity = dragSensitivity(currentWeight);
         currentWeight = Math.max(0, Math.min(100, currentWeight + rawDelta * sensitivity));
-
-        // Update only local state — no parent call, no app-level re-render during drag.
         setDragValue(currentWeight);
       };
 
       const onUp = () => {
-        // Single parent commit on release; round only here, never during the drag.
         onChange(factor, Math.round(currentWeight));
         setDragValue(null);
         document.removeEventListener('pointermove', onMove);
@@ -127,6 +115,60 @@ function WeightGaugeBase({ factor, value, onChange, colorClass, readOnly, label,
       document.addEventListener('pointerup', onUp);
     },
     [factor, onChange, readOnly, clamped],
+  );
+
+  // --- Hold-to-adjust for +/- buttons ---
+  const stopHold = useCallback(() => {
+    if (holdRef.current !== null) {
+      clearTimeout(holdRef.current);
+      holdRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => stopHold, [stopHold]);
+
+  const startHold = useCallback(
+    (direction: 1 | -1) => {
+      if (readOnly) return;
+      stopHold();
+
+      let currentWeight = Math.max(0, Math.min(100, value + direction));
+      onChange(factor, currentWeight);
+
+      let accumulator = 0;
+      let lastTime = 0;
+
+      const tick = () => {
+        const now = performance.now();
+        if (lastTime === 0) lastTime = now;
+        const dt = now - lastTime;
+        lastTime = now;
+
+        const rate = (dragSensitivity(Math.abs(currentWeight)) * HOLD_RATE_FACTOR) / 1000;
+        accumulator += dt * rate;
+
+        while (accumulator >= 1) {
+          accumulator -= 1;
+          const next = currentWeight + direction;
+          if (next < 0 || next > 100) { accumulator = 0; break; }
+          currentWeight = next;
+          onChange(factor, currentWeight);
+        }
+
+        holdRef.current = setTimeout(tick, 16);
+      };
+
+      holdRef.current = setTimeout(tick, HOLD_INITIAL_DELAY_MS);
+
+      const onUp = () => {
+        stopHold();
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onUp);
+      };
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+    },
+    [factor, value, onChange, readOnly, stopHold],
   );
 
   const handleInputBlur = useCallback(() => {
@@ -205,6 +247,24 @@ function WeightGaugeBase({ factor, value, onChange, colorClass, readOnly, label,
           </div>
         )}
       </div>
+      {!hideLabel && !readOnly && (
+        <div className="gauge-adjust-row">
+          <button
+            className="gauge-adjust-btn"
+            onPointerDown={(e) => { e.preventDefault(); startHold(-1); }}
+            tabIndex={-1}
+          >
+            −
+          </button>
+          <button
+            className="gauge-adjust-btn"
+            onPointerDown={(e) => { e.preventDefault(); startHold(1); }}
+            tabIndex={-1}
+          >
+            +
+          </button>
+        </div>
+      )}
       {!hideLabel && (
         <span className="weight-gauge-label">{displayLabel}</span>
       )}
@@ -241,19 +301,6 @@ export const WeightControls = memo(function WeightControls({
             />
           ))}
       </div>
-      <div className="gauge-group gauge-group--energy">
-        {GAUGE_ROWS[1].factors
-          .filter((f) => f in weights)
-          .map((f) => (
-            <WeightGauge
-              key={f}
-              factor={f}
-              value={weights[f]}
-              onChange={setWeight}
-              colorClass={GAUGE_ROWS[1].colorClass}
-            />
-          ))}
-      </div>
       <div className="gauge-group gauge-group--fusion">
         {factors.includes('SIMILARITY') && (
           <div className="fusion-pane">
@@ -278,6 +325,19 @@ export const WeightControls = memo(function WeightControls({
             </div>
           </div>
         )}
+      </div>
+      <div className="gauge-group gauge-group--energy">
+        {GAUGE_ROWS[1].factors
+          .filter((f) => f in weights)
+          .map((f) => (
+            <WeightGauge
+              key={f}
+              factor={f}
+              value={weights[f]}
+              onChange={setWeight}
+              colorClass={GAUGE_ROWS[1].colorClass}
+            />
+          ))}
       </div>
     </div>
   );

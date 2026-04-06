@@ -6,6 +6,14 @@ interface Props {
   error: string | null;
 }
 
+function ringColor(ratio: number): string {
+  const pct = ratio * 100;
+  if (pct >= 90) return '#ef4444';
+  if (pct >= 75) return '#fb923c';
+  if (pct >= 50) return '#facc15';
+  return '#4ade80';
+}
+
 function UsageRing({ used, capacity, ratio }: { used: number; capacity: number; ratio: number }) {
   const r = 52;
   const stroke = 8;
@@ -24,7 +32,7 @@ function UsageRing({ used, capacity, ratio }: { used: number; capacity: number; 
             cy="64"
             r={r}
             fill="none"
-            stroke="var(--accent)"
+            stroke={ringColor(ratio)}
             strokeWidth={stroke}
             strokeLinecap="round"
             strokeDasharray={circumference}
