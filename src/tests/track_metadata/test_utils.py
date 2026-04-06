@@ -197,3 +197,17 @@ def test_discover_skips_wav_with_aiff_equivalent_in_augmented(tmp_path):
     discovered = discover_new_audio_files(download_dir=download_dir, augmented_dir=augmented_dir)
 
     assert wav_file not in discovered
+
+
+def test_convert_float_wav_to_aiff_uses_pcm24(tmp_path):
+    """FLOAT WAV must produce PCM_24 AIFF (not AIFF-C FLOAT) for Windows 11 compat."""
+    wav_path = tmp_path / "float.wav"
+    data = np.zeros((4410, 2), dtype=np.float32)
+    sf.write(str(wav_path), data, 44100, subtype="FLOAT")
+
+    result = convert_wav_to_aiff(wav_path)
+
+    converted_info = sf.info(str(result))
+    assert converted_info.subtype == "PCM_24"
+    assert converted_info.samplerate == 44100
+    assert converted_info.channels == 2

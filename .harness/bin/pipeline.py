@@ -236,7 +236,7 @@ def validate_policy(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, 
     forbidden = policies.get("forbid_paths", [])
     for file in files:
         for prefix in forbidden:
-            if file.startswith(prefix) or prefix in file:
+            if file.startswith(prefix) or f"/{prefix}" in file:
                 violations.append(f"forbidden_path:{file}")
 
     report = {
