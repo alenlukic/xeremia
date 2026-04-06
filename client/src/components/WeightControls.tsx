@@ -24,6 +24,7 @@ const FACTOR_TOOLTIPS: Record<string, string> = {
   BPM: 'Tempo proximity \u2014 how closely the two tracks match in beats per minute',
   CAMELOT: 'Harmonic key compatibility using the Camelot Wheel \u2014 adjacent keys mix well',
   GENRE_SIMILARITY: 'Stylistic genre similarity between the two tracks',
+  FRESHNESS: 'How recently the tracks were released \u2014 more recent tracks are favored',
   ENERGY: 'Energy level as analyzed by Mixed In Key \u2014 measures intensity and drive',
   MOOD_CONTINUITY: 'Emotional mood similarity \u2014 e.g. dark vs. euphoric, tense vs. relaxed',
   INSTRUMENT_SIMILARITY: 'Similarity in dominant instrumental texture and arrangement',
@@ -36,7 +37,7 @@ const FACTOR_TOOLTIPS: Record<string, string> = {
 };
 
 const GAUGE_ROWS: { factors: string[]; colorClass: string }[] = [
-  { factors: ['BPM', 'CAMELOT', 'GENRE_SIMILARITY'], colorClass: 'weight-gauge--crimson' },
+  { factors: ['BPM', 'CAMELOT', 'GENRE_SIMILARITY', 'FRESHNESS'], colorClass: 'weight-gauge--crimson' },
   {
     factors: ['ENERGY', 'MOOD_CONTINUITY', 'INSTRUMENT_SIMILARITY', 'VOCAL_CLASH'],
     colorClass: 'weight-gauge--teal',
