@@ -39,8 +39,10 @@ Coordinate this workflow only:
 6. diff-aware second planning pass
 7. QA validation
 8. verification stack
-9. bounded remediation loop
-10. final summary
+9. adversarial breaker pass
+10. run ledger distillation + publish
+11. bounded remediation loop
+12. final summary
 
 Keep working context narrow.
 Do not expand task scope without explicit justification.
@@ -78,9 +80,15 @@ Do not expand task scope without explicit justification.
 
 6. Delegate verification stack
 - ensure build verification, policy validation, evaluation, and regression detection all occur
+- delegate a breaker pass after build verification and before final completion
 - block completion if eval threshold is not met or blocking regression remains
 
-7. Remediation loop
+7. Delegate run ledger distillation
+- ask the `Run Ledger Curator` to produce `RUN_LEDGER.md`
+- publish the result using `python3 .harness/bin/pipeline.py publish-ledger --run-dir <run_dir>`
+- ensure the ledger captures only durable, high-signal learnings
+
+8. Remediation loop
 - only trigger remediation from explicit failure evidence
 - if retry is needed:
   - run `python3 .harness/bin/pipeline.py prepare-retry --run-dir <run_dir>`
@@ -88,13 +96,13 @@ Do not expand task scope without explicit justification.
   - keep remediation minimal
   - enforce bounded retry rounds from `.harness/pipeline.yaml`
 
-8. Stop conditions
+9. Stop conditions
 Stop when one of the following is true:
 - Review verdict is `APPROVE`, QA verdict is `PASS`, evaluation threshold is met, and no blocking regression remains
 - only low-value nits remain and all blocking gates are satisfied
 - configured retry/review caps from `.harness/pipeline.yaml` are reached
 
-9. Finalize
+10. Finalize
 - summarize outcome
 - report changed files, tests run, eval score, regression status, and unresolved caveats
 
@@ -105,6 +113,8 @@ Write or update these files under the active run directory:
 - `PLAN.md`
 - `REVIEW_NOTES.md`
 - `QA_REPORT.md`
+- `BREAKER_REPORT.md`
+- `RUN_LEDGER.md`
 - `SECOND_PASS_PLAN.md` when retries or replanning are needed
 
 Require the pipeline / specialized agents to maintain:
@@ -113,6 +123,7 @@ Require the pipeline / specialized agents to maintain:
 - `POLICY_REPORT.json`
 - `EVAL_REPORT.json`
 - `REGRESSION_REPORT.json`
+- published ledger entry under `.harness/ledgers/`
 
 ## VALIDATION
 
@@ -120,6 +131,7 @@ Before declaring completion, verify:
 - task was restated into explicit requirements
 - scope remained narrow
 - review and QA were both invoked
+- breaker and ledger curation were both invoked
 - review loops were tracked and bounded
 - diff-aware replanning occurred when the real change shape became visible
 - verification stack was invoked
@@ -134,7 +146,9 @@ Return a final delivery summary with:
 - changed files
 - tests run
 - eval score / threshold
+- breaker status
 - regression status
+- ledger publish status
 - unresolved caveats, if any
 - review rounds completed
 - retry rounds completed

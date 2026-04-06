@@ -105,7 +105,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     if (!el) return;
     const parent = el.parentElement;
     if (!parent) return;
-    const measure = (p: Element) => setContainerWidth(p.clientWidth);
+    const measure = (p: Element) => setContainerWidth(Math.max(0, p.clientWidth));
     measure(parent);
     const ro = new ResizeObserver(() => measure(parent));
     ro.observe(parent);
@@ -144,7 +144,6 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
 
   const totalWidth = table.getTotalSize();
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth;
-  const isFramed = containerWidth > 0 && !isOverflowing && containerWidth >= totalWidth + 64;
 
   const handleTopScroll = useCallback(() => {
     if (ignoreNextScroll.current === 'top') {
@@ -220,7 +219,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
         </div>
       )}
       <div
-        className={`track-table-wrapper${isFramed ? ' track-table-wrapper--framed' : ''}`}
+        className="track-table-wrapper"
         ref={wrapperRef}
         onScroll={isOverflowing ? handleWrapperScroll : undefined}
       >

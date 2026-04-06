@@ -42,14 +42,18 @@ stages:
     - qa
     - reviewer_broad
     - build_verifier
+    - breaker
     - evaluator
     - regression_detector
+    - ledger_curator
 
 gates:
   require_tests: true
   require_build: true
   require_policy_report: true
   require_eval_report: true
+  require_breaker_report: true
+  require_run_ledger: true
   require_no_high_regressions: true
   eval_threshold: 80              # B- — minimum passing grade
   eval_conditional_threshold: 70  # C- — conditional pass floor
@@ -66,6 +70,7 @@ retry:
     - build_fail
     - eval_below_threshold
     - high_regression
+    - breaker_blocker
     - policy_violation
   strategy: targeted
   require_second_pass_plan: true
@@ -79,6 +84,8 @@ artifacts:
     - "REVIEW_NOTES.md"
     - "QA_REPORT.md"
     - "BUILD_VERIFICATION.md"
+    - "BREAKER_REPORT.md"
+    - "RUN_LEDGER.md"
     - "POLICY_REPORT.json"
     - "EVAL_REPORT.json"
     - "REGRESSION_REPORT.json"
@@ -89,6 +96,7 @@ artifacts:
     - "RETRY_TASK.md"
     - "RETRY_LOG.jsonl"
     - "DEFERRED_ITEMS.json"
+    - "ADVERSARIAL_TEST_PLAN.md"
 
 policies:
   forbid_paths:

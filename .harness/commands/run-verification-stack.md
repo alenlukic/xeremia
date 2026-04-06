@@ -28,11 +28,16 @@ Required:
 4. Build verification
 - delegate to `Delivery Build Verifier`
 
-5. Evaluation
+5. Adversarial breaker pass
+- delegate to `Delivery Breaker`
+- require concrete falsification attempts against the real diff
+
+6. Evaluation
 - `python3 .harness/bin/pipeline.py evaluate --run-dir <run_dir>`
 - delegate to `Delivery Evaluator`
+- rerun `python3 .harness/bin/pipeline.py evaluate --run-dir <run_dir>` after breaker/regression artifacts exist if needed
 
-6. Regression detection
+7. Regression detection
 - delegate to `Delivery Regression Detector`
 
 ## ACCEPTANCE
@@ -41,5 +46,6 @@ Complete only if:
 - `PATCH.diff` is current
 - `TEST_REPORT.json` exists
 - `POLICY_REPORT.json` exists
+- `BREAKER_REPORT.md` exists
 - `EVAL_REPORT.json` exists
 - `REGRESSION_REPORT.json` exists

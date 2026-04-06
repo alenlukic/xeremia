@@ -140,6 +140,16 @@ REGRESSION_CHECK(block_on=high|critical, source=REGRESSION_REPORT.json)
   Detect unintended drift outside nominal task scope.
   Completion is blocked on configured severity or higher.
 
+ADVERSARIAL_BREAKER(required=true, source=BREAKER_REPORT.md)
+  After build verification and a real diff exists, run a dedicated falsification pass.
+  The breaker must try to produce concrete counterexamples, exploit paths, or missing-test hypotheses.
+  Completion is blocked on unresolved blocker findings from the breaker.
+
+RUN_LEDGER(required=true, source=RUN_LEDGER.md, publish=.harness/ledgers/)
+  Distill only the highest-signal decisions, failures, tradeoffs, and reusable learnings.
+  Do not dump full reasoning transcripts.
+  Publish durable ledger entries for future doc and structure maintenance.
+
 DIFF_PLAN(required=true, source=PATCH.diff)
   After first meaningful diff, perform a second planning pass grounded in actual changes.
   Use this to tighten scope, update risk, and convert findings into targeted remediation work.
@@ -239,7 +249,7 @@ These are the repo-specific operating principles that apply to all agent work:
    Every change should be the smallest coherent unit. Broad rewrites introduce compounding risk.
 
 6. Separate persistent knowledge from ephemeral artifacts.
-   Design docs and research belong in .harness/docs/. Run artifacts belong in .harness/runs/.
+   Design docs and research belong in .harness/docs/. Ephemeral run artifacts belong in .harness/runs/. Durable curated learnings belong in .harness/ledgers/.
 
 7. Optimize for agent legibility.
    Code, docs, and structure should be navigable by agents without requiring external context.

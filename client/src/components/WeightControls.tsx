@@ -9,15 +9,30 @@ const FUSION_SUBFACTOR_KEYS = [
 ] as const;
 
 const FACTOR_LABELS: Record<string, string> = {
-  CAMELOT: 'Camelot',
+  CAMELOT: 'Key',
   BPM: 'BPM',
   SIMILARITY: 'Spectral',
-  FRESHNESS: 'Freshness',
+  FRESHNESS: 'Recency',
   ENERGY: 'Energy (MIK)',
   GENRE_SIMILARITY: 'Genre',
   MOOD_CONTINUITY: 'Mood',
-  VOCAL_CLASH: 'Vocal',
-  INSTRUMENT_SIMILARITY: 'Instrument',
+  VOCAL_CLASH: 'Vocals',
+  INSTRUMENT_SIMILARITY: 'Instruments',
+};
+
+const FACTOR_TOOLTIPS: Record<string, string> = {
+  BPM: 'Tempo proximity \u2014 how closely the two tracks match in beats per minute',
+  CAMELOT: 'Harmonic key compatibility using the Camelot Wheel \u2014 adjacent keys mix well',
+  GENRE_SIMILARITY: 'Stylistic genre similarity between the two tracks',
+  ENERGY: 'Energy level as analyzed by Mixed In Key \u2014 measures intensity and drive',
+  MOOD_CONTINUITY: 'Emotional mood similarity \u2014 e.g. dark vs. euphoric, tense vs. relaxed',
+  INSTRUMENT_SIMILARITY: 'Similarity in dominant instrumental texture and arrangement',
+  VOCAL_CLASH: 'Vocal presence similarity \u2014 both tracks vocal, both instrumental, or mixed',
+  SIMILARITY: 'Similarity in overall frequency distribution and sonic brightness',
+  FUSION_HARMONIC: 'Chord and harmonic content similarity beyond simple key matching',
+  FUSION_RHYTHM: 'Rhythmic pattern and groove similarity \u2014 feel, syncopation, pulse',
+  FUSION_TIMBRE: 'Tonal color and texture similarity \u2014 the \u201csound\u201d of the production',
+  FUSION_ENERGY: 'Energy level from fused audio analysis \u2014 complements MIK with additional signal',
 };
 
 const GAUGE_ROWS: { factors: string[]; colorClass: string }[] = [
@@ -266,7 +281,12 @@ function WeightGaugeBase({ factor, value, onChange, colorClass, readOnly, label,
         </div>
       )}
       {!hideLabel && (
-        <span className="weight-gauge-label">{displayLabel}</span>
+        <span
+          className="weight-gauge-label"
+          data-tooltip={FACTOR_TOOLTIPS[factor] ?? undefined}
+        >
+          {displayLabel}
+        </span>
       )}
     </div>
   );

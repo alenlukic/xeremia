@@ -53,9 +53,12 @@ Delivery pipeline agents:
 | Delivery Broad Reviewer      | [.harness/agents/delivery-broad-reviewer.md](.harness/agents/delivery-broad-reviewer.md)           | Design and maintainability review                |
 | Delivery QA                  | [.harness/agents/delivery-qa.md](.harness/agents/delivery-qa.md)                                   | Requirement-trace validation                     |
 | Delivery Build Verifier      | [.harness/agents/delivery-build-verifier.md](.harness/agents/delivery-build-verifier.md)           | Build health verification                        |
+| Delivery Breaker             | [.harness/agents/delivery-breaker.md](.harness/agents/delivery-breaker.md)                         | Adversarial post-change falsification pass       |
 | Delivery Diff Planner        | [.harness/agents/delivery-diff-planner.md](.harness/agents/delivery-diff-planner.md)               | Second-pass planning from actual diff + failures |
 | Delivery Evaluator           | [.harness/agents/delivery-evaluator.md](.harness/agents/delivery-evaluator.md)                     | Quality scoring and completion gating            |
 | Delivery Regression Detector | [.harness/agents/delivery-regression-detector.md](.harness/agents/delivery-regression-detector.md) | Detect unintended drift and adjacent risk        |
+| Run Ledger Curator           | [.harness/agents/run-ledger-curator.md](.harness/agents/run-ledger-curator.md)                     | Distill key decisions, failures, and reusable learnings |
+| Ledger Documentation Steward | [.harness/agents/ledger-doc-steward.md](.harness/agents/ledger-doc-steward.md)                     | Update repo docs / structure from published ledgers |
 
 
 Maintenance agents:
@@ -97,6 +100,7 @@ Commands live in `.harness/commands/`. In Cursor they are available as slash com
 | -------------------- | ---------------------------------------------------------------------------------------------- | --------------------------- |
 | Delivery pipeline    | [.harness/commands/run-delivery-pipeline.md](.harness/commands/run-delivery-pipeline.md)       | `/run-delivery-pipeline`    |
 | Verification stack   | [.harness/commands/run-verification-stack.md](.harness/commands/run-verification-stack.md)     | `/run-verification-stack`   |
+| Ledger docs sync     | [.harness/commands/run-ledger-doc-sync.md](.harness/commands/run-ledger-doc-sync.md)           | `/run-ledger-doc-sync`      |
 | Maintenance pipeline | [.harness/commands/run-maintenance-pipeline.md](.harness/commands/run-maintenance-pipeline.md) | `/run-maintenance-pipeline` |
 | PR description       | [.harness/commands/run-pr-description.md](.harness/commands/run-pr-description.md)             | `/run-pr-description`       |
 | Change summarizer    | [.harness/commands/run-change-summarizer.md](.harness/commands/run-change-summarizer.md)       | `/run-change-summarizer`    |
@@ -118,6 +122,8 @@ Standard artifacts:
 - `REVIEW_NOTES.md`
 - `QA_REPORT.md`
 - `BUILD_VERIFICATION.md`
+- `BREAKER_REPORT.md`
+- `RUN_LEDGER.md`
 - `POLICY_REPORT.json`
 - `EVAL_REPORT.json`
 - `REGRESSION_REPORT.json`
@@ -139,9 +145,11 @@ Delivery work uses this default flow:
 5. QA validation
 6. broad review
 7. build verification
-8. policy validation + evaluation + regression detection
-9. bounded remediation loop if gates fail
-10. finalize with evidence-backed verdict
+8. adversarial breaker pass
+9. policy validation + evaluation + regression detection
+10. run ledger distillation + publish
+11. bounded remediation loop if gates fail
+12. finalize with evidence-backed verdict
 
 ## Repo State and Bootstrap
 
@@ -163,6 +171,8 @@ The harness includes a repo-aware bootstrap and docs-sync system under `.harness
 
 
 Generated doc sections use explicit markers. See `.harness/docs/bootstrap-usage.md` for the marker model.
+
+Keep `.harness/ledgers/` committed so durable learnings and doc-sync state travel with the repo.
 
 ## dj-tools Knowledge Base
 
