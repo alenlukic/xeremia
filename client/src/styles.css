@@ -159,6 +159,7 @@ body,
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition);
+  text-align: left;
 }
 
 .tab:hover {
@@ -178,11 +179,22 @@ body,
   overflow: hidden;
 }
 
+/* === Table Panel (bordered content wrapper) === */
+.table-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  margin: 0 var(--content-gutter);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
 /* === Bucket Sub-tabs === */
 .bucket-tabs {
   display: flex;
   gap: 0;
-  padding: 0 var(--content-gutter);
+  padding: 0 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -201,6 +213,7 @@ body,
   align-items: center;
   gap: 6px;
   transition: all var(--transition);
+  text-align: left;
 }
 
 .bucket-tab:hover {
@@ -239,7 +252,7 @@ body,
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
-  padding: 16px var(--content-gutter) 8px;
+  padding: 16px 14px 8px;
 }
 
 /* === Filter Bar === */
@@ -247,7 +260,7 @@ body,
   display: flex;
   gap: 20px;
   align-items: flex-start;
-  padding: 12px var(--content-gutter);
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   flex-wrap: wrap;
@@ -411,6 +424,7 @@ body,
   flex-direction: column;
   flex: 1;
   overflow: hidden;
+  margin-top: 8px;
 }
 
 .track-table-top-scrollbar {
@@ -419,15 +433,15 @@ body,
   flex-shrink: 0;
 }
 
-.track-table-wrapper,
-.matches-table-wrapper {
+.track-table-wrapper {
   overflow: auto;
   flex: 1;
 }
 
-.track-table-wrapper--framed {
-  margin-left: var(--content-gutter);
-  margin-right: var(--content-gutter);
+.matches-table-wrapper {
+  overflow: auto;
+  flex: 1;
+  margin-top: 8px;
 }
 
 .track-table,
@@ -1049,6 +1063,37 @@ body,
   margin-bottom: 0;
   text-align: center;
   white-space: nowrap;
+}
+
+.weight-gauge-label[data-tooltip] {
+  position: relative;
+  cursor: help;
+}
+
+.weight-gauge-label[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  top: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  background: rgba(44, 49, 66, 0.82);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  width: max-content;
+  max-width: 260px;
+  text-align: center;
+  line-height: 1.4;
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 /* === Admin Dashboard === */

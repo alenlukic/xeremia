@@ -11,6 +11,7 @@ Start with [AGENTS.md](../../AGENTS.md) for the top-level map.
 | Core beliefs | [core-beliefs.md](core-beliefs.md) | Execution contract (DEVDSL-1.1) and operating principles |
 | Delivery batch execution | [delivery-batch-execution.md](delivery-batch-execution.md) | MODE=multi batch execution: usage, semantics, and artifact schema |
 | Design docs | [design-docs/](design-docs/) | Harness design decisions and rationale |
+| Ledgers | [../ledgers/README.md](../ledgers/README.md) | Durable run summaries and doc sync state |
 
 ## Repository Documentation
 

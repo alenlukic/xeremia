@@ -24,6 +24,7 @@ Required:
 Optional:
 - `TEST_REPORT.json`
 - `BUILD_VERIFICATION.md`
+- `BREAKER_REPORT.md`
 - `REVIEW_NOTES.md`
 - repository context for touched areas
 

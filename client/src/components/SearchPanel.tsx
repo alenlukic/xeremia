@@ -13,9 +13,10 @@ interface Props {
   isSumValid: boolean;
   rawSum: number;
   onSearchTextChange?: (text: string) => void;
+  searchPadding?: { left: number; right: number } | null;
 }
 
-export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange }: Props) {
+export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange, searchPadding }: Props) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -103,7 +104,11 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
   }
 
   return (
-    <div className="search-bar-wrapper" ref={containerRef}>
+    <div
+      className="search-bar-wrapper"
+      ref={containerRef}
+      style={searchPadding ? { paddingLeft: searchPadding.left, paddingRight: searchPadding.right } : undefined}
+    >
       <div className="search-input-container">
         <input
           type="text"

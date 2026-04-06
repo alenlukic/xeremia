@@ -31,6 +31,7 @@ Optional:
 - `BROAD_REVIEW_NOTES.md`
 - `SPECIFIC_REVIEW_NOTES.md`
 - `REGRESSION_REPORT.json`
+- `BREAKER_REPORT.md`
 - existing `EVAL_REPORT.json` (mechanical pre-score from pipeline runner)
 
 ## DO
@@ -51,6 +52,9 @@ Categories to score (see rubric for weights and dimensions):
 5. security_data_safety
 6. readability_maintainability
 7. change_discipline
+
+Account for unresolved breaker findings when scoring correctness, reliability_operational_safety, and security_data_safety.
+A blocker-grade breaker finding must appear in `blocking_findings` unless it was explicitly contained.
 
 ## OUTPUT
 

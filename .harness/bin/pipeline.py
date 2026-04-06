@@ -19,6 +19,9 @@ import yaml
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
 ROOT = SCRIPT_PATH.parents[2]
 RUNS_DIR = ROOT / ".harness" / "runs"
+LEDGERS_DIR = ROOT / ".harness" / "ledgers"
+LEDGER_INDEX_PATH = LEDGERS_DIR / "INDEX.json"
+DOC_SYNC_STATE_PATH = LEDGERS_DIR / "DOC_SYNC_STATE.json"
 CONFIG_PATH = ROOT / ".harness" / "pipeline.yaml"
 
 GRADE_BANDS: list[tuple[int, str]] = [
@@ -48,6 +51,18 @@ def utc_run_id() -> str:
 
 def ensure_runs_dir() -> None:
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_ledgers_dir() -> None:
+    LEDGERS_DIR.mkdir(parents=True, exist_ok=True)
+    if not LEDGER_INDEX_PATH.exists():
+        write_json(LEDGER_INDEX_PATH, [])
+    if not DOC_SYNC_STATE_PATH.exists():
+        write_json(DOC_SYNC_STATE_PATH, {
+            "last_synced_run_id": None,
+            "last_synced_at": None,
+            "updated_at": None,
+        })
 
 
 def write_text(path: pathlib.Path, text: str) -> None:
@@ -118,6 +133,14 @@ def create_run(task: str, mode: str) -> pathlib.Path:
     write_text(
         run_dir / "BUILD_VERIFICATION.md",
         "# Build Verification\n\n## Status\nPENDING\n\n## Notes\n- \n",
+    )
+    write_text(
+        run_dir / "BREAKER_REPORT.md",
+        "# Breaker Report\n\n## Attack Surface\n- pending\n\n## Break Attempts\n- pending\n\n## False Confidence Signals\n- pending\n\n## Findings\n- pending\n\n## Verdict\nCONCERNS\n",
+    )
+    write_text(
+        run_dir / "RUN_LEDGER.md",
+        "# Run Ledger\n\n## Outcome\n- Task: pending\n- Result: pending\n- Scope: pending\n\n## Key Decisions\n- pending\n\n## Verification Learnings\n- pending\n\n## Breaker / Regression Learnings\n- pending\n\n## Durable Repo Guidance\n- pending\n\n## Deferred / Follow-up\n- pending\n",
     )
     write_json(run_dir / "TEST_REPORT.json", {"commands": [], "last_intent": None})
     write_json(run_dir / "RETRY_LOG.jsonl", [])
@@ -231,12 +254,19 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
     gates = config.get("gates", {})
     threshold = int(gates.get("eval_threshold", 80))
     conditional_threshold = int(gates.get("eval_conditional_threshold", 70))
+    require_no_high = bool(gates.get("require_no_high_regressions", True))
+
     tests = test_summary(run_dir / "TEST_REPORT.json")
     policy = read_json(run_dir / "POLICY_REPORT.json", {"ok": True, "violations": []})
     regression = read_json(run_dir / "REGRESSION_REPORT.json", {"severity": "UNKNOWN", "regressions_found": False})
     qa_verdict = parse_markdown_verdict(run_dir / "QA_REPORT.md", [r"## Verdict\s+([A-Z_]+)", r"^Verdict:\s*([A-Z_]+)$"])
     build_status = parse_markdown_verdict(run_dir / "BUILD_VERIFICATION.md", [r"## Status\s+([A-Z_]+)", r"^Status:\s*([A-Z_]+)$"])
     review_verdict = parse_markdown_verdict(run_dir / "REVIEW_NOTES.md", [r"## Verdict\s+([A-Z_]+)", r"^Verdict:\s*([A-Z_]+)$"])
+    breaker_verdict = parse_breaker_verdict(run_dir / "BREAKER_REPORT.md")
+
+    breaker_text = (run_dir / "BREAKER_REPORT.md").read_text(encoding="utf-8") if (run_dir / "BREAKER_REPORT.md").exists() else ""
+    breaker_blockers = len(re.findall(r"Severity:\s*BLOCKER", breaker_text, flags=re.IGNORECASE))
+    breaker_importants = len(re.findall(r"Severity:\s*IMPORTANT", breaker_text, flags=re.IGNORECASE))
 
     score = 100
     findings: list[str] = []
@@ -267,6 +297,16 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
         score -= 10
         findings.append(f"review_not_approved:{review_verdict}")
 
+    if breaker_blockers > 0:
+        score -= min(30, 15 * breaker_blockers)
+        findings.append(f"breaker_blockers_present:{breaker_blockers}")
+    elif breaker_importants > 0:
+        score -= min(12, 6 * breaker_importants)
+        findings.append(f"breaker_importants_present:{breaker_importants}")
+    elif breaker_verdict not in {"PASS", "UNKNOWN"}:
+        score -= 5
+        findings.append(f"breaker_not_pass:{breaker_verdict}")
+
     severity = str(regression.get("severity", "UNKNOWN")).upper()
     if severity == "HIGH":
         score -= 15
@@ -280,9 +320,6 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
 
     score = max(score, 0)
 
-    # Apply hard floors from agent-produced category scores (if present).
-    # The Delivery Evaluator agent writes categories to EVAL_REPORT.json before
-    # this function is re-run during remediation, so we pick them up here.
     existing_eval = read_json(run_dir / "EVAL_REPORT.json", {})
     categories: dict[str, Any] = existing_eval.get("categories") or {}
     floor_breaches: list[str] = []
@@ -298,8 +335,10 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
                 floor_breaches.append(f"{cat}:below_60")
 
     grade = grade_from_score(score)
-    hard_block = {"critical_regression_risk", "policy_violations_present"}
-    has_hard_block = bool(hard_block & set(findings))
+    hard_block = {"test_failures_present", "critical_regression_risk", "policy_violations_present"}
+    if require_no_high:
+        hard_block.add("high_regression_risk")
+    has_hard_block = any(item in hard_block or item.startswith("breaker_blockers_present:") for item in findings)
     has_floor_fail = any("below_40" in b for b in floor_breaches)
     verdict = "PASS" if score >= threshold and not has_hard_block and not has_floor_fail else "FAIL"
     if verdict == "FAIL" and not has_hard_block and not has_floor_fail and score >= conditional_threshold:
@@ -317,6 +356,7 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
             "qa": qa_verdict,
             "build": build_status,
             "review": review_verdict,
+            "breaker": breaker_verdict,
             "regression": severity,
         },
         "hard_floor_breaches": floor_breaches,
@@ -395,6 +435,120 @@ def prepare_retry(run_dir: pathlib.Path, config: dict[str, Any], reason: str | N
     write_json(run_dir / "RETRY_LOG.jsonl", retry_log)
 
     return {"round": next_round, "max_rounds": max_retry_rounds, "prepared": True}
+
+
+def run_mode_from_plan(run_dir: pathlib.Path) -> str | None:
+    plan_path = run_dir / "PLAN.md"
+    if not plan_path.exists():
+        return None
+    text = plan_path.read_text(encoding="utf-8")
+    match = re.search(r"^Mode:\s*(\w+)", text, flags=re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def parse_breaker_verdict(path: pathlib.Path) -> str:
+    return parse_markdown_verdict(path, [r"## Verdict\s+([A-Z_]+)", r"^Verdict:\s*([A-Z_]+)$"], default="UNKNOWN")
+
+
+def publish_ledger(run_dir: pathlib.Path) -> dict[str, Any]:
+    ensure_ledgers_dir()
+    ledger_path = run_dir / "RUN_LEDGER.md"
+    if not ledger_path.exists():
+        raise FileNotFoundError(f"Missing ledger: {ledger_path}")
+
+    run_id = run_dir.name
+    published_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    task_text = (run_dir / "TASK.md").read_text(encoding="utf-8").strip() if (run_dir / "TASK.md").exists() else ""
+    diff_stats = read_json(run_dir / "DIFF_STATS.json", {})
+    eval_report = read_json(run_dir / "EVAL_REPORT.json", {})
+    regression = read_json(run_dir / "REGRESSION_REPORT.json", {})
+    qa_verdict = parse_markdown_verdict(run_dir / "QA_REPORT.md", [r"## Verdict\s+([A-Z_]+)", r"^Verdict:\s*([A-Z_]+)$"])
+    build_status = parse_markdown_verdict(run_dir / "BUILD_VERIFICATION.md", [r"## Status\s+([A-Z_]+)", r"^Status:\s*([A-Z_]+)$"])
+    breaker_verdict = parse_breaker_verdict(run_dir / "BREAKER_REPORT.md")
+
+    published_path = LEDGERS_DIR / f"{run_id}.md"
+    frontmatter = [
+        "---",
+        f"run_id: {run_id}",
+        f"mode: {run_mode_from_plan(run_dir) or 'unknown'}",
+        f"published_at: {published_at}",
+        f"qa_verdict: {qa_verdict}",
+        f"build_status: {build_status}",
+        f"breaker_verdict: {breaker_verdict}",
+        f"eval_verdict: {eval_report.get('verdict', 'UNKNOWN')}",
+        f"eval_score: {eval_report.get('score', 'UNKNOWN')}",
+        f"regression_severity: {str(regression.get('severity', 'UNKNOWN')).upper()}",
+        "---",
+        "",
+    ]
+    published_path.write_text("\n".join(frontmatter) + ledger_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    index = read_json(LEDGER_INDEX_PATH, [])
+    index = [entry for entry in index if entry.get("run_id") != run_id]
+    index.append({
+        "run_id": run_id,
+        "mode": run_mode_from_plan(run_dir) or "unknown",
+        "task_excerpt": task_text[:160],
+        "published_at": published_at,
+        "path": str(published_path.relative_to(ROOT)),
+        "files_changed": diff_stats.get("files_changed"),
+        "eval_score": eval_report.get("score"),
+        "eval_verdict": eval_report.get("verdict"),
+        "qa_verdict": qa_verdict,
+        "build_status": build_status,
+        "breaker_verdict": breaker_verdict,
+        "regression_severity": str(regression.get("severity", "UNKNOWN")).upper(),
+    })
+    index.sort(key=lambda e: str(e.get("published_at", "")))
+    write_json(LEDGER_INDEX_PATH, index)
+
+    return {
+        "published": True,
+        "run_id": run_id,
+        "path": str(published_path),
+        "published_at": published_at,
+    }
+
+
+def pending_ledgers(since_run_id: str | None = None) -> dict[str, Any]:
+    ensure_ledgers_dir()
+    index = read_json(LEDGER_INDEX_PATH, [])
+    state = read_json(DOC_SYNC_STATE_PATH, {})
+
+    cutoff_time = state.get("last_synced_at")
+    if since_run_id:
+        for entry in index:
+            if entry.get("run_id") == since_run_id:
+                cutoff_time = entry.get("published_at")
+                break
+
+    if cutoff_time:
+        pending = [entry for entry in index if str(entry.get("published_at", "")) > str(cutoff_time)]
+    else:
+        pending = index
+
+    return {
+        "last_synced_run_id": state.get("last_synced_run_id"),
+        "last_synced_at": state.get("last_synced_at"),
+        "pending_count": len(pending),
+        "ledgers": pending,
+    }
+
+
+def mark_doc_sync(up_to_run: str) -> dict[str, Any]:
+    ensure_ledgers_dir()
+    index = read_json(LEDGER_INDEX_PATH, [])
+    match = next((entry for entry in index if entry.get("run_id") == up_to_run), None)
+    if match is None:
+        raise ValueError(f"Unknown run id: {up_to_run}")
+
+    state = {
+        "last_synced_run_id": up_to_run,
+        "last_synced_at": match.get("published_at"),
+        "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+    write_json(DOC_SYNC_STATE_PATH, state)
+    return state
 
 
 def ensure_regression_stub(run_dir: pathlib.Path) -> None:
@@ -509,6 +663,15 @@ def main() -> int:
     retry_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
     retry_parser.add_argument("--reason", required=False, help="Optional reason for the retry")
 
+    publish_ledger_parser = subparsers.add_parser("publish-ledger", help="Publish RUN_LEDGER.md into .harness/ledgers")
+    publish_ledger_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
+
+    pending_ledgers_parser = subparsers.add_parser("pending-ledgers", help="List published ledgers pending doc sync")
+    pending_ledgers_parser.add_argument("--since-run-id", required=False, help="Optional run id override for the sync boundary")
+
+    mark_doc_sync_parser = subparsers.add_parser("mark-doc-sync", help="Advance doc sync state to a published ledger")
+    mark_doc_sync_parser.add_argument("--up-to-run", required=True, help="Latest published run id included in the doc sync")
+
     batch_start_parser = subparsers.add_parser("batch-start", help="Initialize a batch run from multiple task files")
     batch_start_parser.add_argument("--task-files", nargs="+", required=True, help="Paths to task-definition files (min 2)")
 
@@ -528,9 +691,22 @@ def main() -> int:
     config = load_config()
 
     if args.command == "start":
+        ensure_ledgers_dir()
         run_dir = create_run(task=args.task, mode=args.mode)
         ensure_regression_stub(run_dir)
         print(str(run_dir))
+        return 0
+
+    if args.command == "pending-ledgers":
+        print(json.dumps(pending_ledgers(args.since_run_id), indent=2))
+        return 0
+
+    if args.command == "mark-doc-sync":
+        try:
+            print(json.dumps(mark_doc_sync(args.up_to_run), indent=2))
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
         return 0
 
     if args.command == "batch-start":
@@ -625,6 +801,11 @@ def main() -> int:
 
     if args.command == "prepare-retry":
         report = prepare_retry(run_dir, config, args.reason)
+        print(json.dumps(report, indent=2))
+        return 0
+
+    if args.command == "publish-ledger":
+        report = publish_ledger(run_dir)
         print(json.dumps(report, indent=2))
         return 0
 

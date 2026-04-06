@@ -58,6 +58,8 @@ Every task should enter through the appropriate **pipeline**, create a **run dir
   - `delivery` — product/code changes, bug fixes, features
   - `maintenance` — scoped cleanup / hygiene
   - `verification` — run gates on an existing run
+- `ledger-doc-sync` — update durable docs / structure from published run ledgers
+
 2. Start the pipeline using your IDE:
   - **Cursor:** slash command (`/run-delivery-pipeline`, `/run-maintenance-pipeline`, `/run-verification-stack`)
   - **Claude Code / Codex:** provide a structured prompt (see "Standard task brief template" below) and include the run initialization command
@@ -73,6 +75,7 @@ Every task should enter through the appropriate **pipeline**, create a **run dir
 | Delivery      | Bug fixes, features, behavior changes, API/UI work        | `/run-delivery-pipeline`    | Load `.harness/commands/run-delivery-pipeline.md`    |
 | Maintenance   | Low-risk cleanup, hygiene, behavior-preserving refactors  | `/run-maintenance-pipeline` | Load `.harness/commands/run-maintenance-pipeline.md` |
 | Verification  | Run build/test/eval/regression on an existing run         | `/run-verification-stack`   | Load `.harness/commands/run-verification-stack.md`   |
+| Ledger doc sync | Update docs / structure from published run ledgers since the last sync | `/run-ledger-doc-sync` | Load `.harness/commands/run-ledger-doc-sync.md` |
 | Restructure   | Scoped structural improvement, module reorganization      | `/run-restructure-pipeline` | Load `.harness/commands/run-restructure-pipeline.md` |
 | Repo research | Read-only codebase exploration and architecture questions | `/run-repo-research`        | Load `.harness/commands/run-repo-research.md`        |
 
@@ -120,6 +123,7 @@ Constraints:
 │   ├── pipeline.py               # deterministic runner and artifact helper
 │   └── setup.sh                  # Cursor IDE symlink bootstrapper
 ├── runs/                         # ephemeral run artifacts (gitignored)
+├── ledgers/                      # persistent compact run learnings + doc sync state
 ├── change_summaries/             # gitignored
 └── pr_descriptions/              # gitignored
 
@@ -222,4 +226,6 @@ Before accepting output:
 - run artifacts were created
 - validation and evaluation ran
 - regression checks ran
+- breaker report was produced for delivery work
+- run ledger was curated and published
 - any retries were bounded and justified

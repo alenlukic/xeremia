@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { SearchPanel } from './components/SearchPanel';
 import { FilterBar } from './components/FilterBar';
 import { TrackTable } from './components/TrackTable';
@@ -25,6 +25,9 @@ export default function App() {
   const [searchText, setSearchText] = useState('');
   const [loadedPages, setLoadedPages] = useState(1);
   const loadedPageCacheRef = useRef<Map<string, number>>(new Map());
+
+  const gaugeRowRef = useRef<HTMLDivElement>(null);
+  const [searchPadding, setSearchPadding] = useState<{ left: number; right: number } | null>(null);
 
   const {
     stats: cacheStats,
@@ -61,6 +64,43 @@ export default function App() {
     normalizeWeights,
     resetWeights,
   } = useWeights(refetchMatches);
+
+  useLayoutEffect(() => {
+    const wrapper = gaugeRowRef.current;
+    if (!wrapper) {
+      setSearchPadding(null);
+      return;
+    }
+
+    const row = wrapper.firstElementChild as HTMLElement | null;
+    if (!row) return;
+
+    const measure = () => {
+      const groups = row.querySelectorAll(':scope > .gauge-group');
+      if (groups.length < 2) {
+        setSearchPadding(null);
+        return;
+      }
+
+      const rowRect = row.getBoundingClientRect();
+      const rects = Array.from(groups).map(g => g.getBoundingClientRect());
+      const allSameRow = rects.every(r => Math.abs(r.top - rects[0].top) < 10);
+
+      if (allSameRow) {
+        setSearchPadding({
+          left: Math.round(rects[0].left - rowRect.left),
+          right: Math.round(rowRect.right - rects[rects.length - 1].right),
+        });
+      } else {
+        setSearchPadding(null);
+      }
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(row);
+    return () => ro.disconnect();
+  }, [weightsLoading]);
 
   const browsePages = useMemo(() => {
     const pages: Track[][] = [];
@@ -118,10 +158,12 @@ export default function App() {
   return (
     <div className="app-shell-v2">
       {!weightsLoading && Object.keys(weights).length > 0 && (
-        <WeightControls
-          weights={weights}
-          setWeight={setWeight}
-        />
+        <div ref={gaugeRowRef}>
+          <WeightControls
+            weights={weights}
+            setWeight={setWeight}
+          />
+        </div>
       )}
 
       <SearchPanel
@@ -133,6 +175,7 @@ export default function App() {
         isSumValid={isSumValid}
         rawSum={rawSum}
         onSearchTextChange={setSearchText}
+        searchPadding={searchPadding}
       />
 
       <div className="tab-bar">
@@ -161,12 +204,14 @@ export default function App() {
 
       <div className="tab-content">
         {activeTab === 'matches' && !detailMatch && (
-          <MatchesPanel
-            selectedTrack={selectedTrack}
-            matches={matches}
-            loading={matchesLoading}
-            onScoreClick={setDetailMatch}
-          />
+          <div className="table-panel">
+            <MatchesPanel
+              selectedTrack={selectedTrack}
+              matches={matches}
+              loading={matchesLoading}
+              onScoreClick={setDetailMatch}
+            />
+          </div>
         )}
         {activeTab === 'matches' && detailMatch && (
           <MatchDetail
@@ -177,7 +222,7 @@ export default function App() {
           />
         )}
         {activeTab === 'browse' && (
-          <>
+          <div className="table-panel">
             <FilterBar
               camelotCodes={filters.camelotCodes}
               bpm={filters.bpm}
@@ -196,7 +241,7 @@ export default function App() {
               hasMore={!selectedTrack ? hasMorePages : undefined}
               onLoadMore={!selectedTrack ? handleLoadMore : undefined}
             />
-          </>
+          </div>
         )}
         {activeTab === 'admin' && (
           <AdminDashboard
