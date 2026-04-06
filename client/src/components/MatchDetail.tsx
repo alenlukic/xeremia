@@ -177,7 +177,7 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
           <tbody>
             {detail.factors.map((f) => (
               <tr key={f.name}>
-                <td>{f.name === 'Similarity' ? 'Fusion' : f.name}</td>
+                <td>{f.name === 'Similarity' ? 'Spectral' : f.name}</td>
                 <td className="mono">{formatScore(f.score)}</td>
                 <td className="mono">{formatScore(f.weight)}</td>
                 <td className="mono">{formatScore(f.score * f.weight)}</td>

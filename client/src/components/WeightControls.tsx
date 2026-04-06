@@ -11,7 +11,7 @@ const FUSION_SUBFACTOR_KEYS = [
 const FACTOR_LABELS: Record<string, string> = {
   CAMELOT: 'Camelot',
   BPM: 'BPM',
-  SIMILARITY: 'Fusion',
+  SIMILARITY: 'Spectral',
   FRESHNESS: 'Freshness',
   ENERGY: 'Energy (MIK)',
   GENRE_SIMILARITY: 'Genre',
@@ -301,6 +301,19 @@ export const WeightControls = memo(function WeightControls({
             />
           ))}
       </div>
+      <div className="gauge-group gauge-group--energy">
+        {GAUGE_ROWS[1].factors
+          .filter((f) => f in weights)
+          .map((f) => (
+            <WeightGauge
+              key={f}
+              factor={f}
+              value={weights[f]}
+              onChange={setWeight}
+              colorClass={GAUGE_ROWS[1].colorClass}
+            />
+          ))}
+      </div>
       <div className="gauge-group gauge-group--fusion">
         {factors.includes('SIMILARITY') && (
           <div className="fusion-pane">
@@ -325,19 +338,6 @@ export const WeightControls = memo(function WeightControls({
             </div>
           </div>
         )}
-      </div>
-      <div className="gauge-group gauge-group--energy">
-        {GAUGE_ROWS[1].factors
-          .filter((f) => f in weights)
-          .map((f) => (
-            <WeightGauge
-              key={f}
-              factor={f}
-              value={weights[f]}
-              onChange={setWeight}
-              colorClass={GAUGE_ROWS[1].colorClass}
-            />
-          ))}
       </div>
     </div>
   );
