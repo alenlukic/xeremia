@@ -260,6 +260,63 @@ describe('MatchesPanel', () => {
     });
   });
 
+  describe('default column sizing', () => {
+    it('applies rebalanced default widths — score columns at ~2/3 of original', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader');
+      const widths = headers.map(h => (h as HTMLElement).style.width);
+
+      expect(widths[0]).toBe('484px');  // Track (widened)
+      expect(widths[1]).toBe('60px');   // Spectral (was 90)
+      expect(widths[2]).toBe('60px');   // Key (was 90)
+      expect(widths[3]).toBe('60px');   // BPM (was 90)
+      expect(widths[4]).toBe('60px');   // Genre (was 90)
+      expect(widths[5]).toBe('60px');   // Recency (was 90)
+      expect(widths[6]).toBe('73px');   // Energy (was 110)
+      expect(widths[7]).toBe('60px');   // Mood (was 90)
+      expect(widths[8]).toBe('73px');   // Instruments (was 110)
+      expect(widths[9]).toBe('60px');   // Vocals (was 90)
+      expect(widths[10]).toBe('120px'); // Actions (unchanged)
+    });
+
+    it('preserves minimum total table width after rebalance', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader');
+      const totalWidth = headers.reduce((sum, h) => {
+        const w = parseInt((h as HTMLElement).style.width, 10);
+        return sum + (isNaN(w) ? 0 : w);
+      }, 0);
+      expect(totalWidth).toBe(1170);
+    });
+
+    it('gives wider actions column when onAddToSet is provided without changing score widths', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+          onAddToSet={vi.fn()}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader');
+      const actionsWidth = (headers[headers.length - 1] as HTMLElement).style.width;
+      expect(actionsWidth).toBe('190px');
+      expect((headers[0] as HTMLElement).style.width).toBe('484px');
+    });
+  });
+
   describe('add to set action', () => {
     it('renders Add to Set button when onAddToSet is provided', () => {
       render(

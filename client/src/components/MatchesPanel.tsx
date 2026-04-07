@@ -20,16 +20,18 @@ const BUCKET_TABS: { key: BucketKey; label: string }[] = [
 ];
 
 const COL_SIZES: Record<string, number> = {
-  similarity_score: 90,
-  camelot_score: 90,
-  bpm_score: 90,
-  genre_similarity_score: 90,
-  freshness_score: 90,
-  energy_score: 110,
-  mood_continuity_score: 90,
-  instrument_similarity_score: 110,
-  vocal_clash_score: 90,
+  similarity_score: 60,
+  camelot_score: 60,
+  bpm_score: 60,
+  genre_similarity_score: 60,
+  freshness_score: 60,
+  energy_score: 73,
+  mood_continuity_score: 60,
+  instrument_similarity_score: 73,
+  vocal_clash_score: 60,
 };
+
+const TRACK_SIZE = 484;
 
 const SCORE_COLUMN_IDS = Object.keys(COL_SIZES);
 const TOTAL_BASE = Object.values(COL_SIZES).reduce((a, b) => a + b, 0);
@@ -105,7 +107,7 @@ export const MatchesPanel = memo(function MatchesPanel({
     col.accessor('title', {
       id: 'track_title',
       header: 'Track',
-      size: 200,
+      size: TRACK_SIZE,
       minSize: 100,
       enableResizing: false,
       cell: (info) => (
@@ -178,7 +180,7 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const responsiveSizing = useMemo(() => {
     if (containerWidth <= 0) return {};
-    const scoreSpace = Math.max(TOTAL_BASE, containerWidth - 320);
+    const scoreSpace = Math.max(TOTAL_BASE, containerWidth - (TRACK_SIZE + 120));
     const scale = Math.max(1, scoreSpace / TOTAL_BASE);
     const sizing: ColumnSizingState = {};
     SCORE_COLUMN_IDS.forEach((id) => { sizing[id] = COL_SIZES[id] * scale; });
