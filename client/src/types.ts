@@ -115,3 +115,13 @@ export interface WeightsResponse {
   is_sum_valid: boolean;
   message: string | null;
 }
+
+export interface SetTrackEntry {
+  track: Track;
+}
+
+export interface DjSet {
+  id: string;
+  name: string;
+  tracks: SetTrackEntry[];
+}

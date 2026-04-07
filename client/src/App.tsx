@@ -6,14 +6,16 @@ import { MatchesPanel } from './components/MatchesPanel';
 import { MatchDetail } from './components/MatchDetail';
 import { WeightControls } from './components/WeightControls';
 import { AdminDashboard } from './components/AdminDashboard';
+import { SetBuilder } from './components/SetBuilder';
 import { useSelectedTrack } from './hooks/useSelectedTrack';
 import { useTrackFilters } from './hooks/useTrackFilters';
 import { useCollectionCache } from './hooks/useCollectionCache';
 import { useCacheStats } from './hooks/useCacheStats';
 import { useWeights } from './hooks/useWeights';
+import { useSetBuilder } from './hooks/useSetBuilder';
 import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 
-type TabKey = 'matches' | 'browse' | 'admin';
+type TabKey = 'matches' | 'browse' | 'admin' | 'set';
 
 const BROWSE_PAGE_SIZE = 250;
 
@@ -70,6 +72,18 @@ export default function App() {
     normalizeWeights,
     resetWeights,
   } = useWeights(refetchMatches);
+
+  const {
+    sets,
+    activeSet,
+    activeSetId,
+    createSet,
+    selectSet: selectDjSet,
+    deleteSet,
+    addTrack: addTrackToSet,
+    removeTrack: removeTrackFromSet,
+    moveTrack: moveTrackInSet,
+  } = useSetBuilder();
 
   useLayoutEffect(() => {
     const wrapper = gaugeRowRef.current;
@@ -193,6 +207,20 @@ export default function App() {
     selectTrack(last.track);
   }, [transitionChain, selectTrack]);
 
+  const handleAddToSet = useCallback(
+    (candidateId: number) => {
+      const track = allTracks.find(t => t.id === candidateId);
+      if (track) addTrackToSet(track);
+    },
+    [allTracks, addTrackToSet],
+  );
+
+  const handleAddSelectedToSet = useCallback(() => {
+    if (!selectedTrack) return;
+    const track = allTracks.find(t => t.id === selectedTrack.id);
+    if (track) addTrackToSet(track);
+  }, [selectedTrack, allTracks, addTrackToSet]);
+
   return (
     <div className="app-shell-v2">
       {!weightsLoading && Object.keys(weights).length > 0 && (
@@ -242,6 +270,12 @@ export default function App() {
         >
           Admin
         </button>
+        <button
+          className={`tab${activeTab === 'set' ? ' active' : ''}`}
+          onClick={() => setActiveTab('set')}
+        >
+          Set{activeSet ? ` (${activeSet.tracks.length})` : ''}
+        </button>
       </div>
 
       <div className="tab-content">
@@ -278,6 +312,7 @@ export default function App() {
               matchesError={matchesError}
               onViewDetail={setDetailMatch}
               onUseAsSource={handleUseAsSource}
+              onAddToSet={activeSet ? handleAddToSet : undefined}
             />
           </div>
         )}
@@ -288,10 +323,22 @@ export default function App() {
             onBack={() => setDetailMatch(null)}
             traitMap={traitMap}
             onUseAsSource={handleUseAsSource}
+            onAddToSet={activeSet ? handleAddToSet : undefined}
           />
         )}
         {activeTab === 'browse' && (
           <div className="table-panel">
+            {selectedTrack && activeSet && (
+              <div className="browse-add-to-set-bar">
+                <button
+                  className="match-action-btn"
+                  onClick={handleAddSelectedToSet}
+                  title="Add selected track to set"
+                >
+                  + Add to Set
+                </button>
+              </div>
+            )}
             <FilterBar
               camelotCodes={filters.camelotCodes}
               bpm={filters.bpm}
@@ -323,6 +370,18 @@ export default function App() {
             stats={cacheStats}
             loading={cacheLoading}
             error={cacheError}
+          />
+        )}
+        {activeTab === 'set' && (
+          <SetBuilder
+            sets={sets}
+            activeSet={activeSet}
+            activeSetId={activeSetId}
+            createSet={createSet}
+            selectSet={selectDjSet}
+            deleteSet={deleteSet}
+            removeTrack={removeTrackFromSet}
+            moveTrack={moveTrackInSet}
           />
         )}
       </div>

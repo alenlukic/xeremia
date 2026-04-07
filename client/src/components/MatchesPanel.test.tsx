@@ -259,4 +259,43 @@ describe('MatchesPanel', () => {
       expect(onUseAsSource).toHaveBeenCalledWith(42);
     });
   });
+
+  describe('add to set action', () => {
+    it('renders Add to Set button when onAddToSet is provided', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+          onAddToSet={vi.fn()}
+        />
+      );
+      expect(screen.getByTitle('Add to set')).toBeInTheDocument();
+    });
+
+    it('does not render Add to Set button when onAddToSet is not provided', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      expect(screen.queryByTitle('Add to set')).not.toBeInTheDocument();
+    });
+
+    it('calls onAddToSet with candidate_id when clicked', async () => {
+      const onAddToSet = vi.fn();
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch({ candidate_id: 99 })]}
+          loading={false}
+          onAddToSet={onAddToSet}
+        />
+      );
+      await userEvent.click(screen.getByTitle('Add to set'));
+      expect(onAddToSet).toHaveBeenCalledWith(99);
+    });
+  });
 });

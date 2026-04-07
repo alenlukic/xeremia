@@ -70,3 +70,28 @@ export async function updateWeights(weights: Record<string, number>): Promise<We
   if (!res.ok) throw new Error(`Failed to update weights: ${res.status}`);
   return res.json();
 }
+
+export async function fetchTransitionScores(
+  pairs: [number, number][],
+): Promise<{ scores: (number | null)[] }> {
+  const res = await fetch('/api/sets/transition-scores', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pairs }),
+  });
+  if (!res.ok) throw new Error(`Failed to fetch transition scores: ${res.status}`);
+  return res.json();
+}
+
+export async function exportSetM3u8(
+  trackIds: number[],
+  name: string,
+): Promise<{ content: string; filename: string }> {
+  const res = await fetch('/api/sets/export-m3u8', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_ids: trackIds, name }),
+  });
+  if (!res.ok) throw new Error(`Failed to export set: ${res.status}`);
+  return res.json();
+}

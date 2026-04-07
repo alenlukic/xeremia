@@ -82,10 +82,11 @@ interface Props {
   matchesError?: string | null;
   onViewDetail?: (match: TransitionMatch) => void;
   onUseAsSource?: (candidateId: number) => void;
+  onAddToSet?: (candidateId: number) => void;
 }
 
 export const MatchesPanel = memo(function MatchesPanel({
-  selectedTrack, matches, loading, matchesError, onViewDetail, onUseAsSource,
+  selectedTrack, matches, loading, matchesError, onViewDetail, onUseAsSource, onAddToSet,
 }: Props) {
   const [bucketTab, setBucketTab] = useState<BucketKey>('same_key');
   const outerRef = useRef<HTMLDivElement>(null);
@@ -121,19 +122,30 @@ export const MatchesPanel = memo(function MatchesPanel({
     col.display({
       id: 'actions',
       header: '',
-      size: 120,
+      size: onAddToSet ? 190 : 120,
       enableResizing: false,
       cell: ({ row }) => (
-        <button
-          className="match-action-btn"
-          onClick={(e) => { e.stopPropagation(); onUseAsSource?.(row.original.candidate_id); }}
-          title="Use as source track"
-        >
-          Use as source →
-        </button>
+        <div className="match-actions-cell">
+          {onAddToSet && (
+            <button
+              className="match-action-btn"
+              onClick={(e) => { e.stopPropagation(); onAddToSet(row.original.candidate_id); }}
+              title="Add to set"
+            >
+              + Set
+            </button>
+          )}
+          <button
+            className="match-action-btn"
+            onClick={(e) => { e.stopPropagation(); onUseAsSource?.(row.original.candidate_id); }}
+            title="Use as source track"
+          >
+            Use as source →
+          </button>
+        </div>
       ),
     }),
-  ], [onViewDetail, onUseAsSource]);
+  ], [onViewDetail, onUseAsSource, onAddToSet]);
 
   const fullColumnOrder = useMemo(
     () => ['track_title', ...columnOrder, 'actions'],
