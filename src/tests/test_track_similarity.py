@@ -365,6 +365,109 @@ class TestLateFusionDynamicWeights:
         assert wt == FUSION_WEIGHT_TIMBRE
         assert we == FUSION_WEIGHT_ENERGY
 
+    def test_weight_service_changes_late_fusion_score(self):
+        """Updating fusion weights on WeightService singleton changes late_fusion_v1 output."""
+        from unittest.mock import patch
+
+        with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
+            with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+                from src.harmonic_mixing.weight_service import WeightService
+                WeightService.reset()
+                svc = WeightService()
+                WeightService._instance = svc
+
+        try:
+            va = _random_descriptor(0)
+            vb = _random_descriptor(1)
+
+            score_default = late_fusion_v1(va, vb)
+
+            svc._fusion_weights['FUSION_HARMONIC'] = 1.0
+            svc._fusion_weights['FUSION_RHYTHM'] = 0.0
+            svc._fusion_weights['FUSION_TIMBRE'] = 0.0
+            svc._fusion_weights['FUSION_ENERGY'] = 0.0
+            score_harmonic_only = late_fusion_v1(va, vb)
+
+            svc._fusion_weights['FUSION_HARMONIC'] = 0.0
+            svc._fusion_weights['FUSION_RHYTHM'] = 1.0
+            svc._fusion_weights['FUSION_TIMBRE'] = 0.0
+            svc._fusion_weights['FUSION_ENERGY'] = 0.0
+            score_rhythm_only = late_fusion_v1(va, vb)
+
+            assert score_default != pytest.approx(score_harmonic_only, abs=1e-6), (
+                "Harmonic-only weights must differ from default"
+            )
+            assert score_default != pytest.approx(score_rhythm_only, abs=1e-6), (
+                "Rhythm-only weights must differ from default"
+            )
+            assert score_harmonic_only != pytest.approx(score_rhythm_only, abs=1e-6), (
+                "Harmonic-only and rhythm-only must differ from each other"
+            )
+
+            for s in (score_default, score_harmonic_only, score_rhythm_only):
+                assert 0.0 <= s <= 1.0
+        finally:
+            from src.harmonic_mixing.weight_service import WeightService
+            WeightService.reset()
+
+    def test_normalized_weights_produce_bounded_scores(self):
+        """Unnormalized fusion weights are normalized internally, keeping scores in [0,1]."""
+        from unittest.mock import patch
+
+        with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
+            with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+                from src.harmonic_mixing.weight_service import WeightService
+                WeightService.reset()
+                svc = WeightService()
+                WeightService._instance = svc
+
+        try:
+            va = _random_descriptor(0)
+            vb = _random_descriptor(1)
+
+            svc._fusion_weights['FUSION_HARMONIC'] = 0.50
+            svc._fusion_weights['FUSION_RHYTHM'] = 0.50
+            svc._fusion_weights['FUSION_TIMBRE'] = 0.50
+            svc._fusion_weights['FUSION_ENERGY'] = 0.50
+            score_doubled = late_fusion_v1(va, vb)
+
+            svc._fusion_weights['FUSION_HARMONIC'] = 0.25
+            svc._fusion_weights['FUSION_RHYTHM'] = 0.25
+            svc._fusion_weights['FUSION_TIMBRE'] = 0.25
+            svc._fusion_weights['FUSION_ENERGY'] = 0.25
+            score_equal = late_fusion_v1(va, vb)
+
+            assert 0.0 <= score_doubled <= 1.0
+            assert 0.0 <= score_equal <= 1.0
+            assert score_doubled == pytest.approx(score_equal, abs=1e-6), (
+                "Proportionally equal weights must produce the same score after normalization"
+            )
+        finally:
+            from src.harmonic_mixing.weight_service import WeightService
+            WeightService.reset()
+
+    def test_all_zero_fusion_weights_safe(self):
+        """All-zero fusion weights must not crash and must produce a finite score."""
+        from unittest.mock import patch
+
+        with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
+            with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+                from src.harmonic_mixing.weight_service import WeightService
+                WeightService.reset()
+                svc = WeightService()
+                WeightService._instance = svc
+
+        try:
+            svc._fusion_weights = {k: 0.0 for k in svc._fusion_weights}
+            va = _random_descriptor(0)
+            vb = _random_descriptor(1)
+            score = late_fusion_v1(va, vb)
+            assert np.isfinite(score)
+            assert 0.0 <= score <= 1.0
+        finally:
+            from src.harmonic_mixing.weight_service import WeightService
+            WeightService.reset()
+
 
 # ---------------------------------------------------------------------------
 # 8. Scorer registry routes correctly
