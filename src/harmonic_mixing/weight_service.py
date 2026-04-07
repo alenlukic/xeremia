@@ -51,8 +51,21 @@ class WeightService:
         """Drop the singleton (for tests)."""
         cls._instance = None
 
+    def _ensure_table(self) -> None:
+        """Create the scoring_weight_override table if it does not exist."""
+        try:
+            from src.db import database
+            from src.models.scoring_weight_override import ScoringWeightOverride
+
+            ScoringWeightOverride.__table__.create(
+                bind=database.engine, checkfirst=True
+            )
+        except Exception:
+            logger.debug("Could not auto-create scoring_weight_override table")
+
     def _load_from_db(self) -> None:
         needs_persist = False
+        self._ensure_table()
         try:
             from src.db import database
             from src.models.scoring_weight_override import ScoringWeightOverride
@@ -94,7 +107,7 @@ class WeightService:
             finally:
                 session.close()
         except Exception:
-            logger.debug("Could not load weight overrides from DB; using config defaults")
+            logger.warning("Could not load weight overrides from DB; using config defaults")
 
         if needs_persist:
             self._persist_to_db()
@@ -128,7 +141,7 @@ class WeightService:
             finally:
                 session.close()
         except Exception:
-            logger.debug("DB unavailable for weight persistence")
+            logger.warning("DB unavailable for weight persistence")
 
     def get_default_weights(self) -> Dict[str, float]:
         """Return factory-default weights on the 0-100 scale."""

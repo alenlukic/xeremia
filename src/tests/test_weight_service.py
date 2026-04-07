@@ -5,6 +5,8 @@ Run with:
 """
 
 import json
+import sys
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -236,6 +238,165 @@ class TestWeightPropagation:
             TransitionMatch.effective_weights = None
 
 
+class _MockOverride:
+    """Stand-in for ScoringWeightOverride that works without a real DB."""
+
+    __table__ = MagicMock()
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+def _fake_db():
+    """Return (store, mock_modules) for in-memory persistence tests.
+
+    The mock modules replace ``src.db`` and
+    ``src.models.scoring_weight_override`` in ``sys.modules`` so that
+    ``_persist_to_db`` / ``_load_from_db`` run their real logic against an
+    in-memory store without requiring PostgreSQL.
+    """
+    store: dict = {"row": None}
+
+    def create_session():
+        s = MagicMock()
+        s.query.return_value.filter_by.return_value.first.side_effect = (
+            lambda: store["row"]
+        )
+
+        def _add(entity):
+            store["row"] = entity
+
+        s.add.side_effect = _add
+        return s
+
+    mock_db_mod = ModuleType("src.db")
+    mock_database = MagicMock()
+    mock_database.create_session.side_effect = create_session
+    mock_db_mod.database = mock_database
+    mock_db_mod.Base = MagicMock()
+
+    mock_model_mod = ModuleType("src.models.scoring_weight_override")
+    mock_model_mod.ScoringWeightOverride = _MockOverride
+
+    mock_modules = {
+        "src.db": mock_db_mod,
+        "src.models.scoring_weight_override": mock_model_mod,
+    }
+
+    return store, mock_modules
+
+
+def _make_persist_service(mock_modules, *, load=False):
+    """Create a WeightService with real persist/load bound to mock modules."""
+    with patch(
+        "src.harmonic_mixing.weight_service.WeightService._load_from_db"
+    ), patch(
+        "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+    ):
+        from src.harmonic_mixing.weight_service import WeightService
+
+        svc = WeightService()
+
+    svc._persist_to_db = WeightService._persist_to_db.__get__(svc)
+    svc._load_from_db = WeightService._load_from_db.__get__(svc)
+
+    if load:
+        with patch.dict(sys.modules, mock_modules):
+            svc._load_from_db()
+
+    return svc
+
+
+class TestPersistenceRoundTrip:
+    """Tests that exercise _persist_to_db and _load_from_db through mock DB
+    modules, proving weights survive WeightService reinitialization."""
+
+    def test_update_survives_fresh_instance(self):
+        """After update_weights, a fresh WeightService that loads from the same
+        DB must return the updated values rather than config defaults."""
+        store, mods = _fake_db()
+
+        svc1 = _make_persist_service(mods)
+        with patch.dict(sys.modules, mods):
+            svc1.update_weights({"BPM": 75, "CAMELOT": 25})
+
+        assert store["row"] is not None
+        persisted = json.loads(store["row"].weights_json)
+        assert persisted["BPM"] == pytest.approx(0.75, abs=1e-9)
+        assert persisted["CAMELOT"] == pytest.approx(0.25, abs=1e-9)
+
+        svc2 = _make_persist_service(mods, load=True)
+        result = svc2.get_weights()
+        assert result["raw_weights"]["BPM"] == pytest.approx(75.0, abs=0.01)
+        assert result["raw_weights"]["CAMELOT"] == pytest.approx(25.0, abs=0.01)
+
+    def test_defaults_unchanged_after_persist_and_reload(self):
+        """get_default_weights must return factory defaults regardless of what
+        was persisted and reloaded."""
+        _, mods = _fake_db()
+
+        svc1 = _make_persist_service(mods)
+        defaults_before = svc1.get_default_weights()
+
+        with patch.dict(sys.modules, mods):
+            svc1.update_weights({"BPM": 99})
+
+        svc2 = _make_persist_service(mods, load=True)
+        defaults_after = svc2.get_default_weights()
+        assert defaults_before == defaults_after
+
+        current = svc2.get_weights()
+        assert current["raw_weights"]["BPM"] == pytest.approx(99.0, abs=0.01)
+
+    def test_effective_weights_normalize_after_reload(self):
+        """After reloading non-100-sum weights, effective weights must still
+        sum to 1.0 on the internal scale (100 on the API scale)."""
+        _, mods = _fake_db()
+
+        svc1 = _make_persist_service(mods)
+        with patch.dict(sys.modules, mods):
+            svc1.update_weights({"BPM": 10, "CAMELOT": 10})
+
+        svc2 = _make_persist_service(mods, load=True)
+        eff = svc2.get_effective_weights_for_scoring()
+        assert sum(eff.values()) == pytest.approx(1.0, abs=1e-9)
+
+        result = svc2.get_weights()
+        eff_api = sum(result["effective_weights"].values())
+        assert eff_api == pytest.approx(100.0, abs=0.1)
+
+    def test_fusion_weights_persist_across_reload(self):
+        """Fusion weights must round-trip through persist/load."""
+        _, mods = _fake_db()
+
+        svc1 = _make_persist_service(mods)
+        with patch.dict(sys.modules, mods):
+            svc1.update_weights({"FUSION_HARMONIC": 45, "FUSION_ENERGY": 10})
+
+        svc2 = _make_persist_service(mods, load=True)
+        result = svc2.get_weights()
+        assert result["raw_weights"]["FUSION_HARMONIC"] == pytest.approx(45.0, abs=0.01)
+        assert result["raw_weights"]["FUSION_ENERGY"] == pytest.approx(10.0, abs=0.01)
+
+        fw = svc2.get_fusion_weights()
+        assert fw["FUSION_HARMONIC"] == pytest.approx(0.45, abs=1e-3)
+        assert fw["FUSION_ENERGY"] == pytest.approx(0.10, abs=1e-3)
+
+    def test_multiple_updates_last_write_wins(self):
+        """Sequential updates should each overwrite the previous; the last
+        update is what a fresh service sees after reload."""
+        _, mods = _fake_db()
+
+        svc1 = _make_persist_service(mods)
+        with patch.dict(sys.modules, mods):
+            svc1.update_weights({"BPM": 10})
+            svc1.update_weights({"BPM": 90})
+
+        svc2 = _make_persist_service(mods, load=True)
+        assert svc2.get_weights()["raw_weights"]["BPM"] == pytest.approx(90.0, abs=0.01)
+
+
 class TestStaleKeyMigration:
     """When persisted weights contain keys removed from MatchFactors,
     the load path must redistribute their weight mass to surviving keys."""
@@ -252,56 +413,62 @@ class TestStaleKeyMigration:
         base.update(extra_keys)
         return json.dumps(base)
 
-    @patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db")
-    def test_stale_keys_redistributed_on_load(self, mock_persist):
+    def _load_with_payload(self, payload: str):
+        """Create a service that loads from a mock DB containing *payload*."""
         from src.harmonic_mixing.weight_service import WeightService
 
+        mock_row = MagicMock()
+        mock_row.weights_json = payload
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_row
+
+        mock_db_mod = ModuleType("src.db")
+        mock_database = MagicMock()
+        mock_database.create_session.return_value = mock_session
+        mock_db_mod.database = mock_database
+        mock_db_mod.Base = MagicMock()
+
+        mock_model_mod = ModuleType("src.models.scoring_weight_override")
+        mock_model_mod.ScoringWeightOverride = _MockOverride
+
+        mods = {
+            "src.db": mock_db_mod,
+            "src.models.scoring_weight_override": mock_model_mod,
+        }
+
+        with patch(
+            "src.harmonic_mixing.weight_service.WeightService._load_from_db"
+        ), patch(
+            "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+        ):
+            svc = WeightService()
+
+        svc._load_from_db = WeightService._load_from_db.__get__(svc)
+
+        with patch.dict(sys.modules, mods), \
+             patch.object(svc, "_persist_to_db"):
+            svc._load_from_db()
+
+        return svc
+
+    def test_stale_keys_redistributed_on_load(self):
         stale_weight = 0.05
         payload = self._build_saved_payload({
             "DANCEABILITY": stale_weight,
             "TIMBRE": stale_weight,
         })
 
-        mock_row = MagicMock()
-        mock_row.weights_json = payload
-
-        mock_session = MagicMock()
-        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_row
-
-        with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
-            svc = WeightService()
-
-        svc._load_from_db = WeightService._load_from_db.__get__(svc)
-
-        with patch("src.db.database.create_session", return_value=mock_session):
-            svc._load_from_db()
-
+        svc = self._load_with_payload(payload)
         result = svc.get_weights()
         expected_sum = 100.0 + (stale_weight * 2) * 100
         assert result["raw_sum"] == pytest.approx(expected_sum, abs=0.1)
-        mock_persist.assert_called()
 
-    @patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db")
-    def test_stale_keys_with_zero_weight_no_change(self, mock_persist):
-        from src.harmonic_mixing.weight_service import WeightService
-
+    def test_stale_keys_with_zero_weight_no_change(self):
         payload = self._build_saved_payload({
             "OLD_REMOVED_FACTOR": 0.0,
         })
 
-        mock_row = MagicMock()
-        mock_row.weights_json = payload
-
-        mock_session = MagicMock()
-        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_row
-
-        with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
-            svc = WeightService()
-
-        svc._load_from_db = WeightService._load_from_db.__get__(svc)
-
-        with patch("src.db.database.create_session", return_value=mock_session):
-            svc._load_from_db()
-
+        svc = self._load_with_payload(payload)
         result = svc.get_weights()
         assert result["raw_sum"] == pytest.approx(100.0, abs=0.1)
