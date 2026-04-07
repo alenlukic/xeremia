@@ -209,7 +209,6 @@ export default function App() {
               selectedTrack={selectedTrack}
               matches={matches}
               loading={matchesLoading}
-              onScoreClick={setDetailMatch}
             />
           </div>
         )}

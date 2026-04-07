@@ -472,7 +472,8 @@ body,
   white-space: nowrap;
 }
 
-.track-table th {
+.track-table th,
+.matches-table th {
   position: relative;
 }
 
@@ -499,6 +500,7 @@ body,
 }
 
 .track-table th:hover .col-resizer,
+.matches-table th:hover .col-resizer,
 .col-resizer--active {
   opacity: 1;
 }
