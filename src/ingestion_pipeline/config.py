@@ -19,7 +19,7 @@ TAG_RECORD_FACTORIES = {
     TagRecordType.FINAL.value: "FinalRecordFactory",
 }
 
-TAG_COLUMNS = [ID3Tag.TITLE, ID3Tag.BPM, ID3Tag.KEY, ID3Tag.ENERGY]
+TAG_COLUMNS = [ID3Tag.TITLE, ID3Tag.BPM, ID3Tag.KEY]
 
 NUM_STEPS = 4
 

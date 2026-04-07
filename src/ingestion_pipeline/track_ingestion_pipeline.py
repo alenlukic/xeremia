@@ -165,8 +165,12 @@ class FinalPipelineStage(PipelineStage):
                 audio_file = AudioFile(track_file, self.target_dir)
                 audio_file.write_tags(
                     {
-                        TrackDBCols.BPM.value: float(tag_record.bpm),
-                        TrackDBCols.KEY.value: tag_record.key,
+                        k: v
+                        for k, v in {
+                            TrackDBCols.BPM.value: float(tag_record.bpm) if tag_record.bpm is not None else None,
+                            TrackDBCols.KEY.value: tag_record.key,
+                        }.items()
+                        if v is not None
                     }
                 )
 

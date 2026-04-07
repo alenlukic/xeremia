@@ -25,7 +25,7 @@ class TagRecordFactory:
         ):
             raise Exception(
                 "%s already exists in table for %s record types"
-                % (self.track_id, self.TagRecordEntity.__class__.__name__)
+                % (self.track_id, self.TagRecordEntity.__name__)
             )
 
         try:
@@ -59,7 +59,8 @@ class InitialRecordFactory(TagRecordFactory):
 
 
 class PostMIKRecordFactory(TagRecordFactory):
-    pass
+    def update_row(self):
+        self.row["energy"] = self.audio_file.parse_energy()
 
 
 class PostRBRecordFactory(TagRecordFactory):
@@ -106,7 +107,7 @@ class FinalRecordFactory(TagRecordFactory):
             .first()
         )
 
-        self.row = {
+        return {
             "track_id": track_id,
             "title": initial_record.title,
             "bpm": FinalRecordFactory._get_final_bpm(
@@ -131,10 +132,15 @@ class FinalRecordFactory(TagRecordFactory):
         for k, v in bpm_dict.items():
             reverse_bpm_dict[v].append(k)
 
+        if not reverse_bpm_dict:
+            return None
+
         max_bpm_freq = max(list(reverse_bpm_dict.keys()))
         if len(reverse_bpm_dict[max_bpm_freq]) == 1:
             return reverse_bpm_dict[max_bpm_freq][0]
 
+        if rb_record is None or rb_record.bpm is None:
+            return None
         return float(rb_record.bpm)
 
     @staticmethod
@@ -168,6 +174,9 @@ class FinalRecordFactory(TagRecordFactory):
         reverse_key_dict = defaultdict(list)
         for k, v in key_dict.items():
             reverse_key_dict[v].append(k)
+
+        if not reverse_key_dict:
+            return None
 
         max_key_freq = max(list(reverse_key_dict.keys()))
         if len(reverse_key_dict[max_key_freq]) == 1:
