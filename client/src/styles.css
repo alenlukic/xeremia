@@ -547,6 +547,10 @@ body,
   color: var(--text-muted);
 }
 
+.table-status--error {
+  color: #e06c75;
+}
+
 /* === Matches Panel === */
 .matches-panel {
   flex: 1;

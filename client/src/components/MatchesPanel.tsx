@@ -58,10 +58,11 @@ interface Props {
   selectedTrack: Track | SearchSuggestion | null;
   matches: TransitionMatch[];
   loading: boolean;
+  matchesError?: string | null;
   onScoreClick: (match: TransitionMatch) => void;
 }
 
-export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches, loading, onScoreClick }: Props) {
+export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches, loading, matchesError, onScoreClick }: Props) {
   const [bucketTab, setBucketTab] = useState<BucketKey>('same_key');
 
   const bucketCounts = useMemo(
@@ -132,6 +133,12 @@ export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches,
               <tr>
                 <td colSpan={columns.length} className="table-status">
                   Loading matches…
+                </td>
+              </tr>
+            ) : matchesError ? (
+              <tr>
+                <td colSpan={columns.length} className="table-status table-status--error">
+                  Failed to load matches — {matchesError}
                 </td>
               </tr>
             ) : bucketMatches.length === 0 ? (

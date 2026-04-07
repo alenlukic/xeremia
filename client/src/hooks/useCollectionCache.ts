@@ -13,11 +13,13 @@ export function useCollectionCache() {
   const [allTracks, setAllTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [traitMap, setTraitMap] = useState<TraitMap>(new Map());
+  const [tracksError, setTracksError] = useState<string | null>(null);
+  const [traitsError, setTraitsError] = useState<string | null>(null);
 
   useEffect(() => {
     const trackPromise = fetchTracks({}).then(
-      (tracks) => { setAllTracks(tracks); },
-      () => { setAllTracks([]); },
+      (tracks) => { setAllTracks(tracks); setTracksError(null); },
+      (err: unknown) => { setAllTracks([]); setTracksError(err instanceof Error ? err.message : 'Failed to load tracks'); },
     );
 
     const traitPromise = fetchTrackTraits().then(
@@ -27,12 +29,13 @@ export function useCollectionCache() {
           if (t.traits) map.set(t.track_id, t.traits);
         }
         setTraitMap(map);
+        setTraitsError(null);
       },
-      () => { setTraitMap(new Map()); },
+      (err: unknown) => { setTraitMap(new Map()); setTraitsError(err instanceof Error ? err.message : 'Failed to load track traits'); },
     );
 
     Promise.allSettled([trackPromise, traitPromise]).then(() => setLoading(false));
   }, []);
 
-  return { allTracks, traitMap, loading };
+  return { allTracks, traitMap, loading, tracksError, traitsError };
 }
