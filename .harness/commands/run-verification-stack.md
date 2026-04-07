@@ -11,7 +11,10 @@ Run the repo-local verification stack for an existing delivery run.
 ## INPUT
 
 Required:
-- `run_dir`: existing run directory under `.harness/runs/`
+- `run_dir`: existing delivery run directory under `.harness/runs/`
+
+Optional:
+- `spawn_breaker_follow_on`: `true` or `false` (default `true`)
 
 ## DO
 
@@ -40,6 +43,13 @@ Required:
 7. Regression detection
 - delegate to `Delivery Regression Detector`
 
+8. Breaker follow-on handling
+- if `spawn_breaker_follow_on=true` and the breaker raises actionable `BLOCKER` or `IMPORTANT` findings:
+  - delegate to `Development Contract Producer`
+  - write `BREAKER_FOLLOW_ON_CONTRACT.md`
+  - start a new delivery run from that contract
+  - record `FOLLOW_ON_RUN.json`
+
 ## ACCEPTANCE
 
 Complete only if:
@@ -49,3 +59,4 @@ Complete only if:
 - `BREAKER_REPORT.md` exists
 - `EVAL_REPORT.json` exists
 - `REGRESSION_REPORT.json` exists
+- any actionable breaker findings either produced a follow-on run or were explicitly waived

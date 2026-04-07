@@ -20,6 +20,8 @@ SCRIPT_PATH = pathlib.Path(__file__).resolve()
 ROOT = SCRIPT_PATH.parents[2]
 RUNS_DIR = ROOT / ".harness" / "runs"
 LEDGERS_DIR = ROOT / ".harness" / "ledgers"
+CONTRACTS_DIR = ROOT / ".harness" / "contracts"
+PRODUCT_FEEDBACK_DIR = ROOT / ".harness" / "product-feedback"
 LEDGER_INDEX_PATH = LEDGERS_DIR / "INDEX.json"
 DOC_SYNC_STATE_PATH = LEDGERS_DIR / "DOC_SYNC_STATE.json"
 CONFIG_PATH = ROOT / ".harness" / "pipeline.yaml"
@@ -29,6 +31,7 @@ GRADE_BANDS: list[tuple[int, str]] = [
     (77, "C+"), (73, "C"), (70, "C-"), (60, "D"), (0, "F"),
 ]
 FLOOR_CATEGORIES = {"correctness", "reliability_operational_safety", "security_data_safety"}
+DELIVERY_LIKE_MODES = {"delivery", "maintenance", "restructure"}
 
 
 def grade_from_score(score: float) -> str:
@@ -51,6 +54,11 @@ def utc_run_id() -> str:
 
 def ensure_runs_dir() -> None:
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_support_dirs() -> None:
+    CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
+    PRODUCT_FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def ensure_ledgers_dir() -> None:
@@ -97,8 +105,129 @@ def run_shell(cmd: str) -> dict[str, Any]:
     }
 
 
-def create_run(task: str, mode: str) -> pathlib.Path:
+def _shell_stdout_full(cmd: str) -> str:
+    proc = subprocess.run(
+        cmd,
+        shell=True,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    return proc.stdout or ""
+
+
+def _plan_stub(mode: str) -> str:
+    if mode == "product_feedback":
+        return (
+            "# Plan\n\n"
+            f"Mode: {mode}\n\n"
+            "## Initial plan\n"
+            "- Identify the workflow or candidate build to evaluate\n"
+            "- Refresh customer persona context if needed\n"
+            "- Run design and customer-perspective critique\n"
+            "- Synthesize domain / market / workflow recommendations\n"
+            "- Convert selected items into a development contract\n"
+        )
+    return (
+        "# Plan\n\n"
+        f"Mode: {mode}\n\n"
+        "## Initial plan\n"
+        "- Restate requirements\n"
+        "- Identify relevant files\n"
+        "- Implement narrowly\n"
+        "- Review\n"
+        "- QA\n"
+        "- Verify\n"
+    )
+
+
+def _run_ledger_stub() -> str:
+    return (
+        "# Run Ledger\n\n"
+        "## Outcome\n"
+        "- Task: pending\n"
+        "- Result: pending\n"
+        "- Scope: pending\n\n"
+        "## Key Decisions\n"
+        "- pending\n\n"
+        "## Verification Learnings\n"
+        "- pending\n\n"
+        "## Product / Stakeholder Learnings\n"
+        "- pending\n\n"
+        "## Durable Repo Guidance\n"
+        "- pending\n\n"
+        "## Deferred / Follow-up\n"
+        "- pending\n"
+    )
+
+
+def _delivery_stubs(run_dir: pathlib.Path) -> None:
+    write_text(
+        run_dir / "REVIEW_NOTES.md",
+        "## Blockers\n- \n\n## Important\n- \n\n## Nits\n- \n\n## Verdict\nCHANGES_REQUESTED\n",
+    )
+    write_text(
+        run_dir / "QA_REPORT.md",
+        "# QA Report\n\n"
+        "## Requirement Trace\n| Requirement | Evidence | Status | Notes |\n| --- | --- | --- | --- |\n\n"
+        "## Manual Validation\n- Run Command(s): pending\n- Areas Tested: pending\n- Observations: pending\n- State Verification: pending\n- Limitations: pending\n\n"
+        "## Failures\n- \n\n## Verdict\nFAIL\n",
+    )
+    write_text(
+        run_dir / "BUILD_VERIFICATION.md",
+        "# Build Verification\n\n## Status\nPENDING\n\n## Notes\n- \n",
+    )
+    write_text(
+        run_dir / "BREAKER_REPORT.md",
+        "# Breaker Report\n\n"
+        "## Attack Surface\n- pending\n\n"
+        "## Break Attempts\n- pending\n\n"
+        "## False Confidence Signals\n- pending\n\n"
+        "## Findings\n- pending\n\n"
+        "## Contractable Follow-On Items\n- pending\n\n"
+        "## Verdict\nCONCERNS\n",
+    )
+    ensure_regression_stub(run_dir)
+
+
+def _product_feedback_stubs(run_dir: pathlib.Path) -> None:
+    persona_path = PRODUCT_FEEDBACK_DIR / "CUSTOMER_PERSONA_SPEC.md"
+    if persona_path.exists():
+        write_text(run_dir / "CUSTOMER_PERSONA_SPEC.md", persona_path.read_text(encoding="utf-8"))
+    else:
+        write_text(
+            run_dir / "CUSTOMER_PERSONA_SPEC.md",
+            "# Customer Persona Spec\n\n## Status\nPending refresh.\n",
+        )
+    write_text(
+        run_dir / "CUSTOMER_PERSONA_FEEDBACK.md",
+        "# Customer Persona Feedback\n\n## Workflow Coverage\n- pending\n\n## Feedback Items\n- pending\n\n## Verdict\nPENDING\n",
+    )
+    write_text(
+        run_dir / "DESIGN_RECOMMENDATIONS.md",
+        "# Design Recommendations\n\n## Findings\n- pending\n",
+    )
+    write_text(
+        run_dir / "SME_RECOMMENDATIONS.md",
+        "# SME Recommendations\n\n## Executive Summary\n- pending\n\n## Recommendations\n- pending\n",
+    )
+    write_text(
+        run_dir / "DEVELOPMENT_CONTRACT.md",
+        "# Development Contract\n\nPending production by the Development Contract Producer.\n",
+    )
+
+
+def create_run(
+    task: str,
+    mode: str,
+    *,
+    task_source: str,
+    parent_run: str | None,
+    source_kind: str | None,
+    source_artifact: str | None,
+) -> pathlib.Path:
     ensure_runs_dir()
+    ensure_support_dirs()
     run_dir = RUNS_DIR / utc_run_id()
     run_dir.mkdir(parents=True, exist_ok=False)
     (RUNS_DIR / "current").unlink(missing_ok=True)
@@ -108,42 +237,28 @@ def create_run(task: str, mode: str) -> pathlib.Path:
         pass
 
     write_text(run_dir / "TASK.md", task.strip() + "\n")
-    write_text(
-        run_dir / "PLAN.md",
-        "# Plan\n\n"
-        f"Mode: {mode}\n\n"
-        "## Initial plan\n"
-        "- Restate requirements\n"
-        "- Identify relevant files\n"
-        "- Implement narrowly\n"
-        "- Review\n"
-        "- QA\n"
-        "- Verify\n",
-    )
-    write_text(
-        run_dir / "REVIEW_NOTES.md",
-        "## Blockers\n- \n\n## Important\n- \n\n## Nits\n- \n\n## Verdict\nCHANGES_REQUESTED\n",
-    )
-    write_text(
-        run_dir / "QA_REPORT.md",
-        "# QA Report\n\n"
-        "## Requirement Trace\n| Requirement | Evidence | Status | Notes |\n| --- | --- | --- | --- |\n\n"
-        "## Failures\n- \n\n## Verdict\nFAIL\n",
-    )
-    write_text(
-        run_dir / "BUILD_VERIFICATION.md",
-        "# Build Verification\n\n## Status\nPENDING\n\n## Notes\n- \n",
-    )
-    write_text(
-        run_dir / "BREAKER_REPORT.md",
-        "# Breaker Report\n\n## Attack Surface\n- pending\n\n## Break Attempts\n- pending\n\n## False Confidence Signals\n- pending\n\n## Findings\n- pending\n\n## Verdict\nCONCERNS\n",
-    )
-    write_text(
-        run_dir / "RUN_LEDGER.md",
-        "# Run Ledger\n\n## Outcome\n- Task: pending\n- Result: pending\n- Scope: pending\n\n## Key Decisions\n- pending\n\n## Verification Learnings\n- pending\n\n## Breaker / Regression Learnings\n- pending\n\n## Durable Repo Guidance\n- pending\n\n## Deferred / Follow-up\n- pending\n",
+    write_text(run_dir / "PLAN.md", _plan_stub(mode))
+    write_text(run_dir / "RUN_LEDGER.md", _run_ledger_stub())
+    write_json(
+        run_dir / "RUN_META.json",
+        {
+            "run_id": run_dir.name,
+            "mode": mode,
+            "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "task_source": task_source,
+            "parent_run": parent_run,
+            "source_kind": source_kind,
+            "source_artifact": source_artifact,
+        },
     )
     write_json(run_dir / "TEST_REPORT.json", {"commands": [], "last_intent": None})
     write_json(run_dir / "RETRY_LOG.jsonl", [])
+
+    if mode in DELIVERY_LIKE_MODES:
+        _delivery_stubs(run_dir)
+    if mode == "product_feedback":
+        _product_feedback_stubs(run_dir)
+
     return run_dir
 
 
@@ -153,8 +268,8 @@ def run_intent(config: dict[str, Any], intent: str) -> list[dict[str, Any]]:
 
 
 def capture_diff(run_dir: pathlib.Path) -> None:
-    result = run_shell("git diff")
-    write_text(run_dir / "PATCH.diff", result.get("stdout_tail", ""))
+    full_diff = _shell_stdout_full("git diff")
+    write_text(run_dir / "PATCH.diff", full_diff)
 
     names = run_shell("git diff --name-only")
     files = [line.strip() for line in names["stdout_tail"].splitlines() if line.strip()]
@@ -236,7 +351,7 @@ def validate_policy(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, 
     forbidden = policies.get("forbid_paths", [])
     for file in files:
         for prefix in forbidden:
-            if file.startswith(prefix) or f"/{prefix}" in file:
+            if file.startswith(prefix) or prefix in file:
                 violations.append(f"forbidden_path:{file}")
 
     report = {
@@ -285,11 +400,11 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
         score -= 20
         findings.append("policy_violations_present")
 
-    if qa_verdict not in {"PASS", "APPROVE"}:
+    if qa_verdict not in {"PASS", "APPROVE", "UNKNOWN"}:
         score -= 15
         findings.append(f"qa_not_pass:{qa_verdict}")
 
-    if build_status not in {"PASS", "SUCCESS"}:
+    if build_status not in {"PASS", "SUCCESS", "UNKNOWN"}:
         score -= 15
         findings.append(f"build_not_pass:{build_status}")
 
@@ -327,11 +442,12 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
         cat_data = categories.get(cat, {})
         cat_score = cat_data.get("score") if isinstance(cat_data, dict) else None
         if cat_score is not None:
+            if cat_score < 60:
+                score = min(score, 73)
             if cat_score < 40:
                 floor_breaches.append(f"{cat}:below_40")
                 findings.append(f"hard_floor_breach:{cat}")
             elif cat_score < 60:
-                score = min(score, 73)
                 floor_breaches.append(f"{cat}:below_60")
 
     grade = grade_from_score(score)
@@ -374,6 +490,15 @@ def prepare_retry(run_dir: pathlib.Path, config: dict[str, Any], reason: str | N
     gates = config.get("gates", {})
     max_retry_rounds = int(gates.get("max_retry_rounds", 2))
     next_round = len(retry_log) + 1
+
+    if next_round > max_retry_rounds:
+        return {
+            "prepared": False,
+            "max_rounds": max_retry_rounds,
+            "rounds_recorded": len(retry_log),
+            "next_would_be_round": next_round,
+            "reason": "max_retry_rounds_exhausted",
+        }
 
     eval_report = read_json(run_dir / "EVAL_REPORT.json", {})
     policy_report = read_json(run_dir / "POLICY_REPORT.json", {})
@@ -551,6 +676,18 @@ def mark_doc_sync(up_to_run: str) -> dict[str, Any]:
     return state
 
 
+def record_follow_on(run_dir: pathlib.Path, new_run_dir: pathlib.Path, reason: str, source_artifact: str | None) -> dict[str, Any]:
+    payload = {
+        "source_run_id": run_dir.name,
+        "follow_on_run_id": new_run_dir.name,
+        "reason": reason,
+        "source_artifact": source_artifact,
+        "recorded_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+    write_json(run_dir / "FOLLOW_ON_RUN.json", payload)
+    return payload
+
+
 def ensure_regression_stub(run_dir: pathlib.Path) -> None:
     path = run_dir / "REGRESSION_REPORT.json"
     if not path.exists():
@@ -562,80 +699,12 @@ def ensure_regression_stub(run_dir: pathlib.Path) -> None:
         })
 
 
-def validate_task_files(paths: list[str]) -> list[dict[str, Any]]:
-    """Validate task-definition files and return their metadata."""
-    entries: list[dict[str, Any]] = []
-    for i, p in enumerate(paths):
-        fp = pathlib.Path(p)
-        if not fp.exists():
-            raise FileNotFoundError(f"Task file does not exist: {p}")
-        if not fp.is_file():
-            raise ValueError(f"Task file is not a regular file: {p}")
-        try:
-            content = fp.read_text(encoding="utf-8").strip()
-        except OSError as e:
-            raise ValueError(f"cannot read {p}: {e}") from e
-        if not content:
-            raise ValueError(f"Task file is empty: {p}")
-        entries.append({
-            "index": i,
-            "source_file": str(fp),
-            "task_content": content,
-            "run_id": None,
-            "run_dir": None,
-            "status": "pending",
-            "started_at": None,
-            "finished_at": None,
-            "eval_score": None,
-            "eval_verdict": None,
-            "summary": None,
-        })
-    return entries
-
-
-def create_batch(task_entries: list[dict[str, Any]]) -> pathlib.Path:
-    """Create a batch directory with BATCH_REPORT.json."""
-    ensure_runs_dir()
-    batch_id = f"batch-{utc_run_id()}"
-    batch_dir = RUNS_DIR / batch_id
-    batch_dir.mkdir(parents=True, exist_ok=False)
-    report = {
-        "batch_id": batch_id,
-        "batch_dir": str(batch_dir),
-        "started_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "finished_at": None,
-        "status": "running",
-        "on_failure": "fail_fast",
-        "tasks": task_entries,
-    }
-    write_json(batch_dir / "BATCH_REPORT.json", report)
-    return batch_dir
-
-
-def update_batch_task(batch_dir: pathlib.Path, index: int, updates: dict[str, Any]) -> dict[str, Any]:
-    """Update a specific task entry in BATCH_REPORT.json."""
-    report_path = batch_dir / "BATCH_REPORT.json"
-    report = read_json(report_path)
-    if report is None:
-        raise FileNotFoundError(f"BATCH_REPORT.json not found in {batch_dir}")
-    tasks = report.get("tasks", [])
-    if index < 0 or index >= len(tasks):
-        raise IndexError(f"Task index {index} out of range (0..{len(tasks) - 1})")
-    tasks[index].update(updates)
-    write_json(report_path, report)
-    return report
-
-
-def finalize_batch(batch_dir: pathlib.Path, status: str) -> dict[str, Any]:
-    """Mark the batch as complete/failed/partial."""
-    report_path = batch_dir / "BATCH_REPORT.json"
-    report = read_json(report_path)
-    if report is None:
-        raise FileNotFoundError(f"BATCH_REPORT.json not found in {batch_dir}")
-    report["status"] = status
-    report["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-    write_json(report_path, report)
-    return report
+def _task_text_from_args(task: str | None, task_file: str | None) -> tuple[str, str]:
+    if task_file:
+        path = pathlib.Path(task_file)
+        return path.read_text(encoding="utf-8"), str(path)
+    assert task is not None
+    return task, "inline"
 
 
 def main() -> int:
@@ -643,8 +712,13 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     start_parser = subparsers.add_parser("start", help="Create a new run")
-    start_parser.add_argument("--mode", choices=["delivery", "maintenance", "restructure"], default="delivery")
-    start_parser.add_argument("--task", required=True, help="Task description")
+    start_parser.add_argument("--mode", choices=["delivery", "maintenance", "restructure", "product_feedback"], default="delivery")
+    task_group = start_parser.add_mutually_exclusive_group(required=True)
+    task_group.add_argument("--task", help="Task description")
+    task_group.add_argument("--task-file", help="Path to file whose contents should seed TASK.md")
+    start_parser.add_argument("--parent-run", required=False, help="Optional parent run id")
+    start_parser.add_argument("--source-kind", required=False, help="Optional source kind, e.g. breaker_follow_on or stakeholder_feedback")
+    start_parser.add_argument("--source-artifact", required=False, help="Optional source artifact path")
 
     run_parser = subparsers.add_parser("run", help="Run a configured intent and update TEST_REPORT.json")
     run_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
@@ -672,28 +746,29 @@ def main() -> int:
     mark_doc_sync_parser = subparsers.add_parser("mark-doc-sync", help="Advance doc sync state to a published ledger")
     mark_doc_sync_parser.add_argument("--up-to-run", required=True, help="Latest published run id included in the doc sync")
 
-    batch_start_parser = subparsers.add_parser("batch-start", help="Initialize a batch run from multiple task files")
-    batch_start_parser.add_argument("--task-files", nargs="+", required=True, help="Paths to task-definition files (min 2)")
-
-    batch_record_parser = subparsers.add_parser("batch-record-outcome", help="Record outcome for a batch task")
-    batch_record_parser.add_argument("--batch-dir", required=True, help="Path to batch directory")
-    batch_record_parser.add_argument("--index", type=int, required=True, help="Task index in the batch")
-    batch_record_parser.add_argument("--run-dir", required=False, help="Path to the task's run directory")
-    batch_record_parser.add_argument("--status", required=True, choices=["pass", "fail", "skip"], help="Outcome status")
-    batch_record_parser.add_argument("--started-at", required=False, help="ISO timestamp when the task started")
-    batch_record_parser.add_argument("--summary", required=False, help="Optional outcome summary")
-
-    batch_finalize_parser = subparsers.add_parser("batch-finalize", help="Finalize a batch run")
-    batch_finalize_parser.add_argument("--batch-dir", required=True, help="Path to batch directory")
-    batch_finalize_parser.add_argument("--status", required=True, choices=["complete", "failed", "partial"], help="Final batch status")
+    follow_on_parser = subparsers.add_parser("record-follow-on", help="Record that a run spawned a follow-on run")
+    follow_on_parser.add_argument("--run-dir", required=True, help="Path to the source run directory")
+    follow_on_parser.add_argument("--new-run-dir", required=True, help="Path to the newly created follow-on run directory")
+    follow_on_parser.add_argument("--reason", required=True, help="Why the follow-on run was created")
+    follow_on_parser.add_argument("--source-artifact", required=False, help="Source artifact path that caused the follow-on")
 
     args = parser.parse_args()
     config = load_config()
 
     if args.command == "start":
         ensure_ledgers_dir()
-        run_dir = create_run(task=args.task, mode=args.mode)
-        ensure_regression_stub(run_dir)
+        ensure_support_dirs()
+        task_text, task_source = _task_text_from_args(args.task, args.task_file)
+        run_dir = create_run(
+            task=task_text,
+            mode=args.mode,
+            task_source=task_source,
+            parent_run=args.parent_run,
+            source_kind=args.source_kind,
+            source_artifact=args.source_artifact,
+        )
+        if args.mode in DELIVERY_LIKE_MODES:
+            ensure_regression_stub(run_dir)
         print(str(run_dir))
         return 0
 
@@ -709,61 +784,13 @@ def main() -> int:
             return 1
         return 0
 
-    if args.command == "batch-start":
-        task_files = args.task_files
-        if len(task_files) < 2:
-            print("batch-start requires at least 2 task files", file=sys.stderr)
+    if args.command == "record-follow-on":
+        run_dir = pathlib.Path(args.run_dir)
+        new_run_dir = pathlib.Path(args.new_run_dir)
+        if not run_dir.exists() or not new_run_dir.exists():
+            print("Run directory does not exist", file=sys.stderr)
             return 1
-        try:
-            entries = validate_task_files(task_files)
-        except (FileNotFoundError, ValueError) as exc:
-            print(f"Task file validation failed: {exc}", file=sys.stderr)
-            return 1
-        batch_dir = create_batch(entries)
-        print(str(batch_dir))
-        return 0
-
-    if args.command == "batch-record-outcome":
-        batch_dir = pathlib.Path(args.batch_dir)
-        if not batch_dir.exists():
-            print(f"Batch directory does not exist: {batch_dir}", file=sys.stderr)
-            return 1
-        updates: dict[str, Any] = {
-            "status": args.status,
-            "finished_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        }
-        if args.started_at:
-            updates["started_at"] = args.started_at
-        if args.run_dir:
-            run_path = pathlib.Path(args.run_dir)
-            updates["run_id"] = run_path.name
-            updates["run_dir"] = str(run_path)
-            eval_path = run_path / "EVAL_REPORT.json"
-            eval_data = read_json(eval_path)
-            if eval_data:
-                updates["eval_score"] = eval_data.get("score")
-                updates["eval_verdict"] = eval_data.get("verdict")
-        if args.summary:
-            updates["summary"] = args.summary
-        try:
-            report = update_batch_task(batch_dir, args.index, updates)
-        except (FileNotFoundError, IndexError) as exc:
-            print(f"Failed to record outcome: {exc}", file=sys.stderr)
-            return 1
-        print(json.dumps(report, indent=2))
-        return 0
-
-    if args.command == "batch-finalize":
-        batch_dir = pathlib.Path(args.batch_dir)
-        if not batch_dir.exists():
-            print(f"Batch directory does not exist: {batch_dir}", file=sys.stderr)
-            return 1
-        try:
-            report = finalize_batch(batch_dir, args.status)
-        except FileNotFoundError as exc:
-            print(f"Failed to finalize batch: {exc}", file=sys.stderr)
-            return 1
-        print(json.dumps(report, indent=2))
+        print(json.dumps(record_follow_on(run_dir, new_run_dir, args.reason, args.source_artifact), indent=2))
         return 0
 
     run_dir = pathlib.Path(args.run_dir)
@@ -773,9 +800,21 @@ def main() -> int:
 
     if args.command == "run":
         results = run_intent(config, args.intent)
+        for row in results:
+            row["intent"] = args.intent
         report_path = run_dir / "TEST_REPORT.json"
         existing = read_json(report_path, {"commands": [], "last_intent": None})
         existing.setdefault("commands", [])
+        intent = args.intent
+        last_intent = existing.get("last_intent")
+        existing["commands"] = [
+            c
+            for c in existing["commands"]
+            if not (
+                c.get("intent") == intent
+                or (c.get("intent") is None and last_intent == intent)
+            )
+        ]
         existing["commands"].extend(results)
         existing["last_intent"] = args.intent
         write_json(report_path, existing)

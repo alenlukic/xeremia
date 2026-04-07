@@ -1,4 +1,4 @@
-version: 2
+version: 3
 
 repo:
   type: python
@@ -33,6 +33,9 @@ commands:
   build:
     - "python -m pytest src/tests/ -v && ruff check src/"
 
+  db:
+    - "true  # configure if needed for local state validation"
+
 stages:
   delivery:
     - supervisor
@@ -47,6 +50,13 @@ stages:
     - regression_detector
     - ledger_curator
 
+  product_feedback:
+    - design_red_team
+    - customer_persona_tester
+    - sme_red_team
+    - contract_producer
+    - ledger_curator
+
 gates:
   require_tests: true
   require_build: true
@@ -55,13 +65,17 @@ gates:
   require_breaker_report: true
   require_run_ledger: true
   require_no_high_regressions: true
-  eval_threshold: 80              # B- — minimum passing grade
-  eval_conditional_threshold: 70  # C- — conditional pass floor
+  eval_threshold: 80
+  eval_conditional_threshold: 70
   grade_gate: "B-"
-  max_review_rounds: 3
+  max_review_rounds: 4
   max_retry_rounds: 2
   patch_only: true
   stop_on_test_failure: false
+  customer_persona_requires_qa_pass: true
+  customer_persona_requires_build_pass: true
+  customer_persona_requires_no_breaker_blockers: true
+  breaker_findings_spawn_follow_on_run: true
 
 retry:
   enabled: true
@@ -70,26 +84,27 @@ retry:
     - build_fail
     - eval_below_threshold
     - high_regression
-    - breaker_blocker
     - policy_violation
   strategy: targeted
   require_second_pass_plan: true
+  note: breaker findings should normally create a new follow-on delivery run, not same-run patch churn
 
 artifacts:
   required:
     - "TASK.md"
     - "PLAN.md"
+    - "RUN_META.json"
     - "PATCH.diff"
     - "TEST_REPORT.json"
+    - "POLICY_REPORT.json"
+    - "EVAL_REPORT.json"
+    - "RUN_LEDGER.md"
+  optional:
     - "REVIEW_NOTES.md"
     - "QA_REPORT.md"
     - "BUILD_VERIFICATION.md"
     - "BREAKER_REPORT.md"
-    - "RUN_LEDGER.md"
-    - "POLICY_REPORT.json"
-    - "EVAL_REPORT.json"
     - "REGRESSION_REPORT.json"
-  optional:
     - "IMPLEMENTATION_NOTES.md"
     - "MAINTENANCE_REPORT.md"
     - "SECOND_PASS_PLAN.md"
@@ -97,6 +112,12 @@ artifacts:
     - "RETRY_LOG.jsonl"
     - "DEFERRED_ITEMS.json"
     - "ADVERSARIAL_TEST_PLAN.md"
+    - "DESIGN_RECOMMENDATIONS.md"
+    - "CUSTOMER_PERSONA_FEEDBACK.md"
+    - "SME_RECOMMENDATIONS.md"
+    - "DEVELOPMENT_CONTRACT.md"
+    - "BREAKER_FOLLOW_ON_CONTRACT.md"
+    - "FOLLOW_ON_RUN.json"
 
 policies:
   forbid_paths:

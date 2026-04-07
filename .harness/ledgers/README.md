@@ -1,26 +1,19 @@
 # Run Ledgers
 
-This directory contains durable, distilled learnings from completed pipeline runs.
+This directory stores **durable, compact run summaries**.
 
-## Contents
+Purpose:
+- preserve the most important decisions and learnings from completed runs
+- give future agents high-signal historical context without replaying full run artifacts
+- drive periodic documentation, structure, and persona-guidance maintenance
 
-| File | Purpose |
-|---|---|
-| `INDEX.json` | Ordered list of all published ledger entries |
-| `DOC_SYNC_STATE.json` | Tracks which ledgers have been synced into repo docs |
-| `<run_id>.md` | Individual ledger entry with frontmatter metadata |
+Principles:
+- keep ledgers short
+- record decisions, tradeoffs, verification gaps, breaker findings, customer/product learnings, and reusable guidance
+- do not copy raw reasoning traces or every operational step
 
-## How it works
-
-1. Each completed delivery run produces a `RUN_LEDGER.md` in its run directory.
-2. The `Run Ledger Curator` agent distills only high-signal decisions, failures, and reusable learnings.
-3. The pipeline publishes the ledger: `python3 .harness/bin/pipeline.py publish-ledger --run-dir <run_dir>`
-4. Published ledgers accumulate here with frontmatter containing run metadata.
-5. The `Ledger Documentation Steward` periodically reads pending ledgers and updates repo docs.
-6. After a doc sync, the boundary advances: `python3 .harness/bin/pipeline.py mark-doc-sync --up-to-run <run_id>`
-
-## Principles
-
-- Ledgers capture **durable knowledge**, not transient reasoning.
-- Each entry should be compact (2–5 bullets per section).
-- This directory is committed to the repo so learnings travel with the codebase.
+Files:
+- `INDEX.json` — published ledger metadata
+- `DOC_SYNC_STATE.json` — boundary for ledger-driven doc sync
+- `DOC_SYNC_REPORT.md` — latest doc sync summary
+- `<run_id>.md` — published ledger entry
