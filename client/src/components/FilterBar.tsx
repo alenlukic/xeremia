@@ -54,13 +54,29 @@ export function FilterBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!camelotOpen) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setCamelotOpen(false);
+    }
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [camelotOpen]);
+
+  useEffect(() => {
+    setMinText(bpmMin != null ? String(bpmMin) : '');
+  }, [bpmMin]);
+
+  useEffect(() => {
+    setMaxText(bpmMax != null ? String(bpmMax) : '');
+  }, [bpmMax]);
+
   function toggleCode(code: string) {
     if (camelotCodes.includes(code)) {
       setCamelotCodes(camelotCodes.filter((c) => c !== code));
     } else {
       setCamelotCodes([...camelotCodes, code]);
     }
-    setCamelotOpen(false);
   }
 
   function parseNum(val: string): number | undefined {
@@ -71,6 +87,7 @@ export function FilterBar({
   function handleMinChange(e: React.ChangeEvent<HTMLInputElement>) {
     const text = e.target.value;
     setMinText(text);
+    if (text && bpm != null) setBpm(undefined);
     clearTimeout(minTimer.current);
     minTimer.current = setTimeout(() => setBpmMin(parseNum(text)), RANGE_DEBOUNCE_MS);
   }
@@ -78,6 +95,7 @@ export function FilterBar({
   function handleMaxChange(e: React.ChangeEvent<HTMLInputElement>) {
     const text = e.target.value;
     setMaxText(text);
+    if (text && bpm != null) setBpm(undefined);
     clearTimeout(maxTimer.current);
     maxTimer.current = setTimeout(() => setBpmMax(parseNum(text)), RANGE_DEBOUNCE_MS);
   }

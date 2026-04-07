@@ -270,10 +270,7 @@ describe('Browse infinite scroll', () => {
       expect(getRowCount()).toBe(250);
     });
 
-    // Switch back to filter A (all keys) — should restore 2-page progress
-    await act(async () => {
-      screen.getByRole('button', { name: /01A/ }).click();
-    });
+    // Switch back to filter A (all keys) — dropdown stayed open after selecting 01A
     await act(async () => {
       screen.getByRole('button', { name: 'Clear' }).click();
     });
@@ -415,5 +412,112 @@ describe('Error state handling', () => {
     expect(screen.getByText(/Failed to fetch track traits: 502/)).toBeInTheDocument();
     expect(screen.getByText('Track 1')).toBeInTheDocument();
     expect(screen.queryByText('No tracks found')).not.toBeInTheDocument();
+  });
+});
+
+describe('BPM exclusivity', () => {
+  it('typing exact BPM clears active BPM range fields', async () => {
+    await openBrowseTab();
+
+    const minInput = screen.getByPlaceholderText('Min');
+    const maxInput = screen.getByPlaceholderText('Max');
+
+    await userEvent.type(minInput, '100');
+    await act(async () => { minInput.blur(); });
+    await userEvent.type(maxInput, '140');
+    await act(async () => { maxInput.blur(); });
+
+    expect(minInput).toHaveValue(100);
+    expect(maxInput).toHaveValue(140);
+
+    const exactInput = screen.getByPlaceholderText('Exact');
+    await userEvent.type(exactInput, '120');
+
+    await waitFor(() => {
+      expect(minInput).toHaveValue(null);
+      expect(maxInput).toHaveValue(null);
+    });
+  });
+
+  it('typing BPM range clears active exact BPM', async () => {
+    await openBrowseTab();
+
+    const exactInput = screen.getByPlaceholderText('Exact');
+    await userEvent.type(exactInput, '120');
+    expect(exactInput).toHaveValue(120);
+
+    const minInput = screen.getByPlaceholderText('Min');
+    await userEvent.type(minInput, '100');
+
+    await waitFor(() => {
+      expect(exactInput).toHaveValue(null);
+    });
+  });
+
+  it('clearing exact BPM does not affect range fields', async () => {
+    await openBrowseTab();
+
+    const exactInput = screen.getByPlaceholderText('Exact');
+    await userEvent.type(exactInput, '120');
+    expect(exactInput).toHaveValue(120);
+
+    await userEvent.clear(exactInput);
+    expect(exactInput).toHaveValue(null);
+    expect(screen.getByPlaceholderText('Min')).toHaveValue(null);
+    expect(screen.getByPlaceholderText('Max')).toHaveValue(null);
+  });
+});
+
+describe('Camelot multi-select', () => {
+  it('dropdown stays open after toggling a code', async () => {
+    await openBrowseTab();
+
+    await act(async () => {
+      screen.getByRole('button', { name: /All keys/ }).click();
+    });
+
+    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole('button', { name: '01A' }).click();
+    });
+
+    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument();
+  });
+
+  it('allows selecting multiple codes in one session', async () => {
+    await openBrowseTab();
+
+    await act(async () => {
+      screen.getByRole('button', { name: /All keys/ }).click();
+    });
+
+    await act(async () => {
+      screen.getByRole('button', { name: '01A' }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: '02A' }).click();
+    });
+
+    const chip01 = screen.getByRole('button', { name: '01A' });
+    const chip02 = screen.getByRole('button', { name: '02A' });
+    expect(chip01.className).toContain('selected');
+    expect(chip02.className).toContain('selected');
+  });
+
+  it('closes on Escape key', async () => {
+    await openBrowseTab();
+
+    await act(async () => {
+      screen.getByRole('button', { name: /All keys/ }).click();
+    });
+
+    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    expect(screen.queryByRole('button', { name: '03A' })).not.toBeInTheDocument();
   });
 });

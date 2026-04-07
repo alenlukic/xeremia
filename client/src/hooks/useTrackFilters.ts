@@ -71,15 +71,27 @@ export function useTrackFilters(allTracks: Track[], searchText: string = ''): Tr
   }, []);
 
   const setBpm = useCallback((bpm: number | undefined) => {
-    setFilters((prev) => ({ ...prev, bpm }));
+    setFilters((prev) => ({
+      ...prev,
+      bpm,
+      ...(bpm != null ? { bpmMin: undefined, bpmMax: undefined } : {}),
+    }));
   }, []);
 
   const setBpmMin = useCallback((min: number | undefined) => {
-    setFilters((prev) => ({ ...prev, bpmMin: min }));
+    setFilters((prev) => ({
+      ...prev,
+      bpmMin: min,
+      ...(min != null ? { bpm: undefined } : {}),
+    }));
   }, []);
 
   const setBpmMax = useCallback((max: number | undefined) => {
-    setFilters((prev) => ({ ...prev, bpmMax: max }));
+    setFilters((prev) => ({
+      ...prev,
+      bpmMax: max,
+      ...(max != null ? { bpm: undefined } : {}),
+    }));
   }, []);
 
   return { filters, filteredTracks, filterCacheKey, setCamelotCodes, setBpm, setBpmMin, setBpmMax };
