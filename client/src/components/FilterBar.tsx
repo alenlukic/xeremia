@@ -8,6 +8,11 @@ const CAMELOT_CODES = [
 
 const RANGE_DEBOUNCE_MS = 300;
 
+interface ColumnConfig {
+  id: string;
+  label: string;
+}
+
 interface Props {
   camelotCodes: string[];
   bpm: number | undefined;
@@ -17,6 +22,9 @@ interface Props {
   setBpm: (bpm: number | undefined) => void;
   setBpmMin: (min: number | undefined) => void;
   setBpmMax: (max: number | undefined) => void;
+  configurableColumns?: ColumnConfig[];
+  columnVisibility?: Record<string, boolean>;
+  onToggleColumn?: (id: string) => void;
 }
 
 export function FilterBar({
@@ -28,9 +36,14 @@ export function FilterBar({
   setBpm,
   setBpmMin,
   setBpmMax,
+  configurableColumns,
+  columnVisibility,
+  onToggleColumn,
 }: Props) {
   const [camelotOpen, setCamelotOpen] = useState(false);
   const camelotRef = useRef<HTMLDivElement>(null);
+  const [colConfigOpen, setColConfigOpen] = useState(false);
+  const colConfigRef = useRef<HTMLDivElement>(null);
 
   const [minText, setMinText] = useState(bpmMin != null ? String(bpmMin) : '');
   const [maxText, setMaxText] = useState(bpmMax != null ? String(bpmMax) : '');
@@ -62,6 +75,24 @@ export function FilterBar({
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [camelotOpen]);
+
+  useEffect(() => {
+    if (!colConfigOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (colConfigRef.current && !colConfigRef.current.contains(e.target as Node)) {
+        setColConfigOpen(false);
+      }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setColConfigOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [colConfigOpen]);
 
   useEffect(() => {
     setMinText(bpmMin != null ? String(bpmMin) : '');
@@ -200,6 +231,32 @@ export function FilterBar({
           )}
         </div>
       </div>
+
+      {configurableColumns && configurableColumns.length > 0 && (
+        <div className="column-config-group" ref={colConfigRef}>
+          <button
+            className="column-config-btn"
+            onClick={() => setColConfigOpen(!colConfigOpen)}
+          >
+            Columns
+            <span className="caret">{colConfigOpen ? '▲' : '▼'}</span>
+          </button>
+          {colConfigOpen && (
+            <div className="column-config-popover">
+              {configurableColumns.map((col) => (
+                <label key={col.id} className="column-config-item">
+                  <input
+                    type="checkbox"
+                    checked={columnVisibility?.[col.id] !== false}
+                    onChange={() => onToggleColumn?.(col.id)}
+                  />
+                  {col.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -351,7 +351,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                 </tr>
               ) : matchesError ? (
                 <tr>
-                  <td colSpan={matchColumns.length} className="table-status table-status--error">
+                  <td colSpan={allColumns.length} className="table-status table-status--error">
                     Failed to load matches — {matchesError}
                   </td>
                 </tr>

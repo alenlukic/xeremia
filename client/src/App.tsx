@@ -19,6 +19,32 @@ type TabKey = 'matches' | 'browse' | 'admin' | 'set';
 
 const BROWSE_PAGE_SIZE = 250;
 
+const COL_VIS_STORAGE_KEY = 'dj-tools-browse-col-visibility';
+
+const BROWSE_CONFIGURABLE_COLUMNS = [
+  { id: 'camelot_code', label: 'Camelot' },
+  { id: 'key', label: 'Key' },
+  { id: 'bpm', label: 'BPM' },
+  { id: 'energy', label: 'Energy' },
+  { id: 'label', label: 'Label' },
+  { id: 'genre', label: 'Genre' },
+];
+
+function isPlainObject(v: unknown): v is Record<string, boolean> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function loadColumnVisibility(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(COL_VIS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return isPlainObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function App() {
   const { allTracks, traitMap, loading: collectionLoading, tracksError, traitsError } = useCollectionCache();
 
@@ -84,6 +110,19 @@ export default function App() {
     removeTrack: removeTrackFromSet,
     moveTrack: moveTrackInSet,
   } = useSetBuilder();
+
+  const [browseColumnVisibility, setBrowseColumnVisibility] = useState<Record<string, boolean>>(loadColumnVisibility);
+
+  useEffect(() => {
+    localStorage.setItem(COL_VIS_STORAGE_KEY, JSON.stringify(browseColumnVisibility));
+  }, [browseColumnVisibility]);
+
+  const toggleBrowseColumn = useCallback((id: string) => {
+    setBrowseColumnVisibility(prev => ({
+      ...prev,
+      [id]: prev[id] !== false ? false : true,
+    }));
+  }, []);
 
   useLayoutEffect(() => {
     const wrapper = gaugeRowRef.current;
@@ -348,6 +387,9 @@ export default function App() {
               setBpm={setBpm}
               setBpmMin={setBpmMin}
               setBpmMax={setBpmMax}
+              configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
+              columnVisibility={browseColumnVisibility}
+              onToggleColumn={toggleBrowseColumn}
             />
             {traitsError && (
               <p className="table-status table-status--error">
@@ -362,6 +404,7 @@ export default function App() {
               hasMore={!selectedTrack ? hasMorePages : undefined}
               onLoadMore={!selectedTrack ? handleLoadMore : undefined}
               error={tracksError}
+              columnVisibility={browseColumnVisibility}
             />
           </div>
         )}
