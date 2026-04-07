@@ -16,4 +16,6 @@ class ScoringWeightOverride(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     scope = Column(String(32), nullable=False, unique=True, default="global")
     weights_json = Column(Text, nullable=False)
-    updated_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
