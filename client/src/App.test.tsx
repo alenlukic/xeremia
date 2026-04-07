@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
-import type { Track } from './types';
+import type { Track, TransitionMatch } from './types';
 import { useCollectionCache } from './hooks/useCollectionCache';
 
 vi.mock('./hooks/useCollectionCache', () => ({
@@ -290,5 +290,137 @@ describe('Browse infinite scroll', () => {
     await act(async () => { triggerLoadMore(); });
     expect(getRowCount()).toBe(600);
     expect(screen.queryByText('Loading more tracks…')).not.toBeInTheDocument();
+  });
+});
+
+function makeTransitionMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
+  return {
+    candidate_id: 2,
+    title: 'Match Track',
+    overall_score: 85,
+    bucket: 'same_key',
+    camelot_score: 0.9,
+    bpm_score: 0.85,
+    energy_score: 0.7,
+    similarity_score: 0.8,
+    freshness_score: 0.6,
+    genre_similarity_score: 0.75,
+    mood_continuity_score: 0.65,
+    vocal_clash_score: 0.5,
+    instrument_similarity_score: 0.55,
+    ...overrides,
+  };
+}
+
+async function selectTrackViaBrowse(trackTitle: string) {
+  await act(async () => {
+    screen.getByRole('button', { name: 'Browse' }).click();
+  });
+
+  const row = screen.getByText(trackTitle).closest('tr')!;
+  await act(async () => {
+    row.click();
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText(`Matches for`)).toBeInTheDocument();
+  });
+}
+
+describe('Transition chaining', () => {
+  it('renders transition chain breadcrumb after Use as source', async () => {
+    const httpMod = await import('./api/http');
+    const matchForTrack2 = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([matchForTrack2]);
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await selectTrackViaBrowse('Track 1');
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Use as source track')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByTitle('Use as source track').click();
+    });
+
+    await waitFor(() => {
+      const chainEntries = document.querySelectorAll('.chain-entry');
+      expect(chainEntries.length).toBe(1);
+      expect(chainEntries[0].textContent).toBe('Track 1');
+    });
+  });
+
+  it('navigates back through chain when back button is clicked', async () => {
+    const httpMod = await import('./api/http');
+    const matchForTrack2 = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([matchForTrack2]);
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await selectTrackViaBrowse('Track 1');
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Use as source track')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByTitle('Use as source track').click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.chain-back-btn')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('.chain-back-btn')!.click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.chain-back-btn')).not.toBeInTheDocument();
+    });
+  });
+
+  it('clears chain on fresh track selection via browse', async () => {
+    const httpMod = await import('./api/http');
+    const matchForTrack2 = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([matchForTrack2]);
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await selectTrackViaBrowse('Track 1');
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Use as source track')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByTitle('Use as source track').click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelectorAll('.chain-entry').length).toBe(1);
+    });
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    const row = screen.getByText('Track 2').closest('tr')!;
+    await act(async () => {
+      row.click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelectorAll('.chain-entry').length).toBe(0);
+      expect(document.querySelector('.chain-back-btn')).not.toBeInTheDocument();
+    });
   });
 });

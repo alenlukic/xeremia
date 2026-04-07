@@ -11,7 +11,7 @@ import { useTrackFilters } from './hooks/useTrackFilters';
 import { useCollectionCache } from './hooks/useCollectionCache';
 import { useCacheStats } from './hooks/useCacheStats';
 import { useWeights } from './hooks/useWeights';
-import type { Track, SearchSuggestion, TransitionMatch } from './types';
+import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 
 type TabKey = 'matches' | 'browse' | 'admin';
 
@@ -25,6 +25,7 @@ export default function App() {
   const [searchText, setSearchText] = useState('');
   const [loadedPages, setLoadedPages] = useState(1);
   const loadedPageCacheRef = useRef<Map<string, number>>(new Map());
+  const [transitionChain, setTransitionChain] = useState<TransitionChainEntry[]>([]);
 
   const gaugeRowRef = useRef<HTMLDivElement>(null);
   const [searchPadding, setSearchPadding] = useState<{ left: number; right: number } | null>(null);
@@ -140,6 +141,7 @@ export default function App() {
   const handleSelectTrack = useCallback(
     (track: Track | SearchSuggestion) => {
       setDetailMatch(null);
+      setTransitionChain([]);
       selectTrack(track);
       setActiveTab('matches');
       setSearchText('');
@@ -154,6 +156,37 @@ export default function App() {
     },
     [handleSelectTrack],
   );
+
+  const handleUseAsSource = useCallback(
+    (candidateId: number) => {
+      if (!selectedTrack) return;
+      const candidate = allTracks.find(t => t.id === candidateId);
+      if (!candidate) return;
+      setTransitionChain(prev => [...prev, { track: selectedTrack }]);
+      setDetailMatch(null);
+      selectTrack(candidate);
+    },
+    [selectedTrack, allTracks, selectTrack],
+  );
+
+  const handleChainNavigate = useCallback(
+    (index: number) => {
+      const entry = transitionChain[index];
+      if (!entry) return;
+      setTransitionChain(prev => prev.slice(0, index));
+      setDetailMatch(null);
+      selectTrack(entry.track);
+    },
+    [transitionChain, selectTrack],
+  );
+
+  const handleChainBack = useCallback(() => {
+    if (transitionChain.length === 0) return;
+    const last = transitionChain[transitionChain.length - 1];
+    setTransitionChain(prev => prev.slice(0, -1));
+    setDetailMatch(null);
+    selectTrack(last.track);
+  }, [transitionChain, selectTrack]);
 
   return (
     <div className="app-shell-v2">
@@ -203,12 +236,38 @@ export default function App() {
       </div>
 
       <div className="tab-content">
+        {activeTab === 'matches' && transitionChain.length > 0 && selectedTrack && (
+          <div className="transition-chain">
+            <button
+              className="chain-back-btn"
+              onClick={handleChainBack}
+              title="Go back to previous source"
+            >
+              ← Back
+            </button>
+            {transitionChain.map((entry, i) => (
+              <span key={`chain-${entry.track.id}-${i}`} className="chain-step">
+                <button
+                  className="chain-entry"
+                  onClick={() => handleChainNavigate(i)}
+                  title={`Return to ${entry.track.title}`}
+                >
+                  {entry.track.title}
+                </button>
+                <span className="chain-arrow">→</span>
+              </span>
+            ))}
+            <span className="chain-current">{selectedTrack.title}</span>
+          </div>
+        )}
         {activeTab === 'matches' && !detailMatch && (
           <div className="table-panel">
             <MatchesPanel
               selectedTrack={selectedTrack}
               matches={matches}
               loading={matchesLoading}
+              onViewDetail={setDetailMatch}
+              onUseAsSource={handleUseAsSource}
             />
           </div>
         )}
@@ -218,6 +277,7 @@ export default function App() {
             match={detailMatch}
             onBack={() => setDetailMatch(null)}
             traitMap={traitMap}
+            onUseAsSource={handleUseAsSource}
           />
         )}
         {activeTab === 'browse' && (
