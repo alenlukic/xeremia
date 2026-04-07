@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatFloat,
+  formatBpm,
   formatScore,
   formatOverallScore,
   displayGenre,
@@ -171,5 +172,34 @@ describe('displayGenre', () => {
 
   it('handles empty string', () => {
     expect(displayGenre('')).toBe('');
+  });
+});
+
+describe('formatBpm', () => {
+  it('returns em-dash for null', () => {
+    expect(formatBpm(null)).toBe('—');
+  });
+
+  it('returns em-dash for undefined', () => {
+    expect(formatBpm(undefined)).toBe('—');
+  });
+
+  it('rounds to nearest integer', () => {
+    expect(formatBpm(128.4)).toBe('128');
+    expect(formatBpm(128.5)).toBe('129');
+    expect(formatBpm(128.7)).toBe('129');
+  });
+
+  it('produces no decimal places for whole numbers', () => {
+    expect(formatBpm(130.0)).toBe('130');
+    expect(formatBpm(90)).toBe('90');
+  });
+
+  it('does not include a decimal point', () => {
+    expect(formatBpm(128.123)).not.toContain('.');
+  });
+
+  it('handles zero', () => {
+    expect(formatBpm(0)).toBe('0');
   });
 });

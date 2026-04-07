@@ -1746,6 +1746,67 @@ body,
   align-items: center;
 }
 
+/* --- Column Configurator --- */
+.column-config-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.column-config-btn {
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.column-config-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.column-config-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 0;
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+}
+
+.column-config-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--transition);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.column-config-item:hover {
+  background: var(--surface-hover);
+}
+
 /* --- Browse add-to-set bar --- */
 .browse-add-to-set-bar {
   display: flex;

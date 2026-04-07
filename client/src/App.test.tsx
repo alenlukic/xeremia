@@ -685,6 +685,67 @@ describe('Transition chaining', () => {
   });
 });
 
+describe('Browse column visibility localStorage round-trip', () => {
+  const COL_VIS_KEY = 'dj-tools-browse-col-visibility';
+
+  beforeEach(() => {
+    localStorage.removeItem(COL_VIS_KEY);
+  });
+
+  it('restores hidden column from localStorage, persists toggle, and survives remount', async () => {
+    const user = userEvent.setup();
+
+    localStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false }));
+
+    const { unmount } = render(<App />);
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    const headers = () => screen.getAllByRole('columnheader').map(h => h.textContent);
+    expect(headers()).not.toContain('BPM');
+    expect(headers()).toContain('Title');
+
+    await user.click(screen.getByRole('button', { name: /Columns/ }));
+    const bpmCheckbox = screen.getByLabelText('BPM') as HTMLInputElement;
+    expect(bpmCheckbox.checked).toBe(false);
+
+    await user.click(bpmCheckbox);
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem(COL_VIS_KEY)!);
+      expect(stored.bpm).toBe(true);
+    });
+
+    expect(headers()).toContain('BPM');
+
+    unmount();
+
+    render(<App />);
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    expect(headers()).toContain('BPM');
+
+    await user.click(screen.getByRole('button', { name: /Columns/ }));
+    const restoredCheckbox = screen.getByLabelText('BPM') as HTMLInputElement;
+    expect(restoredCheckbox.checked).toBe(true);
+  });
+
+  it('starts with all columns visible when localStorage has no saved state', async () => {
+    render(<App />);
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
+    expect(headers).toContain('BPM');
+    expect(headers).toContain('Camelot');
+    expect(headers).toContain('Energy');
+  });
+});
+
 describe('Set tab', () => {
   beforeEach(() => {
     localStorage.clear();

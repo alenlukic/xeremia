@@ -9,7 +9,7 @@ import {
   type Updater,
 } from '@tanstack/react-table';
 import type { Track, SearchSuggestion } from '../types';
-import { formatFloat, displayGenre } from '../utils';
+import { formatFloat, formatBpm, displayGenre } from '../utils';
 
 const col = createColumnHelper<Track>();
 
@@ -52,7 +52,7 @@ const columns = [
     header: 'BPM',
     size: FIXED_PX,
     minSize: 50,
-    cell: (info) => <span className="mono">{formatFloat(info.getValue())}</span>,
+    cell: (info) => <span className="mono">{formatBpm(info.getValue())}</span>,
   }),
   col.accessor('energy', {
     header: 'Energy',
@@ -86,9 +86,10 @@ interface Props {
   hasMore?: boolean;
   onLoadMore?: () => void;
   error?: string | null;
+  columnVisibility?: Record<string, boolean>;
 }
 
-export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error }: Props) {
+export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -136,7 +137,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
   const table = useReactTable({
     data: tracks,
     columns,
-    state: { columnSizing: effectiveSizing, columnOrder },
+    state: { columnSizing: effectiveSizing, columnOrder, columnVisibility: columnVisibility ?? {} },
     columnResizeMode: 'onChange',
     onColumnSizingChange: handleColumnSizingChange,
     onColumnOrderChange: setColumnOrder,
@@ -260,19 +261,19 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={columns.length} className="table-status">
+                <td colSpan={table.getVisibleLeafColumns().length} className="table-status">
                   Loading tracks…
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={columns.length} className="table-status table-status--error">
+                <td colSpan={table.getVisibleLeafColumns().length} className="table-status table-status--error">
                   Failed to load tracks — {error}
                 </td>
               </tr>
             ) : tracks.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="table-status">
+                <td colSpan={table.getVisibleLeafColumns().length} className="table-status">
                   No tracks found
                 </td>
               </tr>
