@@ -59,9 +59,13 @@ export default function App() {
   const {
     weights,
     loading: weightsLoading,
+    error: weightsError,
+    saving: weightsSaving,
+    saveSuccess: weightsSaveSuccess,
     setWeight,
     rawSum,
     isSumValid,
+    warningMessage: weightsWarning,
     normalizeWeights,
     resetWeights,
   } = useWeights(refetchMatches);
@@ -73,7 +77,7 @@ export default function App() {
       return;
     }
 
-    const row = wrapper.firstElementChild as HTMLElement | null;
+    const row = wrapper.querySelector('.weight-controls-row') as HTMLElement | null;
     if (!row) return;
 
     const measure = () => {
@@ -163,6 +167,10 @@ export default function App() {
           <WeightControls
             weights={weights}
             setWeight={setWeight}
+            saving={weightsSaving}
+            saveSuccess={weightsSaveSuccess}
+            saveError={weightsError}
+            warningMessage={weightsWarning}
           />
         </div>
       )}
