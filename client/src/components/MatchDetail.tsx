@@ -70,7 +70,7 @@ function renderValue(value: unknown): React.ReactNode {
 }
 
 const FACTOR_DISPLAY_LABELS: Record<string, string> = {
-  Similarity: 'Spectral',
+  'Cosine Similarity': 'Spectral',
   Camelot: 'Key',
   BPM: 'BPM',
   Freshness: 'Recency',

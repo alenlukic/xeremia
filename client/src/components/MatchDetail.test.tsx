@@ -42,7 +42,7 @@ function makeDetail(overrides: Partial<MatchDetailData> = {}): MatchDetailData {
   return {
     overall_score: 82,
     factors: [
-      { name: 'Similarity', score: 0.8, weight: 0.15 },
+      { name: 'Cosine Similarity', score: 0.8, weight: 0.15 },
       { name: 'Camelot', score: 0.9, weight: 0.2 },
       { name: 'BPM', score: 0.85, weight: 0.1 },
       { name: 'Genre Similarity', score: 0.75, weight: 0.1 },
