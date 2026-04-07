@@ -230,6 +230,19 @@ describe('MatchesPanel', () => {
       await userEvent.click(screen.getByText('Deep Blue'));
       expect(onViewDetail).toHaveBeenCalledWith(match);
     });
+
+    it('has hover title and focus-accessible aria-label on each track link', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch({ title: 'Deep Blue' })]}
+          loading={false}
+        />
+      );
+      const link = document.querySelector('.match-track-link') as HTMLElement;
+      expect(link.getAttribute('title')).toBe('View match detail');
+      expect(link.getAttribute('aria-label')).toBe('View match detail for Deep Blue');
+    });
   });
 
   describe('use as source action', () => {
