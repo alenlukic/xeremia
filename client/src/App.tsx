@@ -30,10 +30,16 @@ const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'genre', label: 'Genre' },
 ];
 
+function isPlainObject(v: unknown): v is Record<string, boolean> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 function loadColumnVisibility(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(COL_VIS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return isPlainObject(parsed) ? parsed : {};
   } catch {
     return {};
   }

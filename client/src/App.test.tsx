@@ -746,6 +746,48 @@ describe('Browse column visibility localStorage round-trip', () => {
   });
 });
 
+describe('Browse column visibility – invalid localStorage values', () => {
+  const COL_VIS_KEY = 'dj-tools-browse-col-visibility';
+
+  beforeEach(() => {
+    localStorage.removeItem(COL_VIS_KEY);
+  });
+
+  it.each([
+    ['number', '42'],
+    ['boolean', 'true'],
+    ['array', '[1]'],
+    ['string', '"hello"'],
+    ['null', 'null'],
+  ])('falls back to all columns visible when stored value is a %s', async (_label, stored) => {
+    localStorage.setItem(COL_VIS_KEY, stored);
+
+    render(<App />);
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
+    expect(headers).toContain('BPM');
+    expect(headers).toContain('Camelot');
+    expect(headers).toContain('Energy');
+  });
+
+  it('restores valid object visibility maps correctly', async () => {
+    localStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false, energy: false }));
+
+    render(<App />);
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
+    expect(headers).not.toContain('BPM');
+    expect(headers).not.toContain('Energy');
+    expect(headers).toContain('Camelot');
+  });
+});
+
 describe('Set tab', () => {
   beforeEach(() => {
     localStorage.clear();
