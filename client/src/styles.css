@@ -793,11 +793,15 @@ body,
 }
 
 /* === Weight Controls === */
+.weight-controls-outer {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
 .weight-controls-row {
   display: flex;
   align-items: stretch;
   padding: 8px var(--content-gutter);
-  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   column-gap: clamp(8px, 5vw, 72px);
   row-gap: 8px;
@@ -1068,6 +1072,33 @@ body,
 .weight-gauge-label[data-tooltip] {
   position: relative;
   cursor: help;
+}
+
+.weight-save-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px var(--content-gutter);
+  font-size: 12px;
+  line-height: 1.3;
+  min-height: 20px;
+}
+
+.weight-save-status__saving {
+  color: var(--text-muted);
+}
+
+.weight-save-status__success {
+  color: #20c997;
+}
+
+.weight-save-status__error {
+  color: #e85858;
+}
+
+.weight-save-status__warning {
+  color: #f0ad4e;
 }
 
 .weight-gauge-label[data-tooltip]:hover::after {

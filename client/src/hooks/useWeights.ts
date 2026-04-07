@@ -8,6 +8,7 @@ interface WeightsState {
   loading: boolean;
   error: string | null;
   saving: boolean;
+  saveSuccess: boolean;
   setWeight: (factor: string, value: number) => void;
   rawSum: number;
   isSumValid: boolean;
@@ -56,8 +57,10 @@ export function useWeights(onSaveSuccess?: () => void): WeightsState {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveVersionRef = useRef(0);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveSuccessRef = useRef(onSaveSuccess);
   useEffect(() => {
     onSaveSuccessRef.current = onSaveSuccess;
@@ -78,13 +81,17 @@ export function useWeights(onSaveSuccess?: () => void): WeightsState {
 
   const persistWeights = useCallback((updated: Record<string, number>) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    setSaveSuccess(false);
+    setSaving(true);
     const version = ++saveVersionRef.current;
     debounceRef.current = setTimeout(() => {
-      setSaving(true);
       updateWeights(updated)
         .then((data) => {
           if (saveVersionRef.current === version) {
             setServerState(data);
+            setSaveSuccess(true);
+            successTimerRef.current = setTimeout(() => setSaveSuccess(false), 2000);
           }
           setError(null);
           onSaveSuccessRef.current?.();
@@ -143,6 +150,7 @@ export function useWeights(onSaveSuccess?: () => void): WeightsState {
     loading,
     error,
     saving,
+    saveSuccess,
     setWeight,
     rawSum,
     isSumValid,

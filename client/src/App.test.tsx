@@ -158,6 +158,35 @@ describe('Reset Weights', () => {
 
     vi.useRealTimers();
   });
+
+  it('shows "Saving…" immediately when weights change', async () => {
+    vi.useFakeTimers();
+    try {
+      const httpMod = await import('./api/http');
+      vi.mocked(httpMod.fetchWeights).mockResolvedValue({
+        raw_weights: { BPM: 50, CAMELOT: 50 },
+        effective_weights: { BPM: 50, CAMELOT: 50 },
+        raw_sum: 100,
+        target_sum: 100,
+        is_sum_valid: true,
+        message: null,
+      });
+      vi.mocked(httpMod.fetchDefaultWeights).mockResolvedValue({ BPM: 10, CAMELOT: 90 });
+      vi.mocked(httpMod.updateWeights).mockReturnValue(new Promise(() => {}));
+
+      await act(async () => {
+        render(<App />);
+      });
+
+      await act(async () => {
+        screen.getByRole('button', { name: 'Reset Weights' }).click();
+      });
+
+      expect(screen.getByText('Saving…')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('Browse infinite scroll', () => {
