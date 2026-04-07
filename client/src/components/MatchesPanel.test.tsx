@@ -33,10 +33,12 @@ function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
   };
 }
 
-const EXPECTED_HEADERS = [
+const SCORE_HEADERS = [
   'Spectral', 'Key', 'BPM', 'Genre', 'Recency',
   'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
 ];
+
+const ALL_HEADERS = ['Track', ...SCORE_HEADERS, ''];
 
 const selectedTrack = {
   id: 1, title: 'On Deck', artist_names: ['A'],
@@ -54,10 +56,10 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect(headers.map(h => h.textContent)).toEqual(EXPECTED_HEADERS);
+      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS);
     });
 
-    it('does not render Track or Score columns', () => {
+    it('includes Track column and score columns but not Score', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -66,13 +68,13 @@ describe('MatchesPanel', () => {
         />
       );
       const labels = screen.getAllByRole('columnheader').map(h => h.textContent);
-      expect(labels).not.toContain('Track');
+      expect(labels).toContain('Track');
       expect(labels).not.toContain('Score');
     });
   });
 
   describe('resize and reorder chrome', () => {
-    it('renders a resize handle on each header', () => {
+    it('renders a resize handle only on score headers', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -81,10 +83,10 @@ describe('MatchesPanel', () => {
         />
       );
       const resizers = document.querySelectorAll('.col-resizer');
-      expect(resizers.length).toBe(EXPECTED_HEADERS.length);
+      expect(resizers.length).toBe(SCORE_HEADERS.length);
     });
 
-    it('renders draggable header content', () => {
+    it('renders draggable header content only on score headers', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -93,7 +95,7 @@ describe('MatchesPanel', () => {
         />
       );
       const draggables = document.querySelectorAll('.th-content[draggable="true"]');
-      expect(draggables.length).toBe(EXPECTED_HEADERS.length);
+      expect(draggables.length).toBe(SCORE_HEADERS.length);
     });
   });
 
@@ -196,6 +198,65 @@ describe('MatchesPanel', () => {
       );
       const row = document.querySelector('.matches-table tbody tr') as HTMLElement;
       expect(row.style.opacity).toBe('0.6');
+    });
+  });
+
+  describe('match detail affordance', () => {
+    it('renders a visible clickable track title for each match row', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch({ title: 'Deep Blue' }), makeMatch({ candidate_id: 2, title: 'Red Sky' })]}
+          loading={false}
+        />
+      );
+      const links = document.querySelectorAll('.match-track-link');
+      expect(links.length).toBe(2);
+      expect(links[0].textContent).toBe('Deep Blue');
+      expect(links[1].textContent).toBe('Red Sky');
+    });
+
+    it('calls onViewDetail when track title is clicked', async () => {
+      const onViewDetail = vi.fn();
+      const match = makeMatch({ title: 'Deep Blue' });
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[match]}
+          loading={false}
+          onViewDetail={onViewDetail}
+        />
+      );
+      await userEvent.click(screen.getByText('Deep Blue'));
+      expect(onViewDetail).toHaveBeenCalledWith(match);
+    });
+  });
+
+  describe('use as source action', () => {
+    it('renders a Use as source button for each match row', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch(), makeMatch({ candidate_id: 2 })]}
+          loading={false}
+        />
+      );
+      const buttons = screen.getAllByTitle('Use as source track');
+      expect(buttons.length).toBe(2);
+    });
+
+    it('calls onUseAsSource with candidate_id when clicked', async () => {
+      const onUseAsSource = vi.fn();
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch({ candidate_id: 42 })]}
+          loading={false}
+          onUseAsSource={onUseAsSource}
+        />
+      );
+      await userEvent.click(screen.getByTitle('Use as source track'));
+      expect(onUseAsSource).toHaveBeenCalledWith(42);
     });
   });
 });

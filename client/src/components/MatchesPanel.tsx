@@ -31,12 +31,12 @@ const COL_SIZES: Record<string, number> = {
   vocal_clash_score: 90,
 };
 
-const MATCH_COLUMN_IDS = Object.keys(COL_SIZES);
+const SCORE_COLUMN_IDS = Object.keys(COL_SIZES);
 const TOTAL_BASE = Object.values(COL_SIZES).reduce((a, b) => a + b, 0);
 
 const col = createColumnHelper<TransitionMatch>();
 
-const matchColumns = [
+const scoreColumns = [
   col.accessor('similarity_score', {
     header: 'Spectral', size: COL_SIZES.similarity_score, minSize: 50,
     cell: (info) => <span className="mono">{formatScore(info.getValue())}</span>,
@@ -80,10 +80,13 @@ interface Props {
   matches: TransitionMatch[];
   loading: boolean;
   matchesError?: string | null;
-  onScoreClick: (match: TransitionMatch) => void;
+  onViewDetail?: (match: TransitionMatch) => void;
+  onUseAsSource?: (candidateId: number) => void;
 }
 
-export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches, loading, matchesError, onScoreClick }: Props) {
+export const MatchesPanel = memo(function MatchesPanel({
+  selectedTrack, matches, loading, matchesError, onViewDetail, onUseAsSource,
+}: Props) {
   const [bucketTab, setBucketTab] = useState<BucketKey>('same_key');
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -91,11 +94,51 @@ export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches,
 
   const [containerWidth, setContainerWidth] = useState(0);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(MATCH_COLUMN_IDS);
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(SCORE_COLUMN_IDS);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null);
   const hasTrack = selectedTrack != null;
+
+  const allColumns = useMemo(() => [
+    col.accessor('title', {
+      id: 'track_title',
+      header: 'Track',
+      size: 200,
+      minSize: 100,
+      enableResizing: false,
+      cell: (info) => (
+        <button
+          className="match-track-link"
+          onClick={() => onViewDetail?.(info.row.original)}
+          title="View match detail"
+        >
+          {info.getValue()}
+        </button>
+      ),
+    }),
+    ...scoreColumns,
+    col.display({
+      id: 'actions',
+      header: '',
+      size: 120,
+      enableResizing: false,
+      cell: ({ row }) => (
+        <button
+          className="match-action-btn"
+          onClick={(e) => { e.stopPropagation(); onUseAsSource?.(row.original.candidate_id); }}
+          title="Use as source track"
+        >
+          Use as source →
+        </button>
+      ),
+    }),
+  ], [onViewDetail, onUseAsSource]);
+
+  const fullColumnOrder = useMemo(
+    () => ['track_title', ...columnOrder, 'actions'],
+    [columnOrder],
+  );
 
   const bucketCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -123,9 +166,10 @@ export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches,
 
   const responsiveSizing = useMemo(() => {
     if (containerWidth <= 0) return {};
-    const scale = Math.max(1, containerWidth / TOTAL_BASE);
+    const scoreSpace = Math.max(TOTAL_BASE, containerWidth - 320);
+    const scale = Math.max(1, scoreSpace / TOTAL_BASE);
     const sizing: ColumnSizingState = {};
-    MATCH_COLUMN_IDS.forEach((id) => { sizing[id] = COL_SIZES[id] * scale; });
+    SCORE_COLUMN_IDS.forEach((id) => { sizing[id] = COL_SIZES[id] * scale; });
     return sizing;
   }, [containerWidth]);
 
@@ -143,8 +187,8 @@ export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches,
 
   const table = useReactTable({
     data: bucketMatches,
-    columns: matchColumns,
-    state: { columnSizing: effectiveSizing, columnOrder },
+    columns: allColumns,
+    state: { columnSizing: effectiveSizing, columnOrder: fullColumnOrder },
     columnResizeMode: 'onChange',
     onColumnSizingChange: handleColumnSizingChange,
     onColumnOrderChange: setColumnOrder,
@@ -253,36 +297,41 @@ export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches,
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
-                  {hg.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      style={{ width: header.getSize() }}
-                      className={draggedColumn === header.column.id ? 'th-dragging' : ''}
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, header.column.id)}
-                    >
-                      <div
-                        className="th-content"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, header.column.id)}
-                        onDragEnd={handleDragEnd}
+                  {hg.headers.map((header) => {
+                    const isScore = SCORE_COLUMN_IDS.includes(header.column.id);
+                    return (
+                      <th
+                        key={header.id}
+                        style={{ width: header.getSize() }}
+                        className={draggedColumn === header.column.id ? 'th-dragging' : ''}
+                        onDragOver={isScore ? handleDragOver : undefined}
+                        onDrop={isScore ? (e) => handleDrop(e, header.column.id) : undefined}
                       >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </div>
-                      <div
-                        className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                      />
-                    </th>
-                  ))}
+                        <div
+                          className="th-content"
+                          draggable={isScore}
+                          onDragStart={isScore ? (e) => handleDragStart(e, header.column.id) : undefined}
+                          onDragEnd={isScore ? handleDragEnd : undefined}
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                        </div>
+                        {isScore && (
+                          <div
+                            className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
+                            onMouseDown={header.getResizeHandler()}
+                            onTouchStart={header.getResizeHandler()}
+                          />
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               ))}
             </thead>
             <tbody>
               {loading && bucketMatches.length === 0 ? (
                 <tr>
-                  <td colSpan={matchColumns.length} className="table-status">
+                  <td colSpan={allColumns.length} className="table-status">
                     Loading matches…
                   </td>
                 </tr>
@@ -294,7 +343,7 @@ export const MatchesPanel = memo(function MatchesPanel({ selectedTrack, matches,
                 </tr>
               ) : bucketMatches.length === 0 ? (
                 <tr>
-                  <td colSpan={matchColumns.length} className="table-status">
+                  <td colSpan={allColumns.length} className="table-status">
                     No matches in this bucket
                   </td>
                 </tr>

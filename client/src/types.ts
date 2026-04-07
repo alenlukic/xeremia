@@ -98,6 +98,10 @@ export interface CacheStats {
   recent_exits: CacheExit[];
 }
 
+export interface TransitionChainEntry {
+  track: Track | SearchSuggestion;
+}
+
 export interface TrackTraitEntry {
   track_id: number;
   traits: Record<string, unknown> | null;
