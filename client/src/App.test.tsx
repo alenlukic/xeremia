@@ -31,6 +31,8 @@ vi.mock('./api/http', () => ({
   fetchMatches: vi.fn().mockResolvedValue([]),
   fetchMatchDetail: vi.fn().mockResolvedValue({}),
   updateWeights: vi.fn().mockResolvedValue({}),
+  fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
+  exportSetM3u8: vi.fn().mockResolvedValue({ content: '', filename: '' }),
 }));
 
 function makeTracks(count: number): Track[] {
@@ -421,6 +423,49 @@ describe('Transition chaining', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('.chain-entry').length).toBe(0);
       expect(document.querySelector('.chain-back-btn')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('Set tab', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('renders the Set tab button', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+    expect(screen.getByRole('button', { name: /Set/ })).toBeInTheDocument();
+  });
+
+  it('shows set builder when Set tab is clicked', async () => {
+    await act(async () => {
+      render(<App />);
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: /Set/ }).click();
+    });
+    expect(screen.getByText(/No sets yet/)).toBeInTheDocument();
+  });
+
+  it('shows Add to Set button on match rows when a set exists', async () => {
+    localStorage.setItem('dj-tools-sets', JSON.stringify([
+      { id: 'test', name: 'Test', tracks: [] },
+    ]));
+
+    const httpMod = await import('./api/http');
+    const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await selectTrackViaBrowse('Track 1');
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Add to set')).toBeInTheDocument();
     });
   });
 });

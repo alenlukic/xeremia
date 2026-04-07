@@ -10,9 +10,13 @@ from src.api.schemas import (
     CacheStatsResponse,
     MatchDetailResponse,
     SearchSuggestion,
+    SetExportRequest,
+    SetExportResponse,
     TrackResponse,
     TrackTraitResponse,
     TransitionMatchResponse,
+    TransitionScoreRequest,
+    TransitionScoreResponse,
     WeightResponse,
     WeightUpdateRequest,
 )
@@ -365,3 +369,91 @@ def api_update_weights(body: WeightUpdateRequest):
         finder.cosine_cache.clear()
     _clear_similarity_cache()
     return result
+
+
+# ---------------------------------------------------------------------------
+# Set builder
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sets/transition-scores", response_model=TransitionScoreResponse)
+def api_transition_scores(body: TransitionScoreRequest):
+    """Compute transition scores for a list of adjacent track pairs."""
+    from src.models.track import Track
+
+    session = _get_session()
+    try:
+        finder = _get_match_finder()
+
+        source_ids = {p[0] for p in body.pairs if len(p) == 2}
+        match_cache: dict = {}
+        for sid in source_ids:
+            source = session.query(Track).filter_by(id=sid).first()
+            if source is None:
+                continue
+            result = finder.get_transition_matches(source)
+            if result is None:
+                continue
+            (same_key, higher_key, lower_key), _ = result
+            scores: dict = {}
+            for m in same_key + higher_key + lower_key:
+                cid = m.metadata.get(TrackDBCols.ID)
+                if cid is not None:
+                    scores[cid] = round(m.get_score(), 2)
+            match_cache[sid] = scores
+
+        results = []
+        for pair in body.pairs:
+            if len(pair) != 2:
+                results.append(None)
+                continue
+            sid, cid = pair
+            source_scores = match_cache.get(sid, {})
+            results.append(source_scores.get(cid))
+
+        return {"scores": results}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Transition score computation failed")
+        raise HTTPException(status_code=500, detail="Score computation failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/export-m3u8", response_model=SetExportResponse)
+def api_export_m3u8(body: SetExportRequest):
+    """Export an ordered set of tracks as an m3u8 playlist."""
+    from src.models.track import Track
+
+    session = _get_session()
+    try:
+        tracks = (
+            session.query(Track)
+            .filter(Track.id.in_(body.track_ids))
+            .all()
+        )
+        track_map = {t.id: t for t in tracks}
+
+        lines = ["#EXTM3U"]
+        for tid in body.track_ids:
+            t = track_map.get(tid)
+            if t is None:
+                continue
+            lines.append(f"#EXTINF:-1,{t.title}")
+            lines.append(t.file_name)
+
+        content = "\n".join(lines) + "\n"
+        safe_name = "".join(
+            c if c.isalnum() or c in " _-" else "_" for c in body.name
+        ).strip() or "set"
+        return {"content": content, "filename": f"{safe_name}.m3u8"}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("M3U8 export failed")
+        raise HTTPException(status_code=500, detail="Export failed")
+    finally:
+        session.close()

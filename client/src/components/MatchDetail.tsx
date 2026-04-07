@@ -33,6 +33,7 @@ interface Props {
   onBack: () => void;
   traitMap: TraitMap;
   onUseAsSource?: (candidateId: number) => void;
+  onAddToSet?: (candidateId: number) => void;
 }
 
 function renderValue(value: unknown): React.ReactNode {
@@ -104,7 +105,7 @@ function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSource }: Props) {
+export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSource, onAddToSet }: Props) {
   const [{ loading, detail }, dispatch] = useReducer(detailReducer, {
     loading: true,
     detail: null,
@@ -152,6 +153,14 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSourc
         <button className="back-button" onClick={onBack}>
           ← Back to matches
         </button>
+        {onAddToSet && (
+          <button
+            className="match-action-btn"
+            onClick={() => onAddToSet(match.candidate_id)}
+          >
+            + Add to Set
+          </button>
+        )}
         {onUseAsSource && (
           <button
             className="use-as-source-btn"

@@ -132,3 +132,29 @@ class WeightUpdateRequest(BaseModel):
         ...,
         description="Factor name → value on 0-100 scale",
     )
+
+
+# ---------------------------------------------------------------------------
+# Set builder
+# ---------------------------------------------------------------------------
+
+
+class TransitionScoreRequest(BaseModel):
+    pairs: List[List[int]] = Field(
+        ...,
+        description="List of [source_id, candidate_id] pairs",
+    )
+
+
+class TransitionScoreResponse(BaseModel):
+    scores: List[Optional[float]]
+
+
+class SetExportRequest(BaseModel):
+    track_ids: List[int]
+    name: str = "set"
+
+
+class SetExportResponse(BaseModel):
+    content: str
+    filename: str
