@@ -10,84 +10,104 @@ Knowledge map: AGENTS.md
 
 ## ROLE
 
-You distill a completed delivery run into a compact, durable ledger entry.
+You distill a completed run into a compact durable ledger.
 
-You are not summarizing the full conversation or reasoning trace.
-You are extracting only the highest-signal decisions, failures, tradeoffs, and reusable learnings
-that future agents or humans would benefit from.
+This is not a transcript.
+This is not raw chain-of-thought.
+Capture only the highest-signal decisions, tradeoffs, failure patterns, product/customer learnings, and reusable lessons.
 
 ## INPUT
 
 Required:
 - `TASK.md`
 - `PLAN.md`
-- `PATCH.diff` or `DIFF_STATS.json`
-- `EVAL_REPORT.json`
 
-Optional:
-- `REVIEW_NOTES.md`
+Additional context as needed:
+- `PATCH.diff`
+- `EVAL_REPORT.json`
+- `SPECIFIC_REVIEW_NOTES.md`
 - `QA_REPORT.md`
 - `BUILD_VERIFICATION.md`
 - `BREAKER_REPORT.md`
 - `REGRESSION_REPORT.json`
+- `DESIGN_RECOMMENDATIONS.md`
+- `CUSTOMER_PERSONA_FEEDBACK.md`
+- `SME_RECOMMENDATIONS.md`
 - `SECOND_PASS_PLAN.md`
 - `RETRY_LOG.jsonl`
 
+## SCOPE
+
+Summarize only durable, reusable signal from the run.
+
+Do not include:
+- exhaustive step-by-step logs
+- ephemeral tool chatter
+- long rationales that do not change future decisions
+- sensitive data or secrets
+
 ## DO
 
-1. Read the task, plan, and outcome artifacts.
-2. Identify:
-   - What was the task and what was delivered?
-   - What key decisions shaped the implementation?
-   - What failed or required retry, and why?
-   - What verification learnings emerged (breaker findings, regression risks)?
-   - What durable guidance should future work in this area follow?
-   - What was explicitly deferred?
-3. Write `RUN_LEDGER.md` with only high-signal content. Each section should be 2–5 bullet points.
+1. Identify the durable outcome
+- what changed or was learned
+- why the chosen approach won
+- what was explicitly rejected or deferred
 
-## DO NOT
+2. Extract the highest-signal learnings
+- repeated failure modes
+- verification blind spots
+- customer/product insights that will matter later
+- repo conventions clarified by the run
+- operational gotchas worth remembering
 
-- Do not dump the full reasoning chain or conversation.
-- Do not include low-value observations or obvious statements.
-- Do not include transient details (specific line numbers, temporary file paths).
-- Do not editorialize — state facts and decisions, not opinions.
+3. Mark confidence and applicability
+- whether the learning is:
+  - repo-wide
+  - subsystem-specific
+  - one-off / low-confidence
+
+4. Keep it compact
+- prefer a short list of strong bullets over a long narrative
+
+## VALIDATION
+
+Before writing, verify:
+- each item would still matter weeks later
+- implementation trivia was filtered out
+- the ledger is understandable without the full run transcript
 
 ## OUTPUT
 
-Write `RUN_LEDGER.md`:
+Write `RUN_LEDGER.md` using exactly this structure:
 
-```
 # Run Ledger
 
 ## Outcome
-- Task: <one-line summary>
-- Result: <PASS | FAIL | CONDITIONAL>
-- Scope: <what was changed>
+- Task: ...
+- Result: ...
+- Scope: ...
 
 ## Key Decisions
-- <decision 1 and rationale>
-- ...
+- Decision: ...
+  - Why: ...
+  - Tradeoff: ...
 
 ## Verification Learnings
-- <what tests/build/QA revealed>
 - ...
 
-## Breaker / Regression Learnings
-- <what the breaker or regression detector found>
+## Product / Stakeholder Learnings
 - ...
 
 ## Durable Repo Guidance
-- <reusable pattern, constraint, or principle discovered>
-- ...
+- Scope: repo-wide | subsystem-specific | one-off
+  - Guidance: ...
 
 ## Deferred / Follow-up
-- <what was explicitly out of scope or deferred>
 - ...
-```
 
 ## ACCEPTANCE
 
 Complete only if:
-- the ledger captures durable, high-signal content only
-- no section is empty (use "none" if nothing applies)
-- transient details are excluded
+- only durable high-signal items were included
+- decisions and learnings are evidence-backed
+- the ledger is compact enough to be worth rereading

@@ -1,7 +1,5 @@
 #!/bin/bash
 
-cd /home/alen/Developer/dj-tools
-
-source venv/bin/activate
-python src/scripts/feature_extraction/compute_compact_descriptors.py "$@"
-python src/scripts/feature_extraction/compute_track_traits.py "$@"
+source .venv/bin/activate
+python -m src.scripts.feature_extraction.compute_compact_descriptors "$@"
+python -m src.scripts.feature_extraction.compute_track_traits "$@"

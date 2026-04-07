@@ -2,230 +2,238 @@
 
 ## For humans only
 
-This file is an **operator manual for humans**.
+This file is the **operator manual**.
 
-It is **not** the primary runtime instruction surface for agents.
-
+It is not the primary runtime instruction surface for agents.
 Use it to decide:
-
-- which pipeline to use
-- how to initialize a run
-- how to write the task contract
-- which tool-specific instruction surface should carry the actual agent instructions
+- which loop to run
+- which command to use
+- how to phrase inputs
+- when to escalate from critique into a new delivery contract
 
 Responsibility is split cleanly:
-
 - `HUMANS.md` → human/operator documentation
 - `AGENTS.md` → shared agent-facing repository contract
-- `.harness/rules/` → scoped rules (symlinked to `.cursor/rules/` for Cursor)
-- `.harness/agents/` → agent definitions (symlinked to `.cursor/agents/` for Cursor)
-- `.harness/commands/` → pipeline commands (symlinked to `.cursor/commands/` for Cursor)
-- `CLAUDE.md` → Claude Code project memory (auto-loaded at project open)
-- `.agents/skills/` + `.codex/hooks.json` → Codex-native workflow packaging and deterministic enforcement
-
-Do **not** assume agents will read `HUMANS.md` automatically.
-Do **not** use this file as a substitute for the IDE or agent's native instruction-loading surface.
-
----
-
-## First-time setup
-
-This repository uses the standard agentic delivery harness. All required files for your chosen IDE are in place.
-
-If you are a **new team member** cloning this repo, or need to re-run setup:
-
-
-| IDE         | Setup                                                          |
-| ----------- | -------------------------------------------------------------- |
-| Cursor      | `bash .harness/bin/setup.sh` — recreates `.cursor/` symlinks   |
-| Claude Code | No setup required — `CLAUDE.md` is auto-loaded at project open |
-| Codex       | No setup required                                              |
-
+- `.harness/rules/` → scoped rules
+- `.harness/agents/` → agent definitions
+- `.harness/commands/` → workflow entrypoints
+- `CLAUDE.md` → Claude Code project memory
 
 ---
 
 ## Purpose
 
-This repository uses an **agentic harness**, not ad hoc one-off prompts.
+This repo uses an **agentic product-development harness**.
 
-Every task should enter through the appropriate **pipeline**, create a **run directory immediately**, and include explicit **acceptance criteria**, **non-goals**, and **scope constraints**.
+The harness is designed to support four connected loops:
+1. **Delivery** — build and verify changes
+2. **Stakeholder feedback** — critique the product from domain, design, and customer perspectives
+3. **Learning** — distill durable signal into run ledgers
+4. **Documentation upkeep** — keep docs and persona guidance aligned with what the team learns
 
----
-
-## Default entrypoint for any new task
-
-1. Choose the correct pipeline:
-  - `delivery` — product/code changes, bug fixes, features
-  - `maintenance` — scoped cleanup / hygiene
-  - `verification` — run gates on an existing run
-- `ledger-doc-sync` — update durable docs / structure from published run ledgers
-
-2. Start the pipeline using your IDE:
-  - **Cursor:** slash command (`/run-delivery-pipeline`, `/run-maintenance-pipeline`, `/run-verification-stack`)
-  - **Claude Code / Codex:** provide a structured prompt (see "Standard task brief template" below) and include the run initialization command
-3. Provide the task contract: what to do, acceptance criteria, and non-goals.
+The goal is not just "ship code."
+The goal is to create a repeatable system that can:
+- deliver narrowly
+- surface blind spots early
+- preserve important learning
+- keep customer and product understanding current
 
 ---
 
-## Which pipeline to use
+## First-time setup
 
+If you are a new team member cloning an already-bootstrapped repo, or need to re-run setup:
 
-| Pipeline      | When to use                                               | Cursor                      | Claude Code / Codex                                  |
-| ------------- | --------------------------------------------------------- | --------------------------- | ---------------------------------------------------- |
-| Delivery      | Bug fixes, features, behavior changes, API/UI work        | `/run-delivery-pipeline`    | Load `.harness/commands/run-delivery-pipeline.md`    |
-| Maintenance   | Low-risk cleanup, hygiene, behavior-preserving refactors  | `/run-maintenance-pipeline` | Load `.harness/commands/run-maintenance-pipeline.md` |
-| Verification  | Run build/test/eval/regression on an existing run         | `/run-verification-stack`   | Load `.harness/commands/run-verification-stack.md`   |
-| Ledger doc sync | Update docs / structure from published run ledgers since the last sync | `/run-ledger-doc-sync` | Load `.harness/commands/run-ledger-doc-sync.md` |
-| Restructure   | Scoped structural improvement, module reorganization      | `/run-restructure-pipeline` | Load `.harness/commands/run-restructure-pipeline.md` |
-| Repo research | Read-only codebase exploration and architecture questions | `/run-repo-research`        | Load `.harness/commands/run-repo-research.md`        |
-
-
-CLI (any IDE): `python3 .harness/bin/pipeline.py start --mode <delivery|maintenance|restructure> --task "..."`
+| IDE | Setup |
+|---|---|
+| Cursor | `bash .harness/bin/setup.sh` |
+| Claude Code | No setup required |
 
 ---
 
-## Standard task brief template
+## Default entrypoints
 
-For Cursor, append this after the slash command. For Claude Code and Codex, use it as the full startup prompt:
+### Use `/run-delivery-pipeline` when
+- implementing features
+- fixing bugs
+- making behavior-changing code changes
+- addressing a contract produced by the contract producer
 
-```md
-Read AGENTS.md and .harness/docs/core-beliefs.md.
-Load .harness/commands/run-delivery-pipeline.md.
-Initialize a run first: python3 .harness/bin/pipeline.py start --mode delivery --task "<TASK>"
+### Use `/run-product-feedback-loop` when
+- you want broader product critique, not just code review
+- a core workflow changed meaningfully
+- you want fresh customer/domain/design feedback
+- you want to turn stakeholder feedback into a new delivery contract
 
-Task: <plain-English task>
+### Use `/run-development-contract-producer` when
+- you have prose notes, breaker findings, SME/design feedback, or rough ideas
+- you need a clean DEVDSL-ready contract before handing work to the delivery pipeline
 
-Acceptance criteria:
-- <criterion 1>
-- <criterion 2>
+### Use `/run-breaker-followup` when
+- a completed run's breaker report found actionable issues
+- you want those issues turned into a fresh delivery run instead of patching them quietly in-place
 
-Non-goals:
-- <non-goal 1>
-
-Constraints:
-- patch-only
-- no scope expansion without explicit justification
-- preserve unrelated behavior
-```
+### Use `/run-ledger-doc-sync` when
+- ledgers have accumulated
+- docs are drifting
+- persona guidance or harness instructions need to reflect repeated learnings
 
 ---
 
-## Harness structure
+## Recommended default workflow
 
+### A. Build something
+1. Run `/run-delivery-pipeline`
+2. Let the delivery loop reach QA, build verification, breaker, evaluation, and ledger publication
+3. If breaker finds issues, prefer a **new follow-on run** over same-run patch churn
+
+### B. Evaluate the product as a product
+1. Run `/run-product-feedback-loop`
+2. This can invoke:
+   - Design Red Team
+   - Customer Persona Tester
+   - SME Red Team
+   - Development Contract Producer
+3. Use the resulting contract to start the next delivery run
+
+### C. Keep knowledge current
+1. Make sure meaningful runs publish `RUN_LEDGER.md`
+2. Batch-run `/run-ledger-doc-sync`
+3. Review doc-sync diffs before merge
+
+---
+
+## Breaker policy
+
+The breaker is intentionally adversarial.
+Its job is to test whether confidence is fake.
+
+If the breaker raises `BLOCKER` or `IMPORTANT` findings late in a run, the preferred response is:
+1. preserve the current run as evidence
+2. generate a new contract from `BREAKER_REPORT.md`
+3. start a brand-new delivery run from that contract
+
+This is better than endlessly mutating the original run because it:
+- preserves the audit trail
+- makes the adversarial finding explicit
+- treats the new problem as first-class work
+
+Human override is allowed, but should be rare.
+
+---
+
+## What belongs in a run ledger
+
+Keep run ledgers short and rereadable.
+Good ledger content:
+- the decision that mattered
+- the tradeoff that mattered
+- the failure mode worth remembering
+- the verification blind spot that caused pain
+- the product/customer insight likely to matter again
+- the repo guidance that should change future behavior
+
+Bad ledger content:
+- every tool call
+- full reasoning traces
+- generic commentary
+- low-value narration of the run
+
+---
+
+## Product feedback loop details
+
+### SME Red Team
+Use for:
+- domain and customer critique
+- market/use-case sanity checks
+- prioritizable product recommendations
+- maintaining or refining the customer persona spec incrementally
+
+Expected outputs:
+- `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md` when the persona definition changes materially
+- run-local `SME_RECOMMENDATIONS.md`
+
+### Design Red Team
+Use for:
+- end-to-end UI/UX critique
+- workflow friction
+- hierarchy, clarity, information density, state handling, and navigation problems
+
+Expected output:
+- run-local `DESIGN_RECOMMENDATIONS.md`
+
+### Customer Persona Tester
+Use for:
+- "Would the target customer understand and trust this?"
+- friction and confusion reports from the user's perspective
+- validating that the current persona spec is realistic enough to exercise workflows meaningfully
+
+Expected output:
+- run-local `CUSTOMER_PERSONA_FEEDBACK.md`
+
+### Development Contract Producer
+Use for:
+- turning raw critiques into implementation-ready contracts
+- normalizing mixed inputs into one clean scoped task
+- feeding delivery work without making the delivery supervisor reverse-engineer ambiguous prose
+
+Expected output:
+- run-local `DEVELOPMENT_CONTRACT.md`
+
+---
+
+## Human review checkpoints
+
+A human should explicitly review:
+1. breaker follow-on contracts before large new runs
+2. doc-sync changes before merge
+3. changes to the customer persona spec
+4. any recommendation set that could change roadmap or product positioning
+5. repeated failures suggesting the harness itself needs tuning
+
+---
+
+## Suggested team rhythm
+
+### Per task
+- use `/run-delivery-pipeline` for real code work
+- publish a run ledger when the run is meaningful
+
+### Weekly or after a meaningful slice of change
+- use `/run-product-feedback-loop` on core workflows
+- decide whether any recommendations deserve contracts now
+
+### Weekly or biweekly
+- use `/run-ledger-doc-sync`
+
+### Monthly
+- review the quality of:
+  - breaker findings
+  - contract quality
+  - persona realism
+  - recommendation-to-delivery conversion rate
+
+---
+
+## Quick examples
+
+### Turn breaker findings into a new run
 ```text
-.harness/                         # git-tracked canonical source
-├── agents/                       # agent definitions
-├── commands/                     # pipeline command definitions
-├── rules/                        # scoped rules (.mdc)
-├── docs/                         # harness knowledge base
-├── pipeline.yaml                 # allowed commands, stages, policy limits
-├── bin/
-│   ├── pipeline.py               # deterministic runner and artifact helper
-│   └── setup.sh                  # Cursor IDE symlink bootstrapper
-├── runs/                         # ephemeral run artifacts (gitignored)
-├── ledgers/                      # persistent compact run learnings + doc sync state
-├── change_summaries/             # gitignored
-└── pr_descriptions/              # gitignored
-
-.cursor/                          # Cursor only — gitignored; created by setup.sh
-├── agents/  -> ../.harness/agents
-├── commands/ -> ../.harness/commands
-└── rules/   -> ../.harness/rules
-
-CLAUDE.md                         # Claude Code only — project memory; auto-loaded
-.agents/skills/                   # Codex only — portable workflow skill packages
-.codex/                           # Codex only — hooks and config
+/run-breaker-followup run_dir=.harness/runs/20260405T120000Z severity_threshold=IMPORTANT
 ```
 
-
-| IDE         | Instruction surface                      | Agent definitions                                | Rules / triggers                               |
-| ----------- | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
-| Cursor      | `AGENTS.md` + `.cursor/rules/` (symlink) | `.cursor/agents/` (symlink → `.harness/agents/`) | `.cursor/rules/` (symlink → `.harness/rules/`) |
-| Claude Code | `CLAUDE.md` → `AGENTS.md`                | In-context via `AGENTS.md`                       | `.harness/docs/core-beliefs.md`                |
-| Codex       | `AGENTS.md`                              | In-context via `AGENTS.md`                       | `.agents/skills/`, `.codex/hooks.json`         |
-
-
----
-
-## Bootstrap and Docs Sync
-
-The harness includes a bootstrap system that scans the repo, infers state, and manages generated documentation sections.
-
-### How to bootstrap
-
-```bash
-# 1. Scan the repo to generate state files
-python3 .harness/bin/bootstrap.py scan
-
-# 2. Review proposed doc updates
-python3 .harness/bin/bootstrap.py plan
-
-# 3. Apply approved changes (only generated sections, never manual prose)
-python3 .harness/bin/bootstrap.py apply
-
-# 4. Verify everything is consistent
-python3 .harness/bin/bootstrap.py doctor
+### Generate a contract from mixed notes
+```text
+/run-development-contract-producer
+sources=.harness/runs/20260405T120000Z/BREAKER_REPORT.md,notes/rough-ideas.md
+intent=delivery
 ```
 
-### Incremental sync
-
-When the repo evolves, run `sync` to detect drift and queue doc updates:
-
-```bash
-python3 .harness/bin/bootstrap.py sync
+### Run the stakeholder loop after a strong candidate build exists
+```text
+/run-product-feedback-loop
+focus=core questionnaire workflow
+candidate_run_dir=.harness/runs/20260405T120000Z
+auto_start_delivery=false
 ```
-
-### Generated vs manual docs
-
-Generated sections use explicit markers:
-
-```
-<!-- BEGIN GENERATED: <section-id> source=<path> ... -->
-content here
-<!-- END GENERATED: <section-id> -->
-```
-
-Rules:
-
-- Content inside markers is machine-managed — edits will be overwritten on next apply
-- Content outside markers is manual and preserved byte-for-byte
-- Auto-apply only triggers when confidence >= 0.85 and no high-risk domains are touched
-- Low-confidence updates are queued in `pending-doc-updates.yaml` for human review
-
-### IDE instruction surfaces
-
-
-| Surface            | Purpose                                 | Who reads it  |
-| ------------------ | --------------------------------------- | ------------- |
-| `AGENTS.md`        | Shared agent-facing repo contract       | All agents    |
-| `HUMANS.md`        | Human/operator manual                   | Humans only   |
-| `CLAUDE.md`        | Claude Code shim (references AGENTS.md) | Claude Code   |
-| `.harness/rules/`  | Scoped rules (Cursor via symlink)       | Cursor agents |
-| `.harness/agents/` | Agent definitions                       | All pipelines |
-
-
-### State files
-
-All state lives under `.harness/state/`. These are generated artifacts — safe to regenerate with `scan`.
-
-For details, see `.harness/docs/bootstrap-usage.md` and `.harness/docs/design-docs/bootstrap-docs-sync.md`.
-
----
-
-## Human operator checklist
-
-Before starting work:
-
-- choose the correct pipeline mode
-- initialize the run immediately
-- provide acceptance criteria
-- provide non-goals
-
-Before accepting output:
-
-- run artifacts were created
-- validation and evaluation ran
-- regression checks ran
-- breaker report was produced for delivery work
-- run ledger was curated and published
-- any retries were bounded and justified

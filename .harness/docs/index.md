@@ -1,6 +1,6 @@
 # Harness Knowledge Base
 
-This directory contains the harness-specific knowledge base: execution contract, design rationale, and operating principles.
+This directory contains the harness-specific knowledge base: execution contract, design rationale, operating principles, and durable workflow guidance.
 
 Start with [AGENTS.md](../../AGENTS.md) for the top-level map.
 
@@ -9,21 +9,6 @@ Start with [AGENTS.md](../../AGENTS.md) for the top-level map.
 | Section | Path | Description |
 |---|---|---|
 | Core beliefs | [core-beliefs.md](core-beliefs.md) | Execution contract (DEVDSL-1.1) and operating principles |
-| Delivery batch execution | [delivery-batch-execution.md](delivery-batch-execution.md) | MODE=multi batch execution: usage, semantics, and artifact schema |
-| Design docs | [design-docs/](design-docs/) | Harness design decisions and rationale |
 | Ledgers | [../ledgers/README.md](../ledgers/README.md) | Durable run summaries and doc sync state |
-
-## Repository Documentation
-
-| Document | Description |
-|---|---|
-| [Architecture](../../docs/ARCHITECTURE.md) | Domain map, package layering, dependency rules |
-| [Workflows](../../docs/WORKFLOWS.md) | Ingestion pipeline, metadata agent, harmonic mixing, web client user flows |
-| [Conventions](../../docs/CONVENTIONS.md) | Coding conventions and patterns |
-
-## Design Docs
-
-See [design-docs/index.md](design-docs/index.md) for the full catalog.
-
-Notable:
-- [agentic-harness-v2.md](design-docs/agentic-harness-v2.md) — updated harness layout, retry loops, and verification model
+| Contracts | [../contracts/README.md](../contracts/README.md) | Development contract production and usage guidance |
+| Product feedback | [../product-feedback/README.md](../product-feedback/README.md) | Persona guidance and stakeholder feedback loop |
