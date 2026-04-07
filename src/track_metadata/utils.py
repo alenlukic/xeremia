@@ -40,6 +40,7 @@ LOG_FILE_PATH = LOG_DIR / f"{RUN_START}.log"
 
 SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".aiff", ".aif", ".wav"}
 SANITIZE_PATTERN = re.compile(r"[^\w.\- &'()\[\]]+")
+_AIFF_PCM_SUBTYPES = frozenset({"PCM_S8", "PCM_16", "PCM_24", "PCM_32"})
 
 
 def setup_logging(level: int = logging.INFO) -> None:
@@ -106,6 +107,12 @@ def stage_file(source: Path, processing_dir: Path = PROCESSING_DIR) -> Path:
 def convert_wav_to_aiff(wav_path: Path) -> Path:
     """Convert a WAV file to AIFF, preserving audio fidelity.
 
+    The source PCM subtype is preserved when it belongs to the standard PCM
+    allowlist (PCM_S8, PCM_16, PCM_24, PCM_32) and is valid for AIFF.
+    Non-PCM subtypes (e.g. FLOAT, DOUBLE) are written as PCM_24 to ensure
+    the output is a standard AIFF file readable on all platforms, including
+    Windows 11.
+
     Returns the path of the new AIFF file. The original WAV is removed
     after a successful conversion.
     """
@@ -115,7 +122,11 @@ def convert_wav_to_aiff(wav_path: Path) -> Path:
     try:
         info = sf.info(str(wav_path))
         data, samplerate = sf.read(str(wav_path))
-        subtype = info.subtype if sf.check_format("AIFF", info.subtype) else "PCM_16"
+        subtype = (
+            info.subtype
+            if info.subtype in _AIFF_PCM_SUBTYPES and sf.check_format("AIFF", info.subtype)
+            else "PCM_24"
+        )
         sf.write(str(aiff_path), data, samplerate, format="AIFF", subtype=subtype)
     except Exception:
         logging.error("Failed to convert %s to AIFF", wav_path.name)
