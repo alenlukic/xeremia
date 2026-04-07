@@ -38,7 +38,8 @@ const SCORE_HEADERS = [
   'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
 ];
 
-const ALL_HEADERS = ['Track', ...SCORE_HEADERS, ''];
+const ALL_HEADERS_WITH_ACTIONS = ['Track', ...SCORE_HEADERS, ''];
+const ALL_HEADERS_NO_ACTIONS = ['Track', ...SCORE_HEADERS];
 
 const selectedTrack = {
   id: 1, title: 'On Deck', artist_names: ['A'],
@@ -47,7 +48,7 @@ const selectedTrack = {
 
 describe('MatchesPanel', () => {
   describe('column headers', () => {
-    it('renders expected headers in exact order', () => {
+    it('renders headers without actions column when onAddToSet is absent', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -56,7 +57,20 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS);
+      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS_NO_ACTIONS);
+    });
+
+    it('renders headers with actions column when onAddToSet is provided', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+          onAddToSet={vi.fn()}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader');
+      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS_WITH_ACTIONS);
     });
 
     it('includes Track column and score columns but not Score', () => {
@@ -73,8 +87,8 @@ describe('MatchesPanel', () => {
     });
   });
 
-  describe('resize and reorder chrome', () => {
-    it('renders a resize handle only on score headers', () => {
+  describe('default column sizing', () => {
+    it('score columns render at ~2/3 of original defaults (60px for most, 73px for energy/instruments)', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -82,8 +96,68 @@ describe('MatchesPanel', () => {
           loading={false}
         />
       );
+      const headers = screen.getAllByRole('columnheader');
+      const widths = headers.map(h => (h as HTMLElement).style.width);
+      expect(widths[1]).toBe('60px');
+      expect(widths[2]).toBe('60px');
+      expect(widths[3]).toBe('60px');
+      expect(widths[4]).toBe('60px');
+      expect(widths[5]).toBe('60px');
+      expect(widths[6]).toBe('73px');
+      expect(widths[7]).toBe('60px');
+      expect(widths[8]).toBe('73px');
+      expect(widths[9]).toBe('60px');
+    });
+
+    it('track column renders at 484px', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader');
+      expect((headers[0] as HTMLElement).style.width).toBe('484px');
+    });
+
+    it('when onAddToSet is provided, the actions column is 80px and score widths are unchanged', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+          onAddToSet={vi.fn()}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader');
+      expect((headers[0] as HTMLElement).style.width).toBe('484px');
+      expect((headers[1] as HTMLElement).style.width).toBe('60px');
+      expect((headers[6] as HTMLElement).style.width).toBe('73px');
+      expect((headers[8] as HTMLElement).style.width).toBe('73px');
+      expect((headers[10] as HTMLElement).style.width).toBe('80px');
+    });
+  });
+
+  describe('resize and reorder chrome', () => {
+    it('renders a resize handle on Track and score headers but not actions', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+          onAddToSet={vi.fn()}
+        />
+      );
       const resizers = document.querySelectorAll('.col-resizer');
       expect(resizers.length).toBe(SCORE_HEADERS.length);
+
+      const headers = document.querySelectorAll('.matches-table thead th');
+      const trackTh = headers[0];
+      expect(trackTh.querySelector('.col-resizer')).toBeNull();
+
+      const actionsTh = headers[headers.length - 1];
+      expect(actionsTh.querySelector('.col-resizer')).toBeNull();
     });
 
     it('renders draggable header content only on score headers', () => {
@@ -216,7 +290,7 @@ describe('MatchesPanel', () => {
       expect(links[1].textContent).toBe('Red Sky');
     });
 
-    it('calls onViewDetail when track title is clicked', async () => {
+    it('calls onViewDetail when detail icon button is clicked', async () => {
       const onViewDetail = vi.fn();
       const match = makeMatch({ title: 'Deep Blue' });
       render(
@@ -227,7 +301,9 @@ describe('MatchesPanel', () => {
           onViewDetail={onViewDetail}
         />
       );
-      await userEvent.click(screen.getByText('Deep Blue'));
+      const detailBtns = document.querySelectorAll('.match-detail-btn');
+      expect(detailBtns.length).toBe(1);
+      await userEvent.click(detailBtns[0]);
       expect(onViewDetail).toHaveBeenCalledWith(match);
     });
 
@@ -239,14 +315,31 @@ describe('MatchesPanel', () => {
           loading={false}
         />
       );
-      const link = document.querySelector('.match-track-link') as HTMLElement;
-      expect(link.getAttribute('title')).toBe('View match detail');
-      expect(link.getAttribute('aria-label')).toBe('View match detail for Deep Blue');
+      const btns = document.querySelectorAll('.match-detail-btn');
+      expect(btns.length).toBe(1);
+      expect(btns[0].getAttribute('aria-label')).toBe('View match detail for Deep Blue');
+    });
+
+    it('track title click calls onUseAsSource, not onViewDetail', async () => {
+      const onViewDetail = vi.fn();
+      const onUseAsSource = vi.fn();
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch({ candidate_id: 7, title: 'Deep Blue' })]}
+          loading={false}
+          onViewDetail={onViewDetail}
+          onUseAsSource={onUseAsSource}
+        />
+      );
+      await userEvent.click(screen.getByText('Deep Blue'));
+      expect(onUseAsSource).toHaveBeenCalledWith(7);
+      expect(onViewDetail).not.toHaveBeenCalled();
     });
   });
 
   describe('use as source action', () => {
-    it('renders a Use as source button for each match row', () => {
+    it('track title acts as use-as-source trigger for each row', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -254,11 +347,11 @@ describe('MatchesPanel', () => {
           loading={false}
         />
       );
-      const buttons = screen.getAllByTitle('Use as source track');
-      expect(buttons.length).toBe(2);
+      const links = screen.getAllByTitle('Use as source track');
+      expect(links.length).toBe(2);
     });
 
-    it('calls onUseAsSource with candidate_id when clicked', async () => {
+    it('calls onUseAsSource with candidate_id when track title clicked', async () => {
       const onUseAsSource = vi.fn();
       render(
         <MatchesPanel
@@ -271,50 +364,8 @@ describe('MatchesPanel', () => {
       await userEvent.click(screen.getByTitle('Use as source track'));
       expect(onUseAsSource).toHaveBeenCalledWith(42);
     });
-  });
 
-  describe('default column sizing', () => {
-    it('applies rebalanced default widths — score columns at ~2/3 of original', () => {
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />
-      );
-      const headers = screen.getAllByRole('columnheader');
-      const widths = headers.map(h => (h as HTMLElement).style.width);
-
-      expect(widths[0]).toBe('484px');  // Track (widened)
-      expect(widths[1]).toBe('60px');   // Spectral (was 90)
-      expect(widths[2]).toBe('60px');   // Key (was 90)
-      expect(widths[3]).toBe('60px');   // BPM (was 90)
-      expect(widths[4]).toBe('60px');   // Genre (was 90)
-      expect(widths[5]).toBe('60px');   // Recency (was 90)
-      expect(widths[6]).toBe('73px');   // Energy (was 110)
-      expect(widths[7]).toBe('60px');   // Mood (was 90)
-      expect(widths[8]).toBe('73px');   // Instruments (was 110)
-      expect(widths[9]).toBe('60px');   // Vocals (was 90)
-      expect(widths[10]).toBe('120px'); // Actions (unchanged)
-    });
-
-    it('preserves minimum total table width after rebalance', () => {
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />
-      );
-      const headers = screen.getAllByRole('columnheader');
-      const totalWidth = headers.reduce((sum, h) => {
-        const w = parseInt((h as HTMLElement).style.width, 10);
-        return sum + (isNaN(w) ? 0 : w);
-      }, 0);
-      expect(totalWidth).toBe(1170);
-    });
-
-    it('gives wider actions column when onAddToSet is provided without changing score widths', () => {
+    it('does not render a Use as source button in the actions column', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -323,10 +374,9 @@ describe('MatchesPanel', () => {
           onAddToSet={vi.fn()}
         />
       );
-      const headers = screen.getAllByRole('columnheader');
-      const actionsWidth = (headers[headers.length - 1] as HTMLElement).style.width;
-      expect(actionsWidth).toBe('190px');
-      expect((headers[0] as HTMLElement).style.width).toBe('484px');
+      const actionsCells = document.querySelectorAll('.match-actions-cell');
+      expect(actionsCells.length).toBe(1);
+      expect(actionsCells[0].textContent).not.toContain('Use as source');
     });
   });
 
@@ -343,7 +393,7 @@ describe('MatchesPanel', () => {
       expect(screen.getByTitle('Add to set')).toBeInTheDocument();
     });
 
-    it('does not render Add to Set button when onAddToSet is not provided', () => {
+    it('omits the actions column entirely when onAddToSet is not provided', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -352,6 +402,7 @@ describe('MatchesPanel', () => {
         />
       );
       expect(screen.queryByTitle('Add to set')).not.toBeInTheDocument();
+      expect(document.querySelectorAll('.match-actions-cell').length).toBe(0);
     });
 
     it('calls onAddToSet with candidate_id when clicked', async () => {
@@ -366,6 +417,70 @@ describe('MatchesPanel', () => {
       );
       await userEvent.click(screen.getByTitle('Add to set'));
       expect(onAddToSet).toHaveBeenCalledWith(99);
+    });
+  });
+
+  describe('column configurator', () => {
+    it('opens popover with score column checkboxes', async () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+      for (const label of SCORE_HEADERS) {
+        expect(screen.getByLabelText(label)).toBeInTheDocument();
+      }
+    });
+
+    it('does not list Track or actions as configurable columns', async () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+      expect(screen.queryByLabelText('Track')).not.toBeInTheDocument();
+      const checkboxes = document.querySelectorAll('.column-config-popover input[type="checkbox"]');
+      expect(checkboxes.length).toBe(SCORE_HEADERS.length);
+    });
+
+    it('hides a score column when its checkbox is unchecked', async () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headersBefore = screen.getAllByRole('columnheader').map(h => h.textContent);
+      expect(headersBefore).toContain('Spectral');
+
+      await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+      await userEvent.click(screen.getByLabelText('Spectral'));
+
+      const headersAfter = screen.getAllByRole('columnheader').map(h => h.textContent);
+      expect(headersAfter).not.toContain('Spectral');
+    });
+
+    it('re-shows a hidden column when its checkbox is re-checked', async () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+      await userEvent.click(screen.getByLabelText('Spectral'));
+      expect(screen.getAllByRole('columnheader').map(h => h.textContent)).not.toContain('Spectral');
+
+      await userEvent.click(screen.getByLabelText('Spectral'));
+      expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toContain('Spectral');
     });
   });
 });
