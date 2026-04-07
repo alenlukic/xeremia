@@ -6,6 +6,7 @@ interface SelectedTrackState {
   selectedTrack: Track | SearchSuggestion | null;
   matches: TransitionMatch[];
   matchesLoading: boolean;
+  matchesError: string | null;
   selectTrack: (track: Track | SearchSuggestion) => void;
   clearSelectedTrack: () => void;
   refetchMatches: () => void;
@@ -20,6 +21,7 @@ export function useSelectedTrack(onTrackAction?: () => void): SelectedTrackState
   const [selectedTrack, setSelectedTrack] = useState<Track | SearchSuggestion | null>(null);
   const [matches, setMatches] = useState<TransitionMatch[]>([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
+  const [matchesError, setMatchesError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const matchCacheRef = useRef<Map<number, TransitionMatch[]>>(new Map());
   const selectedTrackRef = useRef<Track | SearchSuggestion | null>(null);
@@ -39,11 +41,15 @@ export function useSelectedTrack(onTrackAction?: () => void): SelectedTrackState
         if (!controller.signal.aborted) {
           matchCacheRef.current.set(trackId, data);
           setMatches(data);
+          setMatchesError(null);
           onTrackActionRef.current?.();
         }
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setMatches([]);
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) {
+          setMatches([]);
+          setMatchesError(err instanceof Error ? err.message : 'Failed to load matches');
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setMatchesLoading(false);
@@ -58,11 +64,13 @@ export function useSelectedTrack(onTrackAction?: () => void): SelectedTrackState
     const cached = matchCacheRef.current.get(track.id);
     if (cached) {
       setMatches(cached);
+      setMatchesError(null);
       setMatchesLoading(false);
       return;
     }
 
     setMatches([]);
+    setMatchesError(null);
     loadMatches(track.id);
   }, [loadMatches]);
 
@@ -72,6 +80,7 @@ export function useSelectedTrack(onTrackAction?: () => void): SelectedTrackState
     setSelectedTrack(null);
     selectedTrackRef.current = null;
     setMatches([]);
+    setMatchesError(null);
     setMatchesLoading(false);
   }, []);
 
@@ -82,5 +91,5 @@ export function useSelectedTrack(onTrackAction?: () => void): SelectedTrackState
     loadMatches(track.id);
   }, [loadMatches]);
 
-  return { selectedTrack, matches, matchesLoading, selectTrack, clearSelectedTrack, refetchMatches };
+  return { selectedTrack, matches, matchesLoading, matchesError, selectTrack, clearSelectedTrack, refetchMatches };
 }

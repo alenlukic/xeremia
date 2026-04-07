@@ -85,9 +85,10 @@ interface Props {
   selectTrack: (track: Track) => void;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  error?: string | null;
 }
 
-export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore }: Props) {
+export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -261,6 +262,12 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
               <tr>
                 <td colSpan={columns.length} className="table-status">
                   Loading tracks…
+                </td>
+              </tr>
+            ) : error ? (
+              <tr>
+                <td colSpan={columns.length} className="table-status table-status--error">
+                  Failed to load tracks — {error}
                 </td>
               </tr>
             ) : tracks.length === 0 ? (

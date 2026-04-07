@@ -18,7 +18,7 @@ type TabKey = 'matches' | 'browse' | 'admin';
 const BROWSE_PAGE_SIZE = 250;
 
 export default function App() {
-  const { allTracks, traitMap, loading: collectionLoading } = useCollectionCache();
+  const { allTracks, traitMap, loading: collectionLoading, tracksError, traitsError } = useCollectionCache();
 
   const [activeTab, setActiveTab] = useState<TabKey>('matches');
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null);
@@ -40,6 +40,7 @@ export default function App() {
     selectedTrack,
     matches,
     matchesLoading,
+    matchesError,
     selectTrack,
     clearSelectedTrack,
     refetchMatches,
@@ -209,6 +210,7 @@ export default function App() {
               selectedTrack={selectedTrack}
               matches={matches}
               loading={matchesLoading}
+              matchesError={matchesError}
               onScoreClick={setDetailMatch}
             />
           </div>
@@ -233,6 +235,11 @@ export default function App() {
               setBpmMin={setBpmMin}
               setBpmMax={setBpmMax}
             />
+            {traitsError && (
+              <p className="table-status table-status--error">
+                Failed to load track traits — {traitsError}
+              </p>
+            )}
             <TrackTable
               tracks={browseTracks}
               loading={collectionLoading}
@@ -240,6 +247,7 @@ export default function App() {
               selectTrack={handleBrowseSelect}
               hasMore={!selectedTrack ? hasMorePages : undefined}
               onLoadMore={!selectedTrack ? handleLoadMore : undefined}
+              error={tracksError}
             />
           </div>
         )}

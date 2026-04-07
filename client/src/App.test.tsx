@@ -10,6 +10,8 @@ vi.mock('./hooks/useCollectionCache', () => ({
     allTracks: [],
     traitMap: new Map(),
     loading: false,
+    tracksError: null,
+    traitsError: null,
   }),
 }));
 
@@ -84,6 +86,8 @@ beforeEach(() => {
     allTracks: makeTracks(600),
     traitMap: new Map(),
     loading: false,
+    tracksError: null,
+    traitsError: null,
   });
 });
 
@@ -290,5 +294,126 @@ describe('Browse infinite scroll', () => {
     await act(async () => { triggerLoadMore(); });
     expect(getRowCount()).toBe(600);
     expect(screen.queryByText('Loading more tracks…')).not.toBeInTheDocument();
+  });
+});
+
+describe('Error state handling', () => {
+  it('shows match fetch failure instead of empty-bucket message', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchMatches).mockRejectedValue(new Error('Failed to fetch matches: 500'));
+
+    vi.mocked(useCollectionCache).mockReturnValue({
+      allTracks: makeTracks(10),
+      traitMap: new Map(),
+      loading: false,
+      tracksError: null,
+      traitsError: null,
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    await act(async () => {
+      screen.getByText('Track 1').click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load matches/)).toBeInTheDocument();
+      expect(screen.getByText(/Failed to fetch matches: 500/)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('No matches in this bucket')).not.toBeInTheDocument();
+  });
+
+  it('shows successful zero-result message when match fetch returns empty', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([]);
+
+    vi.mocked(useCollectionCache).mockReturnValue({
+      allTracks: makeTracks(10),
+      traitMap: new Map(),
+      loading: false,
+      tracksError: null,
+      traitsError: null,
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    await act(async () => {
+      screen.getByText('Track 1').click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('No matches in this bucket')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/Failed to load matches/)).not.toBeInTheDocument();
+  });
+
+  it('shows browse track fetch failure instead of No tracks found', async () => {
+    vi.mocked(useCollectionCache).mockReturnValue({
+      allTracks: [],
+      traitMap: new Map(),
+      loading: false,
+      tracksError: 'Failed to fetch tracks: 503',
+      traitsError: null,
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    expect(screen.getByText(/Failed to load tracks/)).toBeInTheDocument();
+    expect(screen.getByText(/Failed to fetch tracks: 503/)).toBeInTheDocument();
+    expect(screen.queryByText('No tracks found')).not.toBeInTheDocument();
+  });
+
+  it('shows No tracks found when browse fetch succeeds with zero tracks', async () => {
+    vi.mocked(useCollectionCache).mockReturnValue({
+      allTracks: [],
+      traitMap: new Map(),
+      loading: false,
+      tracksError: null,
+      traitsError: null,
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    expect(screen.getByText('No tracks found')).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load tracks/)).not.toBeInTheDocument();
+  });
+
+  it('shows traits fetch failure in Browse without hiding successfully loaded tracks', async () => {
+    vi.mocked(useCollectionCache).mockReturnValue({
+      allTracks: makeTracks(10),
+      traitMap: new Map(),
+      loading: false,
+      tracksError: null,
+      traitsError: 'Failed to fetch track traits: 502',
+    });
+
+    render(<App />);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click();
+    });
+
+    expect(screen.getByText(/Failed to load track traits/)).toBeInTheDocument();
+    expect(screen.getByText(/Failed to fetch track traits: 502/)).toBeInTheDocument();
+    expect(screen.getByText('Track 1')).toBeInTheDocument();
+    expect(screen.queryByText('No tracks found')).not.toBeInTheDocument();
   });
 });

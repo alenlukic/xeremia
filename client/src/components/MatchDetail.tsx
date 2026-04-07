@@ -10,20 +10,20 @@ import type { TraitMap } from '../hooks/useCollectionCache';
 import { fetchMatchDetail } from '../api/http';
 import { formatFloat, formatScore, formatOverallScore, displayGenre } from '../utils';
 
-type DetailState = { loading: boolean; detail: MatchDetailData | null };
+type DetailState = { loading: boolean; detail: MatchDetailData | null; error: string | null };
 type DetailAction =
   | { type: 'fetch' }
   | { type: 'success'; detail: MatchDetailData }
-  | { type: 'error' };
+  | { type: 'error'; message: string };
 
 function detailReducer(_: DetailState, action: DetailAction): DetailState {
   switch (action.type) {
     case 'fetch':
-      return { loading: true, detail: null };
+      return { loading: true, detail: null, error: null };
     case 'success':
-      return { loading: false, detail: action.detail };
+      return { loading: false, detail: action.detail, error: null };
     case 'error':
-      return { loading: false, detail: null };
+      return { loading: false, detail: null, error: action.message };
   }
 }
 
@@ -104,9 +104,10 @@ function capitalizeFirst(s: string): string {
 }
 
 export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
-  const [{ loading, detail }, dispatch] = useReducer(detailReducer, {
+  const [{ loading, detail, error }, dispatch] = useReducer(detailReducer, {
     loading: true,
     detail: null,
+    error: null,
   });
 
   useEffect(() => {
@@ -120,7 +121,10 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
         }
         dispatch({ type: 'success', detail: result });
       })
-      .catch(() => dispatch({ type: 'error' }));
+      .catch((err: unknown) => dispatch({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to load match detail',
+      }));
   }, [sourceTrack, match, traitMap]);
 
   if (loading) {
@@ -140,7 +144,9 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
         <button className="back-button" onClick={onBack}>
           ← Back
         </button>
-        <p className="table-status">Failed to load match detail</p>
+        <p className="table-status table-status--error">
+          Failed to load match detail{error ? ` — ${error}` : ''}
+        </p>
       </div>
     );
   }
