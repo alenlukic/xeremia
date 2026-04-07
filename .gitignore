@@ -155,3 +155,5 @@ node_modules/
 client/dist/
 client/node_modules/
 *.tsbuildinfo
+
+processing/
