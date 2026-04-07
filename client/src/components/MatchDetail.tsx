@@ -69,11 +69,23 @@ function renderValue(value: unknown): React.ReactNode {
   return <span>{String(value)}</span>;
 }
 
+const FACTOR_DISPLAY_LABELS: Record<string, string> = {
+  'Cosine Similarity': 'Spectral',
+  Camelot: 'Key',
+  BPM: 'BPM',
+  Freshness: 'Recency',
+  Energy: 'Energy (MIK)',
+  'Genre Similarity': 'Genre',
+  'Mood Continuity': 'Mood',
+  'Vocal Clash': 'Vocals',
+  'Instrument Similarity': 'Instruments',
+};
+
 const TRAIT_LABELS: Record<string, string> = {
-  voice_instrumental: 'Voice / Instrumental',
-  onset_density: 'Onset Density',
-  spectral_flatness: 'Spectral Flatness',
-  mood_theme: 'Mood / Theme',
+  voice_instrumental: 'Vocals',
+  onset_density: 'Onsets',
+  spectral_flatness: 'Flatness',
+  mood_theme: 'Mood',
   genre: 'Genre',
   instruments: 'Instruments',
 };
@@ -92,13 +104,14 @@ const FIXED_ROWS: FieldDef[][] = [
     { label: 'Energy', getValue: (t) => t.energy },
   ],
   [
-    { label: 'Voice / Instrumental', getValue: (t) => t.traits?.['voice_instrumental'] },
-    { label: 'Onset Density', getValue: (t) => t.traits?.['onset_density'] },
-    { label: 'Spectral Flatness', getValue: (t) => t.traits?.['spectral_flatness'] },
+    { label: 'Vocals', getValue: (t) => t.traits?.['voice_instrumental'] },
+    { label: 'Onsets', getValue: (t) => t.traits?.['onset_density'] },
+    { label: 'Flatness', getValue: (t) => t.traits?.['spectral_flatness'] },
+    { label: 'Mood', getValue: (t) => t.traits?.['mood_theme'] },
   ],
 ];
 
-const VARIABLE_KEYS = ['mood_theme', 'genre', 'instruments'] as const;
+const VARIABLE_KEYS = ['genre', 'instruments'] as const;
 
 function capitalizeFirst(s: string): string {
   if (!s) return s;
@@ -203,7 +216,7 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSourc
           <tbody>
             {detail.factors.map((f) => (
               <tr key={f.name}>
-                <td>{f.name === 'Similarity' ? 'Spectral' : f.name}</td>
+                <td>{FACTOR_DISPLAY_LABELS[f.name] ?? f.name}</td>
                 <td className="mono">{formatScore(f.score)}</td>
                 <td className="mono">{formatScore(f.weight)}</td>
                 <td className="mono">{formatScore(f.score * f.weight)}</td>

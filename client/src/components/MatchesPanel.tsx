@@ -115,6 +115,7 @@ export const MatchesPanel = memo(function MatchesPanel({
           className="match-track-link"
           onClick={() => onViewDetail?.(info.row.original)}
           title="View match detail"
+          aria-label={`View match detail for ${info.getValue()}`}
         >
           {info.getValue()}
         </button>
