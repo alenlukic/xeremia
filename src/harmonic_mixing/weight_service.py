@@ -65,7 +65,10 @@ class WeightService:
 
     def _load_from_db(self) -> None:
         needs_persist = False
-        self._ensure_table()
+        try:
+            self._ensure_table()
+        except Exception:
+            logger.debug("_ensure_table raised during load; continuing")
         try:
             from src.db import database
             from src.models.scoring_weight_override import ScoringWeightOverride

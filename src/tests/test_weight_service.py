@@ -238,6 +238,76 @@ class TestWeightPropagation:
             TransitionMatch.effective_weights = None
 
 
+class TestEnsureTableBehavior:
+    """Verify _ensure_table lifecycle and graceful fallback on failure."""
+
+    def test_ensure_table_called_during_init(self):
+        """_ensure_table must be invoked when the service initializes."""
+        _, mods = _fake_db()
+        with patch.dict(sys.modules, mods), \
+             patch(
+                 "src.harmonic_mixing.weight_service.WeightService._ensure_table"
+             ) as mock_et, \
+             patch(
+                 "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+             ):
+            from src.harmonic_mixing.weight_service import WeightService
+
+            svc = WeightService()
+            mock_et.assert_called_once()
+
+    def test_load_succeeds_when_ensure_table_raises(self):
+        """Persisted rows must load even if _ensure_table raises."""
+        from src.harmonic_mixing.weight_service import (
+            WeightService,
+            _FUSION_WEIGHT_DEFAULTS,
+        )
+
+        saved = {f.name: 0.20 for f in MatchFactors}
+        saved["BPM"] = 0.80
+        saved.update(_FUSION_WEIGHT_DEFAULTS)
+        payload = json.dumps(saved)
+
+        mock_row = MagicMock()
+        mock_row.weights_json = payload
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = (
+            mock_row
+        )
+
+        mock_db_mod = ModuleType("src.db")
+        mock_database = MagicMock()
+        mock_database.create_session.return_value = mock_session
+        mock_db_mod.database = mock_database
+
+        mock_model_mod = ModuleType("src.models.scoring_weight_override")
+        mock_model_mod.ScoringWeightOverride = _MockOverride
+
+        mods = {
+            "src.db": mock_db_mod,
+            "src.models.scoring_weight_override": mock_model_mod,
+        }
+
+        with patch(
+            "src.harmonic_mixing.weight_service.WeightService._load_from_db"
+        ), patch(
+            "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+        ):
+            svc = WeightService()
+
+        svc._load_from_db = WeightService._load_from_db.__get__(svc)
+
+        with patch.dict(sys.modules, mods), \
+             patch.object(
+                 svc, "_ensure_table", side_effect=Exception("table create failed")
+             ), \
+             patch.object(svc, "_persist_to_db"):
+            svc._load_from_db()
+
+        assert svc._raw_weights["BPM"] == pytest.approx(0.80, abs=1e-9)
+
+
 class _MockOverride:
     """Stand-in for ScoringWeightOverride that works without a real DB."""
 
@@ -472,3 +542,56 @@ class TestStaleKeyMigration:
         svc = self._load_with_payload(payload)
         result = svc.get_weights()
         assert result["raw_sum"] == pytest.approx(100.0, abs=0.1)
+
+    def test_stale_key_cleanup_re_persists_cleaned_payload(self):
+        """After stale keys are stripped and redistributed, _persist_to_db
+        must be invoked and the resulting in-memory weights must contain
+        only valid keys (no stale keys)."""
+        from src.harmonic_mixing.weight_service import WeightService
+
+        stale_weight = 0.05
+        payload = self._build_saved_payload({
+            "DANCEABILITY": stale_weight,
+            "TIMBRE": stale_weight,
+        })
+
+        mock_row = MagicMock()
+        mock_row.weights_json = payload
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = (
+            mock_row
+        )
+
+        mock_db_mod = ModuleType("src.db")
+        mock_database = MagicMock()
+        mock_database.create_session.return_value = mock_session
+        mock_db_mod.database = mock_database
+        mock_db_mod.Base = MagicMock()
+
+        mock_model_mod = ModuleType("src.models.scoring_weight_override")
+        mock_model_mod.ScoringWeightOverride = _MockOverride
+
+        mods = {
+            "src.db": mock_db_mod,
+            "src.models.scoring_weight_override": mock_model_mod,
+        }
+
+        with patch(
+            "src.harmonic_mixing.weight_service.WeightService._load_from_db"
+        ), patch(
+            "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+        ):
+            svc = WeightService()
+
+        svc._load_from_db = WeightService._load_from_db.__get__(svc)
+
+        with patch.dict(sys.modules, mods), \
+             patch.object(svc, "_persist_to_db") as mock_persist:
+            svc._load_from_db()
+            mock_persist.assert_called_once()
+
+        assert "DANCEABILITY" not in svc._raw_weights
+        assert "TIMBRE" not in svc._raw_weights
+        for f in MatchFactors:
+            assert f.name in svc._raw_weights
