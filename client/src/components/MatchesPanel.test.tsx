@@ -150,11 +150,11 @@ describe('MatchesPanel', () => {
         />
       );
       const resizers = document.querySelectorAll('.col-resizer');
-      expect(resizers.length).toBe(SCORE_HEADERS.length);
+      expect(resizers.length).toBe(SCORE_HEADERS.length + 1); // Track + score columns
 
       const headers = document.querySelectorAll('.matches-table thead th');
       const trackTh = headers[0];
-      expect(trackTh.querySelector('.col-resizer')).toBeNull();
+      expect(trackTh.querySelector('.col-resizer')).toBeTruthy();
 
       const actionsTh = headers[headers.length - 1];
       expect(actionsTh.querySelector('.col-resizer')).toBeNull();

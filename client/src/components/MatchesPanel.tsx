@@ -400,7 +400,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
                         </div>
-                        {header.column.getCanResize() && isScore && (
+                        {header.column.getCanResize() && (
                           <div
                             className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
                             onMouseDown={header.getResizeHandler()}
