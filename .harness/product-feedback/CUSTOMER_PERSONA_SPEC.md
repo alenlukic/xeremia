@@ -39,6 +39,7 @@ A software developer who DJs as a serious hobby or semi-professionally and wants
 | Transition | The mix point between two tracks; quality depends on harmonic, rhythmic, and timbral compatibility |
 | Key clash | When two tracks in incompatible keys play simultaneously, producing dissonance |
 | Vocal clash | When two tracks with prominent vocals overlap, creating a muddy or distracting mix |
+| Cosine Similarity | API factor name for the 75-D descriptor similarity score (internal: `DESCRIPTOR_SIMILARITY`). Not called "Similarity" or "Spectral Similarity" in the product |
 | Crate / collection | The DJ's full library or a curated subset for a specific gig or genre |
 | Set | An ordered sequence of tracks for a performance, typically 1–4 hours |
 | USB export | Preparing a formatted USB drive with tracks and metadata for use on CDJ/XDJ hardware |
@@ -54,16 +55,16 @@ A software developer who DJs as a serious hobby or semi-professionally and wants
 ## Main Workflow Goals
 
 1. **Weekly library maintenance:** Download 10–30 new tracks → metadata agent enrichment → MIK analysis → Rekordbox import → ingestion pipeline → feature extraction → library is ready
-2. **Set preparation:** Pick a starting track → find matches → follow transition chains → build a set of 15–40 tracks → verify transitions → export to USB
-3. **Weight experimentation:** Adjust scoring weights for different set styles (high-energy techno vs deep house vs eclectic) → see how results change → save preferred weight profiles
+2. **Set preparation:** Pick a starting track → find matches → follow transition chains (A→B→C via "Use as source") → build a named set → verify transitions → export to m3u8. *(MVP set builder shipped April 2026; client-local named sets with transition quality display, reorder, and m3u8 export. USB/Rekordbox handoff remains deferred.)*
+3. **Weight experimentation:** Adjust scoring weights for different set styles (high-energy techno vs deep house vs eclectic) → see how results change → save preferred weight profiles. *(Fusion subweights now materially affect live scoring as of April 2026.)*
 4. **Collection audit:** Browse by key/BPM/genre to identify gaps ("I have nothing in 4A around 124 BPM") or oversaturation
 
 ## Major Fears / Friction / Failure Sensitivities
 
-- **Analysis dead end:** The tool finds great matches but there's no way to get them into Rekordbox for actual performance. Manual re-searching defeats the purpose.
+- **Analysis dead end:** The tool finds great matches but there's no way to get them into Rekordbox for actual performance. Manual re-searching defeats the purpose. *(Partially addressed: m3u8 export and transition chaining shipped April 2026. Direct Rekordbox/USB integration remains the gap.)*
 - **Wrong key data:** A match scored 95 that sounds terrible because the key analysis was wrong. This destroys confidence in the entire system.
 - **Setup complexity:** PostgreSQL + Docker + Python + ONNX models + .env configuration is a significant barrier. If setup fails at any step, the user may abandon the tool entirely.
-- **Silent failures:** The UI showing "no matches" when the real problem is a backend error. The user can't tell if the tool is broken or if there genuinely aren't good matches.
+- **Silent failures:** The UI showing "no matches" when the real problem is a backend error. The user can't tell if the tool is broken or if there genuinely aren't good matches. *(Partially addressed: error states now distinguished from empty results on Browse and Matches surfaces as of April 2026. MatchDetail error rendering and retry UX remain deferred.)*
 - **Stale data:** Running feature extraction on 500 tracks takes time. If the user adds tracks and forgets to re-extract, matches for new tracks are degraded (missing descriptors/traits score 0.0 on those factors).
 - **Duplicates polluting results:** The same track appearing multiple times in match results wastes slots and looks unprofessional.
 
