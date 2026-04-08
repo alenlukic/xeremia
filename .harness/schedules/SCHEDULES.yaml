@@ -1,0 +1,18 @@
+version: 1
+jobs:
+  - id: rebuild-ledger-index
+    type: deterministic
+    cron: '17 3 * * *'
+    command: rebuild-ledger-index
+  - id: registry-render
+    type: deterministic
+    cron: '23 3 * * *'
+    command: registry-render
+  - id: bad-state-scan
+    type: deterministic
+    cron: '31 3 * * *'
+    command: bad-state-scan --active
+  - id: memory-sync
+    type: agent_gated
+    cron: '45 3 * * 1'
+    command: run-meta-memory-sync

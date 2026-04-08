@@ -1,7 +1,7 @@
 # Quality Rubric
 
 Rubric version: 1.0
-Reference this file from the Delivery Evaluator agent and any scoring logic.
+Reference this file from the Test Delivery Evaluator agent and any scoring logic.
 
 ## Grade bands
 
@@ -61,7 +61,7 @@ When run mode is maintenance or restructure:
 
 ## Score families
 
-**Change Score** — per run. Produced by the Delivery Evaluator agent.
+**Change Score** — per run. Produced by the Test Delivery Evaluator agent.
 Updated by: every delivery / maintenance / restructure run.
 
 **Module Health Score** — persistent, slow-moving.

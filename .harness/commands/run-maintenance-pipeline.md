@@ -41,9 +41,9 @@ Pass the run directory path and relevant artifacts as context to each subagent.
 ## DO
 
 1. Initialize run under `.harness/runs/`.
-2. Delegate the change to `Maintenance Coder`.
+2. Delegate the change to `Maint Coder`.
 3. Run scoped verification via `python3 .harness/bin/pipeline.py`.
-4. Delegate post-maintenance review to `Maintenance Reviewer`.
+4. Delegate post-maintenance review to `Maint Reviewer`.
 5. Run policy validation and evaluation.
 6. If evaluation or regression gates fail, use bounded remediation with `SECOND_PASS_PLAN.md`.
 

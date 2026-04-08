@@ -13,18 +13,22 @@ import subprocess
 import sys
 from typing import Any
 
-import yaml
+try:
+    import yaml
+except Exception:
+    yaml = None
 
-
-SCRIPT_PATH = pathlib.Path(__file__).resolve()
-ROOT = SCRIPT_PATH.parents[2]
-RUNS_DIR = ROOT / ".harness" / "runs"
-LEDGERS_DIR = ROOT / ".harness" / "ledgers"
-CONTRACTS_DIR = ROOT / ".harness" / "contracts"
-PRODUCT_FEEDBACK_DIR = ROOT / ".harness" / "product-feedback"
-LEDGER_INDEX_PATH = LEDGERS_DIR / "INDEX.json"
-DOC_SYNC_STATE_PATH = LEDGERS_DIR / "DOC_SYNC_STATE.json"
-CONFIG_PATH = ROOT / ".harness" / "pipeline.yaml"
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+HARNESS = ROOT / '.harness'
+RUNS_DIR = HARNESS / 'runs'
+LEDGERS_DIR = HARNESS / 'ledgers'
+CONTRACTS_DIR = HARNESS / 'contracts'
+PF_DIR = HARNESS / 'product-feedback'
+STATE_MACHINE_FILE = HARNESS / 'state_machine' / 'STATE_MACHINE.yaml'
+SCHEDULES_FILE = HARNESS / 'schedules' / 'SCHEDULES.yaml'
+SCHEDULE_STATE_FILE = HARNESS / 'schedules' / 'STATE.json'
+CONFIG_PATH = HARNESS / 'pipeline.yaml'
+LEDGER_INDEX_PATH = LEDGERS_DIR / 'INDEX.json'
 
 GRADE_BANDS: list[tuple[int, str]] = [
     (93, "A"), (90, "A-"), (87, "B+"), (83, "B"), (80, "B-"),
@@ -41,273 +45,164 @@ def grade_from_score(score: float) -> str:
     return "F"
 
 
+def now_iso() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def load_yaml(path: pathlib.Path) -> dict[str, Any]:
+    if not path.exists() or yaml is None:
+        return {}
+    return yaml.safe_load(path.read_text(encoding='utf-8')) or {}
+
+
 def load_config() -> dict[str, Any]:
-    if not CONFIG_PATH.exists():
-        raise FileNotFoundError(f"Missing config: {CONFIG_PATH}")
-    with CONFIG_PATH.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    return load_yaml(CONFIG_PATH)
 
 
-def utc_run_id() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+def read_json(path: pathlib.Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    return json.loads(path.read_text(encoding='utf-8'))
 
 
-def ensure_runs_dir() -> None:
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def ensure_support_dirs() -> None:
-    CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
-    PRODUCT_FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def ensure_ledgers_dir() -> None:
-    LEDGERS_DIR.mkdir(parents=True, exist_ok=True)
-    if not LEDGER_INDEX_PATH.exists():
-        write_json(LEDGER_INDEX_PATH, [])
-    if not DOC_SYNC_STATE_PATH.exists():
-        write_json(DOC_SYNC_STATE_PATH, {
-            "last_synced_run_id": None,
-            "last_synced_at": None,
-            "updated_at": None,
-        })
+def write_json(path: pathlib.Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, sort_keys=False) + '\n', encoding='utf-8')
 
 
 def write_text(path: pathlib.Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding='utf-8')
 
 
-def write_json(path: pathlib.Path, data: Any) -> None:
-    write_text(path, json.dumps(data, indent=2) + "\n")
-
-
-def read_json(path: pathlib.Path, default: Any = None) -> Any:
-    if not path.exists():
-        return default
-    return json.loads(path.read_text(encoding="utf-8"))
+def slugify(text: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9._-]+', '-', text).strip('-').lower()[:80] or 'task'
 
 
 def run_shell(cmd: str) -> dict[str, Any]:
-    proc = subprocess.run(
-        cmd,
-        shell=True,
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
+    proc = subprocess.run(cmd, shell=True, cwd=ROOT, text=True, capture_output=True)
     return {
-        "cmd": cmd,
-        "exit_code": proc.returncode,
-        "stdout_tail": proc.stdout[-8000:],
-        "stderr_tail": proc.stderr[-8000:],
-        "ran_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        'cmd': cmd,
+        'exit_code': proc.returncode,
+        'stdout_tail': proc.stdout[-4000:],
+        'stderr_tail': proc.stderr[-4000:],
+        'ran_at': now_iso(),
     }
 
 
 def _shell_stdout_full(cmd: str) -> str:
-    proc = subprocess.run(
-        cmd,
-        shell=True,
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    return proc.stdout or ""
+    proc = subprocess.run(cmd, shell=True, cwd=ROOT, text=True, capture_output=True)
+    return proc.stdout
 
 
-def _plan_stub(mode: str) -> str:
-    if mode == "product_feedback":
-        return (
-            "# Plan\n\n"
-            f"Mode: {mode}\n\n"
-            "## Initial plan\n"
-            "- Identify the workflow or candidate build to evaluate\n"
-            "- Refresh customer persona context if needed\n"
-            "- Run design and customer-perspective critique\n"
-            "- Synthesize domain / market / workflow recommendations\n"
-            "- Convert selected items into a development contract\n"
-        )
-    return (
-        "# Plan\n\n"
-        f"Mode: {mode}\n\n"
-        "## Initial plan\n"
-        "- Restate requirements\n"
-        "- Identify relevant files\n"
-        "- Implement narrowly\n"
-        "- Review\n"
-        "- QA\n"
-        "- Verify\n"
-    )
+def ledger_template(task: str, mode: str) -> str:
+    return f"""---
+ledger_schema_version: 2
+tags: []
+recommendation_ids: []
+---
+
+# Run Ledger
+
+## Outcome
+- Task: {task}
+- Mode: {mode}
+- Result: UNKNOWN
+- Scope:
+- Key files changed:
+- Follow-on runs:
+
+## Key decisions
+- 
+
+## Verification and breaker
+- Tests/build:
+- Breaker stack summary:
+- Verification gaps:
+
+## Bad-state signals
+- 
+
+## Token efficiency notes
+- Approx context size:
+- Optimizations used:
+
+## Durable learnings
+- 
+
+## Deferred or follow-up
+- 
+"""
 
 
-def _run_ledger_stub() -> str:
-    return (
-        "# Run Ledger\n\n"
-        "## Outcome\n"
-        "- Task: pending\n"
-        "- Result: pending\n"
-        "- Scope: pending\n\n"
-        "## Key Decisions\n"
-        "- pending\n\n"
-        "## Verification Learnings\n"
-        "- pending\n\n"
-        "## Product / Stakeholder Learnings\n"
-        "- pending\n\n"
-        "## Durable Repo Guidance\n"
-        "- pending\n\n"
-        "## Deferred / Follow-up\n"
-        "- pending\n"
-    )
-
-
-def _delivery_stubs(run_dir: pathlib.Path) -> None:
-    write_text(
-        run_dir / "REVIEW_NOTES.md",
-        "## Blockers\n- \n\n## Important\n- \n\n## Nits\n- \n\n## Verdict\nCHANGES_REQUESTED\n",
-    )
-    write_text(
-        run_dir / "QA_REPORT.md",
-        "# QA Report\n\n"
-        "## Requirement Trace\n| Requirement | Evidence | Status | Notes |\n| --- | --- | --- | --- |\n\n"
-        "## Manual Validation\n- Run Command(s): pending\n- Areas Tested: pending\n- Observations: pending\n- State Verification: pending\n- Limitations: pending\n\n"
-        "## Failures\n- \n\n## Verdict\nFAIL\n",
-    )
-    write_text(
-        run_dir / "BUILD_VERIFICATION.md",
-        "# Build Verification\n\n## Status\nPENDING\n\n## Notes\n- \n",
-    )
-    write_text(
-        run_dir / "BREAKER_REPORT.md",
-        "# Breaker Report\n\n"
-        "## Attack Surface\n- pending\n\n"
-        "## Break Attempts\n- pending\n\n"
-        "## False Confidence Signals\n- pending\n\n"
-        "## Findings\n- pending\n\n"
-        "## Contractable Follow-On Items\n- pending\n\n"
-        "## Verdict\nCONCERNS\n",
-    )
-    ensure_regression_stub(run_dir)
-
-
-def _product_feedback_stubs(run_dir: pathlib.Path) -> None:
-    persona_path = PRODUCT_FEEDBACK_DIR / "CUSTOMER_PERSONA_SPEC.md"
-    if persona_path.exists():
-        write_text(run_dir / "CUSTOMER_PERSONA_SPEC.md", persona_path.read_text(encoding="utf-8"))
-    else:
-        write_text(
-            run_dir / "CUSTOMER_PERSONA_SPEC.md",
-            "# Customer Persona Spec\n\n## Status\nPending refresh.\n",
-        )
-    write_text(
-        run_dir / "CUSTOMER_PERSONA_FEEDBACK.md",
-        "# Customer Persona Feedback\n\n## Workflow Coverage\n- pending\n\n## Feedback Items\n- pending\n\n## Verdict\nPENDING\n",
-    )
-    write_text(
-        run_dir / "DESIGN_RECOMMENDATIONS.md",
-        "# Design Recommendations\n\n## Findings\n- pending\n",
-    )
-    write_text(
-        run_dir / "SME_RECOMMENDATIONS.md",
-        "# SME Recommendations\n\n## Executive Summary\n- pending\n\n## Recommendations\n- pending\n",
-    )
-    write_text(
-        run_dir / "DEVELOPMENT_CONTRACT.md",
-        "# Development Contract\n\nPending production by the Development Contract Producer.\n",
-    )
-
-
-def create_run(
-    task: str,
-    mode: str,
-    *,
-    task_source: str,
-    parent_run: str | None,
-    source_kind: str | None,
-    source_artifact: str | None,
-) -> pathlib.Path:
-    ensure_runs_dir()
-    ensure_support_dirs()
-    run_dir = RUNS_DIR / utc_run_id()
+def create_run(task: str, mode: str) -> pathlib.Path:
+    timestamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    run_id = f'{timestamp}-{mode}-{slugify(task)[:32]}'
+    run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
-    (RUNS_DIR / "current").unlink(missing_ok=True)
-    try:
-        (RUNS_DIR / "current").symlink_to(run_dir.name)
-    except OSError:
-        pass
-
-    write_text(run_dir / "TASK.md", task.strip() + "\n")
-    write_text(run_dir / "PLAN.md", _plan_stub(mode))
-    write_text(run_dir / "RUN_LEDGER.md", _run_ledger_stub())
-    write_json(
-        run_dir / "RUN_META.json",
-        {
-            "run_id": run_dir.name,
-            "mode": mode,
-            "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "task_source": task_source,
-            "parent_run": parent_run,
-            "source_kind": source_kind,
-            "source_artifact": source_artifact,
-        },
-    )
-    write_json(run_dir / "TEST_REPORT.json", {"commands": [], "last_intent": None})
-    write_json(run_dir / "RETRY_LOG.jsonl", [])
-
-    if mode in DELIVERY_LIKE_MODES:
-        _delivery_stubs(run_dir)
-    if mode == "product_feedback":
-        _product_feedback_stubs(run_dir)
-
+    write_text(run_dir / 'TASK.md', f'# Task\n\n{task}\n')
+    write_text(run_dir / 'PLAN.md', '# Plan\n\n## Goals\n- \n\n## Acceptance criteria\n- \n\n## Non-goals\n- \n')
+    write_text(run_dir / 'PATCH.diff', '')
+    write_json(run_dir / 'DIFF_STATS.json', {'files_changed': 0, 'files': [], 'added': 0, 'deleted': 0, 'per_file': []})
+    write_json(run_dir / 'TEST_REPORT.json', {'commands': [], 'last_intent': None, 'applicable': True})
+    write_json(run_dir / 'POLICY_REPORT.json', {'ok': True, 'violations': []})
+    write_json(run_dir / 'EVAL_REPORT.json', {'score': 0, 'verdict': 'UNKNOWN'})
+    write_json(run_dir / 'REGRESSION_REPORT.json', {'regressions_found': False, 'severity': 'UNKNOWN', 'areas': []})
+    write_json(run_dir / 'RETRY_LOG.jsonl', [])
+    write_json(run_dir / 'RUN_META.json', {'run_id': run_id, 'mode': mode, 'task': task, 'created_at': now_iso(), 'follow_ons': []})
+    write_text(run_dir / 'REVIEW_NOTES.md', '# Review Notes\n\n## Verdict\nCHANGES_REQUESTED\n')
+    write_text(run_dir / 'QA_REPORT.md', '# QA Report\n\n## Verdict\nFAIL\n')
+    write_text(run_dir / 'BUILD_VERIFICATION.md', '# Build Verification\n\n## Status\nPENDING\n')
+    write_text(run_dir / 'BREAKER_REPORT.md', '# Breaker Report\n\n## Overall verdict\nNONE\n')
+    write_text(run_dir / 'BREAKER_SPEC_REPORT.md', '# Breaker Spec Report\n\n- pending\n')
+    write_text(run_dir / 'BREAKER_TEST_REPORT.md', '# Breaker Test Report\n\n- pending\n')
+    write_text(run_dir / 'BREAKER_SECURITY_REPORT.md', '# Breaker Security Report\n\n- pending\n')
+    write_json(run_dir / 'BAD_STATE_REPORT.json', {'status': 'UNKNOWN', 'signals': []})
+    write_text(run_dir / 'BAD_STATE_REPORT.md', '# Bad State Report\n\n- pending\n')
+    write_text(run_dir / 'RUN_LEDGER.md', ledger_template(task, mode))
+    write_json(run_dir / 'CONTEXT_MANIFEST.json', {'estimated_tokens': 0, 'items': []})
+    if mode == 'product_feedback':
+        for name in [
+            'DESIGN_RECOMMENDATIONS.md', 'CUSTOMER_PERSONA_FEEDBACK.md', 'PRODUCT_SME_RECOMMENDATIONS.md',
+            'TECHNICAL_SME_RECOMMENDATIONS.md', 'RECOMMENDATION_REGISTRY_SYNC.md', 'DEVELOPMENT_CONTRACT.md'
+        ]:
+            write_text(run_dir / name, f'# {name.replace("_", " ").replace(".md", "")}\n\n')
     return run_dir
 
 
 def run_intent(config: dict[str, Any], intent: str) -> list[dict[str, Any]]:
-    commands = config.get("commands", {}).get(intent, [])
+    commands = config.get('commands', {}).get(intent, [])
     return [run_shell(cmd) for cmd in commands]
 
 
 def capture_diff(run_dir: pathlib.Path) -> None:
-    full_diff = _shell_stdout_full("git diff")
-    write_text(run_dir / "PATCH.diff", full_diff)
-
-    names = run_shell("git diff --name-only")
-    files = [line.strip() for line in names["stdout_tail"].splitlines() if line.strip()]
-
-    numstat = run_shell("git diff --numstat")
-    added = 0
-    deleted = 0
-    file_stats: list[dict[str, Any]] = []
-    for line in numstat["stdout_tail"].splitlines():
-        parts = line.split("\t")
+    full_diff = _shell_stdout_full('git diff')
+    write_text(run_dir / 'PATCH.diff', full_diff)
+    names = run_shell('git diff --name-only')
+    files = [line.strip() for line in names['stdout_tail'].splitlines() if line.strip()]
+    numstat = run_shell('git diff --numstat')
+    added = deleted = 0
+    per_file = []
+    for line in numstat['stdout_tail'].splitlines():
+        parts = line.split('\t')
         if len(parts) != 3:
             continue
         a, d, path = parts
         try:
-            ai = 0 if a == "-" else int(a)
-            di = 0 if d == "-" else int(d)
+            ai = 0 if a == '-' else int(a)
+            di = 0 if d == '-' else int(d)
         except ValueError:
             continue
         added += ai
         deleted += di
-        file_stats.append({"path": path, "added": ai, "deleted": di})
-
-    write_json(
-        run_dir / "DIFF_STATS.json",
-        {
-            "files_changed": len(files),
-            "files": files,
-            "added": added,
-            "deleted": deleted,
-            "per_file": file_stats,
-        },
-    )
+        per_file.append({'path': path, 'added': ai, 'deleted': di})
+    write_json(run_dir / 'DIFF_STATS.json', {'files_changed': len(files), 'files': files, 'added': added, 'deleted': deleted, 'per_file': per_file})
 
 
-def parse_markdown_verdict(path: pathlib.Path, patterns: list[str], default: str = "UNKNOWN") -> str:
+def parse_markdown_verdict(path: pathlib.Path, patterns: list[str], default: str = 'UNKNOWN') -> str:
     if not path.exists():
         return default
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding='utf-8')
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE)
         if match:
@@ -315,53 +210,77 @@ def parse_markdown_verdict(path: pathlib.Path, patterns: list[str], default: str
     return default
 
 
+def parse_breaker_verdict(path: pathlib.Path) -> str:
+    return parse_markdown_verdict(path, [r"## Verdict\s+([A-Z_]+)", r"^Verdict:\s*([A-Z_]+)$"], default="UNKNOWN")
+
+
 def test_summary(report_path: pathlib.Path) -> dict[str, Any]:
-    report = read_json(report_path, {"commands": []})
-    commands = report.get("commands", [])
-    total = len(commands)
-    failing = [c for c in commands if c.get("exit_code") != 0]
-    return {
-        "total": total,
-        "failing": len(failing),
-        "failing_commands": failing[-5:],
-        "all_passed": total > 0 and not failing,
-        "ran_any": total > 0,
-        "applicable": report.get("applicable", True),
-    }
+    report = read_json(report_path, {'commands': []})
+    commands = report.get('commands', [])
+    failing = [c for c in commands if c.get('exit_code') != 0]
+    return {'total': len(commands), 'failing': len(failing), 'failing_commands': failing[-5:], 'all_passed': len(commands) > 0 and not failing, 'ran_any': len(commands) > 0, 'applicable': report.get('applicable', True)}
 
 
 def validate_policy(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
     capture_diff(run_dir)
-    diff_stats = read_json(run_dir / "DIFF_STATS.json", {})
-    policies = config.get("policies", {})
-    violations: list[str] = []
-
-    files = diff_stats.get("files", [])
-    files_changed = diff_stats.get("files_changed", 0)
-    diff_lines = diff_stats.get("added", 0) + diff_stats.get("deleted", 0)
-
-    max_files = policies.get("max_files_changed")
+    diff_stats = read_json(run_dir / 'DIFF_STATS.json', {})
+    policies = config.get('policies', {})
+    violations = []
+    files = diff_stats.get('files', [])
+    files_changed = diff_stats.get('files_changed', 0)
+    diff_lines = diff_stats.get('added', 0) + diff_stats.get('deleted', 0)
+    max_files = policies.get('max_files_changed')
     if isinstance(max_files, int) and files_changed > max_files:
-        violations.append(f"files_changed_exceeds_limit:{files_changed}>{max_files}")
-
-    max_lines = policies.get("max_diff_lines")
+        violations.append(f'files_changed_exceeds_limit:{files_changed}>{max_files}')
+    max_lines = policies.get('max_diff_lines')
     if isinstance(max_lines, int) and diff_lines > max_lines:
-        violations.append(f"diff_lines_exceeds_limit:{diff_lines}>{max_lines}")
-
-    forbidden = policies.get("forbid_paths", [])
+        violations.append(f'diff_lines_exceeds_limit:{diff_lines}>{max_lines}')
     for file in files:
-        for prefix in forbidden:
+        for prefix in policies.get('forbid_paths', []):
             if file.startswith(prefix) or prefix in file:
-                violations.append(f"forbidden_path:{file}")
+                violations.append(f'forbidden_path:{file}')
+    report = {'ok': not violations, 'files_changed': files_changed, 'diff_lines': diff_lines, 'violations': violations, 'checked_at': now_iso()}
+    write_json(run_dir / 'POLICY_REPORT.json', report)
+    return report
 
-    report = {
-        "ok": not violations,
-        "files_changed": files_changed,
-        "diff_lines": diff_lines,
-        "violations": violations,
-        "checked_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-    }
-    write_json(run_dir / "POLICY_REPORT.json", report)
+
+def context_manifest(run_dir: pathlib.Path, write_file: bool = True) -> dict[str, Any]:
+    items = []
+    est = 0
+    for path in sorted(run_dir.glob('*')):
+        if not path.is_file():
+            continue
+        size = path.stat().st_size
+        tokens = max(1, size // 4)
+        items.append({'file': path.name, 'bytes': size, 'estimated_tokens': tokens})
+        est += tokens
+    manifest = {'estimated_tokens': est, 'items': items, 'generated_at': now_iso()}
+    if write_file:
+        write_json(run_dir / 'CONTEXT_MANIFEST.json', manifest)
+    return manifest
+
+
+def bad_state_check(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
+    diff_stats = read_json(run_dir / 'DIFF_STATS.json', {})
+    retry_log = read_json(run_dir / 'RETRY_LOG.jsonl', [])
+    test_report = read_json(run_dir / 'TEST_REPORT.json', {'commands': []})
+    context = context_manifest(run_dir, write_file=False)
+    signals = []
+    severity = 'LOW'
+    if len(retry_log) >= int(config.get('gates', {}).get('max_retry_rounds', 2)):
+        signals.append('retry_cap_reached'); severity = 'MEDIUM'
+    if diff_stats.get('files_changed', 0) > int(config.get('policies', {}).get('max_files_changed', 9999)):
+        signals.append('scope_blowup'); severity = 'HIGH'
+    if not test_report.get('commands'):
+        signals.append('no_test_evidence')
+    soft_cap = int(config.get('gates', {}).get('soft_context_token_cap', 24000))
+    if context.get('estimated_tokens', 0) > soft_cap:
+        signals.append('context_pressure'); severity = 'MEDIUM' if severity == 'LOW' else severity
+    status = 'CLEAR' if not signals else ('HIGH' if severity == 'HIGH' else 'WARN')
+    report = {'status': status, 'signals': signals, 'checked_at': now_iso(), 'estimated_tokens': context.get('estimated_tokens', 0)}
+    write_json(run_dir / 'BAD_STATE_REPORT.json', report)
+    md = '# Bad State Report\n\n' + ('\n'.join(f'- {s}' for s in signals) if signals else '- clear') + '\n'
+    write_text(run_dir / 'BAD_STATE_REPORT.md', md)
     return report
 
 
@@ -374,6 +293,7 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
     tests = test_summary(run_dir / "TEST_REPORT.json")
     policy = read_json(run_dir / "POLICY_REPORT.json", {"ok": True, "violations": []})
     regression = read_json(run_dir / "REGRESSION_REPORT.json", {"severity": "UNKNOWN", "regressions_found": False})
+    bad_state = read_json(run_dir / "BAD_STATE_REPORT.json", {"status": "UNKNOWN", "signals": []})
     qa_verdict = parse_markdown_verdict(run_dir / "QA_REPORT.md", [r"## Verdict\s+([A-Z_]+)", r"^Verdict:\s*([A-Z_]+)$"])
     build_status = parse_markdown_verdict(run_dir / "BUILD_VERIFICATION.md", [r"## Status\s+([A-Z_]+)", r"^Status:\s*([A-Z_]+)$"])
     review_verdict = parse_markdown_verdict(run_dir / "REVIEW_NOTES.md", [r"## Verdict\s+([A-Z_]+)", r"^Verdict:\s*([A-Z_]+)$"])
@@ -433,6 +353,13 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
         score -= 8
         findings.append("non_blocking_regression_risk")
 
+    if bad_state.get("status") == "HIGH":
+        score -= 20
+        findings.append("bad_state_high")
+    elif bad_state.get("status") == "WARN":
+        score -= 8
+        findings.append("bad_state_warn")
+
     score = max(score, 0)
 
     existing_eval = read_json(run_dir / "EVAL_REPORT.json", {})
@@ -474,10 +401,11 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
             "review": review_verdict,
             "breaker": breaker_verdict,
             "regression": severity,
+            "bad_state": bad_state.get("status", "UNKNOWN"),
         },
         "hard_floor_breaches": floor_breaches,
         "findings": findings,
-        "evaluated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "evaluated_at": now_iso(),
     }
     if categories:
         report["categories"] = categories
@@ -486,103 +414,38 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
 
 
 def prepare_retry(run_dir: pathlib.Path, config: dict[str, Any], reason: str | None) -> dict[str, Any]:
-    retry_log = read_json(run_dir / "RETRY_LOG.jsonl", [])
-    gates = config.get("gates", {})
-    max_retry_rounds = int(gates.get("max_retry_rounds", 2))
+    retry_log = read_json(run_dir / 'RETRY_LOG.jsonl', [])
+    max_retry_rounds = int(config.get('gates', {}).get('max_retry_rounds', 2))
     next_round = len(retry_log) + 1
-
     if next_round > max_retry_rounds:
-        return {
-            "prepared": False,
-            "max_rounds": max_retry_rounds,
-            "rounds_recorded": len(retry_log),
-            "next_would_be_round": next_round,
-            "reason": "max_retry_rounds_exhausted",
-        }
-
-    eval_report = read_json(run_dir / "EVAL_REPORT.json", {})
-    policy_report = read_json(run_dir / "POLICY_REPORT.json", {})
-    diff_stats = read_json(run_dir / "DIFF_STATS.json", {})
-    tests = test_summary(run_dir / "TEST_REPORT.json")
-
-    failure_lines = []
-    if reason:
-        failure_lines.append(f"- Operator reason: {reason}")
-    if eval_report:
-        grade = eval_report.get("grade", "")
-        grade_str = f" — {grade}" if grade else ""
-        failure_lines.append(f"- Eval verdict: {eval_report.get('verdict')}{grade_str} ({eval_report.get('score')}/{eval_report.get('threshold')})")
-        for finding in eval_report.get("findings", []):
-            failure_lines.append(f"  - finding: {finding}")
-    if policy_report and not policy_report.get("ok", True):
-        for violation in policy_report.get("violations", []):
-            failure_lines.append(f"  - policy violation: {violation}")
-    for cmd in tests.get("failing_commands", []):
-        failure_lines.append(f"  - failing command: {cmd.get('cmd')} (exit {cmd.get('exit_code')})")
-
-    changed_files = diff_stats.get("files", [])
-    changed_block = "\n".join(f"- {path}" for path in changed_files) if changed_files else "- none detected"
-
-    retry_task = (
-        "# Retry Task\n\n"
-        f"Retry round: {next_round} / {max_retry_rounds}\n\n"
-        "## Why retry is needed\n"
-        + ("\n".join(failure_lines) if failure_lines else "- gate failure observed\n")
-        + "\n\n## Constraints\n"
-        "- Keep remediation targeted.\n"
-        "- Do not broaden scope.\n"
-        "- Update SECOND_PASS_PLAN.md before editing.\n"
-        "- Prefer the smallest coherent patch that addresses the cited failures.\n"
-    )
-
-    second_pass = (
-        "# Second Pass Plan\n\n"
-        f"Retry round: {next_round}\n\n"
-        "## Observed diff\n"
-        f"{changed_block}\n\n"
-        "## Failure-focused objectives\n"
-        "- Identify the smallest set of causes behind the current failures.\n"
-        "- Convert each cause into one targeted remediation step.\n"
-        "- Re-run only the verification steps needed to regain confidence.\n\n"
-        "## Remediation steps\n"
-        "1. ...\n"
-        "2. ...\n"
-        "3. ...\n"
-    )
-
-    write_text(run_dir / "RETRY_TASK.md", retry_task)
-    write_text(run_dir / "SECOND_PASS_PLAN.md", second_pass)
-    retry_log.append({
-        "round": next_round,
-        "reason": reason or "gate_failure",
-        "prepared_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-    })
-    write_json(run_dir / "RETRY_LOG.jsonl", retry_log)
-
-    return {"round": next_round, "max_rounds": max_retry_rounds, "prepared": True}
+        return {'prepared': False, 'reason': 'max_retry_rounds_exhausted'}
+    write_text(run_dir / 'RETRY_TASK.md', f'# Retry Task\n\nRetry round: {next_round} / {max_retry_rounds}\n\n## Why retry is needed\n- {reason or "gate failure"}\n')
+    write_text(run_dir / 'SECOND_PASS_PLAN.md', '# Second Pass Plan\n\n1. isolate failure cause\n2. remediate narrowly\n3. re-run relevant verification\n')
+    retry_log.append({'round': next_round, 'reason': reason or 'gate_failure', 'prepared_at': now_iso()})
+    write_json(run_dir / 'RETRY_LOG.jsonl', retry_log)
+    return {'prepared': True, 'round': next_round, 'max_rounds': max_retry_rounds}
 
 
 def run_mode_from_plan(run_dir: pathlib.Path) -> str | None:
-    plan_path = run_dir / "PLAN.md"
-    if not plan_path.exists():
-        return None
-    text = plan_path.read_text(encoding="utf-8")
-    match = re.search(r"^Mode:\s*(\w+)", text, flags=re.MULTILINE)
-    return match.group(1) if match else None
-
-
-def parse_breaker_verdict(path: pathlib.Path) -> str:
-    return parse_markdown_verdict(path, [r"## Verdict\s+([A-Z_]+)", r"^Verdict:\s*([A-Z_]+)$"], default="UNKNOWN")
+    plan = run_dir / "PLAN.md"
+    if plan.exists():
+        for line in plan.read_text(encoding="utf-8").splitlines()[:10]:
+            if line.lower().startswith("mode:"):
+                return line.split(":", 1)[1].strip().lower()
+    meta = read_json(run_dir / "RUN_META.json", {})
+    return meta.get("mode")
 
 
 def publish_ledger(run_dir: pathlib.Path) -> dict[str, Any]:
-    ensure_ledgers_dir()
+    LEDGERS_DIR.mkdir(parents=True, exist_ok=True)
+    if not LEDGER_INDEX_PATH.exists():
+        write_json(LEDGER_INDEX_PATH, [])
     ledger_path = run_dir / "RUN_LEDGER.md"
     if not ledger_path.exists():
         raise FileNotFoundError(f"Missing ledger: {ledger_path}")
 
     run_id = run_dir.name
-    published_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    published_at = now_iso()
     task_text = (run_dir / "TASK.md").read_text(encoding="utf-8").strip() if (run_dir / "TASK.md").exists() else ""
     diff_stats = read_json(run_dir / "DIFF_STATS.json", {})
     eval_report = read_json(run_dir / "EVAL_REPORT.json", {})
@@ -626,230 +489,348 @@ def publish_ledger(run_dir: pathlib.Path) -> dict[str, Any]:
     })
     index.sort(key=lambda e: str(e.get("published_at", "")))
     write_json(LEDGER_INDEX_PATH, index)
-
-    return {
-        "published": True,
-        "run_id": run_id,
-        "path": str(published_path),
-        "published_at": published_at,
-    }
+    return {"run_id": run_id, "published_at": published_at, "path": str(published_path)}
 
 
-def pending_ledgers(since_run_id: str | None = None) -> dict[str, Any]:
-    ensure_ledgers_dir()
-    index = read_json(LEDGER_INDEX_PATH, [])
-    state = read_json(DOC_SYNC_STATE_PATH, {})
+def first_heading(text: str) -> str:
+    for line in text.splitlines():
+        if line.startswith('# '):
+            return line[2:].strip()
+    return 'Run Ledger'
 
-    cutoff_time = state.get("last_synced_at")
-    if since_run_id:
-        for entry in index:
-            if entry.get("run_id") == since_run_id:
-                cutoff_time = entry.get("published_at")
-                break
 
-    if cutoff_time:
-        pending = [entry for entry in index if str(entry.get("published_at", "")) > str(cutoff_time)]
+def _parse_frontmatter(text: str) -> dict[str, str]:
+    if not text.startswith("---"):
+        return {}
+    end = text.find("\n---", 3)
+    if end == -1:
+        return {}
+    fm: dict[str, str] = {}
+    for line in text[4:end].splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            fm[k.strip()] = v.strip()
+    return fm
+
+
+def rebuild_ledger_index() -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for path in sorted(LEDGERS_DIR.glob("*.md")):
+        if path.name in {"INDEX.md", "README.md", "DOC_SYNC_REPORT.md"}:
+            continue
+        text = path.read_text(encoding="utf-8")
+        fm = _parse_frontmatter(text)
+        if fm:
+            entries.append({
+                "run_id": fm.get("run_id", path.stem),
+                "mode": fm.get("mode", "unknown"),
+                "task_excerpt": "",
+                "published_at": fm.get("published_at", dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc).isoformat()),
+                "path": str(path.relative_to(ROOT)),
+                "eval_score": int(fm["eval_score"]) if fm.get("eval_score", "").isdigit() else fm.get("eval_score"),
+                "eval_verdict": fm.get("eval_verdict"),
+                "qa_verdict": fm.get("qa_verdict"),
+                "build_status": fm.get("build_status"),
+                "breaker_verdict": fm.get("breaker_verdict"),
+                "regression_severity": fm.get("regression_severity"),
+            })
+        else:
+            entries.append({
+                "run_id": path.stem,
+                "mode": "unknown",
+                "task_excerpt": "",
+                "published_at": dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc).isoformat(),
+                "path": str(path.relative_to(ROOT)),
+            })
+    entries.sort(key=lambda e: str(e.get("published_at", "")))
+    write_json(LEDGER_INDEX_PATH, entries)
+    md = "# Ledger Index\n\n" + ("\n".join(f'- `{e["run_id"]}` — {e.get("mode", "unknown")}' for e in entries) if entries else "_No ledgers published yet._") + "\n"
+    write_text(LEDGERS_DIR / "INDEX.md", md)
+    return entries
+
+
+def registry_render() -> None:
+    reg = read_json(PF_DIR / 'RECOMMENDATION_REGISTRY.json', {'schema_version': 2, 'updated_at': None, 'next_id': 1, 'items': []})
+    lines = ['# Recommendation Registry', '']
+    if not reg.get('items'):
+        lines.append('_No recommendations tracked yet._')
     else:
-        pending = index
-
-    return {
-        "last_synced_run_id": state.get("last_synced_run_id"),
-        "last_synced_at": state.get("last_synced_at"),
-        "pending_count": len(pending),
-        "ledgers": pending,
-    }
+        for item in reg['items']:
+            lines.append(f"- **{item['id']}** [{item.get('status', 'open')}] {item.get('title', '')}")
+    write_text(PF_DIR / 'RECOMMENDATION_REGISTRY.md', '\n'.join(lines) + '\n')
 
 
-def mark_doc_sync(up_to_run: str) -> dict[str, Any]:
-    ensure_ledgers_dir()
-    index = read_json(LEDGER_INDEX_PATH, [])
-    match = next((entry for entry in index if entry.get("run_id") == up_to_run), None)
-    if match is None:
-        raise ValueError(f"Unknown run id: {up_to_run}")
-
-    state = {
-        "last_synced_run_id": up_to_run,
-        "last_synced_at": match.get("published_at"),
-        "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-    }
-    write_json(DOC_SYNC_STATE_PATH, state)
-    return state
+def recommendation_summary() -> dict[str, Any]:
+    reg = read_json(PF_DIR / 'RECOMMENDATION_REGISTRY.json', {'items': []})
+    return {'total': len(reg.get('items', [])), 'open': len([i for i in reg.get('items', []) if i.get('status') != 'closed'])}
 
 
-def record_follow_on(run_dir: pathlib.Path, new_run_dir: pathlib.Path, reason: str, source_artifact: str | None) -> dict[str, Any]:
-    payload = {
-        "source_run_id": run_dir.name,
-        "follow_on_run_id": new_run_dir.name,
-        "reason": reason,
-        "source_artifact": source_artifact,
-        "recorded_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-    }
-    write_json(run_dir / "FOLLOW_ON_RUN.json", payload)
-    return payload
+def mark_recommendation(rec_id: str, status: str, note: str | None) -> dict[str, Any]:
+    reg = read_json(PF_DIR / 'RECOMMENDATION_REGISTRY.json', {'schema_version': 2, 'updated_at': None, 'next_id': 1, 'items': []})
+    found = None
+    for item in reg['items']:
+        if item.get('id') == rec_id:
+            found = item
+            break
+    if found is None:
+        found = {'id': rec_id, 'title': rec_id, 'status': status, 'history': []}
+        reg['items'].append(found)
+    found['status'] = status
+    found.setdefault('history', []).append({'at': now_iso(), 'status': status, 'note': note or ''})
+    reg['updated_at'] = now_iso()
+    write_json(PF_DIR / 'RECOMMENDATION_REGISTRY.json', reg)
+    registry_render()
+    return found
 
 
-def ensure_regression_stub(run_dir: pathlib.Path) -> None:
-    path = run_dir / "REGRESSION_REPORT.json"
-    if not path.exists():
-        write_json(path, {
-            "regressions_found": False,
-            "severity": "UNKNOWN",
-            "areas": [],
-            "notes": ["Populate via Delivery Regression Detector agent."],
-        })
+def record_follow_on(from_run: pathlib.Path, to_run: pathlib.Path, reason: str) -> dict[str, Any]:
+    meta = read_json(from_run / 'RUN_META.json', {})
+    meta.setdefault('follow_ons', []).append({'to_run': to_run.name, 'reason': reason, 'recorded_at': now_iso()})
+    write_json(from_run / 'RUN_META.json', meta)
+    return meta
 
 
-def _task_text_from_args(task: str | None, task_file: str | None) -> tuple[str, str]:
-    if task_file:
-        path = pathlib.Path(task_file)
-        return path.read_text(encoding="utf-8"), str(path)
-    assert task is not None
-    return task, "inline"
+def contract_index_add(name: str, path: str, description: str, status: str = 'outstanding') -> dict[str, Any]:
+    idx = read_json(CONTRACTS_DIR / 'INDEX.json', {'version': 1, 'description': 'Outstanding contract index', 'contracts': []})
+    entry = {'name': name, 'path': path, 'date_produced': dt.date.today().isoformat(), 'description': description, 'status': status, 'added_at': now_iso()}
+    idx['contracts'].append(entry)
+    write_json(CONTRACTS_DIR / 'INDEX.json', idx)
+    rebuild_contract_index()
+    return entry
+
+
+def contract_index_update(name: str, status: str) -> dict[str, Any]:
+    idx = read_json(CONTRACTS_DIR / 'INDEX.json', {'version': 1, 'description': 'Outstanding contract index', 'contracts': []})
+    found = None
+    for c in idx['contracts']:
+        if c['name'] == name:
+            found = c
+            break
+    if found is None:
+        return {'error': f'contract not found: {name}'}
+    found['status'] = status
+    found['updated_at'] = now_iso()
+    write_json(CONTRACTS_DIR / 'INDEX.json', idx)
+    rebuild_contract_index()
+    return found
+
+
+def rebuild_contract_index() -> dict[str, Any]:
+    idx = read_json(CONTRACTS_DIR / 'INDEX.json', {'version': 1, 'description': 'Outstanding contract index', 'contracts': []})
+    outstanding = [c for c in idx.get('contracts', []) if c.get('status') == 'outstanding']
+    in_progress = [c for c in idx.get('contracts', []) if c.get('status') == 'in_progress']
+    completed = [c for c in idx.get('contracts', []) if c.get('status') in ('implemented', 'superseded', 'cancelled')]
+    lines = ['# Contract Index', '', 'Outstanding and historical development contracts.', '',
+             'Contracts are stored under `.harness/contracts/YYYY-MM-DD/` directories, one per production date.', '',
+             '## Status Legend', '', '| Status | Meaning |', '|--------|---------|',
+             '| `outstanding` | Not yet picked up for implementation |',
+             '| `in_progress` | Currently being implemented in an active delivery run |',
+             '| `implemented` | Completed and verified |',
+             '| `superseded` | Replaced by a newer contract |',
+             '| `cancelled` | No longer needed |', '']
+    lines.append('## Outstanding Contracts')
+    lines.append('')
+    if outstanding:
+        for c in outstanding:
+            lines.append(f"- **{c['name']}** — {c.get('description', '')} (`{c.get('path', '')}`)")
+    else:
+        lines.append('_No outstanding contracts._')
+    lines.append('')
+    if in_progress:
+        lines.append('## In Progress')
+        lines.append('')
+        for c in in_progress:
+            lines.append(f"- **{c['name']}** — {c.get('description', '')} (`{c.get('path', '')}`)")
+        lines.append('')
+    if completed:
+        lines.append('## Recently Completed')
+        lines.append('')
+        for c in completed:
+            lines.append(f"- **{c['name']}** [{c.get('status')}] — {c.get('description', '')} (`{c.get('path', '')}`)")
+        lines.append('')
+    if not completed:
+        lines.append('## Recently Completed')
+        lines.append('')
+        lines.append('_No completed contracts yet._')
+        lines.append('')
+    write_text(CONTRACTS_DIR / 'INDEX.md', '\n'.join(lines))
+    return idx
+
+
+def state_machine_render() -> str:
+    sm = load_yaml(STATE_MACHINE_FILE)
+    lines = ['flowchart TD']
+    for mode, spec in sm.get('modes', {}).items():
+        prev = None
+        for st in spec.get('states', []):
+            node = f'{mode}_{st}'.replace('-', '_')
+            lines.append(f'  {node}["{mode}:{st}"]')
+            if prev:
+                lines.append(f'  {prev} --> {node}')
+            prev = node
+    mermaid = '\n'.join(lines) + '\n'
+    write_text(HARNESS / 'state_machine' / 'STATE_MACHINE.mmd', mermaid)
+    return mermaid
+
+
+def state_machine_check(run_dir: pathlib.Path) -> dict[str, Any]:
+    meta = read_json(run_dir / 'RUN_META.json', {})
+    state = 'initialized'
+    if (run_dir / 'TASK.md').exists() and (run_dir / 'PLAN.md').exists():
+        state = 'planned'
+    if read_json(run_dir / 'DIFF_STATS.json', {}).get('files_changed', 0) > 0:
+        state = 'implemented'
+    if (run_dir / 'REVIEW_NOTES.md').exists():
+        state = 'reviewed'
+    if parse_markdown_verdict(run_dir / 'QA_REPORT.md', [r'## Verdict\s+([A-Z_]+)']) == 'PASS':
+        state = 'qa_passed'
+    if (run_dir / 'BREAKER_REPORT.md').exists():
+        state = 'breaker_completed'
+    if (run_dir / 'EVAL_REPORT.json').exists():
+        state = 'evaluated'
+    if (LEDGERS_DIR / f"{meta.get('run_id', run_dir.name)}.md").exists():
+        state = 'ledger_published'
+    report = {'mode': meta.get('mode', 'delivery'), 'inferred_state': state, 'checked_at': now_iso()}
+    write_json(run_dir / 'STATE_MACHINE_REPORT.json', report)
+    return report
+
+
+def bad_state_scan(active: bool = False) -> dict[str, Any]:
+    config = load_config()
+    reports = []
+    if RUNS_DIR.exists():
+        for run_dir in sorted(RUNS_DIR.iterdir()):
+            if run_dir.is_dir():
+                reports.append({'run': run_dir.name, **bad_state_check(run_dir, config)})
+    return {'active': active, 'reports': reports}
+
+
+def schedule_due() -> dict[str, Any]:
+    sched = load_yaml(SCHEDULES_FILE)
+    state = read_json(SCHEDULE_STATE_FILE, {'last_run_by_job': {}})
+    jobs = [{'id': j['id'], 'type': j.get('type', 'deterministic'), 'cron': j.get('cron')} for j in sched.get('jobs', [])]
+    return {'jobs': jobs, 'state': state}
+
+
+def schedule_run(job_id: str) -> dict[str, Any]:
+    sched = load_yaml(SCHEDULES_FILE)
+    state = read_json(SCHEDULE_STATE_FILE, {'last_run_by_job': {}})
+    jobs = {j['id']: j for j in sched.get('jobs', [])}
+    if job_id not in jobs:
+        raise SystemExit(f'Unknown job: {job_id}')
+    cmd = jobs[job_id]['command']
+    if cmd == 'rebuild-ledger-index':
+        result = rebuild_ledger_index()
+    elif cmd == 'registry-render':
+        registry_render(); result = {'ok': True}
+    elif cmd.startswith('bad-state-scan'):
+        result = bad_state_scan(active='--active' in cmd)
+    else:
+        result = {'ok': False, 'note': 'agent_gated_or_unimplemented'}
+    state.setdefault('last_run_by_job', {})[job_id] = now_iso()
+    write_json(SCHEDULE_STATE_FILE, state)
+    return {'job': job_id, 'result': result}
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Repo-local agentic harness helper")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    start_parser = subparsers.add_parser("start", help="Create a new run")
-    start_parser.add_argument("--mode", choices=["delivery", "maintenance", "restructure", "product_feedback"], default="delivery")
-    task_group = start_parser.add_mutually_exclusive_group(required=True)
-    task_group.add_argument("--task", help="Task description")
-    task_group.add_argument("--task-file", help="Path to file whose contents should seed TASK.md")
-    start_parser.add_argument("--parent-run", required=False, help="Optional parent run id")
-    start_parser.add_argument("--source-kind", required=False, help="Optional source kind, e.g. breaker_follow_on or stakeholder_feedback")
-    start_parser.add_argument("--source-artifact", required=False, help="Optional source artifact path")
-
-    run_parser = subparsers.add_parser("run", help="Run a configured intent and update TEST_REPORT.json")
-    run_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
-    run_parser.add_argument("--intent", choices=["format", "lint", "test", "build", "db"], required=True)
-
-    diff_parser = subparsers.add_parser("diff", help="Capture git diff into PATCH.diff and DIFF_STATS.json")
-    diff_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
-
-    validate_parser = subparsers.add_parser("validate", help="Run policy validation against current diff")
-    validate_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
-
-    evaluate_parser = subparsers.add_parser("evaluate", help="Produce EVAL_REPORT.json from available artifacts")
-    evaluate_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
-
-    retry_parser = subparsers.add_parser("prepare-retry", help="Create remediation artifacts for a bounded retry")
-    retry_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
-    retry_parser.add_argument("--reason", required=False, help="Optional reason for the retry")
-
-    publish_ledger_parser = subparsers.add_parser("publish-ledger", help="Publish RUN_LEDGER.md into .harness/ledgers")
-    publish_ledger_parser.add_argument("--run-dir", required=True, help="Path to existing run directory")
-
-    pending_ledgers_parser = subparsers.add_parser("pending-ledgers", help="List published ledgers pending doc sync")
-    pending_ledgers_parser.add_argument("--since-run-id", required=False, help="Optional run id override for the sync boundary")
-
-    mark_doc_sync_parser = subparsers.add_parser("mark-doc-sync", help="Advance doc sync state to a published ledger")
-    mark_doc_sync_parser.add_argument("--up-to-run", required=True, help="Latest published run id included in the doc sync")
-
-    follow_on_parser = subparsers.add_parser("record-follow-on", help="Record that a run spawned a follow-on run")
-    follow_on_parser.add_argument("--run-dir", required=True, help="Path to the source run directory")
-    follow_on_parser.add_argument("--new-run-dir", required=True, help="Path to the newly created follow-on run directory")
-    follow_on_parser.add_argument("--reason", required=True, help="Why the follow-on run was created")
-    follow_on_parser.add_argument("--source-artifact", required=False, help="Source artifact path that caused the follow-on")
-
+    parser = argparse.ArgumentParser(description='Repo-local agentic harness helper')
+    sub = parser.add_subparsers(dest='command', required=True)
+    p = sub.add_parser('start'); p.add_argument('--mode', choices=['delivery', 'maintenance', 'restructure', 'product_feedback'], default='delivery'); p.add_argument('--task', required=False); p.add_argument('--task-file', required=False)
+    p = sub.add_parser('run'); p.add_argument('--run-dir', required=True); p.add_argument('--intent', choices=['format', 'lint', 'test', 'build', 'db'], required=True)
+    p = sub.add_parser('diff'); p.add_argument('--run-dir', required=True)
+    p = sub.add_parser('validate'); p.add_argument('--run-dir', required=True)
+    p = sub.add_parser('evaluate'); p.add_argument('--run-dir', required=True)
+    p = sub.add_parser('prepare-retry'); p.add_argument('--run-dir', required=True); p.add_argument('--reason')
+    p = sub.add_parser('bad-state-check'); p.add_argument('--run-dir', required=True)
+    p = sub.add_parser('bad-state-scan'); p.add_argument('--active', action='store_true')
+    p = sub.add_parser('context-manifest'); p.add_argument('--run-dir', required=True)
+    p = sub.add_parser('publish-ledger'); p.add_argument('--run-dir', required=True)
+    sub.add_parser('rebuild-ledger-index')
+    sub.add_parser('registry-render')
+    sub.add_parser('recommendation-summary')
+    p = sub.add_parser('mark-recommendation'); p.add_argument('--id', required=True); p.add_argument('--status', required=True); p.add_argument('--note')
+    p = sub.add_parser('record-follow-on'); p.add_argument('--from-run', required=True); p.add_argument('--to-run', required=True); p.add_argument('--reason', required=True)
+    p = sub.add_parser('contract-add'); p.add_argument('--name', required=True); p.add_argument('--path', required=True); p.add_argument('--description', required=True); p.add_argument('--status', default='outstanding')
+    p = sub.add_parser('contract-update'); p.add_argument('--name', required=True); p.add_argument('--status', required=True, choices=['outstanding', 'in_progress', 'implemented', 'superseded', 'cancelled'])
+    sub.add_parser('rebuild-contract-index')
+    sub.add_parser('state-machine-render')
+    p = sub.add_parser('state-machine-check'); p.add_argument('--run-dir', required=True)
+    sub.add_parser('schedule-due')
+    p = sub.add_parser('schedule-run'); p.add_argument('--job', required=True)
     args = parser.parse_args()
     config = load_config()
 
-    if args.command == "start":
-        ensure_ledgers_dir()
-        ensure_support_dirs()
-        task_text, task_source = _task_text_from_args(args.task, args.task_file)
-        run_dir = create_run(
-            task=task_text,
-            mode=args.mode,
-            task_source=task_source,
-            parent_run=args.parent_run,
-            source_kind=args.source_kind,
-            source_artifact=args.source_artifact,
-        )
-        if args.mode in DELIVERY_LIKE_MODES:
-            ensure_regression_stub(run_dir)
-        print(str(run_dir))
-        return 0
+    if args.command == 'start':
+        task = args.task
+        if not task and args.task_file:
+            tf = pathlib.Path(args.task_file)
+            if tf.exists():
+                task = tf.read_text(encoding='utf-8').strip()[:500]
+            else:
+                print(f'Task file not found: {args.task_file}', file=sys.stderr); return 1
+        if not task:
+            print('Either --task or --task-file is required', file=sys.stderr); return 1
+        print(str(create_run(task, args.mode))); return 0
+    if args.command == 'rebuild-ledger-index':
+        print(json.dumps(rebuild_ledger_index(), indent=2)); return 0
+    if args.command == 'registry-render':
+        registry_render(); print(str(PF_DIR / 'RECOMMENDATION_REGISTRY.md')); return 0
+    if args.command == 'recommendation-summary':
+        print(json.dumps(recommendation_summary(), indent=2)); return 0
+    if args.command == 'mark-recommendation':
+        print(json.dumps(mark_recommendation(args.id, args.status, args.note), indent=2)); return 0
+    if args.command == 'state-machine-render':
+        print(state_machine_render()); return 0
+    if args.command == 'schedule-due':
+        print(json.dumps(schedule_due(), indent=2)); return 0
+    if args.command == 'schedule-run':
+        print(json.dumps(schedule_run(args.job), indent=2)); return 0
+    if args.command == 'bad-state-scan':
+        print(json.dumps(bad_state_scan(active=args.active), indent=2)); return 0
 
-    if args.command == "pending-ledgers":
-        print(json.dumps(pending_ledgers(args.since_run_id), indent=2))
-        return 0
-
-    if args.command == "mark-doc-sync":
-        try:
-            print(json.dumps(mark_doc_sync(args.up_to_run), indent=2))
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-        return 0
-
-    if args.command == "record-follow-on":
+    if args.command in {'run','diff','validate','evaluate','prepare-retry','bad-state-check','context-manifest','publish-ledger','state-machine-check'}:
         run_dir = pathlib.Path(args.run_dir)
-        new_run_dir = pathlib.Path(args.new_run_dir)
-        if not run_dir.exists() or not new_run_dir.exists():
-            print("Run directory does not exist", file=sys.stderr)
-            return 1
-        print(json.dumps(record_follow_on(run_dir, new_run_dir, args.reason, args.source_artifact), indent=2))
-        return 0
+        if not run_dir.exists():
+            print(f'Run directory does not exist: {args.run_dir}', file=sys.stderr); return 1
 
-    run_dir = pathlib.Path(args.run_dir)
-    if not run_dir.exists():
-        print(f"Run directory does not exist: {run_dir}", file=sys.stderr)
-        return 1
-
-    if args.command == "run":
+    if args.command == 'run':
+        run_dir = pathlib.Path(args.run_dir)
         results = run_intent(config, args.intent)
-        for row in results:
-            row["intent"] = args.intent
-        report_path = run_dir / "TEST_REPORT.json"
-        existing = read_json(report_path, {"commands": [], "last_intent": None})
-        existing.setdefault("commands", [])
-        intent = args.intent
-        last_intent = existing.get("last_intent")
-        existing["commands"] = [
-            c
-            for c in existing["commands"]
-            if not (
-                c.get("intent") == intent
-                or (c.get("intent") is None and last_intent == intent)
-            )
-        ]
-        existing["commands"].extend(results)
-        existing["last_intent"] = args.intent
+        report_path = run_dir / 'TEST_REPORT.json'
+        existing = read_json(report_path, {'commands': [], 'last_intent': None, 'applicable': True})
+        existing['commands'] = [c for c in existing.get('commands', []) if c.get('intent') != args.intent]
+        for r in results: r['intent'] = args.intent
+        existing['commands'].extend(results)
+        existing['last_intent'] = args.intent
         write_json(report_path, existing)
         capture_diff(run_dir)
-        print(str(report_path))
-        return 0
-
-    if args.command == "diff":
-        capture_diff(run_dir)
-        print(str(run_dir / "PATCH.diff"))
-        return 0
-
-    if args.command == "validate":
-        report = validate_policy(run_dir, config)
-        print(json.dumps(report, indent=2))
-        return 0
-
-    if args.command == "evaluate":
-        ensure_regression_stub(run_dir)
-        report = evaluate(run_dir, config)
-        print(json.dumps(report, indent=2))
-        return 0
-
-    if args.command == "prepare-retry":
-        report = prepare_retry(run_dir, config, args.reason)
-        print(json.dumps(report, indent=2))
-        return 0
-
-    if args.command == "publish-ledger":
-        report = publish_ledger(run_dir)
-        print(json.dumps(report, indent=2))
-        return 0
-
+        print(str(report_path)); return 0
+    if args.command == 'diff':
+        capture_diff(pathlib.Path(args.run_dir)); print(str(pathlib.Path(args.run_dir) / 'PATCH.diff')); return 0
+    if args.command == 'validate':
+        print(json.dumps(validate_policy(pathlib.Path(args.run_dir), config), indent=2)); return 0
+    if args.command == 'evaluate':
+        print(json.dumps(evaluate(pathlib.Path(args.run_dir), config), indent=2)); return 0
+    if args.command == 'prepare-retry':
+        print(json.dumps(prepare_retry(pathlib.Path(args.run_dir), config, args.reason), indent=2)); return 0
+    if args.command == 'bad-state-check':
+        print(json.dumps(bad_state_check(pathlib.Path(args.run_dir), config), indent=2)); return 0
+    if args.command == 'context-manifest':
+        print(json.dumps(context_manifest(pathlib.Path(args.run_dir)), indent=2)); return 0
+    if args.command == 'publish-ledger':
+        print(json.dumps(publish_ledger(pathlib.Path(args.run_dir)), indent=2)); return 0
+    if args.command == 'record-follow-on':
+        print(json.dumps(record_follow_on(pathlib.Path(args.from_run), pathlib.Path(args.to_run), args.reason), indent=2)); return 0
+    if args.command == 'contract-add':
+        print(json.dumps(contract_index_add(args.name, args.path, args.description, args.status), indent=2)); return 0
+    if args.command == 'contract-update':
+        print(json.dumps(contract_index_update(args.name, args.status), indent=2)); return 0
+    if args.command == 'rebuild-contract-index':
+        print(json.dumps(rebuild_contract_index(), indent=2)); return 0
+    if args.command == 'state-machine-check':
+        print(json.dumps(state_machine_check(pathlib.Path(args.run_dir)), indent=2)); return 0
     return 1
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     raise SystemExit(main())

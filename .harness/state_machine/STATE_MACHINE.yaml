@@ -1,0 +1,27 @@
+version: 1
+modes:
+  delivery:
+    terminal_states: [completed, blocked, abandoned]
+    states:
+      - initialized
+      - planned
+      - implemented
+      - reviewed
+      - qa_passed
+      - broad_reviewed
+      - build_verified
+      - bad_state_checked
+      - breaker_completed
+      - evaluated
+      - ledger_published
+      - completed
+  product_feedback:
+    terminal_states: [contract_ready, archived]
+    states:
+      - initialized
+      - design_reviewed
+      - persona_tested
+      - product_sme_reviewed
+      - technical_sme_reviewed
+      - registry_synced
+      - contract_ready

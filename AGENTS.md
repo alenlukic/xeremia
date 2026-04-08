@@ -4,10 +4,15 @@ This repository uses a deterministic **agentic product-development harness**.
 
 The harness is not only for code generation. It supports:
 - scoped delivery work
-- adversarial verification
+- adversarial verification with specialized breaker lanes
 - stakeholder and customer-perspective feedback loops
-- durable run ledgers
-- ledger-driven documentation upkeep
+- split product and technical SME critique
+- durable recommendation registry for repeated feedback
+- durable run ledgers and ledger index rebuilds
+- ledger-driven documentation upkeep and memory sync
+- lightweight state-machine and schedule scaffolding
+- token-aware context packaging
+- quality scoring via rubric, module scorecards, and durable findings registry
 
 ## Repository
 
@@ -27,6 +32,29 @@ Backed by PostgreSQL via SQLAlchemy.
 | Workflows | [docs/WORKFLOWS.md](docs/WORKFLOWS.md) |
 | Conventions | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) |
 | Golden principles | [docs/golden-principles.md](docs/golden-principles.md) |
+| State machine | [.harness/state_machine/STATE_MACHINE.yaml](.harness/state_machine/STATE_MACHINE.yaml) |
+| Schedules | [.harness/schedules/SCHEDULES.yaml](.harness/schedules/SCHEDULES.yaml) |
+| Token efficiency guide | [.harness/docs/token-efficiency.md](.harness/docs/token-efficiency.md) |
+| Quality rubric & findings | [.harness/docs/quality/](.harness/docs/quality/) |
+
+## Agent Naming Convention
+
+Agent files use a **role-prefix** naming scheme so that related agents sort together and their responsibility category is immediately visible.
+
+| Prefix | Category | Responsibility |
+|---|---|---|
+| `coord-` | Coordination | Orchestration, scope control, breaker stack management |
+| `spec-` | Specification | Contracts, ledgers, PR descriptions, diff planning |
+| `dev-` | Development | Implementation and structural coding |
+| `test-` | Testing & verification | Reviews, QA, build checks, breakers, evaluators, regression |
+| `sme-` | SME & research | Product/technical red teams, design critique, research |
+| `maint-` | Maintenance | Refactors, comment scrubbing, post-maintenance review |
+| `meta-` | Harness governance | Bad-state detection, doc/memory/registry stewardship |
+
+## Contract Storage Convention
+
+Durable development contracts live under `.harness/contracts/YYYY-MM-DD/`.
+Outstanding contracts are tracked in `.harness/contracts/INDEX.md` and `.harness/contracts/INDEX.json`.
 
 ## Execution Contract
 
@@ -46,69 +74,97 @@ Repo-local harness engine:
 
 When running any pipeline, you are the **orchestrator**.
 
-Each step that names an agent must be delegated via `Task(subagent_type="<Agent Name>")`.
+Each step that names an agent must be delegated via `Task(subagent_type="<Agent Display Name>")`.
 Do not quietly absorb specialist work into the orchestrator role.
+
+Examples:
+- `Task(subagent_type="Coord Delivery Supervisor")`
+- `Task(subagent_type="Dev Delivery Coder")`
+- `Task(subagent_type="Test Delivery QA")`
 
 ## Operating Model
 
-The default system has **four loops**:
+The default system has **five loops**:
 
 1. **Delivery loop**
-   - supervisor → coder → review → QA → build verification → breaker → evaluation/regression
-
-2. **Stakeholder feedback loop**
-   - design red team → customer persona tester → SME red team → development contract producer
-
-3. **Learning loop**
-   - every meaningful run distills a compact `RUN_LEDGER.md`
-
-4. **Documentation loop**
-   - ledger-driven updates keep docs, manifests, indexes, and persona guidance current
+   - supervisor → coder → review → QA → broad review → verification
+2. **Adversarial verification loop**
+   - build verifier → bad state monitor → breaker orchestrator → specialist breakers → evaluator/regression
+3. **Stakeholder feedback loop**
+   - design red team → customer persona tester → product SME → technical SME → registry sync → contract producer
+4. **Learning loop**
+   - every meaningful run distills a compact `RUN_LEDGER.md` and can publish it into `.harness/ledgers/`
+5. **Memory/documentation loop**
+   - ledger-driven doc sync and memory sync keep docs, manifests, indexes, persona guidance, and registry summaries current
 
 ## Agent Roles
 
-### Delivery and verification agents
+### Coordination agents (`coord-`)
 
 | Agent | File | Role |
 |---|---|---|
-| Delivery Supervisor | [.harness/agents/delivery-supervisor.md](.harness/agents/delivery-supervisor.md) | Orchestration, scope control, flow management |
-| Delivery Coder | [.harness/agents/delivery-coder.md](.harness/agents/delivery-coder.md) | Implementation with narrow patches |
-| Delivery Reviewer | [.harness/agents/delivery-reviewer.md](.harness/agents/delivery-reviewer.md) | Diff-focused correctness review |
-| Delivery Broad Reviewer | [.harness/agents/delivery-broad-reviewer.md](.harness/agents/delivery-broad-reviewer.md) | Design and maintainability review |
-| Delivery QA | [.harness/agents/delivery-qa.md](.harness/agents/delivery-qa.md) | Requirement-trace validation and manual/runtime checks |
-| Delivery Build Verifier | [.harness/agents/delivery-build-verifier.md](.harness/agents/delivery-build-verifier.md) | Build health verification |
-| Delivery Breaker | [.harness/agents/delivery-breaker.md](.harness/agents/delivery-breaker.md) | Adversarial post-change falsification pass |
-| Delivery Diff Planner | [.harness/agents/delivery-diff-planner.md](.harness/agents/delivery-diff-planner.md) | Second-pass planning from real diff + failures |
-| Delivery Evaluator | [.harness/agents/delivery-evaluator.md](.harness/agents/delivery-evaluator.md) | Quality scoring and completion gating |
-| Delivery Regression Detector | [.harness/agents/delivery-regression-detector.md](.harness/agents/delivery-regression-detector.md) | Detect unintended drift and adjacent risk |
+| Coord Delivery Supervisor | [.harness/agents/coord-delivery-supervisor.md](.harness/agents/coord-delivery-supervisor.md) | Orchestration, scope control, flow management |
+| Coord Breaker Orchestrator | [.harness/agents/coord-breaker-orchestrator.md](.harness/agents/coord-breaker-orchestrator.md) | Runs and consolidates the breaker stack |
 
-### Product and stakeholder feedback agents
+### Specification agents (`spec-`)
 
 | Agent | File | Role |
 |---|---|---|
-| Development Contract Producer | [.harness/agents/development-contract-producer.md](.harness/agents/development-contract-producer.md) | Normalize prose/reports/contracts into a DEVDSL-ready development contract |
-| SME Red Team | [.harness/agents/sme-red-team.md](.harness/agents/sme-red-team.md) | Repo-aware domain, customer, and market critic; maintains persona guidance and actionable recommendations |
-| Design Red Team | [.harness/agents/design-red-team.md](.harness/agents/design-red-team.md) | UI/UX and workflow critique with acceptance-ready recommendations |
-| Customer Persona Tester | [.harness/agents/customer-persona-tester.md](.harness/agents/customer-persona-tester.md) | Exercises core workflows from the target customer's perspective |
+| Spec Contract Producer | [.harness/agents/spec-contract-producer.md](.harness/agents/spec-contract-producer.md) | Normalize prose/reports/contracts into DEVDSL-ready development contracts |
+| Spec Ledger Curator | [.harness/agents/spec-ledger-curator.md](.harness/agents/spec-ledger-curator.md) | Distill key decisions, failures, and reusable learnings |
+| Spec PR Description | [.harness/agents/spec-pr-description.md](.harness/agents/spec-pr-description.md) | Branch PR descriptions |
+| Spec Change Summarizer | [.harness/agents/spec-change-summarizer.md](.harness/agents/spec-change-summarizer.md) | Merge-commit summaries |
+| Spec Diff Planner | [.harness/agents/spec-diff-planner.md](.harness/agents/spec-diff-planner.md) | Second-pass planning from real diff + failures |
 
-### Learning and maintenance agents
-
-| Agent | File | Role |
-|---|---|---|
-| Run Ledger Curator | [.harness/agents/run-ledger-curator.md](.harness/agents/run-ledger-curator.md) | Distill key decisions, failures, and reusable learnings |
-| Ledger Documentation Steward | [.harness/agents/ledger-doc-steward.md](.harness/agents/ledger-doc-steward.md) | Update docs / structure / persona guidance from published ledgers |
-| Maintenance Coder | [.harness/agents/maintenance-coder.md](.harness/agents/maintenance-coder.md) | Scoped refactors and hygiene |
-| Maintenance Comment Scrubber | [.harness/agents/maintenance-comment-scrubber.md](.harness/agents/maintenance-comment-scrubber.md) | Remove non-useful comments |
-| Maintenance Reviewer | [.harness/agents/maintenance-reviewer.md](.harness/agents/maintenance-reviewer.md) | Post-maintenance review |
-
-### Restructure, research, and PR agents
+### Development agents (`dev-`)
 
 | Agent | File | Role |
 |---|---|---|
-| Restructure Coder | [.harness/agents/restructure-coder.md](.harness/agents/restructure-coder.md) | Scoped structural improvement |
-| Research Analyst | [.harness/agents/research-analyst.md](.harness/agents/research-analyst.md) | Read-only codebase research |
-| PR Change Summarizer | [.harness/agents/pr-change-summarizer.md](.harness/agents/pr-change-summarizer.md) | Merge-commit summaries |
-| PR Description Generator | [.harness/agents/pr-description-generator.md](.harness/agents/pr-description-generator.md) | Branch PR descriptions |
+| Dev Delivery Coder | [.harness/agents/dev-delivery-coder.md](.harness/agents/dev-delivery-coder.md) | Implementation with narrow patches |
+| Dev Restructure Coder | [.harness/agents/dev-restructure-coder.md](.harness/agents/dev-restructure-coder.md) | Scoped structural improvement |
+
+### Testing and verification agents (`test-`)
+
+| Agent | File | Role |
+|---|---|---|
+| Test Delivery Reviewer | [.harness/agents/test-delivery-reviewer.md](.harness/agents/test-delivery-reviewer.md) | Diff-focused correctness review |
+| Test Delivery Broad Reviewer | [.harness/agents/test-delivery-broad-reviewer.md](.harness/agents/test-delivery-broad-reviewer.md) | Design and maintainability review |
+| Test Delivery QA | [.harness/agents/test-delivery-qa.md](.harness/agents/test-delivery-qa.md) | Requirement-trace validation and manual/runtime checks |
+| Test Build Verifier | [.harness/agents/test-build-verifier.md](.harness/agents/test-build-verifier.md) | Build/runtime health verification |
+| Test Breaker Spec | [.harness/agents/test-breaker-spec.md](.harness/agents/test-breaker-spec.md) | Finds spec/contract mismatches |
+| Test Breaker Tests | [.harness/agents/test-breaker-tests.md](.harness/agents/test-breaker-tests.md) | Finds false-green test confidence |
+| Test Breaker Security | [.harness/agents/test-breaker-security.md](.harness/agents/test-breaker-security.md) | Finds nearby security/trust-boundary regressions |
+| Test Delivery Evaluator | [.harness/agents/test-delivery-evaluator.md](.harness/agents/test-delivery-evaluator.md) | Quality scoring and completion gating |
+| Test Regression Detector | [.harness/agents/test-regression-detector.md](.harness/agents/test-regression-detector.md) | Detect unintended drift and adjacent risk |
+| Test Design QA | [.harness/agents/test-design-qa.md](.harness/agents/test-design-qa.md) | Verifies design/visual contract items were implemented to standard |
+| Test Customer Persona | [.harness/agents/test-customer-persona.md](.harness/agents/test-customer-persona.md) | Exercises core workflows from target customer perspective |
+
+### SME and research agents (`sme-`)
+
+| Agent | File | Role |
+|---|---|---|
+| SME Product Red Team | [.harness/agents/sme-product-red-team.md](.harness/agents/sme-product-red-team.md) | Repo-aware customer, market, and workflow critic |
+| SME Technical Red Team | [.harness/agents/sme-technical-red-team.md](.harness/agents/sme-technical-red-team.md) | Architecture and implementation strategist |
+| SME Research Analyst | [.harness/agents/sme-research-analyst.md](.harness/agents/sme-research-analyst.md) | Read-only codebase research |
+| SME Design Red Team | [.harness/agents/sme-design-red-team.md](.harness/agents/sme-design-red-team.md) | UI/UX and workflow critique with acceptance-ready recommendations |
+| SME Design Perfectionist | [.harness/agents/sme-design-perfectionist.md](.harness/agents/sme-design-perfectionist.md) | Craft-focused design critic with real-world references |
+
+### Maintenance agents (`maint-`)
+
+| Agent | File | Role |
+|---|---|---|
+| Maint Coder | [.harness/agents/maint-coder.md](.harness/agents/maint-coder.md) | Scoped refactors and hygiene |
+| Maint Comment Scrubber | [.harness/agents/maint-comment-scrubber.md](.harness/agents/maint-comment-scrubber.md) | Remove non-useful comments |
+| Maint Reviewer | [.harness/agents/maint-reviewer.md](.harness/agents/maint-reviewer.md) | Post-maintenance review |
+
+### Harness governance agents (`meta-`)
+
+| Agent | File | Role |
+|---|---|---|
+| Meta Bad State Monitor | [.harness/agents/meta-bad-state-monitor.md](.harness/agents/meta-bad-state-monitor.md) | Detect loops, scope blowups, artifact mismatch, token/context pressure |
+| Meta Ledger Doc Steward | [.harness/agents/meta-ledger-doc-steward.md](.harness/agents/meta-ledger-doc-steward.md) | Update docs/structure/persona guidance from published ledgers |
+| Meta Memory Sync Steward | [.harness/agents/meta-memory-sync-steward.md](.harness/agents/meta-memory-sync-steward.md) | Align ledgers, persona guidance, registry summaries, and memory indexes |
+| Meta Registry Steward | [.harness/agents/meta-registry-steward.md](.harness/agents/meta-registry-steward.md) | Consolidates repeated stakeholder findings into durable registry |
 
 ### Prompt utility agents
 
@@ -122,23 +178,29 @@ Commands live in `.harness/commands/`.
 In Cursor they are available as slash commands via the `.cursor/commands/` symlink.
 In Claude Code and Codex, load the command file directly as a prompt.
 
-| Command | File | Cursor slash command |
+| Command | File | Slash command |
 |---|---|---|
-| Delivery pipeline | [.harness/commands/run-delivery-pipeline.md](.harness/commands/run-delivery-pipeline.md) | `/run-delivery-pipeline` |
-| Verification stack | [.harness/commands/run-verification-stack.md](.harness/commands/run-verification-stack.md) | `/run-verification-stack` |
-| Breaker follow-on | [.harness/commands/run-breaker-followup.md](.harness/commands/run-breaker-followup.md) | `/run-breaker-followup` |
-| Development contract producer | [.harness/commands/run-development-contract-producer.md](.harness/commands/run-development-contract-producer.md) | `/run-development-contract-producer` |
-| Product feedback loop | [.harness/commands/run-product-feedback-loop.md](.harness/commands/run-product-feedback-loop.md) | `/run-product-feedback-loop` |
-| SME red team | [.harness/commands/run-sme-red-team.md](.harness/commands/run-sme-red-team.md) | `/run-sme-red-team` |
-| Design red team | [.harness/commands/run-design-red-team.md](.harness/commands/run-design-red-team.md) | `/run-design-red-team` |
-| Customer persona test | [.harness/commands/run-customer-persona-test.md](.harness/commands/run-customer-persona-test.md) | `/run-customer-persona-test` |
-| Ledger docs sync | [.harness/commands/run-ledger-doc-sync.md](.harness/commands/run-ledger-doc-sync.md) | `/run-ledger-doc-sync` |
-| Maintenance pipeline | [.harness/commands/run-maintenance-pipeline.md](.harness/commands/run-maintenance-pipeline.md) | `/run-maintenance-pipeline` |
-| PR description | [.harness/commands/run-pr-description.md](.harness/commands/run-pr-description.md) | `/run-pr-description` |
-| Change summarizer | [.harness/commands/run-change-summarizer.md](.harness/commands/run-change-summarizer.md) | `/run-change-summarizer` |
-| Repo research | [.harness/commands/run-repo-research.md](.harness/commands/run-repo-research.md) | `/run-repo-research` |
-| Restructure pipeline | [.harness/commands/run-restructure-pipeline.md](.harness/commands/run-restructure-pipeline.md) | `/run-restructure-pipeline` |
-| Prompt decomposer | [.harness/commands/run-prompt-decomposer.md](.harness/commands/run-prompt-decomposer.md) | `/run-prompt-decomposer` |
+| Delivery pipeline | [run-delivery-pipeline.md](.harness/commands/run-delivery-pipeline.md) | `/run-delivery-pipeline` |
+| Verification stack | [run-verification-stack.md](.harness/commands/run-verification-stack.md) | `/run-verification-stack` |
+| Breaker follow-on | [run-breaker-followup.md](.harness/commands/run-breaker-followup.md) | `/run-breaker-followup` |
+| Product feedback loop | [run-product-feedback-loop.md](.harness/commands/run-product-feedback-loop.md) | `/run-product-feedback-loop` |
+| Maintenance pipeline | [run-maintenance-pipeline.md](.harness/commands/run-maintenance-pipeline.md) | `/run-maintenance-pipeline` |
+| Restructure pipeline | [run-restructure-pipeline.md](.harness/commands/run-restructure-pipeline.md) | `/run-restructure-pipeline` |
+| Contract producer | [run-spec-contract-producer.md](.harness/commands/run-spec-contract-producer.md) | `/run-spec-contract-producer` |
+| PR description | [run-spec-pr-description.md](.harness/commands/run-spec-pr-description.md) | `/run-spec-pr-description` |
+| Change summarizer | [run-spec-change-summarizer.md](.harness/commands/run-spec-change-summarizer.md) | `/run-spec-change-summarizer` |
+| Prompt decomposer | [run-prompt-decomposer.md](.harness/commands/run-prompt-decomposer.md) | `/run-prompt-decomposer` |
+| Design QA | [run-test-design-qa.md](.harness/commands/run-test-design-qa.md) | `/run-test-design-qa` |
+| Customer persona | [run-test-customer-persona.md](.harness/commands/run-test-customer-persona.md) | `/run-test-customer-persona` |
+| Product SME red team | [run-sme-product-red-team.md](.harness/commands/run-sme-product-red-team.md) | `/run-sme-product-red-team` |
+| Technical SME red team | [run-sme-technical-red-team.md](.harness/commands/run-sme-technical-red-team.md) | `/run-sme-technical-red-team` |
+| Design red team | [run-sme-design-red-team.md](.harness/commands/run-sme-design-red-team.md) | `/run-sme-design-red-team` |
+| Design perfectionist | [run-sme-design-perfectionist.md](.harness/commands/run-sme-design-perfectionist.md) | `/run-sme-design-perfectionist` |
+| Research | [run-sme-research.md](.harness/commands/run-sme-research.md) | `/run-sme-research` |
+| Registry sync | [run-meta-registry-sync.md](.harness/commands/run-meta-registry-sync.md) | `/run-meta-registry-sync` |
+| Ledger doc sync | [run-meta-ledger-doc-sync.md](.harness/commands/run-meta-ledger-doc-sync.md) | `/run-meta-ledger-doc-sync` |
+| Memory sync | [run-meta-memory-sync.md](.harness/commands/run-meta-memory-sync.md) | `/run-meta-memory-sync` |
+| Harness bootstrap | [run-harness-bootstrap.md](.harness/commands/run-harness-bootstrap.md) | `/run-harness-bootstrap` |
 
 ## Run Artifacts
 
@@ -153,16 +215,27 @@ Core delivery artifacts:
 - `REVIEW_NOTES.md`
 - `QA_REPORT.md`
 - `BUILD_VERIFICATION.md`
+- `BAD_STATE_REPORT.md`
+- `BREAKER_SPEC_REPORT.md`
+- `BREAKER_TEST_REPORT.md`
+- `BREAKER_SECURITY_REPORT.md`
 - `BREAKER_REPORT.md`
 - `POLICY_REPORT.json`
 - `EVAL_REPORT.json`
 - `REGRESSION_REPORT.json`
+- `CONTEXT_MANIFEST.json`
 - `RUN_LEDGER.md`
 
 Product-feedback artifacts:
+- `DESIGN_PERFECTIONIST_REVIEW.md`
+- `DESIGN_QA_REPORT.md`
 - `DESIGN_RECOMMENDATIONS.md`
 - `CUSTOMER_PERSONA_FEEDBACK.md`
-- `SME_RECOMMENDATIONS.md`
+- `PRODUCT_SME_RECOMMENDATIONS.md`
+- `TECHNICAL_SME_RECOMMENDATIONS.md`
+- `RECOMMENDATION_REGISTRY_SYNC.md`
+- `.harness/product-feedback/RECOMMENDATION_REGISTRY.json`
+- `.harness/product-feedback/RECOMMENDATION_REGISTRY.md`
 - `DEVELOPMENT_CONTRACT.md`
 - `BREAKER_FOLLOW_ON_CONTRACT.md`
 - `FOLLOW_ON_RUN.json`
@@ -172,30 +245,56 @@ Retry / remediation artifacts:
 - `RETRY_TASK.md`
 - `RETRY_LOG.jsonl`
 
-Persistent tracked knowledge:
-- `.harness/ledgers/`
-- `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md`
-- `.harness/contracts/`
+## Long-term Memory Surfaces
 
-## Default Policies
+Persistent knowledge surfaces:
+- `.harness/ledgers/INDEX.json`
+- `.harness/ledgers/INDEX.md`
+- published ledgers in `.harness/ledgers/`
+- `.harness/product-feedback/RECOMMENDATION_REGISTRY.json`
+- `.harness/product-feedback/RECOMMENDATION_REGISTRY.md`
+- `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md`
+- `.harness/contracts/INDEX.json`
+- `.harness/contracts/INDEX.md`
+- `.harness/state_machine/STATE_MACHINE.yaml`
+- `.harness/schedules/SCHEDULES.yaml`
+
+## Default policy
+
+- Prefer the smallest coherent task.
+- Prefer follow-on runs over same-run scope explosion.
+- Prefer concrete falsification over rhetorical criticism.
+- Prefer ledgers that capture durable signal rather than transcripts.
+- Prefer narrow doc/memory updates backed by repeated evidence.
+- Prefer diff-first and ledger-first context packaging over dumping large file sets into context.
 
 ### Breaker follow-on policy
 
 The breaker is not just a reviewer.
 If it raises actionable issues after the verification phase, the default policy is:
 
-`BREAKER_REPORT.md` → `Development Contract Producer` → brand-new delivery run
+`BREAKER_REPORT.md` → `Spec Contract Producer` → brand-new delivery run
 
 Do not silently fold breaker findings into the original run unless a human explicitly overrides that policy.
 This preserves auditability and keeps adversarial findings first-class.
 
 ### Customer persona testing policy
 
-Run the `Customer Persona Tester` only after the candidate build is credible enough to evaluate from a customer perspective.
+Run the `Test Customer Persona` agent only after the candidate build is credible enough to evaluate from a customer perspective.
 Default minimum bar:
 - QA verdict `PASS`
 - build verification `PASS`
 - breaker has no unresolved `BLOCKER`
+
+### Design QA verification policy
+
+Run the `Test Design QA` agent after implementation whenever the task originated from a design contract, a `DESIGN_PERFECTIONIST_REVIEW.md`, or a `DESIGN_RECOMMENDATIONS.md` with visual/UI acceptance criteria.
+
+The Test Design QA verdict gates completion the same way Test Delivery QA does:
+- `FAIL` triggers remediation or a follow-on contract
+- `PASS_WITH_NOTES` is acceptable when all P0/P1 items pass
+
+If the verifier fails, feed the failed items back through the `Spec Contract Producer` for a remediation contract rather than silently patching.
 
 ### Ledger policy
 
