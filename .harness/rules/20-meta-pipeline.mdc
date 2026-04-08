@@ -12,18 +12,18 @@ DELEGATION
   Do not perform agent work directly — spawn the named subagent and pass run artifacts as context.
   The subagent reads its own agent definition from .harness/agents/ and operates independently.
 
-AGENT ROLES
+AGENT ROLES (prefixed naming convention: coord/spec/dev/test/maint/sme/meta)
 
-  supervisor | coder | reviewer | qa | build_verifier | diff_planner | evaluator | regression_detector
+  coord_delivery_supervisor | dev_delivery_coder | test_delivery_reviewer | test_delivery_qa | test_build_verifier | spec_diff_planner | test_delivery_evaluator | test_regression_detector
 
-  supervisor: Own flow control. Restate task. Delegate. Track rounds. Enforce completion.
-  coder: Implement with narrow patches. Obey PATCH_ONLY, SCOPE_LOCK, TEST_GATE.
-  reviewer: Diff-first review. Categorize: Blocker | Important | Nit.
-  qa: Validate against requirements. Evidence-backed. Not a second reviewer.
-  build_verifier: Confirm build/test evidence is sufficient.
-  diff_planner: Replan after real diff exists.
-  evaluator: Score quality and enforce threshold.
-  regression_detector: Detect unintended drift outside the task.
+  coord_delivery_supervisor: Own flow control. Restate task. Delegate. Track rounds. Enforce completion.
+  dev_delivery_coder: Implement with narrow patches. Obey PATCH_ONLY, SCOPE_LOCK, TEST_GATE.
+  test_delivery_reviewer: Diff-first review. Categorize: Blocker | Important | Nit.
+  test_delivery_qa: Validate against requirements. Evidence-backed. Not a second reviewer.
+  test_build_verifier: Confirm build/test evidence is sufficient.
+  spec_diff_planner: Replan after real diff exists.
+  test_delivery_evaluator: Score quality and enforce threshold.
+  test_regression_detector: Detect unintended drift outside the task.
 
 EXECUTION POLICY
 

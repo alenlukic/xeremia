@@ -18,34 +18,29 @@ Optional:
 
 ## DO
 
-1. Capture current diff
+1. Refresh deterministic artifacts
 - `python3 .harness/bin/pipeline.py diff --run-dir <run_dir>`
-
-2. Run required intents as needed
 - `python3 .harness/bin/pipeline.py run --run-dir <run_dir> --intent test`
 - `python3 .harness/bin/pipeline.py run --run-dir <run_dir> --intent build`
-
-3. Validate policy
 - `python3 .harness/bin/pipeline.py validate --run-dir <run_dir>`
+- `python3 .harness/bin/pipeline.py context-manifest --run-dir <run_dir>`
 
-4. Build verification
-- delegate to `Delivery Build Verifier`
+2. Delegate build and health checks
+- `Test Build Verifier`
+- `Meta Bad State Monitor`
 
-5. Adversarial breaker pass
-- delegate to `Delivery Breaker`
-- require concrete falsification attempts against the real diff
+3. Run adversarial verification
+- delegate to `Coord Breaker Orchestrator`
+- require specialist breaker lanes when relevant to the diff
 
-6. Evaluation
+4. Evaluate the run
 - `python3 .harness/bin/pipeline.py evaluate --run-dir <run_dir>`
-- delegate to `Delivery Evaluator`
-- rerun `python3 .harness/bin/pipeline.py evaluate --run-dir <run_dir>` after breaker/regression artifacts exist if needed
+- delegate to `Test Delivery Evaluator`
+- delegate to `Test Regression Detector`
 
-7. Regression detection
-- delegate to `Delivery Regression Detector`
-
-8. Breaker follow-on handling
-- if `spawn_breaker_follow_on=true` and the breaker raises actionable `BLOCKER` or `IMPORTANT` findings:
-  - delegate to `Development Contract Producer`
+5. Handle breaker follow-on
+- if `spawn_breaker_follow_on=true` and actionable breaker findings remain:
+  - delegate to `Spec Contract Producer`
   - write `BREAKER_FOLLOW_ON_CONTRACT.md`
   - start a new delivery run from that contract
   - record `FOLLOW_ON_RUN.json`
@@ -53,10 +48,6 @@ Optional:
 ## ACCEPTANCE
 
 Complete only if:
-- `PATCH.diff` is current
-- `TEST_REPORT.json` exists
-- `POLICY_REPORT.json` exists
-- `BREAKER_REPORT.md` exists
-- `EVAL_REPORT.json` exists
-- `REGRESSION_REPORT.json` exists
+- `PATCH.diff`, `TEST_REPORT.json`, `POLICY_REPORT.json`, `BAD_STATE_REPORT.md`, `BREAKER_REPORT.md`, `EVAL_REPORT.json`, and `REGRESSION_REPORT.json` exist
+- specialist breaker reports exist when those lanes were relevant
 - any actionable breaker findings either produced a follow-on run or were explicitly waived

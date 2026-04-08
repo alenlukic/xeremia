@@ -21,7 +21,7 @@ Canonical workflow docs:
 - .harness/commands/run-verification-stack.md
 - .harness/commands/run-maintenance-pipeline.md
 - .harness/commands/run-restructure-pipeline.md
-- .harness/commands/run-repo-research.md
+- .harness/commands/run-sme-research.md
 
 Quality rubric: .harness/docs/quality/rubric.md
 Module scorecard schema: .harness/docs/quality/scorecard-schema.yaml

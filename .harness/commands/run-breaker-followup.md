@@ -23,7 +23,7 @@ Optional:
 - verify that `BREAKER_REPORT.md` contains actionable findings at or above the threshold
 
 2. Produce follow-on contract
-- delegate to `Development Contract Producer`
+- delegate to `Spec Contract Producer`
 - use `BREAKER_REPORT.md` as the primary source
 - write `BREAKER_FOLLOW_ON_CONTRACT.md`
 
@@ -36,6 +36,6 @@ Optional:
 ## ACCEPTANCE
 
 Complete only if:
-- the `Development Contract Producer` agent was used
+- the `Spec Contract Producer` agent was used
 - the follow-on contract is scoped and actionable
 - a new delivery run was started unless `auto_start_delivery=false`

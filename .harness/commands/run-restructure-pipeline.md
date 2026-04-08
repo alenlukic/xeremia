@@ -35,7 +35,7 @@ Pass the run directory path and relevant artifacts as context to each subagent.
 - establish the active run context for this task
 
 2. Intake and restructure planning
-- use the `Delivery Supervisor` agent
+- use the `Coord Delivery Supervisor` agent
 - restate the restructure task into:
   - explicit scope boundaries
   - behavior-preservation expectations
@@ -46,7 +46,7 @@ Pass the run directory path and relevant artifacts as context to each subagent.
   - `PLAN.md`
 
 3. Restructure analysis and implementation
-- delegate to the `Restructure Coder`
+- delegate to the `Dev Restructure Coder`
 - require the agent to:
   - understand current behavior before editing
   - analyze architectural and organizational issues
@@ -57,27 +57,27 @@ Pass the run directory path and relevant artifacts as context to each subagent.
   - write `RESTRUCTURE_SUMMARY.md`
 
 4. Specific review loop
-- delegate review to the `Delivery Reviewer` agent
+- delegate review to the `Test Delivery Reviewer` agent
 - use this review to confirm:
   - behavior preservation
   - logical correctness
   - requirements adherence
   - no regressions introduced by the restructure
 - if verdict is `CHANGES_REQUESTED`:
-  - return findings to the `Restructure Coder`
+  - return findings to the `Dev Restructure Coder`
   - perform focused remediation
   - repeat specific review within pipeline limits
 
 5. QA validation
-- delegate validation to the `Delivery QA` agent
+- delegate validation to the `Test Delivery QA` agent
 - if QA verdict is `FAIL`:
-  - return findings to the `Restructure Coder`
+  - return findings to the `Dev Restructure Coder`
   - perform focused remediation
-  - re-run the `Delivery Reviewer` as needed
+  - re-run the `Test Delivery Reviewer` as needed
   - repeat QA within pipeline limits
 
 6. Broad review
-- only after QA verdict is `PASS`, delegate review to the `Delivery Broad Reviewer` agent
+- only after QA verdict is `PASS`, delegate review to the `Test Delivery Broad Reviewer` agent
 - assess whether the restructure materially improves:
   - design quality
   - maintainability/extensibility
@@ -85,11 +85,11 @@ Pass the run directory path and relevant artifacts as context to each subagent.
   - repo pattern alignment
   - longer-term change cost
 - if broad review verdict is `CHANGES_REQUESTED`:
-  - return findings to the `Restructure Coder`
+  - return findings to the `Dev Restructure Coder`
   - perform focused remediation
-  - re-run the `Delivery Reviewer`
-  - re-run `Delivery QA`
-  - after QA returns `PASS`, re-run the `Delivery Broad Reviewer`
+  - re-run the `Test Delivery Reviewer`
+  - re-run `Test Delivery QA`
+  - after QA returns `PASS`, re-run the `Test Delivery Broad Reviewer`
   - repeat within pipeline limits
 
 7. Verification and artifacts
@@ -97,14 +97,14 @@ Pass the run directory path and relevant artifacts as context to each subagent.
   - `python3 .harness/bin/pipeline.py`
 
 8. Build verification
-- delegate to the `Delivery Build Verifier` agent
+- delegate to the `Test Build Verifier` agent
 - confirm the build process succeeds after all restructure changes
 - if build status is `FAIL`:
-  - return findings to the `Restructure Coder`
+  - return findings to the `Dev Restructure Coder`
   - perform focused remediation
-  - re-run the `Delivery Reviewer`
-  - re-run `Delivery QA`
-  - after QA returns `PASS`, re-run the `Delivery Broad Reviewer` as needed
+  - re-run the `Test Delivery Reviewer`
+  - re-run `Test Delivery QA`
+  - after QA returns `PASS`, re-run the `Test Delivery Broad Reviewer` as needed
   - repeat build verification within pipeline limits
 
 9. Finalize
@@ -115,7 +115,7 @@ Pass the run directory path and relevant artifacts as context to each subagent.
 Before completion, verify:
 - a run directory was created
 - `TASK.md` and `PLAN.md` exist
-- restructure analysis and implementation were executed by the `Restructure Coder`
+- restructure analysis and implementation were executed by the `Dev Restructure Coder`
 - `RESTRUCTURE_ANALYSIS.md` and `RESTRUCTURE_SUMMARY.md` exist
 - specific review, QA, broad review, and build verification were all executed
 - specific review confirmed behavioral safety and requirement fit
@@ -149,7 +149,7 @@ Produce:
 ## ACCEPTANCE
 
 Complete only if:
-- the Delivery Supervisor coordinated the workflow
+- the Coord Delivery Supervisor coordinated the workflow
 - context remained narrow and scope-locked
 - the restructure agent analyzed behavior before editing
 - test coverage was strengthened where needed for safe restructuring
