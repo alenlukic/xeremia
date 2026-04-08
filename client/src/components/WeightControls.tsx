@@ -298,68 +298,96 @@ const WeightGauge = memo(WeightGaugeBase);
 interface Props {
   weights: Record<string, number>;
   setWeight: (factor: string, value: number) => void;
+  saving?: boolean;
+  saveSuccess?: boolean;
+  saveError?: string | null;
+  warningMessage?: string | null;
 }
 
 export const WeightControls = memo(function WeightControls({
   weights,
   setWeight,
+  saving,
+  saveSuccess,
+  saveError,
+  warningMessage,
 }: Props) {
   const factors = Object.keys(weights);
   if (factors.length === 0) return null;
 
+  const showStatus = saving || saveSuccess || saveError || warningMessage;
+
   return (
-    <div className="weight-controls-row">
-      <div className="gauge-group gauge-group--bpm">
-        {GAUGE_ROWS[0].factors
-          .filter((f) => f in weights)
-          .map((f) => (
-            <WeightGauge
-              key={f}
-              factor={f}
-              value={weights[f]}
-              onChange={setWeight}
-              colorClass={GAUGE_ROWS[0].colorClass}
-            />
-          ))}
-      </div>
-      <div className="gauge-group gauge-group--energy">
-        {GAUGE_ROWS[1].factors
-          .filter((f) => f in weights)
-          .map((f) => (
-            <WeightGauge
-              key={f}
-              factor={f}
-              value={weights[f]}
-              onChange={setWeight}
-              colorClass={GAUGE_ROWS[1].colorClass}
-            />
-          ))}
-      </div>
-      <div className="gauge-group gauge-group--fusion">
-        {factors.includes('SIMILARITY') && (
-          <div className="fusion-pane">
-            <WeightGauge
-              factor="SIMILARITY"
-              value={weights['SIMILARITY']}
-              onChange={setWeight}
-              colorClass="weight-gauge--violet"
-            />
-            <div className="fusion-subfactors">
-              {FUSION_SUBFACTOR_KEYS.map((item) => (
-                <WeightGauge
-                  key={item.key}
-                  factor={item.key}
-                  value={weights[item.key] ?? 0}
-                  onChange={setWeight}
-                  colorClass="weight-gauge--white"
-                  label={item.label}
-                  small
-                />
-              ))}
+    <div className="weight-controls-outer">
+      <div className="weight-controls-row">
+        <div className="gauge-group gauge-group--bpm">
+          {GAUGE_ROWS[0].factors
+            .filter((f) => f in weights)
+            .map((f) => (
+              <WeightGauge
+                key={f}
+                factor={f}
+                value={weights[f]}
+                onChange={setWeight}
+                colorClass={GAUGE_ROWS[0].colorClass}
+              />
+            ))}
+        </div>
+        <div className="gauge-group gauge-group--energy">
+          {GAUGE_ROWS[1].factors
+            .filter((f) => f in weights)
+            .map((f) => (
+              <WeightGauge
+                key={f}
+                factor={f}
+                value={weights[f]}
+                onChange={setWeight}
+                colorClass={GAUGE_ROWS[1].colorClass}
+              />
+            ))}
+        </div>
+        <div className="gauge-group gauge-group--fusion">
+          {factors.includes('SIMILARITY') && (
+            <div className="fusion-pane">
+              <WeightGauge
+                factor="SIMILARITY"
+                value={weights['SIMILARITY']}
+                onChange={setWeight}
+                colorClass="weight-gauge--violet"
+              />
+              <div className="fusion-subfactors">
+                {FUSION_SUBFACTOR_KEYS.map((item) => (
+                  <WeightGauge
+                    key={item.key}
+                    factor={item.key}
+                    value={weights[item.key] ?? 0}
+                    onChange={setWeight}
+                    colorClass="weight-gauge--white"
+                    label={item.label}
+                    small
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+      {showStatus && (
+        <div className="weight-save-status" role="status">
+          {saveError && (
+            <span className="weight-save-status__error">{saveError}</span>
+          )}
+          {saving && !saveError && (
+            <span className="weight-save-status__saving">Saving…</span>
+          )}
+          {saveSuccess && !saving && !saveError && (
+            <span className="weight-save-status__success">Saved</span>
+          )}
+          {warningMessage && !saveError && (
+            <span className="weight-save-status__warning">{warningMessage}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 });

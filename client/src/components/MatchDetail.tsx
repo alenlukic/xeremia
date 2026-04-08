@@ -10,20 +10,20 @@ import type { TraitMap } from '../hooks/useCollectionCache';
 import { fetchMatchDetail } from '../api/http';
 import { formatFloat, formatScore, formatOverallScore, displayGenre } from '../utils';
 
-type DetailState = { loading: boolean; detail: MatchDetailData | null };
+type DetailState = { loading: boolean; detail: MatchDetailData | null; error: string | null };
 type DetailAction =
   | { type: 'fetch' }
   | { type: 'success'; detail: MatchDetailData }
-  | { type: 'error' };
+  | { type: 'error'; message: string };
 
 function detailReducer(_: DetailState, action: DetailAction): DetailState {
   switch (action.type) {
     case 'fetch':
-      return { loading: true, detail: null };
+      return { loading: true, detail: null, error: null };
     case 'success':
-      return { loading: false, detail: action.detail };
+      return { loading: false, detail: action.detail, error: null };
     case 'error':
-      return { loading: false, detail: null };
+      return { loading: false, detail: null, error: action.message };
   }
 }
 
@@ -32,6 +32,8 @@ interface Props {
   match: TransitionMatch;
   onBack: () => void;
   traitMap: TraitMap;
+  onUseAsSource?: (candidateId: number) => void;
+  onAddToSet?: (candidateId: number) => void;
 }
 
 function renderValue(value: unknown): React.ReactNode {
@@ -67,11 +69,23 @@ function renderValue(value: unknown): React.ReactNode {
   return <span>{String(value)}</span>;
 }
 
+const FACTOR_DISPLAY_LABELS: Record<string, string> = {
+  'Cosine Similarity': 'Spectral',
+  Camelot: 'Key',
+  BPM: 'BPM',
+  Freshness: 'Recency',
+  Energy: 'Energy (MIK)',
+  'Genre Similarity': 'Genre',
+  'Mood Continuity': 'Mood',
+  'Vocal Clash': 'Vocals',
+  'Instrument Similarity': 'Instruments',
+};
+
 const TRAIT_LABELS: Record<string, string> = {
-  voice_instrumental: 'Voice / Instrumental',
-  onset_density: 'Onset Density',
-  spectral_flatness: 'Spectral Flatness',
-  mood_theme: 'Mood / Theme',
+  voice_instrumental: 'Vocals',
+  onset_density: 'Onsets',
+  spectral_flatness: 'Flatness',
+  mood_theme: 'Mood',
   genre: 'Genre',
   instruments: 'Instruments',
 };
@@ -90,23 +104,25 @@ const FIXED_ROWS: FieldDef[][] = [
     { label: 'Energy', getValue: (t) => t.energy },
   ],
   [
-    { label: 'Voice / Instrumental', getValue: (t) => t.traits?.['voice_instrumental'] },
-    { label: 'Onset Density', getValue: (t) => t.traits?.['onset_density'] },
-    { label: 'Spectral Flatness', getValue: (t) => t.traits?.['spectral_flatness'] },
+    { label: 'Vocals', getValue: (t) => t.traits?.['voice_instrumental'] },
+    { label: 'Onsets', getValue: (t) => t.traits?.['onset_density'] },
+    { label: 'Flatness', getValue: (t) => t.traits?.['spectral_flatness'] },
+    { label: 'Mood', getValue: (t) => t.traits?.['mood_theme'] },
   ],
 ];
 
-const VARIABLE_KEYS = ['mood_theme', 'genre', 'instruments'] as const;
+const VARIABLE_KEYS = ['genre', 'instruments'] as const;
 
 function capitalizeFirst(s: string): string {
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
-  const [{ loading, detail }, dispatch] = useReducer(detailReducer, {
+export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSource, onAddToSet }: Props) {
+  const [{ loading, detail, error }, dispatch] = useReducer(detailReducer, {
     loading: true,
     detail: null,
+    error: null,
   });
 
   useEffect(() => {
@@ -120,7 +136,10 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
         }
         dispatch({ type: 'success', detail: result });
       })
-      .catch(() => dispatch({ type: 'error' }));
+      .catch((err: unknown) => dispatch({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to load match detail',
+      }));
   }, [sourceTrack, match, traitMap]);
 
   if (loading) {
@@ -140,16 +159,36 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
         <button className="back-button" onClick={onBack}>
           ← Back
         </button>
-        <p className="table-status">Failed to load match detail</p>
+        <p className="table-status table-status--error">
+          Failed to load match detail{error ? ` — ${error}` : ''}
+        </p>
       </div>
     );
   }
 
   return (
     <div className="match-detail">
-      <button className="back-button" onClick={onBack}>
-        ← Back to matches
-      </button>
+      <div className="detail-actions-bar">
+        <button className="back-button" onClick={onBack}>
+          ← Back to matches
+        </button>
+        {onAddToSet && (
+          <button
+            className="match-action-btn"
+            onClick={() => onAddToSet(match.candidate_id)}
+          >
+            + Add to Set
+          </button>
+        )}
+        {onUseAsSource && (
+          <button
+            className="use-as-source-btn"
+            onClick={() => onUseAsSource(match.candidate_id)}
+          >
+            Use as source →
+          </button>
+        )}
+      </div>
 
       <div className="detail-header">
         <h2 className="detail-title">
@@ -177,7 +216,7 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap }: Props) {
           <tbody>
             {detail.factors.map((f) => (
               <tr key={f.name}>
-                <td>{f.name === 'Similarity' ? 'Spectral' : f.name}</td>
+                <td>{FACTOR_DISPLAY_LABELS[f.name] ?? f.name}</td>
                 <td className="mono">{formatScore(f.score)}</td>
                 <td className="mono">{formatScore(f.weight)}</td>
                 <td className="mono">{formatScore(f.score * f.weight)}</td>

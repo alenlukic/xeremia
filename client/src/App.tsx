@@ -6,25 +6,54 @@ import { MatchesPanel } from './components/MatchesPanel';
 import { MatchDetail } from './components/MatchDetail';
 import { WeightControls } from './components/WeightControls';
 import { AdminDashboard } from './components/AdminDashboard';
+import { SetBuilder } from './components/SetBuilder';
 import { useSelectedTrack } from './hooks/useSelectedTrack';
 import { useTrackFilters } from './hooks/useTrackFilters';
 import { useCollectionCache } from './hooks/useCollectionCache';
 import { useCacheStats } from './hooks/useCacheStats';
 import { useWeights } from './hooks/useWeights';
-import type { Track, SearchSuggestion, TransitionMatch } from './types';
+import { useSetBuilder } from './hooks/useSetBuilder';
+import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 
-type TabKey = 'matches' | 'browse' | 'admin';
+type TabKey = 'matches' | 'browse' | 'admin' | 'set';
 
 const BROWSE_PAGE_SIZE = 250;
 
+const COL_VIS_STORAGE_KEY = 'dj-tools-browse-col-visibility';
+
+const BROWSE_CONFIGURABLE_COLUMNS = [
+  { id: 'camelot_code', label: 'Camelot' },
+  { id: 'key', label: 'Key' },
+  { id: 'bpm', label: 'BPM' },
+  { id: 'energy', label: 'Energy' },
+  { id: 'label', label: 'Label' },
+  { id: 'genre', label: 'Genre' },
+];
+
+function isPlainObject(v: unknown): v is Record<string, boolean> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function loadColumnVisibility(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(COL_VIS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return isPlainObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function App() {
-  const { allTracks, traitMap, loading: collectionLoading } = useCollectionCache();
+  const { allTracks, traitMap, loading: collectionLoading, tracksError, traitsError } = useCollectionCache();
 
   const [activeTab, setActiveTab] = useState<TabKey>('matches');
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null);
   const [searchText, setSearchText] = useState('');
   const [loadedPages, setLoadedPages] = useState(1);
   const loadedPageCacheRef = useRef<Map<string, number>>(new Map());
+  const [transitionChain, setTransitionChain] = useState<TransitionChainEntry[]>([]);
 
   const gaugeRowRef = useRef<HTMLDivElement>(null);
   const [searchPadding, setSearchPadding] = useState<{ left: number; right: number } | null>(null);
@@ -40,6 +69,7 @@ export default function App() {
     selectedTrack,
     matches,
     matchesLoading,
+    matchesError,
     selectTrack,
     clearSelectedTrack,
     refetchMatches,
@@ -58,12 +88,41 @@ export default function App() {
   const {
     weights,
     loading: weightsLoading,
+    error: weightsError,
+    saving: weightsSaving,
+    saveSuccess: weightsSaveSuccess,
     setWeight,
     rawSum,
     isSumValid,
+    warningMessage: weightsWarning,
     normalizeWeights,
     resetWeights,
   } = useWeights(refetchMatches);
+
+  const {
+    sets,
+    activeSet,
+    activeSetId,
+    createSet,
+    selectSet: selectDjSet,
+    deleteSet,
+    addTrack: addTrackToSet,
+    removeTrack: removeTrackFromSet,
+    moveTrack: moveTrackInSet,
+  } = useSetBuilder();
+
+  const [browseColumnVisibility, setBrowseColumnVisibility] = useState<Record<string, boolean>>(loadColumnVisibility);
+
+  useEffect(() => {
+    localStorage.setItem(COL_VIS_STORAGE_KEY, JSON.stringify(browseColumnVisibility));
+  }, [browseColumnVisibility]);
+
+  const toggleBrowseColumn = useCallback((id: string) => {
+    setBrowseColumnVisibility(prev => ({
+      ...prev,
+      [id]: prev[id] !== false ? false : true,
+    }));
+  }, []);
 
   useLayoutEffect(() => {
     const wrapper = gaugeRowRef.current;
@@ -72,7 +131,7 @@ export default function App() {
       return;
     }
 
-    const row = wrapper.firstElementChild as HTMLElement | null;
+    const row = wrapper.querySelector('.weight-controls-row') as HTMLElement | null;
     if (!row) return;
 
     const measure = () => {
@@ -140,6 +199,7 @@ export default function App() {
   const handleSelectTrack = useCallback(
     (track: Track | SearchSuggestion) => {
       setDetailMatch(null);
+      setTransitionChain([]);
       selectTrack(track);
       setActiveTab('matches');
       setSearchText('');
@@ -155,6 +215,51 @@ export default function App() {
     [handleSelectTrack],
   );
 
+  const handleUseAsSource = useCallback(
+    (candidateId: number) => {
+      if (!selectedTrack) return;
+      const candidate = allTracks.find(t => t.id === candidateId);
+      if (!candidate) return;
+      setTransitionChain(prev => [...prev, { track: selectedTrack }]);
+      setDetailMatch(null);
+      selectTrack(candidate);
+    },
+    [selectedTrack, allTracks, selectTrack],
+  );
+
+  const handleChainNavigate = useCallback(
+    (index: number) => {
+      const entry = transitionChain[index];
+      if (!entry) return;
+      setTransitionChain(prev => prev.slice(0, index));
+      setDetailMatch(null);
+      selectTrack(entry.track);
+    },
+    [transitionChain, selectTrack],
+  );
+
+  const handleChainBack = useCallback(() => {
+    if (transitionChain.length === 0) return;
+    const last = transitionChain[transitionChain.length - 1];
+    setTransitionChain(prev => prev.slice(0, -1));
+    setDetailMatch(null);
+    selectTrack(last.track);
+  }, [transitionChain, selectTrack]);
+
+  const handleAddToSet = useCallback(
+    (candidateId: number) => {
+      const track = allTracks.find(t => t.id === candidateId);
+      if (track) addTrackToSet(track);
+    },
+    [allTracks, addTrackToSet],
+  );
+
+  const handleAddSelectedToSet = useCallback(() => {
+    if (!selectedTrack) return;
+    const track = allTracks.find(t => t.id === selectedTrack.id);
+    if (track) addTrackToSet(track);
+  }, [selectedTrack, allTracks, addTrackToSet]);
+
   return (
     <div className="app-shell-v2">
       {!weightsLoading && Object.keys(weights).length > 0 && (
@@ -162,6 +267,10 @@ export default function App() {
           <WeightControls
             weights={weights}
             setWeight={setWeight}
+            saving={weightsSaving}
+            saveSuccess={weightsSaveSuccess}
+            saveError={weightsError}
+            warningMessage={weightsWarning}
           />
         </div>
       )}
@@ -200,16 +309,49 @@ export default function App() {
         >
           Admin
         </button>
+        <button
+          className={`tab${activeTab === 'set' ? ' active' : ''}`}
+          onClick={() => setActiveTab('set')}
+        >
+          Set{activeSet ? ` (${activeSet.tracks.length})` : ''}
+        </button>
       </div>
 
       <div className="tab-content">
+        {activeTab === 'matches' && transitionChain.length > 0 && selectedTrack && (
+          <div className="transition-chain">
+            <button
+              className="chain-back-btn"
+              onClick={handleChainBack}
+              title="Go back to previous source"
+            >
+              ← Back
+            </button>
+            {transitionChain.map((entry, i) => (
+              <span key={`chain-${entry.track.id}-${i}`} className="chain-step">
+                <button
+                  className="chain-entry"
+                  onClick={() => handleChainNavigate(i)}
+                  title={`Return to ${entry.track.title}`}
+                >
+                  {entry.track.title}
+                </button>
+                <span className="chain-arrow">→</span>
+              </span>
+            ))}
+            <span className="chain-current">{selectedTrack.title}</span>
+          </div>
+        )}
         {activeTab === 'matches' && !detailMatch && (
           <div className="table-panel">
             <MatchesPanel
               selectedTrack={selectedTrack}
               matches={matches}
               loading={matchesLoading}
-              onScoreClick={setDetailMatch}
+              matchesError={matchesError}
+              onViewDetail={setDetailMatch}
+              onUseAsSource={handleUseAsSource}
+              onAddToSet={activeSet ? handleAddToSet : undefined}
             />
           </div>
         )}
@@ -219,10 +361,23 @@ export default function App() {
             match={detailMatch}
             onBack={() => setDetailMatch(null)}
             traitMap={traitMap}
+            onUseAsSource={handleUseAsSource}
+            onAddToSet={activeSet ? handleAddToSet : undefined}
           />
         )}
         {activeTab === 'browse' && (
           <div className="table-panel">
+            {selectedTrack && activeSet && (
+              <div className="browse-add-to-set-bar">
+                <button
+                  className="match-action-btn"
+                  onClick={handleAddSelectedToSet}
+                  title="Add selected track to set"
+                >
+                  + Add to Set
+                </button>
+              </div>
+            )}
             <FilterBar
               camelotCodes={filters.camelotCodes}
               bpm={filters.bpm}
@@ -232,7 +387,15 @@ export default function App() {
               setBpm={setBpm}
               setBpmMin={setBpmMin}
               setBpmMax={setBpmMax}
+              configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
+              columnVisibility={browseColumnVisibility}
+              onToggleColumn={toggleBrowseColumn}
             />
+            {traitsError && (
+              <p className="table-status table-status--error">
+                Failed to load track traits — {traitsError}
+              </p>
+            )}
             <TrackTable
               tracks={browseTracks}
               loading={collectionLoading}
@@ -240,6 +403,8 @@ export default function App() {
               selectTrack={handleBrowseSelect}
               hasMore={!selectedTrack ? hasMorePages : undefined}
               onLoadMore={!selectedTrack ? handleLoadMore : undefined}
+              error={tracksError}
+              columnVisibility={browseColumnVisibility}
             />
           </div>
         )}
@@ -248,6 +413,18 @@ export default function App() {
             stats={cacheStats}
             loading={cacheLoading}
             error={cacheError}
+          />
+        )}
+        {activeTab === 'set' && (
+          <SetBuilder
+            sets={sets}
+            activeSet={activeSet}
+            activeSetId={activeSetId}
+            createSet={createSet}
+            selectSet={selectDjSet}
+            deleteSet={deleteSet}
+            removeTrack={removeTrackFromSet}
+            moveTrack={moveTrackInSet}
           />
         )}
       </div>

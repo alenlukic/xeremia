@@ -224,6 +224,34 @@ OUTPUT_SCHEMA(schema=default|audit|pr_description)
   8. Minimalist optimization
   9. Execution order
 
+## Harness Operational Constraints
+
+These constraints are derived from repeated failures in delivery runs (April 2026 batch).
+
+1. **No git worktrees.** Worktrees do not inherit `.env`, causing DB connectivity failures
+   during QA. Agents must work in the main repo directory, using stash/unstash or branch
+   switching as needed.
+
+2. **No parallel git operations.** Parallel `Task()` calls that each do git stash/checkout
+   cause cross-contamination of working tree state. Multi-contract delivery with branches
+   must be sequential or use the pipeline's branch isolation, not ad-hoc parallelism.
+
+3. **Preserve uncommitted work across delivery runs.** The pipeline must detect a non-empty
+   stash or dirty working tree before creating delivery branches and must not drop the stash.
+   Stash drops have caused regression of delivered features.
+
+4. **QA agents must start the stack themselves.** Never ask the user to start the live stack.
+   QA agents are responsible for launching services, waiting for readiness, and then
+   performing verification.
+
+5. **Visual browser QA is mandatory for frontend changes.** Unit tests passing is not
+   sufficient evidence for UI delivery acceptance. At least one live browser verification
+   pass is required before marking a frontend change done. (Source: 6 of 12 delivery runs
+   in April 2026 confirmed this pattern.)
+
+6. **Gate 7 (service lifecycle) for contracts not touching `start_web.sh`** should be
+   verified by static script review, not by demanding a live stop/start cycle.
+
 ## Anti-Redundancy
 
   Do not restate macro behavior in prose.

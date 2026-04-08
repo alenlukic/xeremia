@@ -98,6 +98,10 @@ export interface CacheStats {
   recent_exits: CacheExit[];
 }
 
+export interface TransitionChainEntry {
+  track: Track | SearchSuggestion;
+}
+
 export interface TrackTraitEntry {
   track_id: number;
   traits: Record<string, unknown> | null;
@@ -110,4 +114,14 @@ export interface WeightsResponse {
   target_sum: number;
   is_sum_valid: boolean;
   message: string | null;
+}
+
+export interface SetTrackEntry {
+  track: Track;
+}
+
+export interface DjSet {
+  id: string;
+  name: string;
+  tracks: SetTrackEntry[];
 }

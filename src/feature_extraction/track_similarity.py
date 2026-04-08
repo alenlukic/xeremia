@@ -315,6 +315,9 @@ def late_fusion_v1(vec_a: np.ndarray, vec_b: np.ndarray, **kw) -> float:
     e = _energy_similarity(blocks_a, blocks_b, **kw)
 
     wh, wr, wt, we = _get_live_fusion_weights()
+    w_total = wh + wr + wt + we
+    if w_total > _EPS:
+        wh, wr, wt, we = wh / w_total, wr / w_total, wt / w_total, we / w_total
     score = (
         wh * h
         + wr * r

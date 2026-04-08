@@ -755,3 +755,127 @@ class TestTraitVersionFiltering:
             assert match.get_mood_continuity_score() == 0.0
             assert match.get_vocal_clash_score() == 0.0
             assert match.get_instrument_similarity_score() == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 11. Fusion weight propagation through TransitionMatch
+# ---------------------------------------------------------------------------
+
+
+class TestFusionWeightPropagation:
+    """Prove fusion weight changes propagate through TransitionMatch.get_similarity_score()."""
+
+    @staticmethod
+    def _setup_weight_service():
+        from unittest.mock import patch
+        with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
+            with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+                from src.harmonic_mixing.weight_service import WeightService
+                WeightService.reset()
+                svc = WeightService()
+                WeightService._instance = svc
+        return svc
+
+    def test_fusion_weight_change_affects_similarity_factor(self):
+        """Changing fusion weights produces a different SIMILARITY factor
+        through the TransitionMatch.get_similarity_score() path."""
+        import numpy as np
+        from src.harmonic_mixing.weight_service import WeightService
+
+        svc = self._setup_weight_service()
+
+        try:
+            rng = np.random.default_rng(42)
+            va = rng.uniform(0.0, 1.0, 75).astype(np.float32)
+            vb = rng.uniform(0.0, 1.0, 75).astype(np.float32)
+
+            mock_desc_a = MagicMock()
+            mock_desc_a.global_vector = va.tobytes()
+            mock_desc_b = MagicMock()
+            mock_desc_b.global_vector = vb.tobytes()
+
+            with _MatchFixture():
+                TransitionMatch._on_deck_descriptor_cache[1] = mock_desc_a
+                TransitionMatch._candidate_descriptor_cache[2] = mock_desc_b
+                TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
+                TransitionMatch.cosine_cache = None
+
+                md_a = _make_md(1, title="A")
+                md_b = _make_md(2, title="B")
+
+                from unittest.mock import patch as _patch
+                with _patch.object(TransitionMatch, "_persist_similarity"):
+                    match1 = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
+                    sim_default = match1.get_similarity_score()
+
+                svc._fusion_weights['FUSION_HARMONIC'] = 1.0
+                svc._fusion_weights['FUSION_RHYTHM'] = 0.0
+                svc._fusion_weights['FUSION_TIMBRE'] = 0.0
+                svc._fusion_weights['FUSION_ENERGY'] = 0.0
+
+                with _patch.object(TransitionMatch, "_persist_similarity"):
+                    match2 = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
+                    sim_harmonic = match2.get_similarity_score()
+
+                assert sim_default != pytest.approx(sim_harmonic, abs=1e-6), (
+                    "Changing fusion weights must change SIMILARITY factor "
+                    f"(default={sim_default}, harmonic-only={sim_harmonic})"
+                )
+                assert 0.0 <= sim_default <= 1.0
+                assert 0.0 <= sim_harmonic <= 1.0
+        finally:
+            WeightService.reset()
+
+    def test_fusion_weight_change_affects_total_score(self):
+        """Changing fusion weights changes the total transition score."""
+        import numpy as np
+        from src.harmonic_mixing.weight_service import WeightService
+        from datetime import timedelta
+
+        svc = self._setup_weight_service()
+
+        try:
+            rng = np.random.default_rng(42)
+            va = rng.uniform(0.0, 1.0, 75).astype(np.float32)
+            vb = rng.uniform(0.0, 1.0, 75).astype(np.float32)
+
+            mock_desc_a = MagicMock()
+            mock_desc_a.global_vector = va.tobytes()
+            mock_desc_b = MagicMock()
+            mock_desc_b.global_vector = vb.tobytes()
+
+            with _MatchFixture() as fx:
+                trait = _make_trait()
+                fx.seed_traits(1, trait)
+                fx.seed_traits(2, trait)
+
+                TransitionMatch._on_deck_descriptor_cache[1] = mock_desc_a
+                TransitionMatch._candidate_descriptor_cache[2] = mock_desc_b
+                TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
+                TransitionMatch.cosine_cache = None
+
+                md_a = _make_md(1, title="A", bpm=128.0, energy=7,
+                                date_added=_BASE_TIME + timedelta(days=100))
+                md_b = _make_md(2, title="B", bpm=129.0, energy=6,
+                                date_added=_BASE_TIME + timedelta(days=200))
+
+                from unittest.mock import patch as _patch
+                with _patch.object(TransitionMatch, "_persist_similarity"):
+                    match1 = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
+                    total_default = match1.get_score()
+
+                svc._fusion_weights['FUSION_HARMONIC'] = 1.0
+                svc._fusion_weights['FUSION_RHYTHM'] = 0.0
+                svc._fusion_weights['FUSION_TIMBRE'] = 0.0
+                svc._fusion_weights['FUSION_ENERGY'] = 0.0
+
+                with _patch.object(TransitionMatch, "_persist_similarity"):
+                    match2 = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
+                    total_harmonic = match2.get_score()
+
+                assert total_default != pytest.approx(total_harmonic, abs=0.01), (
+                    "Changing fusion weights must change total score "
+                    f"(default={total_default}, harmonic-only={total_harmonic})"
+                )
+        finally:
+            WeightService.reset()

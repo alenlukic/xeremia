@@ -17,6 +17,11 @@ export function formatFloat(value: number | null | undefined): string {
   return parseFloat(value.toFixed(2)).toString();
 }
 
+export function formatBpm(value: number | null | undefined): string {
+  if (value == null) return '—';
+  return Math.round(value).toString();
+}
+
 /**
  * Format a 0–1 factor score for display on a 0–100 integer scale.
  * Standard half-up rounding, no decimal places, no percent sign.
