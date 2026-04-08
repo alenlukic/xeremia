@@ -573,12 +573,40 @@ body,
 }
 
 /* --- Match row affordances --- */
+.match-track-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.match-detail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.match-detail-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .match-track-link {
   background: none;
   border: none;
   color: var(--accent);
   font-family: var(--font-body);
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
   padding: 0;
@@ -586,8 +614,8 @@ body,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
-  display: block;
+  min-width: 0;
+  flex: 1;
 }
 .match-track-link:hover {
   text-decoration: underline;

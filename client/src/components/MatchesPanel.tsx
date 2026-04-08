@@ -143,7 +143,6 @@ export const MatchesPanel = memo(function MatchesPanel({
         header: 'Track',
         size: TRACK_SIZE,
         minSize: 100,
-        enableResizing: false,
         cell: (info) => (
           <div className="match-track-cell">
             <button
@@ -401,7 +400,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
                         </div>
-                        {header.column.getCanResize() && (
+                        {header.column.getCanResize() && isScore && (
                           <div
                             className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
                             onMouseDown={header.getResizeHandler()}

@@ -26,7 +26,7 @@ const MOCK_MATCHES = [
 ];
 
 const EXPECTED_HEADERS = [
-  'Spectral', 'Key', 'BPM', 'Genre', 'Recency',
+  'Track', 'Spectral', 'Key', 'BPM', 'Genre', 'Recency',
   'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
 ];
 
@@ -86,7 +86,7 @@ test.describe('Matches table interactions', () => {
   test('renders correct default header order', async ({ page }) => {
     const headers = page.locator('.matches-table thead th .th-content');
     const count = await headers.count();
-    expect(count).toBe(9);
+    expect(count).toBe(10);
     const labels: string[] = [];
     for (let i = 0; i < count; i++) {
       labels.push((await headers.nth(i).textContent()) ?? '');
@@ -96,8 +96,8 @@ test.describe('Matches table interactions', () => {
 
   test('column drag-reorder changes header order', async ({ page }) => {
     const headers = page.locator('.matches-table thead th');
-    const source = headers.nth(1); // "Key"
-    const target = headers.nth(0); // "Spectral"
+    const source = headers.nth(2); // "Key" (index 0 = Track, 1 = Spectral, 2 = Key)
+    const target = headers.nth(1); // "Spectral"
 
     const srcBox = await source.boundingBox();
     const tgtBox = await target.boundingBox();
@@ -122,16 +122,17 @@ test.describe('Matches table interactions', () => {
     for (let i = 0; i < count; i++) {
       newLabels.push((await updatedHeaders.nth(i).textContent()) ?? '');
     }
-    expect(newLabels[0]).toBe('Key');
-    expect(newLabels[1]).toBe('Spectral');
-    expect(newLabels.length).toBe(9);
+    expect(newLabels[0]).toBe('Track');
+    expect(newLabels[1]).toBe('Key');
+    expect(newLabels[2]).toBe('Spectral');
+    expect(newLabels.length).toBe(10);
   });
 
-  test('column resize changes header width', async ({ page }) => {
-    const firstHeader = page.locator('.matches-table thead th').first();
-    const widthBefore = await firstHeader.evaluate(el => el.getBoundingClientRect().width);
+  test('Track column resize changes header width', async ({ page }) => {
+    const trackHeader = page.locator('.matches-table thead th').first();
+    const widthBefore = await trackHeader.evaluate(el => el.getBoundingClientRect().width);
 
-    const resizer = firstHeader.locator('.col-resizer');
+    const resizer = trackHeader.locator('.col-resizer');
     const resizerBox = await resizer.boundingBox();
     expect(resizerBox).toBeTruthy();
 
@@ -144,13 +145,22 @@ test.describe('Matches table interactions', () => {
     await page.mouse.move(startX + dragDelta, startY, { steps: 5 });
     await page.mouse.up();
 
-    const widthAfter = await firstHeader.evaluate(el => el.getBoundingClientRect().width);
+    const widthAfter = await trackHeader.evaluate(el => el.getBoundingClientRect().width);
     expect(widthAfter).toBeGreaterThan(widthBefore + 10);
   });
 
-  test('header and body cells remain aligned after resize', async ({ page }) => {
-    const firstHeader = page.locator('.matches-table thead th').first();
-    const resizer = firstHeader.locator('.col-resizer');
+  test('actions column is absent when no set is active', async ({ page }) => {
+    const actionsCells = page.locator('.match-actions-cell');
+    expect(await actionsCells.count()).toBe(0);
+    const headers = page.locator('.matches-table thead th');
+    const count = await headers.count();
+    const lastHeaderText = await headers.nth(count - 1).locator('.th-content').textContent();
+    expect(lastHeaderText).toBe('Vocals');
+  });
+
+  test('header and body cells remain aligned after Track resize', async ({ page }) => {
+    const trackHeader = page.locator('.matches-table thead th').first();
+    const resizer = trackHeader.locator('.col-resizer');
     const resizerBox = await resizer.boundingBox();
     expect(resizerBox).toBeTruthy();
 
