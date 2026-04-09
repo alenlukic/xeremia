@@ -236,5 +236,19 @@
     "build_status": "CONDITIONAL",
     "breaker_verdict": "CONCERNS",
     "regression_severity": "MEDIUM"
+  },
+  {
+    "run_id": "20260409T043041Z-delivery-fold-thought-partner-agents-and-",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\nFold the \"thought partner\" harness additions from `agentic-harness-template` commit `7a70f56` into the `dj-tools` repository harness.\n\nThis is a scoped ",
+    "published_at": "2026-04-09T04:41:43.839209+00:00",
+    "path": ".harness/ledgers/20260409T043041Z-delivery-fold-thought-partner-agents-and-.md",
+    "files_changed": 3,
+    "eval_score": 100,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "LOW"
   }
 ]

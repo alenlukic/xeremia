@@ -16,7 +16,7 @@ Contracts are stored under `.harness/contracts/YYYY-MM-DD/` directories, one per
 
 ## Outstanding Contracts
 
-_No outstanding contracts._
+- `2026-04-09/set-building-expansion.md` — `outstanding` — Full-stack replacement of the client-local set builder with server-persisted sets, pool, tracklist, and explorer graph, including new schema, API endpoints, and Set-tab sub-tabs.
 
 ## Recently Completed
 
