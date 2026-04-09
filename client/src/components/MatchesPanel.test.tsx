@@ -34,12 +34,11 @@ function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
 }
 
 const SCORE_HEADERS = [
-  'Spectral', 'Key', 'BPM', 'Genre', 'Recency',
+  'SCORE', 'Spectral', 'Key', 'BPM', 'Genre', 'Recency',
   'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
 ];
 
-const ALL_HEADERS_WITH_ACTIONS = ['Track', ...SCORE_HEADERS, ''];
-const ALL_HEADERS_NO_ACTIONS = ['Track', ...SCORE_HEADERS];
+const ALL_HEADERS = ['', 'Track', ...SCORE_HEADERS, 'DETAILS'];
 
 const selectedTrack = {
   id: 1, title: 'On Deck', artist_names: ['A'],
@@ -48,7 +47,7 @@ const selectedTrack = {
 
 describe('MatchesPanel', () => {
   describe('column headers', () => {
-    it('renders headers without actions column when onAddToSet is absent', () => {
+    it('renders all column headers regardless of onAddToSet', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -57,10 +56,10 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS_NO_ACTIONS);
+      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS);
     });
 
-    it('renders headers with actions column when onAddToSet is provided', () => {
+    it('renders same column headers when onAddToSet is provided', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -70,10 +69,10 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS_WITH_ACTIONS);
+      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS);
     });
 
-    it('includes Track column and score columns but not Score', () => {
+    it('includes Track, SCORE, and score sub-columns', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -83,12 +82,13 @@ describe('MatchesPanel', () => {
       );
       const labels = screen.getAllByRole('columnheader').map(h => h.textContent);
       expect(labels).toContain('Track');
-      expect(labels).not.toContain('Score');
+      expect(labels).toContain('SCORE');
+      expect(labels).toContain('DETAILS');
     });
   });
 
   describe('default column sizing', () => {
-    it('score columns render at ~2/3 of original defaults (60px for most, 73px for energy/instruments)', () => {
+    it('score columns render at expected defaults (70px SCORE, 60px for most, 73px for energy/instruments)', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -98,15 +98,17 @@ describe('MatchesPanel', () => {
       );
       const headers = screen.getAllByRole('columnheader');
       const widths = headers.map(h => (h as HTMLElement).style.width);
-      expect(widths[1]).toBe('60px');
-      expect(widths[2]).toBe('60px');
-      expect(widths[3]).toBe('60px');
-      expect(widths[4]).toBe('60px');
-      expect(widths[5]).toBe('60px');
-      expect(widths[6]).toBe('73px');
-      expect(widths[7]).toBe('60px');
-      expect(widths[8]).toBe('73px');
-      expect(widths[9]).toBe('60px');
+      expect(widths[0]).toBe('50px');   // add_to_set
+      expect(widths[2]).toBe('70px');   // SCORE
+      expect(widths[3]).toBe('60px');   // Spectral
+      expect(widths[4]).toBe('60px');   // Key
+      expect(widths[5]).toBe('60px');   // BPM
+      expect(widths[6]).toBe('60px');   // Genre
+      expect(widths[7]).toBe('60px');   // Recency
+      expect(widths[8]).toBe('73px');   // Energy (MIK)
+      expect(widths[9]).toBe('60px');   // Mood
+      expect(widths[10]).toBe('73px');  // Instruments
+      expect(widths[11]).toBe('60px');  // Vocals
     });
 
     it('track column renders at 484px', () => {
@@ -118,10 +120,10 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect((headers[0] as HTMLElement).style.width).toBe('484px');
+      expect((headers[1] as HTMLElement).style.width).toBe('484px');
     });
 
-    it('when onAddToSet is provided, the actions column is 80px and score widths are unchanged', () => {
+    it('add_to_set column is 50px and details column is 70px', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -131,16 +133,16 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect((headers[0] as HTMLElement).style.width).toBe('484px');
-      expect((headers[1] as HTMLElement).style.width).toBe('60px');
-      expect((headers[6] as HTMLElement).style.width).toBe('73px');
-      expect((headers[8] as HTMLElement).style.width).toBe('73px');
-      expect((headers[10] as HTMLElement).style.width).toBe('80px');
+      expect((headers[0] as HTMLElement).style.width).toBe('50px');   // add_to_set
+      expect((headers[1] as HTMLElement).style.width).toBe('484px');  // Track
+      expect((headers[8] as HTMLElement).style.width).toBe('73px');   // Energy (MIK)
+      expect((headers[10] as HTMLElement).style.width).toBe('73px');  // Instruments
+      expect((headers[12] as HTMLElement).style.width).toBe('70px');  // DETAILS
     });
   });
 
   describe('resize and reorder chrome', () => {
-    it('renders a resize handle on Track and score headers but not actions', () => {
+    it('renders a resize handle on Track and score headers but not add_to_set or details', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -153,11 +155,14 @@ describe('MatchesPanel', () => {
       expect(resizers.length).toBe(SCORE_HEADERS.length + 1); // Track + score columns
 
       const headers = document.querySelectorAll('.matches-table thead th');
-      const trackTh = headers[0];
+      const addToSetTh = headers[0];
+      expect(addToSetTh.querySelector('.col-resizer')).toBeNull();
+
+      const trackTh = headers[1];
       expect(trackTh.querySelector('.col-resizer')).toBeTruthy();
 
-      const actionsTh = headers[headers.length - 1];
-      expect(actionsTh.querySelector('.col-resizer')).toBeNull();
+      const detailsTh = headers[headers.length - 1];
+      expect(detailsTh.querySelector('.col-resizer')).toBeNull();
     });
 
     it('renders draggable header content only on score headers', () => {
@@ -178,13 +183,14 @@ describe('MatchesPanel', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
-          matches={[makeMatch({ similarity_score: 0.8 })]}
+          matches={[makeMatch({ overall_score: 85, similarity_score: 0.8 })]}
           loading={false}
         />
       );
       const cells = document.querySelectorAll('.matches-table tbody td .mono');
       const values = Array.from(cells).map(c => c.textContent);
-      expect(values[0]).toBe('80');
+      expect(values[0]).toBe('85');  // overall_score (already 0-100)
+      expect(values[1]).toBe('80');  // similarity_score (0.8 * 100)
     });
   });
 
@@ -393,7 +399,7 @@ describe('MatchesPanel', () => {
       expect(screen.getByTitle('Add to set')).toBeInTheDocument();
     });
 
-    it('omits the actions column entirely when onAddToSet is not provided', () => {
+    it('does not render Add to set button when onAddToSet is not provided', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -402,7 +408,7 @@ describe('MatchesPanel', () => {
         />
       );
       expect(screen.queryByTitle('Add to set')).not.toBeInTheDocument();
-      expect(document.querySelectorAll('.match-actions-cell').length).toBe(0);
+      expect(document.querySelectorAll('.match-action-btn').length).toBe(0);
     });
 
     it('calls onAddToSet with candidate_id when clicked', async () => {
@@ -420,6 +426,11 @@ describe('MatchesPanel', () => {
     });
   });
 
+  const CONFIGURABLE_LABELS = [
+    'Score', 'Spectral', 'Key', 'BPM', 'Genre', 'Recency',
+    'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
+  ];
+
   describe('column configurator', () => {
     it('opens popover with score column checkboxes', async () => {
       render(
@@ -430,12 +441,12 @@ describe('MatchesPanel', () => {
         />
       );
       await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
-      for (const label of SCORE_HEADERS) {
+      for (const label of CONFIGURABLE_LABELS) {
         expect(screen.getByLabelText(label)).toBeInTheDocument();
       }
     });
 
-    it('does not list Track or actions as configurable columns', async () => {
+    it('does not list Track or non-score columns as configurable', async () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}

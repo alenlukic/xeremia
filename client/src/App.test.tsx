@@ -797,7 +797,7 @@ describe('Set tab', () => {
     await act(async () => {
       render(<App />);
     });
-    expect(screen.getByRole('button', { name: /Set/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set' })).toBeInTheDocument();
   });
 
   it('shows set builder when Set tab is clicked', async () => {
@@ -805,7 +805,7 @@ describe('Set tab', () => {
       render(<App />);
     });
     await act(async () => {
-      screen.getByRole('button', { name: /Set/ }).click();
+      screen.getByRole('button', { name: 'Set' }).click();
     });
     expect(screen.getByText(/No sets yet/)).toBeInTheDocument();
   });

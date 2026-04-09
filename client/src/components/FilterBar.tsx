@@ -22,6 +22,7 @@ interface Props {
   setBpm: (bpm: number | undefined) => void;
   setBpmMin: (min: number | undefined) => void;
   setBpmMax: (max: number | undefined) => void;
+  onClearFilters?: () => void;
   configurableColumns?: ColumnConfig[];
   columnVisibility?: Record<string, boolean>;
   onToggleColumn?: (id: string) => void;
@@ -36,6 +37,7 @@ export function FilterBar({
   setBpm,
   setBpmMin,
   setBpmMax,
+  onClearFilters,
   configurableColumns,
   columnVisibility,
   onToggleColumn,
@@ -231,6 +233,21 @@ export function FilterBar({
           )}
         </div>
       </div>
+
+      {onClearFilters && (
+        <button
+          className="clear-filters-btn"
+          onClick={onClearFilters}
+          disabled={
+            camelotCodes.length === 0 &&
+            bpm == null &&
+            bpmMin == null &&
+            bpmMax == null
+          }
+        >
+          Clear Filters
+        </button>
+      )}
 
       {configurableColumns && configurableColumns.length > 0 && (
         <div className="column-config-group" ref={colConfigRef}>

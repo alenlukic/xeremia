@@ -92,7 +92,7 @@ const TRAIT_LABELS: Record<string, string> = {
 
 type FieldDef = { label: string; getValue: (t: MatchDetailTrackInfo) => unknown };
 
-const FIXED_ROWS: FieldDef[][] = [
+const FIXED_ROWS: (FieldDef | null)[][] = [
   [
     { label: 'Genre', getValue: (t) => displayGenre(t.genre) },
     { label: 'Label', getValue: (t) => t.label },
@@ -107,11 +107,11 @@ const FIXED_ROWS: FieldDef[][] = [
     { label: 'Vocals', getValue: (t) => t.traits?.['voice_instrumental'] },
     { label: 'Onsets', getValue: (t) => t.traits?.['onset_density'] },
     { label: 'Flatness', getValue: (t) => t.traits?.['spectral_flatness'] },
-    { label: 'Mood', getValue: (t) => t.traits?.['mood_theme'] },
+    null,
   ],
 ];
 
-const VARIABLE_KEYS = ['genre', 'instruments'] as const;
+const VARIABLE_KEYS = ['mood_theme', 'genre', 'instruments'] as const;
 
 function capitalizeFirst(s: string): string {
   if (!s) return s;
@@ -235,11 +235,13 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSourc
               <div className="detail-card-fields">
                 {FIXED_ROWS.map((row, ri) => (
                   <div key={ri} className={`detail-row detail-row--${row.length}`}>
-                    {row.map((field) => (
+                    {row.map((field, fi) => field ? (
                       <div key={field.label} className="detail-field-h">
                         <span className="detail-field-label">{field.label}</span>
                         {renderValue(field.getValue(track))}
                       </div>
+                    ) : (
+                      <div key={`spacer-${fi}`} />
                     ))}
                   </div>
                 ))}
