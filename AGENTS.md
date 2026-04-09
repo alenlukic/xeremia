@@ -7,6 +7,7 @@ The harness is not only for code generation. It supports:
 - adversarial verification with specialized breaker lanes
 - stakeholder and customer-perspective feedback loops
 - split product and technical SME critique
+- interactive pre-implementation thought partnering across design, product, and technical domains
 - durable recommendation registry for repeated feedback
 - durable run ledgers and ledger index rebuilds
 - ledger-driven documentation upkeep and memory sync
@@ -47,7 +48,7 @@ Agent files use a **role-prefix** naming scheme so that related agents sort toge
 | `spec-` | Specification | Contracts, ledgers, PR descriptions, diff planning |
 | `dev-` | Development | Implementation and structural coding |
 | `test-` | Testing & verification | Reviews, QA, build checks, breakers, evaluators, regression |
-| `sme-` | SME & research | Product/technical red teams, design critique, research |
+| `sme-` | SME & research | Product/technical red teams, design critique, research, interactive thought partnering |
 | `maint-` | Maintenance | Refactors, comment scrubbing, post-maintenance review |
 | `meta-` | Harness governance | Bad-state detection, doc/memory/registry stewardship |
 
@@ -84,17 +85,19 @@ Examples:
 
 ## Operating Model
 
-The default system has **five loops**:
+The default system has **six loops**:
 
-1. **Delivery loop**
+1. **Thought partner loop** (pre-implementation)
+   - interactive design / product / technical thought partnering → recommendations → contract producer
+2. **Delivery loop**
    - supervisor → coder → review → QA → broad review → verification
-2. **Adversarial verification loop**
+3. **Adversarial verification loop**
    - build verifier → bad state monitor → breaker orchestrator → specialist breakers → evaluator/regression
-3. **Stakeholder feedback loop**
+4. **Stakeholder feedback loop** (post-implementation)
    - design red team → customer persona tester → product SME → technical SME → registry sync → contract producer
-4. **Learning loop**
+5. **Learning loop**
    - every meaningful run distills a compact `RUN_LEDGER.md` and can publish it into `.harness/ledgers/`
-5. **Memory/documentation loop**
+6. **Memory/documentation loop**
    - ledger-driven doc sync and memory sync keep docs, manifests, indexes, persona guidance, and registry summaries current
 
 ## Agent Roles
@@ -148,6 +151,9 @@ The default system has **five loops**:
 | SME Research Analyst | [.harness/agents/sme-research-analyst.md](.harness/agents/sme-research-analyst.md) | Read-only codebase research |
 | SME Design Red Team | [.harness/agents/sme-design-red-team.md](.harness/agents/sme-design-red-team.md) | UI/UX and workflow critique with acceptance-ready recommendations |
 | SME Design Perfectionist | [.harness/agents/sme-design-perfectionist.md](.harness/agents/sme-design-perfectionist.md) | Craft-focused design critic with real-world references |
+| SME Design Thought Partner | [.harness/agents/sme-design-thought-partner.md](.harness/agents/sme-design-thought-partner.md) | Interactive pre-implementation design ideation and refinement |
+| SME Product Thought Partner | [.harness/agents/sme-product-thought-partner.md](.harness/agents/sme-product-thought-partner.md) | Interactive pre-implementation product strategy and scoping |
+| SME Technical Thought Partner | [.harness/agents/sme-technical-thought-partner.md](.harness/agents/sme-technical-thought-partner.md) | Interactive pre-implementation architecture and approach exploration |
 
 ### Maintenance agents (`maint-`)
 
@@ -197,6 +203,9 @@ In Claude Code and Codex, load the command file directly as a prompt.
 | Design red team | [run-sme-design-red-team.md](.harness/commands/run-sme-design-red-team.md) | `/run-sme-design-red-team` |
 | Design perfectionist | [run-sme-design-perfectionist.md](.harness/commands/run-sme-design-perfectionist.md) | `/run-sme-design-perfectionist` |
 | Research | [run-sme-research.md](.harness/commands/run-sme-research.md) | `/run-sme-research` |
+| Design thought partner | [run-sme-design-thought-partner.md](.harness/commands/run-sme-design-thought-partner.md) | `/run-sme-design-thought-partner` |
+| Product thought partner | [run-sme-product-thought-partner.md](.harness/commands/run-sme-product-thought-partner.md) | `/run-sme-product-thought-partner` |
+| Technical thought partner | [run-sme-technical-thought-partner.md](.harness/commands/run-sme-technical-thought-partner.md) | `/run-sme-technical-thought-partner` |
 | Registry sync | [run-meta-registry-sync.md](.harness/commands/run-meta-registry-sync.md) | `/run-meta-registry-sync` |
 | Ledger doc sync | [run-meta-ledger-doc-sync.md](.harness/commands/run-meta-ledger-doc-sync.md) | `/run-meta-ledger-doc-sync` |
 | Memory sync | [run-meta-memory-sync.md](.harness/commands/run-meta-memory-sync.md) | `/run-meta-memory-sync` |
@@ -225,6 +234,11 @@ Core delivery artifacts:
 - `REGRESSION_REPORT.json`
 - `CONTEXT_MANIFEST.json`
 - `RUN_LEDGER.md`
+
+Thought-partner artifacts:
+- `DESIGN_THOUGHT_PARTNER_RECOMMENDATIONS.md`
+- `PRODUCT_THOUGHT_PARTNER_RECOMMENDATIONS.md`
+- `TECHNICAL_THOUGHT_PARTNER_RECOMMENDATIONS.md`
 
 Product-feedback artifacts:
 - `DESIGN_PERFECTIONIST_REVIEW.md`

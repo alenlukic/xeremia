@@ -51,6 +51,12 @@ stages:
     - test_regression_detector        # Test Regression Detector
     - spec_ledger_curator             # Spec Ledger Curator
 
+  thought_partner:
+    - sme_design_thought_partner      # SME Design Thought Partner
+    - sme_product_thought_partner     # SME Product Thought Partner
+    - sme_technical_thought_partner   # SME Technical Thought Partner
+    - spec_contract_producer          # Spec Contract Producer
+
   product_feedback:
     - sme_design_red_team             # SME Design Red Team
     - sme_design_perfectionist        # SME Design Perfectionist
@@ -142,6 +148,9 @@ artifacts:
     - "BREAKER_FOLLOW_ON_CONTRACT.md"
     - "FOLLOW_ON_RUN.json"
     - "MEMORY_SYNC_REPORT.md"
+    - "DESIGN_THOUGHT_PARTNER_RECOMMENDATIONS.md"
+    - "PRODUCT_THOUGHT_PARTNER_RECOMMENDATIONS.md"
+    - "TECHNICAL_THOUGHT_PARTNER_RECOMMENDATIONS.md"
 
 policies:
   forbid_paths:
