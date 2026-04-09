@@ -14,9 +14,11 @@ interface Props {
   rawSum: number;
   onSearchTextChange?: (text: string) => void;
   searchPadding?: { left: number; right: number } | null;
+  onAddToSet?: () => void;
+  searchText?: string;
 }
 
-export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange, searchPadding }: Props) {
+export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange, searchPadding, onAddToSet, searchText }: Props) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -29,6 +31,14 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
       setQuery(selectedTrack.title);
     }
   }, [selectedTrack]);
+
+  useEffect(() => {
+    if (searchText === '' && !selectedTrack && query !== '') {
+      setQuery('');
+      setSuggestions([]);
+      setOpen(false);
+    }
+  }, [searchText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,6 +165,14 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           </ul>
         )}
       </div>
+      <button
+        className="match-action-btn search-add-to-set-btn"
+        onClick={onAddToSet}
+        disabled={!selectedTrack}
+        title={selectedTrack ? 'Add selected track to set' : 'Select a track first'}
+      >
+        + Set
+      </button>
       <div className="search-actions">
         <button
           className="weight-normalize-btn weight-normalize-btn--secondary"

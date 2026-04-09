@@ -2,14 +2,16 @@ import { memo, useState, useEffect, useMemo, useRef, useLayoutEffect, useCallbac
 import {
   useReactTable,
   getCoreRowModel,
+  getSortedRowModel,
   flexRender,
   createColumnHelper,
   type ColumnSizingState,
   type ColumnOrderState,
+  type SortingState,
   type Updater,
 } from '@tanstack/react-table';
 import type { Track, SearchSuggestion, TransitionMatch } from '../types';
-import { formatScore } from '../utils';
+import { formatScore, formatOverallScore } from '../utils';
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key';
 
@@ -20,6 +22,7 @@ const BUCKET_TABS: { key: BucketKey; label: string }[] = [
 ];
 
 const COL_SIZES: Record<string, number> = {
+  overall_score: 70,
   similarity_score: 60,
   camelot_score: 60,
   bpm_score: 60,
@@ -37,6 +40,7 @@ const SCORE_COLUMN_IDS = Object.keys(COL_SIZES);
 const TOTAL_BASE = Object.values(COL_SIZES).reduce((a, b) => a + b, 0);
 
 const CONFIGURABLE_MATCH_COLUMNS: { id: string; label: string }[] = [
+  { id: 'overall_score', label: 'Score' },
   { id: 'similarity_score', label: 'Spectral' },
   { id: 'camelot_score', label: 'Key' },
   { id: 'bpm_score', label: 'BPM' },
@@ -51,6 +55,10 @@ const CONFIGURABLE_MATCH_COLUMNS: { id: string; label: string }[] = [
 const col = createColumnHelper<TransitionMatch>();
 
 const scoreColumns = [
+  col.accessor('overall_score', {
+    header: 'SCORE', size: COL_SIZES.overall_score, minSize: 50,
+    cell: (info) => <span className="mono">{formatOverallScore(info.getValue())}</span>,
+  }),
   col.accessor('similarity_score', {
     header: 'Spectral', size: COL_SIZES.similarity_score, minSize: 50,
     cell: (info) => <span className="mono">{formatScore(info.getValue())}</span>,
@@ -109,8 +117,9 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const [containerWidth, setContainerWidth] = useState(0);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(SCORE_COLUMN_IDS);
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(['add_to_set', 'track_title', ...SCORE_COLUMN_IDS, 'details']);
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
   const [colConfigOpen, setColConfigOpen] = useState(false);
   const colConfigRef = useRef<HTMLDivElement>(null);
@@ -138,6 +147,22 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const allColumns = useMemo(() => {
     const cols = [
+      col.display({
+        id: 'add_to_set',
+        header: '',
+      size: 74,
+      minSize: 60,
+      enableSorting: false,
+      cell: ({ row }) => onAddToSet ? (
+          <button
+            className="match-action-btn"
+            onClick={(e) => { e.stopPropagation(); onAddToSet(row.original.candidate_id); }}
+            title="Add to set"
+          >
+            + Set
+          </button>
+        ) : null,
+      }),
       col.accessor('title', {
         id: 'track_title',
         header: 'Track',
@@ -145,17 +170,6 @@ export const MatchesPanel = memo(function MatchesPanel({
         minSize: 100,
         cell: (info) => (
           <div className="match-track-cell">
-            <button
-              className="match-detail-btn"
-              onClick={(e) => { e.stopPropagation(); onViewDetail?.(info.row.original); }}
-              title="View match detail"
-              aria-label={`View match detail for ${info.getValue()}`}
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M8 7v4M8 5h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
             <button
               className="match-track-link"
               onClick={() => onUseAsSource?.(info.row.original.candidate_id)}
@@ -167,37 +181,34 @@ export const MatchesPanel = memo(function MatchesPanel({
         ),
       }),
       ...scoreColumns,
+      col.display({
+        id: 'details',
+        header: 'DETAILS',
+        size: 70,
+        minSize: 50,
+        enableSorting: false,
+        cell: (info) => (
+          <div className="match-actions-cell">
+            <button
+              className="match-detail-btn"
+              onClick={(e) => { e.stopPropagation(); onViewDetail?.(info.row.original); }}
+              title="View match detail"
+              aria-label={`View match detail for ${info.row.original.title}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M8 7v4M8 5h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        ),
+      }),
     ];
-
-    if (onAddToSet) {
-      cols.push(
-        col.display({
-          id: 'actions',
-          header: '',
-          size: 80,
-          enableResizing: false,
-          cell: ({ row }) => (
-            <div className="match-actions-cell">
-              <button
-                className="match-action-btn"
-                onClick={(e) => { e.stopPropagation(); onAddToSet(row.original.candidate_id); }}
-                title="Add to set"
-              >
-                + Set
-              </button>
-            </div>
-          ),
-        }),
-      );
-    }
 
     return cols;
   }, [onViewDetail, onUseAsSource, onAddToSet]);
 
-  const fullColumnOrder = useMemo(
-    () => ['track_title', ...columnOrder, ...(onAddToSet ? ['actions'] : [])],
-    [columnOrder, onAddToSet],
-  );
+  const fullColumnOrder = columnOrder;
 
   const bucketCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -247,11 +258,13 @@ export const MatchesPanel = memo(function MatchesPanel({
   const table = useReactTable({
     data: bucketMatches,
     columns: allColumns,
-    state: { columnSizing: effectiveSizing, columnOrder: fullColumnOrder, columnVisibility },
+    state: { columnSizing: effectiveSizing, columnOrder: fullColumnOrder, columnVisibility, sorting },
     columnResizeMode: 'onChange',
     onColumnSizingChange: handleColumnSizingChange,
     onColumnOrderChange: setColumnOrder,
+    onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
   });
 
   const totalWidth = table.getTotalSize();
@@ -383,22 +396,31 @@ export const MatchesPanel = memo(function MatchesPanel({
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
                   {hg.headers.map((header) => {
-                    const isScore = SCORE_COLUMN_IDS.includes(header.column.id);
+                    const canSort = header.column.getCanSort();
+                    const sorted = header.column.getIsSorted();
+                    const isDetails = header.column.id === 'details';
                     return (
                       <th
                         key={header.id}
                         style={{ width: header.getSize() }}
                         className={draggedColumn === header.column.id ? 'th-dragging' : ''}
-                        onDragOver={isScore ? handleDragOver : undefined}
-                        onDrop={isScore ? (e) => handleDrop(e, header.column.id) : undefined}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, header.column.id)}
+                        title={isDetails ? 'Click the icon to view detailed match breakdown' : undefined}
                       >
                         <div
-                          className="th-content"
-                          draggable={isScore}
-                          onDragStart={isScore ? (e) => handleDragStart(e, header.column.id) : undefined}
-                          onDragEnd={isScore ? handleDragEnd : undefined}
+                          className={`th-content${canSort ? ' th-sortable' : ''}`}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, header.column.id)}
+                          onDragEnd={handleDragEnd}
+                          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
+                          {sorted && (
+                            <span className="sort-indicator">
+                              {sorted === 'asc' ? ' ▲' : ' ▼'}
+                            </span>
+                          )}
                         </div>
                         {header.column.getCanResize() && (
                           <div

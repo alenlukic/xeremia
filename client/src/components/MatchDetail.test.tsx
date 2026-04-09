@@ -150,7 +150,7 @@ describe('MatchDetail', () => {
       }
     });
 
-    it('places Vocals, Onsets, Flatness, and Mood in a 4-column fixed row', async () => {
+    it('places Vocals, Onsets, Flatness in a 3-column fixed row and Mood as a variable section', async () => {
       mockFetch.mockResolvedValue(makeDetail());
 
       render(
@@ -169,14 +169,19 @@ describe('MatchDetail', () => {
       const cards = document.querySelectorAll('.detail-track-card');
       expect(cards.length).toBe(2);
 
-      const firstCardRows = cards[0].querySelectorAll('.detail-row--4');
-      expect(firstCardRows.length).toBe(2);
+      const traitRow = cards[0].querySelector('.detail-row--3');
+      expect(traitRow).toBeTruthy();
 
-      const traitRow = firstCardRows[1];
       const labelsInRow = Array.from(
-        traitRow.querySelectorAll('.detail-field-label'),
+        traitRow!.querySelectorAll('.detail-field-label'),
       ).map((el) => el.textContent);
-      expect(labelsInRow).toEqual(['Vocals', 'Onsets', 'Flatness', 'Mood']);
+      expect(labelsInRow).toEqual(['Vocals', 'Onsets', 'Flatness']);
+
+      const varSections = cards[0].querySelectorAll('.detail-var-section');
+      const varLabels = Array.from(varSections).map(
+        (s) => s.querySelector('.detail-field-label')?.textContent,
+      );
+      expect(varLabels).toContain('Mood');
     });
   });
 });

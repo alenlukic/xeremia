@@ -254,6 +254,13 @@ export default function App() {
     [allTracks, addTrackToSet],
   );
 
+  const handleClearFilters = useCallback(() => {
+    setCamelotCodes([]);
+    setBpmMin(undefined);
+    setBpmMax(undefined);
+    setSearchText('');
+  }, [setCamelotCodes, setBpmMin, setBpmMax]);
+
   const handleAddSelectedToSet = useCallback(() => {
     if (!selectedTrack) return;
     const track = allTracks.find(t => t.id === selectedTrack.id);
@@ -285,6 +292,8 @@ export default function App() {
         rawSum={rawSum}
         onSearchTextChange={setSearchText}
         searchPadding={searchPadding}
+        onAddToSet={handleAddSelectedToSet}
+        searchText={searchText}
       />
 
       <div className="tab-bar">
@@ -367,17 +376,6 @@ export default function App() {
         )}
         {activeTab === 'browse' && (
           <div className="table-panel">
-            {selectedTrack && activeSet && (
-              <div className="browse-add-to-set-bar">
-                <button
-                  className="match-action-btn"
-                  onClick={handleAddSelectedToSet}
-                  title="Add selected track to set"
-                >
-                  + Add to Set
-                </button>
-              </div>
-            )}
             <FilterBar
               camelotCodes={filters.camelotCodes}
               bpm={filters.bpm}
@@ -390,6 +388,7 @@ export default function App() {
               configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
               columnVisibility={browseColumnVisibility}
               onToggleColumn={toggleBrowseColumn}
+              onClearFilters={handleClearFilters}
             />
             {traitsError && (
               <p className="table-status table-status--error">
@@ -405,6 +404,7 @@ export default function App() {
               onLoadMore={!selectedTrack ? handleLoadMore : undefined}
               error={tracksError}
               columnVisibility={browseColumnVisibility}
+              onAddToSet={activeSet ? handleAddToSet : undefined}
             />
           </div>
         )}

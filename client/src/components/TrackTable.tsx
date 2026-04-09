@@ -2,10 +2,12 @@ import { memo, useState, useRef, useLayoutEffect, useEffect, useMemo, useCallbac
 import {
   useReactTable,
   getCoreRowModel,
+  getSortedRowModel,
   flexRender,
   createColumnHelper,
   type ColumnSizingState,
   type ColumnOrderState,
+  type SortingState,
   type Updater,
 } from '@tanstack/react-table';
 import type { Track, SearchSuggestion } from '../types';
@@ -35,7 +37,7 @@ const COLUMN_IDS = [
   'title', 'label', 'genre',
 ];
 
-const columns = [
+const dataColumns = [
   col.accessor('camelot_code', {
     header: 'Camelot',
     size: FIXED_PX,
@@ -87,9 +89,10 @@ interface Props {
   onLoadMore?: () => void;
   error?: string | null;
   columnVisibility?: Record<string, boolean>;
+  onAddToSet?: (trackId: number) => void;
 }
 
-export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility }: Props) {
+export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -97,7 +100,10 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
 
   const [containerWidth, setContainerWidth] = useState(0);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(COLUMN_IDS);
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([
+    ...COLUMN_IDS.slice(0, 4), 'add_to_set', ...COLUMN_IDS.slice(4),
+  ]);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null);
@@ -134,14 +140,40 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     });
   }, [responsiveSizing]);
 
+  const addToSetColumn = useMemo(() => col.display({
+    id: 'add_to_set',
+    header: '',
+    size: 74,
+    minSize: 60,
+    enableSorting: false,
+    cell: ({ row }) => onAddToSet ? (
+      <button
+        className="match-action-btn"
+        onClick={(e) => { e.stopPropagation(); onAddToSet(row.original.id); }}
+        title="Add to set"
+      >
+        + Set
+      </button>
+    ) : null,
+  }), [onAddToSet]);
+
+  const allColumns = useMemo(
+    () => [...dataColumns, addToSetColumn],
+    [addToSetColumn],
+  );
+
+  const fullColumnOrder = columnOrder;
+
   const table = useReactTable({
     data: tracks,
-    columns,
-    state: { columnSizing: effectiveSizing, columnOrder, columnVisibility: columnVisibility ?? {} },
+    columns: allColumns,
+    state: { columnSizing: effectiveSizing, columnOrder: fullColumnOrder, columnVisibility: columnVisibility ?? {}, sorting },
     columnResizeMode: 'onChange',
     onColumnSizingChange: handleColumnSizingChange,
     onColumnOrderChange: setColumnOrder,
+    onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
   });
 
   const totalWidth = table.getTotalSize();
@@ -232,29 +264,41 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    style={{ width: header.getSize() }}
-                    className={draggedColumn === header.column.id ? 'th-dragging' : ''}
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, header.column.id)}
-                  >
-                    <div
-                      className="th-content"
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, header.column.id)}
-                      onDragEnd={handleDragEnd}
+                {hg.headers.map((header) => {
+                  const canSort = header.column.getCanSort();
+                  const sorted = header.column.getIsSorted();
+                  return (
+                    <th
+                      key={header.id}
+                      style={{ width: header.getSize() }}
+                      className={draggedColumn === header.column.id ? 'th-dragging' : ''}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, header.column.id)}
                     >
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                    </div>
-                    <div
-                      className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
-                      onMouseDown={header.getResizeHandler()}
-                      onTouchStart={header.getResizeHandler()}
-                    />
-                  </th>
-                ))}
+                      <div
+                        className={`th-content${canSort ? ' th-sortable' : ''}`}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, header.column.id)}
+                        onDragEnd={handleDragEnd}
+                        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {sorted && (
+                          <span className="sort-indicator">
+                            {sorted === 'asc' ? ' ▲' : ' ▼'}
+                          </span>
+                        )}
+                      </div>
+                      {header.column.getCanResize() && (
+                        <div
+                          className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                        />
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>

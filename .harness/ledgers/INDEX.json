@@ -180,5 +180,33 @@
     "build_status": "PASS",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260408T214806Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task Summary\n\n## Contract\nDEVDSL-1 / MODE: STRICT / SCOPE_LOCK \u2014 React/TypeScript UI changes for Matches table, Browse table, and search-bar action area.\n\n## ",
+    "published_at": "2026-04-09T01:11:37.623814+00:00",
+    "path": ".harness/ledgers/20260408T214806Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 12,
+    "eval_score": 85,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "CONDITIONAL",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "MEDIUM"
+  },
+  {
+    "run_id": "20260408T214807Z-delivery-development-contract-source-inpu",
+    "mode": "`delivery`",
+    "task_excerpt": "# Task Summary\n\n## Contract Reference\n`.harness/runs/20260408T211734Z-delivery-ui-tweaks-sortable-columns-set-b/DEVELOPMENT_CONTRACT_2.md`\n\n## Scope\nCSS-only ch",
+    "published_at": "2026-04-09T01:16:33.374060+00:00",
+    "path": ".harness/ledgers/20260408T214807Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 12,
+    "eval_score": 81,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "CONDITIONAL",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "MEDIUM"
   }
 ]
