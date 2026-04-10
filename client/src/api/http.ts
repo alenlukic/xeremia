@@ -253,6 +253,13 @@ export async function explorerAddEdge(
   if (!res.ok) throw new Error(`Explorer add edge failed: ${res.status}`);
 }
 
+export async function explorerDeleteEdge(
+  setId: number, edgeId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/explorer/edges/${edgeId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Explorer delete edge failed: ${res.status}`);
+}
+
 export async function explorerSwap(
   setId: number, nodeAId: string, nodeBId: string,
 ): Promise<void> {

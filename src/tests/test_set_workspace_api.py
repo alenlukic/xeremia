@@ -316,6 +316,97 @@ class TestDeleteNodeResolution:
         assert ad_edge is None
 
 
+class TestDeleteExplorerEdge:
+    def test_delete_edge_success(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        a, _ = svc.explorer_add_node(s.id, 1, level=0)
+        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id, level=1)
+        session.commit()
+        edge = session.query(SetExplorerEdge).filter_by(
+            set_id=s.id, parent_node_id=a.node_id, child_node_id=b.node_id
+        ).first()
+        assert edge is not None
+
+        ok, err = svc.delete_explorer_edge(s.id, edge.id)
+        assert ok is True
+        assert err is None
+        assert session.query(SetExplorerEdge).filter_by(id=edge.id).count() == 0
+
+    def test_delete_edge_nonexistent(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.delete_explorer_edge(s.id, 99999)
+        assert ok is False
+        assert err is not None
+
+    def test_delete_edge_wrong_set(self, svc: SetWorkspaceService, session: Session):
+        s1 = svc.create_set("S1")
+        s2 = svc.create_set("S2")
+        session.commit()
+        a, _ = svc.explorer_add_node(s1.id, 1, level=0)
+        b, _ = svc.explorer_add_node(s1.id, 2, parent_node_id=a.node_id, level=1)
+        session.commit()
+        edge = session.query(SetExplorerEdge).filter_by(
+            set_id=s1.id, parent_node_id=a.node_id, child_node_id=b.node_id
+        ).first()
+        assert edge is not None
+
+        ok, err = svc.delete_explorer_edge(s2.id, edge.id)
+        assert ok is False
+        assert err is not None
+        assert session.query(SetExplorerEdge).filter_by(id=edge.id).count() == 1
+
+
+class TestExplorerSwap:
+    def test_swap_non_adjacent_nodes_swaps_only_track_ids(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        session.commit()
+        root, _ = svc.explorer_add_node(s.id, 101, level=0)
+        left, _ = svc.explorer_add_node(s.id, 202, parent_node_id=root.node_id, level=1)
+        right, _ = svc.explorer_add_node(s.id, 303, level=1)
+        leaf, _ = svc.explorer_add_node(s.id, 404, parent_node_id=left.node_id, level=2)
+        session.commit()
+
+        ok, err = svc.explorer_swap(s.id, root.node_id, leaf.node_id)
+        assert ok is True
+        assert err is None
+
+        refreshed_root = session.query(SetExplorerNode).filter_by(
+            set_id=s.id, node_id=root.node_id
+        ).first()
+        refreshed_leaf = session.query(SetExplorerNode).filter_by(
+            set_id=s.id, node_id=leaf.node_id
+        ).first()
+        assert refreshed_root is not None
+        assert refreshed_leaf is not None
+        assert refreshed_root.track_id == 404
+        assert refreshed_leaf.track_id == 101
+        assert refreshed_root.level == 0
+        assert refreshed_leaf.level == 2
+
+        edges = session.query(SetExplorerEdge).filter_by(set_id=s.id).all()
+        edge_pairs = {(edge.parent_node_id, edge.child_node_id) for edge in edges}
+        assert edge_pairs == {
+            (root.node_id, left.node_id),
+            (left.node_id, leaf.node_id),
+        }
+        assert session.query(SetExplorerNode).filter_by(set_id=s.id, node_id=right.node_id).first() is not None
+
+    def test_swap_rejects_same_node(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        node, _ = svc.explorer_add_node(s.id, 101, level=0)
+        session.commit()
+
+        ok, err = svc.explorer_swap(s.id, node.node_id, node.node_id)
+        assert ok is False
+        assert err is not None
+        assert "itself" in err.lower()
+
+
 class TestTracklistNote:
     def test_update_note(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")

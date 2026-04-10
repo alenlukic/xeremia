@@ -176,19 +176,35 @@ class TestComputeFeaturesForTracks:
         "src.scripts.feature_extraction.compute_features_for_tracks"
         ".compute_track_traits"
     )
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_compact_descriptors"
+    )
     @patch("src.scripts.feature_extraction.compute_features_for_tracks.database")
-    def test_calls_traits_then_cosine(self, mock_db, mock_traits, mock_cosine):
+    def test_calls_descriptors_then_traits_then_cosine(
+        self, mock_db, mock_descriptors, mock_traits, mock_cosine
+    ):
         from src.scripts.feature_extraction.compute_features_for_tracks import run
 
         mock_session = MagicMock()
+        sentinel_tracks = [MagicMock(id=42), MagicMock(id=101)]
+        mock_session.query.return_value.all.return_value = sentinel_tracks
         mock_db.create_session.return_value = mock_session
 
         call_order = []
+        mock_descriptors.run.side_effect = lambda *a, **kw: call_order.append(
+            "descriptors"
+        )
         mock_traits.run.side_effect = lambda *a, **kw: call_order.append("traits")
         mock_cosine.run.side_effect = lambda *a, **kw: call_order.append("cosine")
 
-        run({42, 101})
-        assert call_order == ["traits", "cosine"]
+        track_ids = {42, 101}
+        run(track_ids)
+        assert call_order == ["descriptors", "traits", "cosine"]
+
+        assert mock_descriptors.session is mock_session
+        assert mock_descriptors.tracks == sentinel_tracks
+        mock_descriptors.run.assert_called_once_with(track_ids)
 
     @patch(
         "src.scripts.feature_extraction.compute_features_for_tracks"
@@ -198,16 +214,120 @@ class TestComputeFeaturesForTracks:
         "src.scripts.feature_extraction.compute_features_for_tracks"
         ".compute_track_traits"
     )
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_compact_descriptors"
+    )
     @patch("src.scripts.feature_extraction.compute_features_for_tracks.database")
-    def test_continues_on_trait_failure(self, mock_db, mock_traits, mock_cosine):
+    def test_continues_on_descriptor_failure(
+        self, mock_db, mock_descriptors, mock_traits, mock_cosine
+    ):
         from src.scripts.feature_extraction.compute_features_for_tracks import run
 
         mock_session = MagicMock()
+        mock_session.query.return_value.all.return_value = []
+        mock_db.create_session.return_value = mock_session
+        mock_descriptors.run.side_effect = RuntimeError("descriptor crash")
+
+        run({42})
+        mock_traits.run.assert_called_once()
+        mock_cosine.run.assert_called_once()
+
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_cosine_similarities"
+    )
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_track_traits"
+    )
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_compact_descriptors"
+    )
+    @patch("src.scripts.feature_extraction.compute_features_for_tracks.database")
+    def test_continues_on_trait_failure(
+        self, mock_db, mock_descriptors, mock_traits, mock_cosine
+    ):
+        from src.scripts.feature_extraction.compute_features_for_tracks import run
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.all.return_value = []
         mock_db.create_session.return_value = mock_session
         mock_traits.run.side_effect = RuntimeError("trait crash")
 
         run({42})
+        mock_descriptors.run.assert_called_once()
         mock_cosine.run.assert_called_once()
+
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_cosine_similarities"
+    )
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_track_traits"
+    )
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_compact_descriptors"
+    )
+    @patch("src.scripts.feature_extraction.compute_features_for_tracks.database")
+    def test_descriptors_called_before_cosine(
+        self, mock_db, mock_descriptors, mock_traits, mock_cosine
+    ):
+        """Regression: cosine precompute requires descriptors. The orchestrator
+        must call descriptor generation before cosine similarity computation."""
+        from src.scripts.feature_extraction.compute_features_for_tracks import run
+
+        mock_session = MagicMock()
+        sentinel_tracks = [MagicMock(id=9217)]
+        mock_session.query.return_value.all.return_value = sentinel_tracks
+        mock_db.create_session.return_value = mock_session
+
+        call_order = []
+        mock_descriptors.run.side_effect = lambda *a, **kw: call_order.append(
+            "descriptors"
+        )
+        mock_cosine.run.side_effect = lambda *a, **kw: call_order.append("cosine")
+
+        track_ids = {9217}
+        run(track_ids)
+        assert "descriptors" in call_order
+        assert "cosine" in call_order
+        assert call_order.index("descriptors") < call_order.index("cosine")
+
+        assert mock_descriptors.session is mock_session
+        assert mock_descriptors.tracks == sentinel_tracks
+        mock_descriptors.run.assert_called_once_with(track_ids)
+
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_cosine_similarities"
+    )
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_track_traits"
+    )
+    @patch(
+        "src.scripts.feature_extraction.compute_features_for_tracks"
+        ".compute_compact_descriptors"
+    )
+    @patch("src.scripts.feature_extraction.compute_features_for_tracks.database")
+    def test_step1_session_closed_on_query_failure(
+        self, mock_db, mock_descriptors, mock_traits, mock_cosine
+    ):
+        """Session from Step 1 must be closed even if the Track query raises
+        before compute_compact_descriptors.run() executes."""
+        from src.scripts.feature_extraction.compute_features_for_tracks import run
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.all.side_effect = RuntimeError("db down")
+        mock_db.create_session.return_value = mock_session
+
+        run({42})
+        mock_session.close.assert_called()
+        mock_descriptors.run.assert_not_called()
 
     def test_requires_track_ids(self):
         from src.scripts.feature_extraction.compute_features_for_tracks import run

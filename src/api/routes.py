@@ -939,6 +939,27 @@ def api_explorer_delete_node(set_id: int, body: ExplorerDeleteNodeRequest):
         session.close()
 
 
+@router.delete("/sets/{set_id}/explorer/edges/{edge_id}", status_code=204)
+def api_explorer_delete_edge(set_id: int, edge_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.delete_explorer_edge(set_id, edge_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer delete edge failed")
+        raise HTTPException(status_code=500, detail="Delete edge failed")
+    finally:
+        session.close()
+
+
 @router.post("/sets/{set_id}/explorer/swap")
 def api_explorer_swap(set_id: int, body: ExplorerSwapRequest):
     from src.set_workspace.service import SetWorkspaceService
