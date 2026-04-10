@@ -2084,7 +2084,7 @@ body,
 .set-ws-col-title { /* flex fill — no explicit width */ }
 .set-ws-col-key { width: 48px; }
 .set-ws-col-bpm { width: 44px; }
-.set-ws-col-note { width: 130px; }
+.set-ws-col-note { width: 330px; }
 /* Actions: tracklist has 4 buttons, pool has 2 — separate widths */
 .set-ws-col-actions-tracklist { width: 148px; }
 .set-ws-col-actions-pool { width: 110px; }
@@ -2296,6 +2296,20 @@ body,
   opacity: 1;
 }
 
+.explorer-action-row {
+  opacity: 0;
+  transform-origin: center bottom;
+  transform: scaleY(0);
+  transition: opacity 150ms ease, transform 150ms ease;
+  pointer-events: none;
+}
+
+.explorer-action-row--visible {
+  opacity: 1;
+  transform: scaleY(1);
+  pointer-events: auto;
+}
+
 .explorer-action-btn {
   opacity: 0.7;
   transition: opacity var(--transition);
@@ -2306,10 +2320,46 @@ body,
   opacity: 1;
 }
 
+.explorer-level-add-btn {
+  opacity: 0.65;
+  transition: opacity var(--transition);
+}
+
+.explorer-level-add-btn:hover,
+.explorer-level-add-btn:focus {
+  opacity: 1;
+}
+
+.explorer-edge-delete {
+  transition: opacity var(--transition);
+}
+
 .explorer-edge-label {
-  fill: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 10px;
+  opacity: 0.7;
+}
+
+.explorer-score-spinner circle {
+  animation: edge-score-spin 1s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes edge-score-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.explorer-edge-spinner {
+  animation: edge-spinner-rotate 0.8s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0.7;
+}
+
+@keyframes edge-spinner-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* --- Explorer delete modal --- */

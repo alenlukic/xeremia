@@ -28,6 +28,8 @@ interface Props {
   addToTracklist: (trackId: number, title?: string) => void;
   addExplorerNode: (trackId: number, parentNodeId?: string, level?: number) => Promise<unknown>;
   deleteExplorerNode: (nodeId: string, rewireEdges?: { parent_node_id: string; child_node_id: string }[]) => void;
+  addExplorerEdge: (parentNodeId: string, childNodeId: string) => Promise<void>;
+  deleteExplorerEdge: (edgeId: number) => Promise<void>;
   swapExplorerNodes: (nodeAId: string, nodeBId: string) => void;
   explorerNodeAddToTracklist: (nodeId: string) => void;
   addSiblingNode: (trackId: number, inheritParentIds: string[], level: number) => Promise<unknown>;
@@ -42,7 +44,7 @@ export function SetBuilder({
   createSet, selectSet, deleteSet,
   removeFromPool, movePoolToTracklist, addToPool,
   removeFromTracklist, moveTracklistToPool, reorderTracklist, updateTracklistNote, addToTracklist,
-  addExplorerNode, deleteExplorerNode, swapExplorerNodes,
+  addExplorerNode, deleteExplorerNode, addExplorerEdge, deleteExplorerEdge, swapExplorerNodes,
   explorerNodeAddToTracklist, addSiblingNode, fetchEdgeScores,
   resolvePendingAdd, clearPendingAdd, clearError,
 }: Props) {
@@ -276,6 +278,8 @@ export function SetBuilder({
               edges={activeSet.explorer_edges}
               onAddNode={addExplorerNode}
               onDeleteNode={deleteExplorerNode}
+              onAddEdge={addExplorerEdge}
+              onDeleteEdge={deleteExplorerEdge}
               onSwap={swapExplorerNodes}
               onNodeToTracklist={explorerNodeAddToTracklist}
               onAddSibling={addSiblingNode}

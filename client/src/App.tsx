@@ -452,6 +452,8 @@ export default function App() {
             addToTracklist={setBuilder.addToTracklist}
             addExplorerNode={setBuilder.addExplorerNode}
             deleteExplorerNode={setBuilder.deleteExplorerNode}
+            addExplorerEdge={setBuilder.addExplorerEdge}
+            deleteExplorerEdge={setBuilder.deleteExplorerEdge}
             swapExplorerNodes={setBuilder.swapExplorerNodes}
             explorerNodeAddToTracklist={setBuilder.explorerNodeAddToTracklist}
             addSiblingNode={setBuilder.addSiblingNode}

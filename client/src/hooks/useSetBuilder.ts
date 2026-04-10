@@ -5,8 +5,8 @@ import {
   poolAdd, poolRemove, poolMoveToTracklist,
   tracklistAdd, tracklistRemove, tracklistReorder, tracklistMoveToPool,
   updateTracklistNote as apiUpdateTracklistNote,
-  explorerAddNode, explorerDeleteNode, explorerAddEdge, explorerSwap, explorerNodeToTracklist,
-  explorerEdgeScores,
+  explorerAddNode, explorerDeleteNode, explorerAddEdge, explorerDeleteEdge,
+  explorerSwap, explorerNodeToTracklist, explorerEdgeScores,
 } from '../api/http';
 
 export interface PendingAdd {
@@ -245,6 +245,20 @@ export function useSetBuilder() {
   ) => {
     if (activeSetId === null) return null;
     try {
+      if (parentNodeId && activeSet) {
+        const parentNode = activeSet.explorer_nodes.find(n => n.node_id === parentNodeId);
+        if (parentNode) {
+          const targetLevel = parentNode.level + 1;
+          const existing = activeSet.explorer_nodes.find(
+            n => n.track_id === trackId && n.level === targetLevel,
+          );
+          if (existing) {
+            await explorerAddEdge(activeSetId, parentNodeId, existing.node_id);
+            await refreshActive();
+            return { node_id: existing.node_id, track_id: trackId, level: targetLevel };
+          }
+        }
+      }
       const result = await explorerAddNode(activeSetId, trackId, parentNodeId, level);
       await refreshActive();
       return result;
@@ -252,7 +266,7 @@ export function useSetBuilder() {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add node.'));
       return null;
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, activeSet, refreshActive]);
 
   const deleteExplorerNode = useCallback(async (
     nodeId: string,
@@ -269,11 +283,26 @@ export function useSetBuilder() {
 
   const addExplorerEdge = useCallback(async (parentNodeId: string, childNodeId: string) => {
     if (activeSetId === null) return;
+    if (activeSet?.explorer_edges.some(
+      e => e.parent_node_id === parentNodeId && e.child_node_id === childNodeId,
+    )) {
+      return;
+    }
     try {
       await explorerAddEdge(activeSetId, parentNodeId, childNodeId);
       await refreshActive();
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add edge.'));
+    }
+  }, [activeSetId, activeSet, refreshActive]);
+
+  const deleteExplorerEdgeAction = useCallback(async (edgeId: number) => {
+    if (activeSetId === null) return;
+    try {
+      await explorerDeleteEdge(activeSetId, edgeId);
+      await refreshActive();
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not delete edge.'));
     }
   }, [activeSetId, refreshActive]);
 
@@ -366,6 +395,7 @@ export function useSetBuilder() {
     addExplorerNode,
     deleteExplorerNode,
     addExplorerEdge,
+    deleteExplorerEdge: deleteExplorerEdgeAction,
     addSiblingNode,
     swapExplorerNodes,
     explorerNodeAddToTracklist,

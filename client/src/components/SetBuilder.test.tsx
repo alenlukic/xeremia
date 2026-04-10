@@ -58,6 +58,8 @@ function defaultProps() {
     addToTracklist: noop,
     addExplorerNode: asyncNoop as (trackId: number, parentNodeId?: string, level?: number) => Promise<unknown>,
     deleteExplorerNode: noop as (nodeId: string, rewireEdges?: { parent_node_id: string; child_node_id: string }[]) => void,
+    addExplorerEdge: asyncNoop as unknown as (parentNodeId: string, childNodeId: string) => Promise<void>,
+    deleteExplorerEdge: asyncNoop as unknown as (edgeId: number) => Promise<void>,
     swapExplorerNodes: noop,
     explorerNodeAddToTracklist: noop,
     addSiblingNode: asyncNoop as (trackId: number, inheritParentIds: string[], level: number) => Promise<unknown>,
@@ -490,8 +492,8 @@ describe('SetBuilder', () => {
     });
   });
 
-  describe('explorer sibling-add', () => {
-    it('shows sibling-add button on explorer nodes', async () => {
+  describe('explorer per-level add', () => {
+    it('shows per-level +Add Track button on explorer', async () => {
       const hydrated = makeHydratedSet({
         explorer_nodes: [{
           id: 1, set_id: 1, node_id: 'n1', track_id: 10, level: 0,
@@ -508,7 +510,7 @@ describe('SetBuilder', () => {
         />,
       );
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }));
-      const addBtns = screen.getAllByTestId('sibling-add-btn');
+      const addBtns = screen.getAllByTestId('level-add-btn');
       expect(addBtns.length).toBeGreaterThan(0);
     });
   });

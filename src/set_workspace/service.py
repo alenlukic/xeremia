@@ -13,7 +13,7 @@ from src.models.set_pool_entry import SetPoolEntry
 from src.models.set_tracklist_entry import SetTracklistEntry
 from src.models.set_explorer_node import SetExplorerNode
 from src.models.set_explorer_edge import SetExplorerEdge
-from src.set_workspace.explorer_rules import validate_add_node, validate_swap
+from src.set_workspace.explorer_rules import validate_add_node
 
 logger = logging.getLogger(__name__)
 
@@ -438,13 +438,25 @@ class SetWorkspaceService:
         self.session.flush()
         return True, None
 
+    def delete_explorer_edge(
+        self, set_id: int, edge_id: int,
+    ) -> Tuple[bool, Optional[str]]:
+        edge = (
+            self.session.query(SetExplorerEdge)
+            .filter_by(id=edge_id, set_id=set_id)
+            .first()
+        )
+        if edge is None:
+            return False, "Edge not found"
+        self.session.delete(edge)
+        self.session.flush()
+        return True, None
+
     def explorer_swap(
         self, set_id: int, node_a_id: str, node_b_id: str,
     ) -> Tuple[bool, Optional[str]]:
-        _, _, edge_tuples, _ = self._get_explorer_state(set_id)
-        error = validate_swap(edge_tuples, node_a_id, node_b_id)
-        if error:
-            return False, error
+        if node_a_id == node_b_id:
+            return False, "Cannot swap a node with itself"
 
         node_a = (
             self.session.query(SetExplorerNode)
@@ -460,7 +472,6 @@ class SetWorkspaceService:
             return False, "Node not found"
 
         node_a.track_id, node_b.track_id = node_b.track_id, node_a.track_id
-        node_a.level, node_b.level = node_b.level, node_a.level
         self.session.flush()
         return True, None
 
