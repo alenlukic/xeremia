@@ -6,11 +6,21 @@
       "id": "2026-04-09-set-building-expansion",
       "path": ".harness/contracts/2026-04-09/set-building-expansion.md",
       "title": "Set Building Expansion",
-      "status": "outstanding",
+      "status": "implemented",
       "intent": "delivery",
       "driver": "product-driven",
       "date": "2026-04-09",
       "summary": "Replace the client-local set builder with server-persisted sets, pool, tracklist, and explorer graph plus the supporting schema and APIs."
+    },
+    {
+      "id": "2026-04-09-set-workspace-security-hardening",
+      "path": ".harness/contracts/2026-04-09/set-workspace-security-hardening.md",
+      "title": "Set Workspace Security Hardening",
+      "status": "outstanding",
+      "intent": "delivery",
+      "driver": "breaker-driven",
+      "date": "2026-04-09",
+      "summary": "Tighten set-workspace CORS exposure and bound explorer edge-score request size before broader rollout."
     }
   ]
 }

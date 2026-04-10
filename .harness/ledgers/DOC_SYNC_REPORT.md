@@ -1,83 +1,62 @@
 # Doc Sync Report
 
-Sync date: 2026-04-08
-Sync boundary: all ledgers through `20260407T134953Z` (12 total, none previously synced)
+Sync boundary: `20260409T091130Z-delivery-development-contract-source-inpu` → `20260410T004356Z-delivery-development-contract-source-inpu`
 
 ## Ledgers Consumed
 
-| Run ID | Summary | Verdict |
-|--------|---------|---------|
-| `20260406T004047Z` | UI layout fix (margins, tooltips) | PASS |
-| `20260406T013033Z` | UI border/divider/tab alignment | PASS |
-| `20260406T063032Z` | AIFF Windows compatibility fix | PASS |
-| `20260407T043338Z` | Ingestion pipeline fix (6 bugs) | PASS |
-| `20260407T075202Z` | Product feedback pass (design/customer/SME) | N/A |
-| `20260407T093555Z` | Error handling delivery | FAIL |
-| `20260407T100758Z` | FilterBar BPM/Camelot UX | eval FAIL |
-| `20260407T104609Z` | Weight save indicator | FAIL |
-| `20260407T115052Z` | Matches table columns (TanStack) | PASS |
-| `20260407T124201Z` | Fusion weight scoring integration | eval FAIL |
-| `20260407T131432Z` | Match discoverability + chaining | eval FAIL |
-| `20260407T134953Z` | Set/playlist builder MVP | eval FAIL |
+| Run ID | Mode | Summary |
+|--------|------|---------|
+| `20260409T190051Z-delivery-development-contract-source-inpu` | delivery | Explorer viewport restoration, cleanTitle extraction, note persistence, explicit child-add workflow |
+| `20260409T192223Z-delivery-development-contract-source-inpu` | delivery | Explorer UX polish: orthogonal edge routing, grid layout, per-column edge colors, +TL pill |
+| `20260409T231234Z-delivery-development-contract-source-inpu` | delivery | Explorer canvas fixes (Contract A): cleanTitle hardening, hover opacity, clipped root-node actions |
+| `20260409T231235Z-delivery-development-contract-source-inpu` | delivery | Contract B validation: Tracks tab labeling, Pool/Tracklist layout, note-path closure |
+| `20260410T004351Z-delivery-development-contract-source-inpu` | delivery | Contract 3: Tracklist semantic table markup, dedicated Key/BPM columns, shared colgroup widths |
+| `20260410T004356Z-delivery-development-contract-source-inpu` | delivery | Contract 4: Explorer accordion polish, action sizing/labels/accessibility, CSS token cleanup |
 
-Additionally consumed: session learnings from 2026-04-08 (harness operational pitfalls).
+## Files Updated
 
-## Files Changed
+### `docs/CONVENTIONS.md`
+- **Database section**: Added migration verification guidance — when a migration uses raw `engine.execute()`, verify the schema change landed afterward because execution alone does not guarantee commit (evidence: ledger `20260409T190051Z`)
+- **Client section**: Added `Set workspace UI` subsection with 6 conventions:
+  - `cleanTitle()` reuse for user-facing track labels across set workspace surfaces (evidence: ledgers `20260409T190051Z`, `20260409T231234Z`)
+  - Explorer SVG sizing: computed pixel dimensions + explicit `viewBox` over percentage sizing (evidence: ledgers `20260409T190051Z`, `20260409T192223Z`, `20260409T231234Z`)
+  - Explicit visible action controls over hidden gesture targets for core Explorer authoring (evidence: ledgers `20260409T190051Z`, `20260410T004356Z`)
+  - SVG-backed interactive controls need `aria-label`, keyboard activation, and visible labeling (evidence: ledger `20260410T004356Z`)
+  - Semantic CSS tokens and named Explorer palette constants over inline color literals (evidence: ledger `20260410T004356Z`)
+  - Semantic table markup with shared colgroup widths for Pool/Tracklist alignment (evidence: ledger `20260410T004351Z`)
 
-| File | Nature of change |
-|------|-----------------|
-| `.harness/docs/core-beliefs.md` | Added "Harness Operational Constraints" section (6 items: no worktrees, no parallel git, preserve stash, QA starts stack, visual browser QA, Gate 7 static review) |
-| `docs/CONVENTIONS.md` | Added client-side conventions: layout tokens, tooltips, ResizeObserver, StrictMode state, conditional render measurement, filter interactions, error states, client testing, ingestion pipeline patterns, audio format conversion |
-| `docs/WORKFLOWS.md` | Added Flow 4 (set builder), renumbered Flow 5 (admin); updated scoring factors table with API display names and `Cosine Similarity` note; updated match detail flow for clickable titles, transition chaining, breadcrumb nav; added fusion weight normalization note; added `SetBuilder` to client architecture; updated app layout diagram to 4 tabs |
-| `docs/ARCHITECTURE.md` | Expanded client test runner info; added "Known baseline failures" subsection documenting `test_layer_dependency_direction` |
-| `docs/golden-principles.md` | Added principle 13 (visible controls → real behavior) and principle 14 (audit callers when widening return type) |
-| `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md` | Updated set preparation workflow status (MVP shipped); updated weight experimentation status (fusion subweights active); updated "analysis dead end" fear (m3u8 export + chaining shipped); updated "silent failures" fear (error states distinguished); added `Cosine Similarity` to domain vocabulary |
+### `docs/WORKFLOWS.md`
+- Added `client/src/utils/` row to the client architecture table, listing `trackTitle.ts` (shared `cleanTitle()`) and `explorer.ts` (layout grid, edge routing, color palette helpers)
+
+### `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md`
+- Updated workflow 2 (Set preparation) to mention per-track notes on tracklist entries for cue/mix reminders
+
+### `.harness/ledgers/INDEX.md`
+- Added 6 new ledger entries for the consumed runs
 
 ## Durable Guidance Captured
 
-### Harness operations (from session learnings, strong repeated evidence)
-- No git worktrees in pipeline (`.env` not inherited → DB failures)
-- No parallel agents on same git repo (stash/checkout cross-contamination)
-- Preserve uncommitted work across delivery runs (stash drop caused regression)
-- QA agents must start the stack themselves
-- Visual browser QA mandatory for frontend changes (6/12 runs confirmed)
-- Gate 7 static review acceptable for non-`start_web.sh` contracts
+### Database (refined — from ledger `20260409T190051Z`)
+- Raw `engine.execute()` migrations need explicit post-run schema verification; execution is not proof of commit
 
-### Product/domain conventions (from ledger evidence)
-- `Cosine Similarity` is the canonical API factor name (not `Similarity`)
-- `--content-gutter` is the single horizontal layout token for Browse (2 runs)
-- CSS-only tooltips via `data-tooltip` + `::after` (2 runs)
-- TAG_COLUMNS shared base; stage-specific fields in `update_row()` overrides
-- Fusion weights normalized at scoring boundary
-- Error states must be distinct from empty results at every data-table surface
-- Breaker IMPORTANT → follow-on contract/run (5 runs confirmed this pattern)
+### Set workspace UI (new — from ledgers `20260409T190051Z`, `20260409T192223Z`, `20260409T231234Z`, `20260410T004351Z`, `20260410T004356Z`)
+- Shared `cleanTitle()` for all user-facing track labels across Pool, Tracklist, Explorer
+- Explorer SVG sizing via computed pixels + `viewBox`
+- Visible controls over hidden gesture targets for core authoring
+- Accessibility wiring for SVG-backed interactive controls
+- Semantic CSS tokens and named palette constants
+- Semantic table markup with shared colgroup widths for Pool/Tracklist
 
-### Golden principles added
-- #13: Visible controls must map to real behavior
-- #14: Audit callers when widening return types
+## Persona Guidance Changes
 
-## Persona Guidance Changed
-
-- Updated workflow progress annotations (set builder, fusion weights, m3u8 export)
-- Updated fear/friction status (analysis dead end, silent failures)
-- Added `Cosine Similarity` to domain vocabulary
-
-All persona changes supported by strong repeated evidence across multiple delivery
-and product-feedback runs.
+- `CUSTOMER_PERSONA_SPEC.md` workflow 2 (Set preparation): Added mention of per-track notes on tracklist entries. This reflects a shipped feature (note persistence via `PATCH /api/sets/{id}/tracklist/{track_id}/note`) confirmed across ledgers `20260409T190051Z` and `20260409T231235Z`.
 
 ## Deferred Items
 
-- **Shared TanStack table extraction**: `MatchesPanel` and `TrackTable` have duplicated
-  interaction chrome. Revisit only when a contract needs the same pattern. (Source: 115052Z)
-- **Touch/mobile tooltip accessibility**: CSS `:hover` tooltips are not touch-accessible.
-  Acceptable for desktop-only context; revisit if mobile surface added. (Source: 004047Z)
-- **Negative fusion weight validation**: API/service boundary should reject negative inputs.
-  Not captured as a convention because it is a single-run finding. (Source: 124201Z)
-- **`test_layer_dependency_direction` fix**: Structural debt remains; tracked in
-  ARCHITECTURE.md but not resolved by doc sync. (Source: 4 runs)
-- **MatchDetail error rendering and retry UX**: Deferred from error handling delivery.
-  (Source: 093555Z)
-- **Null transition score warning state in set builder**: Follow-on run created but
-  semantics not yet resolved. (Source: 134953Z)
-- **Rekordbox/USB export integration**: Largest remaining workflow gap per persona spec.
-  (Source: 075202Z)
+- **QA live-stack lifecycle gate separation** (from ledger `20260409T231234Z`): "When QA fails on the mandatory live-stack lifecycle gate, record it as a repo-level blocker separately from scoped feature behavior." This is harness-process guidance, not a code convention. Deferred until a second run reinforces it as a pattern worth formalizing in harness docs.
+- **Contract/brief disagreement recording** (from ledger `20260410T004356Z`): "When contract text and the operative brief disagree, record which source won and why." Single-run harness-process learning; deferred until the pattern recurs.
+- **Dirty-worktree regression report caveat** (from ledger `20260409T231234Z`): "In dirty worktrees, treat regression reports on shared files as provisional until the run's diff is isolated." Harness-operational guidance; deferred pending recurrence.
+- **Verify-and-close run recording** (from ledger `20260409T231235Z`): "When a supervisor run validates pre-existing implementation, record the true outcome as verification and closure." Single-run process observation; deferred.
+- **Sticky-header verification depth** (from ledger `20260410T004351Z`): Available dataset didn't create enough rows to exercise sticky behavior. Deferred until a run depends on sticky-header correctness.
+- **Tracklist test hardening** (from ledgers `20260410T004351Z`, `20260410T004356Z`): Colgroup class assertions, column-order lock, BPM absence from title cell, sibling-add modal coverage, edge-score rendering tests. These are follow-on contract items, not doc changes, and the durable registry now tracks this verification scope as `REC-012`.
+- **Build retry for non-behavioral TS issues** (from ledger `20260410T004351Z`): "If build verification fails on a narrow, non-behavioral TypeScript issue after otherwise-correct scoped changes, prefer a targeted retry." Single-run observation; may warrant harness-level guidance if it recurs.

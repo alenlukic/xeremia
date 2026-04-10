@@ -11,6 +11,12 @@
   --accent-dim: rgba(108, 140, 255, 0.12);
   --font-body: 'DM Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --danger: #e53935;
+  --danger-dim: rgba(229, 57, 53, 0.15);
+  --danger-border: rgba(229, 57, 53, 0.3);
+  --danger-border-strong: rgba(229, 57, 53, 0.4);
+  --success: #43a047;
+  --info: #1e88e5;
   --radius: 6px;
   --transition: 120ms ease;
   --content-gutter: 32px;
@@ -597,7 +603,7 @@ body,
 }
 
 .table-status--error {
-  color: #e06c75;
+  color: var(--danger);
 }
 
 /* === Matches Panel === */
@@ -1305,7 +1311,7 @@ body,
 }
 
 .weight-save-status__error {
-  color: #e85858;
+  color: var(--danger);
 }
 
 .weight-save-status__warning {
@@ -1388,7 +1394,7 @@ body,
 }
 
 .admin-error {
-  color: #e85858;
+  color: var(--danger);
 }
 
 /* Usage ring */
@@ -1618,8 +1624,8 @@ body,
 }
 
 .set-delete-btn:hover {
-  color: #e85858;
-  border-color: #e85858;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .set-new-input-row {
@@ -1680,11 +1686,19 @@ body,
   border-color: var(--text-muted);
 }
 
+.set-columns {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .set-track-list {
   flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .set-empty-tracks {
@@ -1787,8 +1801,66 @@ body,
 }
 
 .set-remove-btn:hover {
-  color: #e85858;
-  border-color: #e85858;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.set-note-column {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.set-note-column-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 0 0 8px;
+}
+
+.set-note-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.set-note-spacer {
+  height: 29px;
+}
+
+.set-note-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--transition);
+  min-height: 42px;
+}
+
+.set-note-input::placeholder {
+  color: var(--text-muted);
+}
+
+.set-note-input:focus {
+  border-color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .set-columns {
+    flex-direction: column;
+  }
+
+  .set-note-column {
+    width: 100%;
+  }
 }
 
 .set-transition {
@@ -1812,11 +1884,11 @@ body,
 }
 
 .set-transition--weak .set-transition-line {
-  background: rgba(232, 88, 88, 0.4);
+  background: var(--danger-dim);
 }
 
 .set-transition-score--weak {
-  color: #e85858;
+  color: var(--danger);
   font-weight: 600;
 }
 
@@ -1895,6 +1967,537 @@ body,
   padding: 6px 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+/* === Set workspace sub-tabs === */
+.set-sub-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.set-sub-tab {
+  padding: 8px 18px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.set-sub-tab:hover {
+  color: var(--text);
+}
+
+.set-sub-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.set-workspace-split {
+  display: flex;
+  gap: 0;
+  min-height: 300px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* --- Pool table --- */
+.set-pool, .set-tracklist {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  overflow: auto;
+}
+
+.set-pool-header, .set-tracklist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.set-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.set-pool-search-wrapper, .set-tracklist-search-wrapper, .set-explorer-search-wrapper {
+  position: relative;
+  flex: 1;
+  max-width: 260px;
+}
+
+.set-pool-search, .set-tracklist-search, .set-explorer-search {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.set-pool-search-dropdown, .set-tracklist-search-dropdown, .set-explorer-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.set-pool-search-item, .set-tracklist-search-item, .set-explorer-search-item {
+  padding: 6px 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.set-pool-search-item:hover, .set-tracklist-search-item:hover, .set-explorer-search-item:hover {
+  background: var(--surface-hover);
+}
+
+/* --- Set workspace shared table primitives --- */
+.set-pool-table,
+.set-tracklist-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.set-ws-col-num { width: 32px; }
+.set-ws-col-title { /* flex fill — no explicit width */ }
+.set-ws-col-key { width: 48px; }
+.set-ws-col-bpm { width: 44px; }
+.set-ws-col-note { width: 130px; }
+/* Actions: tracklist has 4 buttons, pool has 2 — separate widths */
+.set-ws-col-actions-tracklist { width: 148px; }
+.set-ws-col-actions-pool { width: 110px; }
+
+.set-ws-th {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.set-ws-th-sortable {
+  cursor: pointer;
+}
+
+.set-ws-th-sortable:hover {
+  color: var(--text);
+}
+
+.set-ws-th-actions {
+  text-align: left;
+}
+
+.set-pool-table thead,
+.set-tracklist-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.set-pool-table th,
+.set-tracklist-table th {
+  background: var(--surface);
+}
+
+.set-pool-table td,
+.set-tracklist-table td {
+  padding: 4px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.set-ws-cell-num {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.set-ws-cell-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-ws-cell-key,
+.set-ws-cell-bpm {
+  white-space: nowrap;
+}
+
+.set-ws-cell-note {
+  padding: 2px 4px;
+}
+
+.set-ws-cell-actions {
+  white-space: nowrap;
+}
+
+.set-ws-actions-group {
+  display: flex;
+  gap: 4px;
+}
+
+/* --- Tracklist note input (inside table cell) --- */
+.set-tracklist-note {
+  width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.set-tracklist-note::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.set-tracklist-note:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* --- Action buttons --- */
+.set-action-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.set-action-btn:hover {
+  background: var(--surface-hover);
+}
+
+.set-action-btn--danger {
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.set-action-btn--danger:hover {
+  background: var(--danger-dim);
+}
+
+/* --- Dual action stacked buttons --- */
+.set-dual-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: stretch;
+}
+
+.match-action-btn--small {
+  font-size: 10px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+
+.search-dual-actions {
+  flex-direction: row;
+  gap: 4px;
+}
+
+/* --- Explorer --- */
+.set-explorer {
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+}
+
+.set-explorer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.set-explorer-swap-hint {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.set-explorer-viewport {
+  flex: 1;
+  min-height: 400px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: auto;
+  position: relative;
+  min-height: 350px;
+  cursor: grab;
+  background: var(--bg);
+}
+
+.set-explorer-viewport:active {
+  cursor: grabbing;
+}
+
+.set-explorer-svg {
+  display: block;
+}
+
+.explorer-node-group {
+  cursor: pointer;
+}
+
+.explorer-node-title {
+  pointer-events: none;
+}
+
+.explorer-node-actions {
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.explorer-node-group:hover .explorer-node-actions {
+  opacity: 1;
+}
+
+.explorer-node-actions-visible {
+  opacity: 0.5;
+  transition: opacity var(--transition);
+}
+
+.explorer-node-group:hover .explorer-node-actions-visible {
+  opacity: 1;
+}
+
+.explorer-action-btn {
+  opacity: 0.7;
+  transition: opacity var(--transition);
+}
+
+.explorer-action-btn:hover,
+.explorer-action-btn:focus {
+  opacity: 1;
+}
+
+.explorer-edge-label {
+  fill: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* --- Explorer delete modal --- */
+.explorer-delete-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.explorer-delete-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.explorer-delete-modal h3 {
+  margin-bottom: 8px;
+}
+
+.explorer-delete-section {
+  margin: 10px 0;
+}
+
+.explorer-delete-rewire {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.explorer-delete-rewire label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.explorer-delete-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* --- Set toast --- */
+.set-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: rgba(30, 32, 44, 0.95);
+  border: 1px solid var(--danger-border-strong);
+  border-radius: var(--radius);
+  color: #f5c6c6;
+  font-size: 13px;
+  z-index: 200;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  max-width: 480px;
+  animation: toast-in 200ms ease;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.set-toast-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.set-toast-dismiss:hover {
+  color: var(--text);
+}
+
+/* --- Pool accordion --- */
+.set-pool-accordion {
+  width: 36px;
+  flex-shrink: 0;
+  display: flex;
+  transition: width 200ms ease;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+}
+
+.set-pool-accordion.expanded {
+  width: 50%;
+  flex-shrink: 0;
+}
+
+.set-pool-expand-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 100%;
+  background: var(--surface);
+  border: none;
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 12px 0;
+  transition: color var(--transition), background var(--transition);
+}
+
+.set-pool-expand-tab:hover,
+.set-pool-expand-tab:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.set-pool-expand-chevron {
+  writing-mode: horizontal-tb;
+  font-size: 16px;
+  display: block;
+  text-align: center;
+  margin-bottom: 6px;
+  line-height: 1;
+}
+
+.set-pool-expand-label {
+  white-space: nowrap;
+}
+
+.set-pool-collapse-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 18px;
+  transition: color var(--transition), background var(--transition);
+}
+
+.set-pool-collapse-handle:hover,
+.set-pool-collapse-handle:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.set-pool-accordion-content {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* --- Tracklist fills remaining space --- */
+.set-workspace-split > .set-tracklist {
+  flex: 1;
+  min-width: 0;
+}
+
+/* (set-tracklist-meta-inline removed: key/BPM now in dedicated columns) */
+
+.set-pending-hint {
+  font-size: 12px;
+  color: var(--accent);
 }
 
 /* === Scrollbar === */

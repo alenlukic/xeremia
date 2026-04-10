@@ -8,10 +8,26 @@ from fastapi import APIRouter, HTTPException, Query
 
 from src.api.schemas import (
     CacheStatsResponse,
+    ExplorerAddEdgeRequest,
+    ExplorerAddNodeRequest,
+    ExplorerDeleteNodeRequest,
+    ExplorerEdgeScoreRequest,
+    ExplorerEdgeScoreResponse,
+    ExplorerNodeToTracklistRequest,
+    ExplorerSwapRequest,
+    HydratedSetResponse,
     MatchDetailResponse,
+    MoveRequest,
+    PoolAddRequest,
     SearchSuggestion,
+    SetCreateRequest,
     SetExportRequest,
     SetExportResponse,
+    SetSummary,
+    SetUpdateRequest,
+    TracklistAddRequest,
+    TracklistNoteUpdateRequest,
+    TracklistReorderRequest,
     TrackResponse,
     TrackTraitResponse,
     TransitionMatchResponse,
@@ -455,5 +471,561 @@ def api_export_m3u8(body: SetExportRequest):
         session.rollback()
         logger.exception("M3U8 export failed")
         raise HTTPException(status_code=500, detail="Export failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Set workspace CRUD
+# ---------------------------------------------------------------------------
+
+
+def _serialize_set_summary(dj_set, session) -> dict:
+    from src.models.set_pool_entry import SetPoolEntry
+    from src.models.set_tracklist_entry import SetTracklistEntry
+
+    pool_count = session.query(SetPoolEntry).filter_by(set_id=dj_set.id).count()
+    tracklist_count = session.query(SetTracklistEntry).filter_by(set_id=dj_set.id).count()
+    return {
+        "id": dj_set.id,
+        "name": dj_set.name,
+        "created_at": dj_set.created_at.isoformat() if dj_set.created_at else "",
+        "updated_at": dj_set.updated_at.isoformat() if dj_set.updated_at else "",
+        "pool_count": pool_count,
+        "tracklist_count": tracklist_count,
+    }
+
+
+def _serialize_hydrated(hydration, session) -> dict:
+    from src.models.track import Track
+
+    dj_set = hydration["set"]
+
+    all_track_ids = list({
+        e.track_id for e in hydration["pool"]
+    } | {
+        e.track_id for e in hydration["tracklist"]
+    } | {
+        n.track_id for n in hydration["explorer_nodes"]
+    })
+
+    track_map: dict = {}
+    if all_track_ids:
+        tracks = session.query(Track).filter(Track.id.in_(all_track_ids)).all()
+        track_map = {t.id: serialize_track_row(t) for t in tracks}
+
+    return {
+        "set": _serialize_set_summary(dj_set, session),
+        "pool": [
+            {
+                "id": e.id,
+                "set_id": e.set_id,
+                "track_id": e.track_id,
+                "insertion_order": e.insertion_order,
+                "track": track_map.get(e.track_id),
+            }
+            for e in hydration["pool"]
+        ],
+        "tracklist": [
+            {
+                "id": e.id,
+                "set_id": e.set_id,
+                "track_id": e.track_id,
+                "position": e.position,
+                "note": getattr(e, "note", "") or "",
+                "track": track_map.get(e.track_id),
+            }
+            for e in hydration["tracklist"]
+        ],
+        "explorer_nodes": [
+            {
+                "id": n.id,
+                "set_id": n.set_id,
+                "node_id": n.node_id,
+                "track_id": n.track_id,
+                "level": n.level,
+                "track": track_map.get(n.track_id),
+            }
+            for n in hydration["explorer_nodes"]
+        ],
+        "explorer_edges": [
+            {
+                "id": e.id,
+                "set_id": e.set_id,
+                "parent_node_id": e.parent_node_id,
+                "child_node_id": e.child_node_id,
+            }
+            for e in hydration["explorer_edges"]
+        ],
+    }
+
+
+@router.get("/sets", response_model=List[SetSummary])
+def api_list_sets():
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        sets = svc.list_sets()
+        return [_serialize_set_summary(s, session) for s in sets]
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Set listing failed")
+        raise HTTPException(status_code=500, detail="Set listing failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets", response_model=SetSummary, status_code=201)
+def api_create_set(body: SetCreateRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        dj_set = svc.create_set(body.name)
+        session.commit()
+        return _serialize_set_summary(dj_set, session)
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Set creation failed")
+        raise HTTPException(status_code=500, detail="Set creation failed")
+    finally:
+        session.close()
+
+
+@router.get("/sets/{set_id}", response_model=HydratedSetResponse)
+def api_get_set(set_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        hydration = svc.hydrate_set(set_id)
+        if hydration is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        return _serialize_hydrated(hydration, session)
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Set hydration failed for set_id=%s", set_id)
+        raise HTTPException(status_code=500, detail="Set hydration failed")
+    finally:
+        session.close()
+
+
+@router.put("/sets/{set_id}", response_model=SetSummary)
+def api_update_set(set_id: int, body: SetUpdateRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        dj_set = svc.update_set(set_id, body.name)
+        if dj_set is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        session.commit()
+        return _serialize_set_summary(dj_set, session)
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Set update failed for set_id=%s", set_id)
+        raise HTTPException(status_code=500, detail="Set update failed")
+    finally:
+        session.close()
+
+
+@router.delete("/sets/{set_id}", status_code=204)
+def api_delete_set(set_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        deleted = svc.delete_set(set_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Set not found")
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Set deletion failed for set_id=%s", set_id)
+        raise HTTPException(status_code=500, detail="Set deletion failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Pool endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sets/{set_id}/pool", status_code=201)
+def api_pool_add(set_id: int, body: PoolAddRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        entry, error = svc.pool_add(set_id, body.track_id)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        session.commit()
+        return {"ok": True, "track_id": body.track_id}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Pool add failed")
+        raise HTTPException(status_code=500, detail="Pool add failed")
+    finally:
+        session.close()
+
+
+@router.delete("/sets/{set_id}/pool/{track_id}", status_code=204)
+def api_pool_remove(set_id: int, track_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        removed = svc.pool_remove(set_id, track_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Track not found in pool")
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Pool remove failed")
+        raise HTTPException(status_code=500, detail="Pool remove failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/pool/move-to-tracklist")
+def api_pool_move_to_tracklist(set_id: int, body: MoveRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.pool_move_to_tracklist(set_id, body.track_id)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Pool move to tracklist failed")
+        raise HTTPException(status_code=500, detail="Move failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Tracklist endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sets/{set_id}/tracklist", status_code=201)
+def api_tracklist_add(set_id: int, body: TracklistAddRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        entry, error = svc.tracklist_add(set_id, body.track_id)
+        if error:
+            raise HTTPException(status_code=409, detail=error)
+        session.commit()
+        return {"ok": True, "track_id": body.track_id}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Tracklist add failed")
+        raise HTTPException(status_code=500, detail="Tracklist add failed")
+    finally:
+        session.close()
+
+
+@router.delete("/sets/{set_id}/tracklist/{track_id}", status_code=204)
+def api_tracklist_remove(set_id: int, track_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        removed = svc.tracklist_remove(set_id, track_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Track not found in tracklist")
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Tracklist remove failed")
+        raise HTTPException(status_code=500, detail="Tracklist remove failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/tracklist/reorder")
+def api_tracklist_reorder(set_id: int, body: TracklistReorderRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.tracklist_reorder(set_id, body.track_id, body.new_position)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Tracklist reorder failed")
+        raise HTTPException(status_code=500, detail="Reorder failed")
+    finally:
+        session.close()
+
+
+@router.patch("/sets/{set_id}/tracklist/{track_id}/note")
+def api_tracklist_update_note(set_id: int, track_id: int, body: TracklistNoteUpdateRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.update_tracklist_note(set_id, track_id, body.note)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Tracklist note update failed")
+        raise HTTPException(status_code=500, detail="Note update failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/tracklist/move-to-pool")
+def api_tracklist_move_to_pool(set_id: int, body: MoveRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.tracklist_move_to_pool(set_id, body.track_id)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Tracklist move to pool failed")
+        raise HTTPException(status_code=500, detail="Move failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Explorer endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sets/{set_id}/explorer/nodes", status_code=201)
+def api_explorer_add_node(set_id: int, body: ExplorerAddNodeRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        node, error = svc.explorer_add_node(
+            set_id, body.track_id, body.parent_node_id, body.level,
+        )
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {
+            "ok": True,
+            "node_id": node.node_id,
+            "track_id": node.track_id,
+            "level": node.level,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer add node failed")
+        raise HTTPException(status_code=500, detail="Add node failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/explorer/edges", status_code=201)
+def api_explorer_add_edge(set_id: int, body: ExplorerAddEdgeRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        edge, error = svc.explorer_add_edge(
+            set_id, body.parent_node_id, body.child_node_id,
+        )
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer add edge failed")
+        raise HTTPException(status_code=500, detail="Add edge failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/explorer/delete-node")
+def api_explorer_delete_node(set_id: int, body: ExplorerDeleteNodeRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        rewire_edges = [
+            {"parent_node_id": r.parent_node_id, "child_node_id": r.child_node_id}
+            for r in body.rewire_edges
+        ] if body.rewire_edges else None
+        ok, error = svc.explorer_delete_node(
+            set_id, body.node_id, rewire_edges,
+        )
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer delete node failed")
+        raise HTTPException(status_code=500, detail="Delete node failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/explorer/swap")
+def api_explorer_swap(set_id: int, body: ExplorerSwapRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.explorer_swap(set_id, body.node_a_id, body.node_b_id)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer swap failed")
+        raise HTTPException(status_code=500, detail="Swap failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/explorer/node-to-tracklist")
+def api_explorer_node_to_tracklist(set_id: int, body: ExplorerNodeToTracklistRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.explorer_node_add_to_tracklist(set_id, body.node_id)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer node-to-tracklist failed")
+        raise HTTPException(status_code=500, detail="Node to tracklist failed")
+    finally:
+        session.close()
+
+
+@router.post(
+    "/sets/{set_id}/explorer/edge-scores",
+    response_model=ExplorerEdgeScoreResponse,
+)
+def api_explorer_edge_scores(set_id: int, body: ExplorerEdgeScoreRequest):
+    """Compute transition scores for explorer edges."""
+    from src.models.track import Track
+
+    session = _get_session()
+    try:
+        finder = _get_match_finder()
+        source_ids = {p[0] for p in body.pairs if len(p) == 2}
+        match_cache: dict = {}
+        for sid in source_ids:
+            source = session.query(Track).filter_by(id=sid).first()
+            if source is None:
+                continue
+            result = finder.get_transition_matches(source)
+            if result is None:
+                continue
+            (same_key, higher_key, lower_key), _ = result
+            scores: dict = {}
+            for m in same_key + higher_key + lower_key:
+                cid = m.metadata.get(TrackDBCols.ID)
+                if cid is not None:
+                    scores[cid] = round(m.get_score(), 2)
+            match_cache[sid] = scores
+
+        results = []
+        for pair in body.pairs:
+            if len(pair) != 2:
+                results.append(None)
+                continue
+            sid, cid = pair
+            source_scores = match_cache.get(sid, {})
+            results.append(source_scores.get(cid))
+
+        return {"scores": results}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer edge score computation failed")
+        raise HTTPException(status_code=500, detail="Edge score computation failed")
     finally:
         session.close()

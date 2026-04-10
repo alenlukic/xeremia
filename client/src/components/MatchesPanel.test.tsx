@@ -12,6 +12,7 @@ class ResizeObserverMock {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+  localStorage.removeItem('dj-tools-matches-column-config');
 });
 
 function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
@@ -98,7 +99,7 @@ describe('MatchesPanel', () => {
       );
       const headers = screen.getAllByRole('columnheader');
       const widths = headers.map(h => (h as HTMLElement).style.width);
-      expect(widths[0]).toBe('50px');   // add_to_set
+      expect(widths[0]).toBe('74px');   // add_to_set
       expect(widths[2]).toBe('70px');   // SCORE
       expect(widths[3]).toBe('60px');   // Spectral
       expect(widths[4]).toBe('60px');   // Key
@@ -133,7 +134,7 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect((headers[0] as HTMLElement).style.width).toBe('50px');   // add_to_set
+      expect((headers[0] as HTMLElement).style.width).toBe('74px');   // add_to_set
       expect((headers[1] as HTMLElement).style.width).toBe('484px');  // Track
       expect((headers[8] as HTMLElement).style.width).toBe('73px');   // Energy (MIK)
       expect((headers[10] as HTMLElement).style.width).toBe('73px');  // Instruments
@@ -142,7 +143,7 @@ describe('MatchesPanel', () => {
   });
 
   describe('resize and reorder chrome', () => {
-    it('renders a resize handle on Track and score headers but not add_to_set or details', () => {
+    it('renders a resize handle on Track and score headers', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -152,20 +153,14 @@ describe('MatchesPanel', () => {
         />
       );
       const resizers = document.querySelectorAll('.col-resizer');
-      expect(resizers.length).toBe(SCORE_HEADERS.length + 1); // Track + score columns
+      expect(resizers.length).toBe(SCORE_HEADERS.length + 3); // add_to_set + Track + score columns + details
 
       const headers = document.querySelectorAll('.matches-table thead th');
-      const addToSetTh = headers[0];
-      expect(addToSetTh.querySelector('.col-resizer')).toBeNull();
-
       const trackTh = headers[1];
       expect(trackTh.querySelector('.col-resizer')).toBeTruthy();
-
-      const detailsTh = headers[headers.length - 1];
-      expect(detailsTh.querySelector('.col-resizer')).toBeNull();
     });
 
-    it('renders draggable header content only on score headers', () => {
+    it('renders draggable header content on all headers', () => {
       render(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -174,7 +169,7 @@ describe('MatchesPanel', () => {
         />
       );
       const draggables = document.querySelectorAll('.th-content[draggable="true"]');
-      expect(draggables.length).toBe(SCORE_HEADERS.length);
+      expect(draggables.length).toBe(ALL_HEADERS.length);
     });
   });
 
@@ -426,10 +421,182 @@ describe('MatchesPanel', () => {
     });
   });
 
+  describe('dual add-to-pool/tracklist actions', () => {
+    it('renders dual buttons when onAddToPool and onAddToTracklist are provided', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+          onAddToPool={vi.fn()}
+          onAddToTracklist={vi.fn()}
+        />
+      );
+      expect(screen.getByTitle('Add to Pool')).toBeInTheDocument();
+      expect(screen.getByTitle('Add to Tracklist')).toBeInTheDocument();
+    });
+
+    it('calls onAddToPool with candidate_id when clicked', async () => {
+      const onAddToPool = vi.fn();
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch({ candidate_id: 42 })]}
+          loading={false}
+          onAddToPool={onAddToPool}
+          onAddToTracklist={vi.fn()}
+        />
+      );
+      await userEvent.click(screen.getByTitle('Add to Pool'));
+      expect(onAddToPool).toHaveBeenCalledWith(42);
+    });
+
+    it('calls onAddToTracklist with candidate_id when clicked', async () => {
+      const onAddToTracklist = vi.fn();
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch({ candidate_id: 42 })]}
+          loading={false}
+          onAddToPool={vi.fn()}
+          onAddToTracklist={onAddToTracklist}
+        />
+      );
+      await userEvent.click(screen.getByTitle('Add to Tracklist'));
+      expect(onAddToTracklist).toHaveBeenCalledWith(42);
+    });
+  });
+
+  const COLUMN_CONFIG_KEY = 'dj-tools-matches-column-config';
+
   const CONFIGURABLE_LABELS = [
     'Score', 'Spectral', 'Key', 'BPM', 'Genre', 'Recency',
     'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
   ];
+
+  describe('column config persistence', () => {
+    beforeEach(() => {
+      localStorage.removeItem(COLUMN_CONFIG_KEY);
+    });
+
+    it('uses default config when localStorage is empty', () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
+      expect(headers).toEqual(ALL_HEADERS);
+    });
+
+    it('restores column visibility from localStorage on mount', () => {
+      localStorage.setItem(COLUMN_CONFIG_KEY, JSON.stringify({
+        columnSizing: {},
+        columnOrder: ['add_to_set', 'track_title', ...SCORE_HEADERS.map(() => '').filter(() => false),
+          'overall_score', 'similarity_score', 'camelot_score', 'bpm_score',
+          'genre_similarity_score', 'freshness_score', 'energy_score',
+          'mood_continuity_score', 'instrument_similarity_score', 'vocal_clash_score', 'details'],
+        columnVisibility: { similarity_score: false },
+      }));
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
+      expect(headers).not.toContain('Spectral');
+    });
+
+    it('saves column sizing to localStorage when changed', async () => {
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const stored = JSON.parse(localStorage.getItem(COLUMN_CONFIG_KEY)!);
+      expect(stored).toHaveProperty('columnSizing');
+      expect(stored).toHaveProperty('columnOrder');
+      expect(stored).toHaveProperty('columnVisibility');
+    });
+
+    it('saves column visibility to localStorage when toggled', async () => {
+      const user = userEvent.setup();
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      await user.click(screen.getByRole('button', { name: /Columns/ }));
+      await user.click(screen.getByLabelText('Spectral'));
+
+      const stored = JSON.parse(localStorage.getItem(COLUMN_CONFIG_KEY)!);
+      expect(stored.columnVisibility.similarity_score).toBe(false);
+    });
+
+    it('restores column order from localStorage on mount', () => {
+      const swappedOrder = [
+        'add_to_set', 'track_title',
+        'overall_score', 'bpm_score', 'camelot_score', 'similarity_score',
+        'genre_similarity_score', 'freshness_score', 'energy_score',
+        'mood_continuity_score', 'instrument_similarity_score', 'vocal_clash_score',
+        'details',
+      ];
+      localStorage.setItem(COLUMN_CONFIG_KEY, JSON.stringify({
+        columnSizing: {},
+        columnOrder: swappedOrder,
+        columnVisibility: {},
+      }));
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
+      expect(headers).toEqual(['', 'Track', 'SCORE', 'BPM', 'Key', 'Spectral',
+        'Genre', 'Recency', 'Energy (MIK)', 'Mood', 'Instruments', 'Vocals', 'DETAILS']);
+    });
+
+    it('restores column sizing from localStorage on mount', () => {
+      localStorage.setItem(COLUMN_CONFIG_KEY, JSON.stringify({
+        columnSizing: { track_title: 300 },
+        columnOrder: [],
+        columnVisibility: {},
+      }));
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader');
+      const trackHeader = headers.find(h => h.textContent === 'Track') as HTMLElement;
+      expect(trackHeader.style.width).toBe('300px');
+    });
+
+    it('falls back to defaults when localStorage contains invalid JSON', () => {
+      localStorage.setItem(COLUMN_CONFIG_KEY, '{not valid json!!!');
+      render(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
+      expect(headers).toEqual(ALL_HEADERS);
+    });
+  });
 
   describe('column configurator', () => {
     it('opens popover with score column checkboxes', async () => {
