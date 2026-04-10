@@ -52,6 +52,60 @@ const CONFIGURABLE_MATCH_COLUMNS: { id: string; label: string }[] = [
   { id: 'vocal_clash_score', label: 'Vocals' },
 ];
 
+const COLUMN_CONFIG_KEY = 'dj-tools-matches-column-config';
+const DEFAULT_COLUMN_ORDER: ColumnOrderState = ['add_to_set', 'track_title', ...SCORE_COLUMN_IDS, 'details'];
+const CONFIGURABLE_IDS = new Set(CONFIGURABLE_MATCH_COLUMNS.map(c => c.id));
+const ALL_COLUMN_IDS = new Set(DEFAULT_COLUMN_ORDER);
+
+interface ColumnConfig {
+  columnSizing: ColumnSizingState;
+  columnOrder: ColumnOrderState;
+  columnVisibility: Record<string, boolean>;
+}
+
+const DEFAULT_CONFIG: ColumnConfig = {
+  columnSizing: {},
+  columnOrder: [...DEFAULT_COLUMN_ORDER],
+  columnVisibility: {},
+};
+
+function loadColumnConfig(): ColumnConfig {
+  try {
+    const raw = localStorage.getItem(COLUMN_CONFIG_KEY);
+    if (!raw) return DEFAULT_CONFIG;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return DEFAULT_CONFIG;
+    const obj = parsed as Record<string, unknown>;
+
+    let sizing: ColumnSizingState = {};
+    if (typeof obj.columnSizing === 'object' && obj.columnSizing !== null && !Array.isArray(obj.columnSizing)) {
+      const raw = obj.columnSizing as Record<string, unknown>;
+      for (const [k, v] of Object.entries(raw)) {
+        if (typeof v === 'number' && Number.isFinite(v) && v > 0) sizing[k] = v;
+      }
+    }
+
+    let order: ColumnOrderState = [...DEFAULT_COLUMN_ORDER];
+    if (Array.isArray(obj.columnOrder) && obj.columnOrder.length > 0) {
+      const saved = (obj.columnOrder as unknown[]).filter((x): x is string => typeof x === 'string' && ALL_COLUMN_IDS.has(x));
+      const missing = DEFAULT_COLUMN_ORDER.filter(id => !saved.includes(id));
+      order = [...saved, ...missing];
+    }
+
+    let visibility: Record<string, boolean> = {};
+    if (typeof obj.columnVisibility === 'object' && obj.columnVisibility !== null && !Array.isArray(obj.columnVisibility)) {
+      const raw = obj.columnVisibility as Record<string, unknown>;
+      for (const [k, v] of Object.entries(raw)) {
+        if (CONFIGURABLE_IDS.has(k) && typeof v === 'boolean') visibility[k] = v;
+      }
+    }
+
+    return { columnSizing: sizing, columnOrder: order, columnVisibility: visibility };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
 const col = createColumnHelper<TransitionMatch>();
 
 const scoreColumns = [
@@ -105,10 +159,13 @@ interface Props {
   onViewDetail?: (match: TransitionMatch) => void;
   onUseAsSource?: (candidateId: number) => void;
   onAddToSet?: (candidateId: number) => void;
+  onAddToPool?: (candidateId: number) => void;
+  onAddToTracklist?: (candidateId: number) => void;
 }
 
 export const MatchesPanel = memo(function MatchesPanel({
   selectedTrack, matches, loading, matchesError, onViewDetail, onUseAsSource, onAddToSet,
+  onAddToPool, onAddToTracklist,
 }: Props) {
   const [bucketTab, setBucketTab] = useState<BucketKey>('same_key');
   const outerRef = useRef<HTMLDivElement>(null);
@@ -116,9 +173,9 @@ export const MatchesPanel = memo(function MatchesPanel({
   const topScrollRef = useRef<HTMLDivElement>(null);
 
   const [containerWidth, setContainerWidth] = useState(0);
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(['add_to_set', 'track_title', ...SCORE_COLUMN_IDS, 'details']);
-  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => loadColumnConfig().columnSizing);
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => loadColumnConfig().columnOrder);
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadColumnConfig().columnVisibility);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
   const [colConfigOpen, setColConfigOpen] = useState(false);
@@ -145,6 +202,10 @@ export const MatchesPanel = memo(function MatchesPanel({
     };
   }, [colConfigOpen]);
 
+  useEffect(() => {
+    localStorage.setItem(COLUMN_CONFIG_KEY, JSON.stringify({ columnSizing, columnOrder, columnVisibility }));
+  }, [columnSizing, columnOrder, columnVisibility]);
+
   const allColumns = useMemo(() => {
     const cols = [
       col.display({
@@ -153,7 +214,28 @@ export const MatchesPanel = memo(function MatchesPanel({
       size: 74,
       minSize: 60,
       enableSorting: false,
-      cell: ({ row }) => onAddToSet ? (
+      cell: ({ row }) => (onAddToPool || onAddToTracklist) ? (
+          <div className="set-dual-actions">
+            {onAddToPool && (
+              <button
+                className="match-action-btn match-action-btn--small"
+                onClick={(e) => { e.stopPropagation(); onAddToPool(row.original.candidate_id); }}
+                title="Add to Pool"
+              >
+                + Pool
+              </button>
+            )}
+            {onAddToTracklist && (
+              <button
+                className="match-action-btn match-action-btn--small"
+                onClick={(e) => { e.stopPropagation(); onAddToTracklist(row.original.candidate_id); }}
+                title="Add to Tracklist"
+              >
+                + TL
+              </button>
+            )}
+          </div>
+        ) : onAddToSet ? (
           <button
             className="match-action-btn"
             onClick={(e) => { e.stopPropagation(); onAddToSet(row.original.candidate_id); }}
@@ -206,7 +288,7 @@ export const MatchesPanel = memo(function MatchesPanel({
     ];
 
     return cols;
-  }, [onViewDetail, onUseAsSource, onAddToSet]);
+  }, [onViewDetail, onUseAsSource, onAddToSet, onAddToPool, onAddToTracklist]);
 
   const fullColumnOrder = columnOrder;
 

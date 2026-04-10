@@ -169,11 +169,12 @@ describe('MatchDetail', () => {
       const cards = document.querySelectorAll('.detail-track-card');
       expect(cards.length).toBe(2);
 
-      const traitRow = cards[0].querySelector('.detail-row--3');
-      expect(traitRow).toBeTruthy();
+      const fourColRows = cards[0].querySelectorAll('.detail-row--4');
+      expect(fourColRows.length).toBeGreaterThanOrEqual(2);
 
+      const traitRow = fourColRows[fourColRows.length - 1];
       const labelsInRow = Array.from(
-        traitRow!.querySelectorAll('.detail-field-label'),
+        traitRow.querySelectorAll('.detail-field-label'),
       ).map((el) => el.textContent);
       expect(labelsInRow).toEqual(['Vocals', 'Onsets', 'Flatness']);
 

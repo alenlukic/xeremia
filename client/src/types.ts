@@ -118,10 +118,63 @@ export interface WeightsResponse {
 
 export interface SetTrackEntry {
   track: Track;
+  note: string;
 }
 
 export interface DjSet {
   id: string;
   name: string;
   tracks: SetTrackEntry[];
+}
+
+// --- Persisted set workspace types ---
+
+export interface SetSummary {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  pool_count: number;
+  tracklist_count: number;
+}
+
+export interface PoolEntry {
+  id: number;
+  set_id: number;
+  track_id: number;
+  insertion_order: number;
+  track: Track | null;
+}
+
+export interface TracklistEntry {
+  id: number;
+  set_id: number;
+  track_id: number;
+  position: number;
+  note?: string;
+  track: Track | null;
+}
+
+export interface ExplorerNode {
+  id: number;
+  set_id: number;
+  node_id: string;
+  track_id: number;
+  level: number;
+  track: Track | null;
+}
+
+export interface ExplorerEdge {
+  id: number;
+  set_id: number;
+  parent_node_id: string;
+  child_node_id: string;
+}
+
+export interface HydratedSet {
+  set: SetSummary;
+  pool: PoolEntry[];
+  tracklist: TracklistEntry[];
+  explorer_nodes: ExplorerNode[];
+  explorer_edges: ExplorerEdge[];
 }

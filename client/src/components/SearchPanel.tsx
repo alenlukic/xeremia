@@ -15,10 +15,12 @@ interface Props {
   onSearchTextChange?: (text: string) => void;
   searchPadding?: { left: number; right: number } | null;
   onAddToSet?: () => void;
+  onAddToPool?: () => void;
+  onAddToTracklist?: () => void;
   searchText?: string;
 }
 
-export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange, searchPadding, onAddToSet, searchText }: Props) {
+export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange, searchPadding, onAddToSet, onAddToPool, onAddToTracklist, searchText }: Props) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -165,14 +167,39 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           </ul>
         )}
       </div>
-      <button
-        className="match-action-btn search-add-to-set-btn"
-        onClick={onAddToSet}
-        disabled={!selectedTrack}
-        title={selectedTrack ? 'Add selected track to set' : 'Select a track first'}
-      >
-        + Set
-      </button>
+      {(onAddToPool || onAddToTracklist) ? (
+        <div className="set-dual-actions search-dual-actions">
+          {onAddToPool && (
+            <button
+              className="match-action-btn match-action-btn--small"
+              onClick={onAddToPool}
+              disabled={!selectedTrack}
+              title={selectedTrack ? 'Add to Pool' : 'Select a track first'}
+            >
+              + Pool
+            </button>
+          )}
+          {onAddToTracklist && (
+            <button
+              className="match-action-btn match-action-btn--small"
+              onClick={onAddToTracklist}
+              disabled={!selectedTrack}
+              title={selectedTrack ? 'Add to Tracklist' : 'Select a track first'}
+            >
+              + TL
+            </button>
+          )}
+        </div>
+      ) : (
+        <button
+          className="match-action-btn search-add-to-set-btn"
+          onClick={onAddToSet}
+          disabled={!selectedTrack}
+          title={selectedTrack ? 'Add selected track to set' : 'Select a track first'}
+        >
+          + Set
+        </button>
+      )}
       <div className="search-actions">
         <button
           className="weight-normalize-btn weight-normalize-btn--secondary"

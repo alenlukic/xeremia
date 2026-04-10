@@ -34,6 +34,8 @@ interface Props {
   traitMap: TraitMap;
   onUseAsSource?: (candidateId: number) => void;
   onAddToSet?: (candidateId: number) => void;
+  onAddToPool?: (candidateId: number) => void;
+  onAddToTracklist?: (candidateId: number) => void;
 }
 
 function renderValue(value: unknown): React.ReactNode {
@@ -118,7 +120,7 @@ function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSource, onAddToSet }: Props) {
+export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSource, onAddToSet, onAddToPool, onAddToTracklist }: Props) {
   const [{ loading, detail, error }, dispatch] = useReducer(detailReducer, {
     loading: true,
     detail: null,
@@ -172,14 +174,35 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSourc
         <button className="back-button" onClick={onBack}>
           ← Back to matches
         </button>
-        {onAddToSet && (
+        {(onAddToPool || onAddToTracklist) ? (
+          <div className="set-dual-actions">
+            {onAddToPool && (
+              <button
+                className="match-action-btn match-action-btn--small"
+                onClick={() => onAddToPool(match.candidate_id)}
+                title="Add to Pool"
+              >
+                + Pool
+              </button>
+            )}
+            {onAddToTracklist && (
+              <button
+                className="match-action-btn match-action-btn--small"
+                onClick={() => onAddToTracklist(match.candidate_id)}
+                title="Add to Tracklist"
+              >
+                + TL
+              </button>
+            )}
+          </div>
+        ) : onAddToSet ? (
           <button
             className="match-action-btn"
             onClick={() => onAddToSet(match.candidate_id)}
           >
             + Add to Set
           </button>
-        )}
+        ) : null}
         {onUseAsSource && (
           <button
             className="use-as-source-btn"

@@ -99,17 +99,7 @@ export default function App() {
     resetWeights,
   } = useWeights(refetchMatches);
 
-  const {
-    sets,
-    activeSet,
-    activeSetId,
-    createSet,
-    selectSet: selectDjSet,
-    deleteSet,
-    addTrack: addTrackToSet,
-    removeTrack: removeTrackFromSet,
-    moveTrack: moveTrackInSet,
-  } = useSetBuilder();
+  const setBuilder = useSetBuilder();
 
   const [browseColumnVisibility, setBrowseColumnVisibility] = useState<Record<string, boolean>>(loadColumnVisibility);
 
@@ -246,13 +236,33 @@ export default function App() {
     selectTrack(last.track);
   }, [transitionChain, selectTrack]);
 
-  const handleAddToSet = useCallback(
+  const handleAddToPool = useCallback(
     (candidateId: number) => {
       const track = allTracks.find(t => t.id === candidateId);
-      if (track) addTrackToSet(track);
+      if (track) setBuilder.addToPool(track.id, track.title);
     },
-    [allTracks, addTrackToSet],
+    [allTracks, setBuilder],
   );
+
+  const handleAddToTracklist = useCallback(
+    (candidateId: number) => {
+      const track = allTracks.find(t => t.id === candidateId);
+      if (track) setBuilder.addToTracklist(track.id, track.title);
+    },
+    [allTracks, setBuilder],
+  );
+
+  const handleAddSelectedToPool = useCallback(() => {
+    if (!selectedTrack) return;
+    const track = allTracks.find(t => t.id === selectedTrack.id);
+    if (track) setBuilder.addToPool(track.id, track.title);
+  }, [selectedTrack, allTracks, setBuilder]);
+
+  const handleAddSelectedToTracklist = useCallback(() => {
+    if (!selectedTrack) return;
+    const track = allTracks.find(t => t.id === selectedTrack.id);
+    if (track) setBuilder.addToTracklist(track.id, track.title);
+  }, [selectedTrack, allTracks, setBuilder]);
 
   const handleClearFilters = useCallback(() => {
     setCamelotCodes([]);
@@ -261,11 +271,13 @@ export default function App() {
     setSearchText('');
   }, [setCamelotCodes, setBpmMin, setBpmMax]);
 
-  const handleAddSelectedToSet = useCallback(() => {
-    if (!selectedTrack) return;
-    const track = allTracks.find(t => t.id === selectedTrack.id);
-    if (track) addTrackToSet(track);
-  }, [selectedTrack, allTracks, addTrackToSet]);
+  const setTabLabel = useMemo(() => {
+    if (setBuilder.activeSet) {
+      const total = setBuilder.activeSet.pool.length + setBuilder.activeSet.tracklist.length;
+      return `Set (${total})`;
+    }
+    return 'Set';
+  }, [setBuilder.activeSet]);
 
   return (
     <div className="app-shell-v2">
@@ -292,7 +304,8 @@ export default function App() {
         rawSum={rawSum}
         onSearchTextChange={setSearchText}
         searchPadding={searchPadding}
-        onAddToSet={handleAddSelectedToSet}
+        onAddToPool={handleAddSelectedToPool}
+        onAddToTracklist={handleAddSelectedToTracklist}
         searchText={searchText}
       />
 
@@ -322,7 +335,7 @@ export default function App() {
           className={`tab${activeTab === 'set' ? ' active' : ''}`}
           onClick={() => setActiveTab('set')}
         >
-          Set{activeSet ? ` (${activeSet.tracks.length})` : ''}
+          {setTabLabel}
         </button>
       </div>
 
@@ -360,7 +373,8 @@ export default function App() {
               matchesError={matchesError}
               onViewDetail={setDetailMatch}
               onUseAsSource={handleUseAsSource}
-              onAddToSet={activeSet ? handleAddToSet : undefined}
+              onAddToPool={handleAddToPool}
+              onAddToTracklist={handleAddToTracklist}
             />
           </div>
         )}
@@ -371,7 +385,8 @@ export default function App() {
             onBack={() => setDetailMatch(null)}
             traitMap={traitMap}
             onUseAsSource={handleUseAsSource}
-            onAddToSet={activeSet ? handleAddToSet : undefined}
+            onAddToPool={handleAddToPool}
+            onAddToTracklist={handleAddToTracklist}
           />
         )}
         {activeTab === 'browse' && (
@@ -404,7 +419,8 @@ export default function App() {
               onLoadMore={!selectedTrack ? handleLoadMore : undefined}
               error={tracksError}
               columnVisibility={browseColumnVisibility}
-              onAddToSet={activeSet ? handleAddToSet : undefined}
+              onAddToPool={handleAddToPool}
+              onAddToTracklist={handleAddToTracklist}
             />
           </div>
         )}
@@ -417,14 +433,32 @@ export default function App() {
         )}
         {activeTab === 'set' && (
           <SetBuilder
-            sets={sets}
-            activeSet={activeSet}
-            activeSetId={activeSetId}
-            createSet={createSet}
-            selectSet={selectDjSet}
-            deleteSet={deleteSet}
-            removeTrack={removeTrackFromSet}
-            moveTrack={moveTrackInSet}
+            sets={setBuilder.sets}
+            activeSetId={setBuilder.activeSetId}
+            activeSet={setBuilder.activeSet}
+            loading={setBuilder.loading}
+            error={setBuilder.error}
+            pendingAdd={setBuilder.pendingAdd}
+            createSet={setBuilder.createSet}
+            selectSet={setBuilder.selectSet}
+            deleteSet={setBuilder.deleteSet}
+            removeFromPool={setBuilder.removeFromPool}
+            movePoolToTracklist={setBuilder.movePoolToTracklist}
+            addToPool={setBuilder.addToPool}
+            removeFromTracklist={setBuilder.removeFromTracklist}
+            moveTracklistToPool={setBuilder.moveTracklistToPool}
+            reorderTracklist={setBuilder.reorderTracklist}
+            updateTracklistNote={setBuilder.updateTracklistNote}
+            addToTracklist={setBuilder.addToTracklist}
+            addExplorerNode={setBuilder.addExplorerNode}
+            deleteExplorerNode={setBuilder.deleteExplorerNode}
+            swapExplorerNodes={setBuilder.swapExplorerNodes}
+            explorerNodeAddToTracklist={setBuilder.explorerNodeAddToTracklist}
+            addSiblingNode={setBuilder.addSiblingNode}
+            fetchEdgeScores={setBuilder.fetchEdgeScores}
+            resolvePendingAdd={setBuilder.resolvePendingAdd}
+            clearPendingAdd={setBuilder.clearPendingAdd}
+            clearError={setBuilder.clearError}
           />
         )}
       </div>

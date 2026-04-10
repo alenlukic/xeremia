@@ -1,77 +1,56 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { DjSet } from '../types';
-import { fetchTransitionScores, exportSetM3u8 } from '../api/http';
-import { formatOverallScore } from '../utils';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { SetSummary, HydratedSet } from '../types';
+import type { PendingAdd } from '../hooks/useSetBuilder';
+import { exportSetM3u8 } from '../api/http';
+import { SetPoolTable } from './SetPoolTable';
+import { SetTracklist } from './SetTracklist';
+import { SetExplorerCanvas } from './SetExplorerCanvas';
 
-export const WEAK_THRESHOLD = 65;
+type SubTab = 'tracks' | 'explorer';
 
 interface Props {
-  sets: DjSet[];
-  activeSet: DjSet | null;
-  activeSetId: string | null;
-  createSet: (name: string) => void;
-  selectSet: (id: string) => void;
-  deleteSet: (id: string) => void;
-  removeTrack: (index: number) => void;
-  moveTrack: (fromIndex: number, toIndex: number) => void;
+  sets: SetSummary[];
+  activeSetId: number | null;
+  activeSet: HydratedSet | null;
+  loading: boolean;
+  error: string | null;
+  pendingAdd: PendingAdd | null;
+  createSet: (name: string) => Promise<SetSummary | null>;
+  selectSet: (id: number) => void;
+  deleteSet: (id: number) => void;
+  removeFromPool: (trackId: number) => void;
+  movePoolToTracklist: (trackId: number) => void;
+  addToPool: (trackId: number, title?: string) => void;
+  removeFromTracklist: (trackId: number) => void;
+  moveTracklistToPool: (trackId: number) => void;
+  reorderTracklist: (trackId: number, newPosition: number) => void;
+  updateTracklistNote: (trackId: number, note: string) => void;
+  addToTracklist: (trackId: number, title?: string) => void;
+  addExplorerNode: (trackId: number, parentNodeId?: string, level?: number) => Promise<unknown>;
+  deleteExplorerNode: (nodeId: string, rewireEdges?: { parent_node_id: string; child_node_id: string }[]) => void;
+  swapExplorerNodes: (nodeAId: string, nodeBId: string) => void;
+  explorerNodeAddToTracklist: (nodeId: string) => void;
+  addSiblingNode: (trackId: number, inheritParentIds: string[], level: number) => Promise<unknown>;
+  fetchEdgeScores: (pairs: [number, number][]) => Promise<{ scores: (number | null)[] }>;
+  resolvePendingAdd: (setId: number) => void;
+  clearPendingAdd: () => void;
+  clearError: () => void;
 }
 
 export function SetBuilder({
-  sets,
-  activeSet,
-  activeSetId,
-  createSet,
-  selectSet,
-  deleteSet,
-  removeTrack,
-  moveTrack,
+  sets, activeSetId, activeSet, loading, error, pendingAdd,
+  createSet, selectSet, deleteSet,
+  removeFromPool, movePoolToTracklist, addToPool,
+  removeFromTracklist, moveTracklistToPool, reorderTracklist, updateTracklistNote, addToTracklist,
+  addExplorerNode, deleteExplorerNode, swapExplorerNodes,
+  explorerNodeAddToTracklist, addSiblingNode, fetchEdgeScores,
+  resolvePendingAdd, clearPendingAdd, clearError,
 }: Props) {
+  const [subTab, setSubTab] = useState<SubTab>('tracks');
   const [newSetName, setNewSetName] = useState('');
   const [showNewInput, setShowNewInput] = useState(false);
-  const [scores, setScores] = useState<Map<string, number | null>>(new Map());
-  const [scoresLoading, setScoresLoading] = useState(false);
+  const [poolExpanded, setPoolExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const trackIds =
-    activeSet?.tracks.map(e => e.track.id).join(',') ?? '';
-
-  useEffect(() => {
-    if (!activeSet || activeSet.tracks.length < 2) {
-      setScores(new Map());
-      return;
-    }
-
-    const pairs: [number, number][] = [];
-    for (let i = 0; i < activeSet.tracks.length - 1; i++) {
-      pairs.push([
-        activeSet.tracks[i].track.id,
-        activeSet.tracks[i + 1].track.id,
-      ]);
-    }
-
-    let cancelled = false;
-    setScoresLoading(true);
-    fetchTransitionScores(pairs)
-      .then(result => {
-        if (cancelled) return;
-        const map = new Map<string, number | null>();
-        pairs.forEach((pair, i) => {
-          map.set(`${pair[0]}-${pair[1]}`, result.scores[i] ?? null);
-        });
-        setScores(map);
-      })
-      .catch(() => {
-        if (!cancelled) setScores(new Map());
-      })
-      .finally(() => {
-        if (!cancelled) setScoresLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackIds]);
 
   useEffect(() => {
     if (showNewInput && inputRef.current) {
@@ -79,19 +58,34 @@ export function SetBuilder({
     }
   }, [showNewInput]);
 
-  const handleCreateSet = useCallback(() => {
+  useEffect(() => {
+    if (pendingAdd && !activeSetId) {
+      setShowNewInput(true);
+    }
+  }, [pendingAdd, activeSetId]);
+
+  const handleCreateSet = useCallback(async () => {
     const name = newSetName.trim();
     if (!name) return;
-    createSet(name);
+    const result = await createSet(name);
     setNewSetName('');
     setShowNewInput(false);
-  }, [newSetName, createSet]);
+    if (result && pendingAdd) {
+      resolvePendingAdd(result.id);
+    }
+  }, [newSetName, createSet, pendingAdd, resolvePendingAdd]);
+
+  const handleCancelCreate = useCallback(() => {
+    setShowNewInput(false);
+    setNewSetName('');
+    clearPendingAdd();
+  }, [clearPendingAdd]);
 
   const handleExport = useCallback(async () => {
-    if (!activeSet || activeSet.tracks.length === 0) return;
+    if (!activeSet || activeSet.tracklist.length === 0) return;
     try {
-      const ids = activeSet.tracks.map(e => e.track.id);
-      const result = await exportSetM3u8(ids, activeSet.name);
+      const ids = activeSet.tracklist.map(e => e.track_id);
+      const result = await exportSetM3u8(ids, activeSet.set.name);
       const blob = new Blob([result.content], { type: 'audio/x-mpegurl' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -104,15 +98,24 @@ export function SetBuilder({
     }
   }, [activeSet]);
 
-  const getScore = (fromId: number, toId: number): number | null => {
-    return scores.get(`${fromId}-${toId}`) ?? null;
-  };
+  const handlePoolAddTrack = useCallback((trackId: number, title?: string) => {
+    addToPool(trackId, title);
+  }, [addToPool]);
 
-  if (sets.length === 0 && !showNewInput) {
+  const handleTracklistAddTrack = useCallback((trackId: number, title?: string) => {
+    addToTracklist(trackId, title);
+  }, [addToTracklist]);
+
+  const tracklistTrackIds = useMemo(() => {
+    if (!activeSet) return new Set<number>();
+    return new Set(activeSet.tracklist.map(e => e.track_id));
+  }, [activeSet]);
+
+  if (sets.length === 0 && !showNewInput && !pendingAdd) {
     return (
       <div className="set-builder">
         <div className="set-empty">
-          <p>No sets yet. Create one to start building a playlist.</p>
+          <p>No sets yet. Create one to start building.</p>
           <button
             className="set-create-btn"
             onClick={() => setShowNewInput(true)}
@@ -128,17 +131,23 @@ export function SetBuilder({
     <div className="set-builder">
       <div className="set-header">
         <div className="set-selector">
-          <select
-            className="set-select"
-            value={activeSetId ?? ''}
-            onChange={e => selectSet(e.target.value)}
-          >
-            {sets.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.tracks.length})
-              </option>
-            ))}
-          </select>
+          {sets.length > 0 && (
+            <select
+              className="set-select"
+              value={activeSetId ?? ''}
+              onChange={e => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val)) selectSet(val);
+              }}
+            >
+              <option value="" disabled>Select a set…</option>
+              {sets.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} (P:{s.pool_count} T:{s.tracklist_count})
+                </option>
+              ))}
+            </select>
+          )}
           <button
             className="set-create-btn"
             onClick={() => setShowNewInput(true)}
@@ -158,6 +167,11 @@ export function SetBuilder({
 
         {showNewInput && (
           <div className="set-new-input-row">
+            {pendingAdd && (
+              <span className="set-pending-hint">
+                Create a set to add "{pendingAdd.title}" to {pendingAdd.type}
+              </span>
+            )}
             <input
               ref={inputRef}
               className="set-name-input"
@@ -166,112 +180,111 @@ export function SetBuilder({
               onChange={e => setNewSetName(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter') handleCreateSet();
-                if (e.key === 'Escape') {
-                  setShowNewInput(false);
-                  setNewSetName('');
-                }
+                if (e.key === 'Escape') handleCancelCreate();
               }}
             />
             <button className="set-create-confirm" onClick={handleCreateSet}>
               Create
             </button>
+            <button className="set-action-btn" onClick={handleCancelCreate}>
+              Cancel
+            </button>
           </div>
         )}
 
-        {activeSet && activeSet.tracks.length > 0 && (
-          <button className="set-export-btn" onClick={handleExport}>
-            Export m3u8
-          </button>
-        )}
       </div>
 
-      {activeSet && (
-        <div className="set-track-list">
-          {activeSet.tracks.length === 0 ? (
-            <p className="set-empty-tracks">
-              No tracks in this set. Add tracks from the Matches or Browse tab.
-            </p>
-          ) : (
-            activeSet.tracks.map((entry, i) => (
-              <div key={`set-${entry.track.id}-${i}`}>
-                {i > 0 && (
-                  <TransitionIndicator
-                    score={getScore(
-                      activeSet.tracks[i - 1].track.id,
-                      entry.track.id,
-                    )}
-                    loading={scoresLoading}
-                  />
-                )}
-                <div className="set-track-row">
-                  <span className="set-track-num">{i + 1}</span>
-                  <div className="set-track-info">
-                    <span className="set-track-title">{entry.track.title}</span>
-                    <span className="set-track-meta">
-                      {entry.track.camelot_code && (
-                        <span className="mono">{entry.track.camelot_code}</span>
-                      )}
-                      {entry.track.bpm != null && (
-                        <span className="mono"> · {entry.track.bpm}</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="set-track-actions">
-                    <button
-                      className="set-move-btn"
-                      disabled={i === 0}
-                      onClick={() => moveTrack(i, i - 1)}
-                      title="Move up"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      className="set-move-btn"
-                      disabled={i === activeSet.tracks.length - 1}
-                      onClick={() => moveTrack(i, i + 1)}
-                      title="Move down"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      className="set-remove-btn"
-                      onClick={() => removeTrack(i)}
-                      title="Remove from set"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
+      {error && (
+        <div className="set-toast" role="alert">
+          <span>{error}</span>
+          <button className="set-toast-dismiss" onClick={clearError} aria-label="Dismiss">×</button>
         </div>
       )}
-    </div>
-  );
-}
 
-function TransitionIndicator({
-  score,
-  loading,
-}: {
-  score: number | null;
-  loading: boolean;
-}) {
-  const isWeak = score !== null && score < WEAK_THRESHOLD;
+      {loading && <p className="table-status">Loading set…</p>}
 
-  return (
-    <div
-      className={`set-transition${isWeak ? ' set-transition--weak' : ''}`}
-      data-testid="transition-indicator"
-    >
-      <div className="set-transition-line" />
-      <span
-        className={`set-transition-score mono${isWeak ? ' set-transition-score--weak' : ''}`}
-      >
-        {loading ? '…' : score !== null ? formatOverallScore(score) : '—'}
-      </span>
-      <div className="set-transition-line" />
+      {activeSet && !loading && (
+        <>
+          <div className="set-sub-tabs">
+            <button
+              className={`set-sub-tab${subTab === 'tracks' ? ' active' : ''}`}
+              onClick={() => setSubTab('tracks')}
+            >
+              Tracks
+            </button>
+            <button
+              className={`set-sub-tab${subTab === 'explorer' ? ' active' : ''}`}
+              onClick={() => setSubTab('explorer')}
+            >
+              Explorer
+            </button>
+            {activeSet.tracklist.length > 0 && (
+              <button className="set-export-btn" onClick={handleExport}>
+                Export m3u8
+              </button>
+            )}
+          </div>
+
+          {subTab === 'tracks' && (
+            <div className="set-workspace-split">
+              <SetTracklist
+                tracklist={activeSet.tracklist}
+                onRemove={removeFromTracklist}
+                onMoveToPool={moveTracklistToPool}
+                onReorder={reorderTracklist}
+                onUpdateNote={updateTracklistNote}
+                onAddTrack={handleTracklistAddTrack}
+              />
+              <div className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}>
+                {poolExpanded && (
+                  <button
+                    className="set-pool-collapse-handle"
+                    onClick={() => setPoolExpanded(false)}
+                    aria-label="Collapse pool"
+                    title="Collapse pool"
+                  >
+                    ‹
+                  </button>
+                )}
+                {!poolExpanded ? (
+                  <button
+                    className="set-pool-expand-tab"
+                    onClick={() => setPoolExpanded(true)}
+                    aria-label="Expand pool"
+                    title="Expand pool"
+                  >
+                    <span className="set-pool-expand-chevron" aria-hidden="true">›</span>
+                    <span className="set-pool-expand-label">Pool ({activeSet.pool.length})</span>
+                  </button>
+                ) : (
+                  <div className="set-pool-accordion-content">
+                    <SetPoolTable
+                      pool={activeSet.pool}
+                      onRemove={removeFromPool}
+                      onMoveToTracklist={movePoolToTracklist}
+                      onAddTrack={handlePoolAddTrack}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {subTab === 'explorer' && (
+            <SetExplorerCanvas
+              nodes={activeSet.explorer_nodes}
+              edges={activeSet.explorer_edges}
+              onAddNode={addExplorerNode}
+              onDeleteNode={deleteExplorerNode}
+              onSwap={swapExplorerNodes}
+              onNodeToTracklist={explorerNodeAddToTracklist}
+              onAddSibling={addSiblingNode}
+              tracklistTrackIds={tracklistTrackIds}
+              fetchEdgeScores={fetchEdgeScores}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }

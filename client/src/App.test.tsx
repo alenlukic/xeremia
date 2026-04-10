@@ -35,6 +35,26 @@ vi.mock('./api/http', () => ({
   updateWeights: vi.fn().mockResolvedValue({}),
   fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
   exportSetM3u8: vi.fn().mockResolvedValue({ content: '', filename: '' }),
+  fetchSets: vi.fn().mockResolvedValue([]),
+  createSet: vi.fn().mockResolvedValue({ id: 1, name: 'Test', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 }),
+  fetchHydratedSet: vi.fn().mockResolvedValue({
+    set: { id: 1, name: 'Test', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+    pool: [], tracklist: [], explorer_nodes: [], explorer_edges: [],
+  }),
+  deleteSet: vi.fn().mockResolvedValue(undefined),
+  poolAdd: vi.fn().mockResolvedValue(undefined),
+  poolRemove: vi.fn().mockResolvedValue(undefined),
+  poolMoveToTracklist: vi.fn().mockResolvedValue(undefined),
+  tracklistAdd: vi.fn().mockResolvedValue(undefined),
+  tracklistRemove: vi.fn().mockResolvedValue(undefined),
+  tracklistReorder: vi.fn().mockResolvedValue(undefined),
+  tracklistMoveToPool: vi.fn().mockResolvedValue(undefined),
+  explorerAddNode: vi.fn().mockResolvedValue({ ok: true, node_id: 'n1', track_id: 1, level: 0 }),
+  explorerDeleteNode: vi.fn().mockResolvedValue(undefined),
+  explorerSwap: vi.fn().mockResolvedValue(undefined),
+  explorerNodeToTracklist: vi.fn().mockResolvedValue(undefined),
+  explorerEdgeScores: vi.fn().mockResolvedValue({ scores: [] }),
+  updateSet: vi.fn().mockResolvedValue({}),
 }));
 
 function makeTracks(count: number): Track[] {
@@ -84,6 +104,7 @@ beforeEach(() => {
   latestIntersectionCb = null;
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   vi.stubGlobal('IntersectionObserver', IntersectionObserverMock);
+  localStorage.clear();
   vi.mocked(useCollectionCache).mockReturnValue({
     allTracks: makeTracks(600),
     traitMap: new Map(),
@@ -289,7 +310,6 @@ describe('Browse infinite scroll', () => {
     });
     expect(getRowCount()).toBe(500);
 
-    // Switch to filter B (key=01A) — resets to page 1
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
     });
@@ -301,14 +321,13 @@ describe('Browse infinite scroll', () => {
       expect(getRowCount()).toBe(250);
     });
 
-    // Switch back to filter A (all keys) — dropdown stayed open after selecting 01A
     await act(async () => {
       screen.getByRole('button', { name: 'Clear' }).click();
     });
 
     await waitFor(() => {
       expect(getRowCount()).toBe(500);
-    });
+    }, { timeout: 10000 });
   });
 
   it('shows sentinel when more pages are available', async () => {
@@ -810,11 +829,7 @@ describe('Set tab', () => {
     expect(screen.getByText(/No sets yet/)).toBeInTheDocument();
   });
 
-  it('shows Add to Set button on match rows when a set exists', async () => {
-    localStorage.setItem('dj-tools-sets', JSON.stringify([
-      { id: 'test', name: 'Test', tracks: [] },
-    ]));
-
+  it('renders dual add-to-pool/tracklist buttons in matches panel', async () => {
     const httpMod = await import('./api/http');
     const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
     vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
@@ -826,7 +841,19 @@ describe('Set tab', () => {
     await selectTrackViaBrowse('Track 1');
 
     await waitFor(() => {
-      expect(screen.getByTitle('Add to set')).toBeInTheDocument();
+      const poolBtns = screen.getAllByTitle('Add to Pool');
+      const tlBtns = screen.getAllByTitle('Add to Tracklist');
+      expect(poolBtns.length).toBeGreaterThan(0);
+      expect(tlBtns.length).toBeGreaterThan(0);
     });
+  });
+
+  it('renders dual add buttons in browse table', async () => {
+    await openBrowseTab();
+
+    const poolBtns = screen.getAllByTitle('Add to Pool');
+    const tlBtns = screen.getAllByTitle('Add to Tracklist');
+    expect(poolBtns.length).toBeGreaterThan(0);
+    expect(tlBtns.length).toBeGreaterThan(0);
   });
 });

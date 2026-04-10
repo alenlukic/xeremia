@@ -90,9 +90,11 @@ interface Props {
   error?: string | null;
   columnVisibility?: Record<string, boolean>;
   onAddToSet?: (trackId: number) => void;
+  onAddToPool?: (trackId: number) => void;
+  onAddToTracklist?: (trackId: number) => void;
 }
 
-export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet }: Props) {
+export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, onAddToPool, onAddToTracklist }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -146,7 +148,28 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     size: 74,
     minSize: 60,
     enableSorting: false,
-    cell: ({ row }) => onAddToSet ? (
+    cell: ({ row }) => (onAddToPool || onAddToTracklist) ? (
+      <div className="set-dual-actions">
+        {onAddToPool && (
+          <button
+            className="match-action-btn match-action-btn--small"
+            onClick={(e) => { e.stopPropagation(); onAddToPool(row.original.id); }}
+            title="Add to Pool"
+          >
+            + Pool
+          </button>
+        )}
+        {onAddToTracklist && (
+          <button
+            className="match-action-btn match-action-btn--small"
+            onClick={(e) => { e.stopPropagation(); onAddToTracklist(row.original.id); }}
+            title="Add to Tracklist"
+          >
+            + TL
+          </button>
+        )}
+      </div>
+    ) : onAddToSet ? (
       <button
         className="match-action-btn"
         onClick={(e) => { e.stopPropagation(); onAddToSet(row.original.id); }}
@@ -155,7 +178,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
         + Set
       </button>
     ) : null,
-  }), [onAddToSet]);
+  }), [onAddToSet, onAddToPool, onAddToTracklist]);
 
   const allColumns = useMemo(
     () => [...dataColumns, addToSetColumn],

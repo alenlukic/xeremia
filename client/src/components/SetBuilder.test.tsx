@@ -1,467 +1,549 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { SetBuilder, WEAK_THRESHOLD } from './SetBuilder';
-import type { DjSet, Track } from '../types';
+import { SetBuilder } from './SetBuilder';
+import type { SetSummary, HydratedSet } from '../types';
 
 vi.mock('../api/http', () => ({
   fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
   exportSetM3u8: vi.fn().mockResolvedValue({ content: '#EXTM3U\n', filename: 'test.m3u8' }),
+  searchTracks: vi.fn().mockResolvedValue([]),
+  explorerEdgeScores: vi.fn().mockResolvedValue({ scores: [] }),
 }));
 
-function makeTrack(id: number, title?: string): Track {
+function makeSetSummary(overrides: Partial<SetSummary> = {}): SetSummary {
   return {
-    id,
-    title: title ?? `Track ${id}`,
-    artist_names: [`Artist ${id}`],
-    bpm: 128,
-    key: 'C',
-    camelot_code: '8B',
-    genre: 'Electronic',
-    label: 'Label',
-    energy: 5,
+    id: 1,
+    name: 'My Set',
+    created_at: '2026-01-01T00:00:00',
+    updated_at: '2026-01-01T00:00:00',
+    pool_count: 0,
+    tracklist_count: 0,
+    ...overrides,
   };
 }
 
-function makeSet(overrides: Partial<DjSet> = {}): DjSet {
+function makeHydratedSet(overrides: Partial<HydratedSet> = {}): HydratedSet {
   return {
-    id: 'set-1',
-    name: 'My Set',
-    tracks: [],
+    set: makeSetSummary(),
+    pool: [],
+    tracklist: [],
+    explorer_nodes: [],
+    explorer_edges: [],
     ...overrides,
   };
 }
 
 const noop = () => {};
+const asyncNoop = async () => null;
+
+function defaultProps() {
+  return {
+    sets: [] as SetSummary[],
+    activeSetId: null as number | null,
+    activeSet: null as HydratedSet | null,
+    loading: false,
+    error: null as string | null,
+    pendingAdd: null,
+    createSet: asyncNoop as (name: string) => Promise<SetSummary | null>,
+    selectSet: noop,
+    deleteSet: noop,
+    removeFromPool: noop,
+    movePoolToTracklist: noop,
+    addToPool: noop,
+    removeFromTracklist: noop,
+    moveTracklistToPool: noop,
+    reorderTracklist: noop,
+    updateTracklistNote: noop,
+    addToTracklist: noop,
+    addExplorerNode: asyncNoop as (trackId: number, parentNodeId?: string, level?: number) => Promise<unknown>,
+    deleteExplorerNode: noop as (nodeId: string, rewireEdges?: { parent_node_id: string; child_node_id: string }[]) => void,
+    swapExplorerNodes: noop,
+    explorerNodeAddToTracklist: noop,
+    addSiblingNode: asyncNoop as (trackId: number, inheritParentIds: string[], level: number) => Promise<unknown>,
+    fetchEdgeScores: async () => ({ scores: [] as (number | null)[] }),
+    resolvePendingAdd: noop,
+    clearPendingAdd: noop,
+    clearError: noop,
+  };
+}
 
 describe('SetBuilder', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('create and select set', () => {
+  describe('empty state', () => {
     it('shows empty state when no sets exist', () => {
-      render(
-        <SetBuilder
-          sets={[]}
-          activeSet={null}
-          activeSetId={null}
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
+      render(<SetBuilder {...defaultProps()} />);
       expect(screen.getByText(/No sets yet/)).toBeInTheDocument();
       expect(screen.getByText('+ New Set')).toBeInTheDocument();
     });
 
     it('shows create input when "+ New Set" is clicked', async () => {
-      render(
-        <SetBuilder
-          sets={[]}
-          activeSet={null}
-          activeSetId={null}
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
+      render(<SetBuilder {...defaultProps()} />);
       await userEvent.click(screen.getByText('+ New Set'));
       expect(screen.getByPlaceholderText('Set name…')).toBeInTheDocument();
     });
 
     it('calls createSet with name on confirm', async () => {
-      const createSet = vi.fn();
-      render(
-        <SetBuilder
-          sets={[]}
-          activeSet={null}
-          activeSetId={null}
-          createSet={createSet}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
+      const createSet = vi.fn().mockResolvedValue(makeSetSummary());
+      render(<SetBuilder {...defaultProps()} createSet={createSet} />);
       await userEvent.click(screen.getByText('+ New Set'));
       await userEvent.type(screen.getByPlaceholderText('Set name…'), 'Friday Night');
       await userEvent.click(screen.getByText('Create'));
       expect(createSet).toHaveBeenCalledWith('Friday Night');
     });
+  });
 
-    it('renders set selector when sets exist', () => {
-      const set1 = makeSet({ id: 's1', name: 'Set A' });
-      const set2 = makeSet({ id: 's2', name: 'Set B' });
+  describe('sub-tab layout', () => {
+    it('renders Tracks and Explorer sub-tabs when a set is active', () => {
       render(
         <SetBuilder
-          sets={[set1, set2]}
-          activeSet={set1}
-          activeSetId="s1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Tracks' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Explorer' })).toBeInTheDocument();
+    });
+
+    it('defaults to Tracks sub-tab showing tracklist section and collapsed pool', () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
+        />,
+      );
+      expect(screen.getByText('Tracklist (0)')).toBeInTheDocument();
+      expect(screen.getByLabelText('Expand pool')).toBeInTheDocument();
+    });
+
+    it('collapsed expand tab shows a directional chevron', () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
+        />,
+      );
+      const expandBtn = screen.getByLabelText('Expand pool');
+      expect(expandBtn).toHaveAttribute('title', 'Expand pool');
+      expect(expandBtn.textContent).toContain('›');
+    });
+
+    it('expands pool accordion on click', async () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
+        />,
+      );
+      await userEvent.click(screen.getByLabelText('Expand pool'));
+      expect(screen.getByText('Pool (0)')).toBeInTheDocument();
+      expect(screen.getByLabelText('Collapse pool')).toBeInTheDocument();
+    });
+
+    it('collapse handle has title text and visible chevron', async () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
+        />,
+      );
+      await userEvent.click(screen.getByLabelText('Expand pool'));
+      const collapseBtn = screen.getByLabelText('Collapse pool');
+      expect(collapseBtn).toHaveAttribute('title', 'Collapse pool');
+      expect(collapseBtn.textContent).toContain('‹');
+    });
+
+    it('switches to Explorer sub-tab', async () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
+        />,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Explorer' }));
+      expect(screen.getByText(/Explorer is empty/)).toBeInTheDocument();
+    });
+  });
+
+  describe('no-active-set prompt', () => {
+    it('shows create form when pendingAdd is set with no active set', () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          pendingAdd={{ type: 'pool', trackId: 1, title: 'Test Track' }}
+        />,
+      );
+      expect(screen.getByPlaceholderText('Set name…')).toBeInTheDocument();
+      expect(screen.getByText(/Create a set to add/)).toBeInTheDocument();
+    });
+  });
+
+  describe('set selector', () => {
+    it('renders set selector when sets exist', () => {
+      const sets = [
+        makeSetSummary({ id: 1, name: 'Set A' }),
+        makeSetSummary({ id: 2, name: 'Set B' }),
+      ];
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={sets}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
         />,
       );
       const select = screen.getByRole('combobox') as HTMLSelectElement;
-      expect(select.value).toBe('s1');
-      expect(screen.getAllByRole('option').length).toBe(2);
+      expect(select.value).toBe('1');
     });
 
     it('calls selectSet when dropdown changes', async () => {
       const selectSet = vi.fn();
-      const set1 = makeSet({ id: 's1', name: 'Set A' });
-      const set2 = makeSet({ id: 's2', name: 'Set B' });
+      const sets = [
+        makeSetSummary({ id: 1, name: 'Set A' }),
+        makeSetSummary({ id: 2, name: 'Set B' }),
+      ];
       render(
         <SetBuilder
-          sets={[set1, set2]}
-          activeSet={set1}
-          activeSetId="s1"
-          createSet={noop}
+          {...defaultProps()}
+          sets={sets}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
           selectSet={selectSet}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
         />,
       );
-      await userEvent.selectOptions(screen.getByRole('combobox'), 's2');
-      expect(selectSet).toHaveBeenCalledWith('s2');
+      await userEvent.selectOptions(screen.getByRole('combobox'), '2');
+      expect(selectSet).toHaveBeenCalledWith(2);
     });
   });
 
-  describe('track ordering and display', () => {
-    it('renders tracks in order with numbers', () => {
-      const set = makeSet({
-        tracks: [
-          { track: makeTrack(1, 'Alpha') },
-          { track: makeTrack(2, 'Beta') },
-          { track: makeTrack(3, 'Gamma') },
-        ],
+  describe('pool and tracklist move actions', () => {
+    it('calls movePoolToTracklist when pool row action is clicked', async () => {
+      const movePoolToTracklist = vi.fn();
+      const hydrated = makeHydratedSet({
+        pool: [{
+          id: 1, set_id: 1, track_id: 10, insertion_order: 0,
+          track: { id: 10, title: 'Pool Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+        }],
       });
       render(
         <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+          movePoolToTracklist={movePoolToTracklist}
         />,
       );
-      expect(screen.getByText('Alpha')).toBeInTheDocument();
-      expect(screen.getByText('Beta')).toBeInTheDocument();
-      expect(screen.getByText('Gamma')).toBeInTheDocument();
-      expect(screen.getByText('1')).toBeInTheDocument();
-      expect(screen.getByText('2')).toBeInTheDocument();
-      expect(screen.getByText('3')).toBeInTheDocument();
+      await userEvent.click(screen.getByLabelText('Expand pool'));
+      await userEvent.click(screen.getByTitle('Move to tracklist'));
+      expect(movePoolToTracklist).toHaveBeenCalledWith(10);
     });
 
-    it('shows empty tracks message when set has no tracks', () => {
-      const set = makeSet({ tracks: [] });
-      render(
-        <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
-      expect(screen.getByText(/No tracks in this set/)).toBeInTheDocument();
-    });
-  });
-
-  describe('reorder', () => {
-    it('calls moveTrack when up button is clicked', async () => {
-      const moveTrack = vi.fn();
-      const set = makeSet({
-        tracks: [
-          { track: makeTrack(1, 'Alpha') },
-          { track: makeTrack(2, 'Beta') },
-        ],
+    it('calls moveTracklistToPool when tracklist row action is clicked', async () => {
+      const moveTracklistToPool = vi.fn();
+      const hydrated = makeHydratedSet({
+        tracklist: [{
+          id: 1, set_id: 1, track_id: 20, position: 0,
+          track: { id: 20, title: 'TL Track', artist_names: [], bpm: 130, key: 'D', camelot_code: '9B', genre: null, label: null, energy: null },
+        }],
       });
       render(
         <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={moveTrack}
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+          moveTracklistToPool={moveTracklistToPool}
         />,
       );
-      const upButtons = screen.getAllByTitle('Move up');
-      await userEvent.click(upButtons[1]);
-      expect(moveTrack).toHaveBeenCalledWith(1, 0);
-    });
-
-    it('calls moveTrack when down button is clicked', async () => {
-      const moveTrack = vi.fn();
-      const set = makeSet({
-        tracks: [
-          { track: makeTrack(1, 'Alpha') },
-          { track: makeTrack(2, 'Beta') },
-        ],
-      });
-      render(
-        <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={moveTrack}
-        />,
-      );
-      const downButtons = screen.getAllByTitle('Move down');
-      await userEvent.click(downButtons[0]);
-      expect(moveTrack).toHaveBeenCalledWith(0, 1);
-    });
-
-    it('disables up button on first track', () => {
-      const set = makeSet({
-        tracks: [
-          { track: makeTrack(1, 'Alpha') },
-          { track: makeTrack(2, 'Beta') },
-        ],
-      });
-      render(
-        <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
-      const upButtons = screen.getAllByTitle('Move up');
-      expect(upButtons[0]).toBeDisabled();
-    });
-
-    it('disables down button on last track', () => {
-      const set = makeSet({
-        tracks: [
-          { track: makeTrack(1, 'Alpha') },
-          { track: makeTrack(2, 'Beta') },
-        ],
-      });
-      render(
-        <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
-      const downButtons = screen.getAllByTitle('Move down');
-      expect(downButtons[1]).toBeDisabled();
-    });
-  });
-
-  describe('remove track', () => {
-    it('calls removeTrack when remove button is clicked', async () => {
-      const removeTrack = vi.fn();
-      const set = makeSet({
-        tracks: [
-          { track: makeTrack(1, 'Alpha') },
-          { track: makeTrack(2, 'Beta') },
-        ],
-      });
-      render(
-        <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={removeTrack}
-          moveTrack={noop}
-        />,
-      );
-      const removeButtons = screen.getAllByTitle('Remove from set');
-      await userEvent.click(removeButtons[0]);
-      expect(removeTrack).toHaveBeenCalledWith(0);
-    });
-  });
-
-  describe('weak transition highlighting', () => {
-    it('renders transition indicators between adjacent tracks', async () => {
-      const httpMod = await import('../api/http');
-      vi.mocked(httpMod.fetchTransitionScores).mockResolvedValue({
-        scores: [80],
-      });
-      const set = makeSet({
-        tracks: [
-          { track: makeTrack(1, 'Alpha') },
-          { track: makeTrack(2, 'Beta') },
-        ],
-      });
-      await act(async () => {
-        render(
-          <SetBuilder
-            sets={[set]}
-            activeSet={set}
-            activeSetId="set-1"
-            createSet={noop}
-            selectSet={noop}
-            deleteSet={noop}
-            removeTrack={noop}
-            moveTrack={noop}
-          />,
-        );
-      });
-
-      await waitFor(() => {
-        const indicators = document.querySelectorAll('[data-testid="transition-indicator"]');
-        expect(indicators.length).toBe(1);
-        expect(indicators[0]).not.toHaveClass('set-transition--weak');
-      });
-    });
-
-    it('highlights weak transitions below threshold', async () => {
-      const httpMod = await import('../api/http');
-      const weakScore = WEAK_THRESHOLD - 1;
-      vi.mocked(httpMod.fetchTransitionScores).mockResolvedValue({
-        scores: [weakScore],
-      });
-      const set = makeSet({
-        tracks: [
-          { track: makeTrack(1, 'Alpha') },
-          { track: makeTrack(2, 'Beta') },
-        ],
-      });
-      await act(async () => {
-        render(
-          <SetBuilder
-            sets={[set]}
-            activeSet={set}
-            activeSetId="set-1"
-            createSet={noop}
-            selectSet={noop}
-            deleteSet={noop}
-            removeTrack={noop}
-            moveTrack={noop}
-          />,
-        );
-      });
-
-      await waitFor(() => {
-        const indicators = document.querySelectorAll('[data-testid="transition-indicator"]');
-        expect(indicators.length).toBe(1);
-        expect(indicators[0]).toHaveClass('set-transition--weak');
-      });
-    });
-  });
-
-  describe('export', () => {
-    it('renders export button when set has tracks', () => {
-      const set = makeSet({
-        tracks: [{ track: makeTrack(1) }],
-      });
-      render(
-        <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
-      expect(screen.getByText('Export m3u8')).toBeInTheDocument();
-    });
-
-    it('does not render export button when set is empty', () => {
-      const set = makeSet({ tracks: [] });
-      render(
-        <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
-      expect(screen.queryByText('Export m3u8')).not.toBeInTheDocument();
-    });
-
-    it('calls exportSetM3u8 when export button is clicked', async () => {
-      const httpMod = await import('../api/http');
-      vi.mocked(httpMod.exportSetM3u8).mockResolvedValue({
-        content: '#EXTM3U\n',
-        filename: 'My Set.m3u8',
-      });
-      const set = makeSet({
-        tracks: [{ track: makeTrack(1) }, { track: makeTrack(2) }],
-      });
-
-      render(
-        <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
-          deleteSet={noop}
-          removeTrack={noop}
-          moveTrack={noop}
-        />,
-      );
-
-      await userEvent.click(screen.getByText('Export m3u8'));
-
-      await waitFor(() => {
-        expect(httpMod.exportSetM3u8).toHaveBeenCalledWith([1, 2], 'My Set');
-      });
+      await userEvent.click(screen.getByTitle('Move to pool'));
+      expect(moveTracklistToPool).toHaveBeenCalledWith(20);
     });
   });
 
   describe('delete set', () => {
     it('calls deleteSet when delete button is clicked', async () => {
       const deleteSet = vi.fn();
-      const set = makeSet();
       render(
         <SetBuilder
-          sets={[set]}
-          activeSet={set}
-          activeSetId="set-1"
-          createSet={noop}
-          selectSet={noop}
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
           deleteSet={deleteSet}
-          removeTrack={noop}
-          moveTrack={noop}
         />,
       );
       await userEvent.click(screen.getByTitle('Delete set'));
-      expect(deleteSet).toHaveBeenCalledWith('set-1');
+      expect(deleteSet).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('error display', () => {
+    it('shows error as a toast with alert role', () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          error="Something went wrong"
+        />,
+      );
+      const toast = screen.getByRole('alert');
+      expect(toast).toBeInTheDocument();
+      expect(toast).toHaveTextContent('Something went wrong');
+    });
+
+    it('calls clearError when toast dismiss is clicked', async () => {
+      const clearError = vi.fn();
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          error="Oops"
+          clearError={clearError}
+        />,
+      );
+      await userEvent.click(screen.getByLabelText('Dismiss'));
+      expect(clearError).toHaveBeenCalled();
+    });
+
+    it('does not render toast when error is null', () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
+          error={null}
+        />,
+      );
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tracklist column headers', () => {
+    it('renders #, Title, Note, Actions headers when tracklist has entries', () => {
+      const hydrated = makeHydratedSet({
+        tracklist: [{
+          id: 1, set_id: 1, track_id: 10, position: 0, note: '',
+          track: { id: 10, title: 'Test Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+        }],
+      });
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+        />,
+      );
+      expect(screen.getByText('#')).toBeInTheDocument();
+      expect(screen.getByText('Title')).toBeInTheDocument();
+      expect(screen.getByText('Note')).toBeInTheDocument();
+      expect(screen.getByText('Actions')).toBeInTheDocument();
+    });
+  });
+
+  describe('tracklist note input', () => {
+    it('renders a note input for each tracklist entry', () => {
+      const hydrated = makeHydratedSet({
+        tracklist: [
+          { id: 1, set_id: 1, track_id: 10, position: 0, note: 'hello',
+            track: { id: 10, title: 'Track A', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+          { id: 2, set_id: 1, track_id: 20, position: 1, note: '',
+            track: { id: 20, title: 'Track B', artist_names: [], bpm: 130, key: 'D', camelot_code: '10A', genre: null, label: null, energy: null } },
+        ],
+      });
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+        />,
+      );
+      const noteInputs = screen.getAllByPlaceholderText('Add note…');
+      expect(noteInputs).toHaveLength(2);
+      expect(noteInputs[0]).toHaveValue('hello');
+      expect(noteInputs[1]).toHaveValue('');
+    });
+
+    it('updates note input when hydrated data changes for the same track_id', () => {
+      const track = { id: 10, title: 'Track A', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null };
+      const entry = { id: 1, set_id: 1, track_id: 10, position: 0, note: 'old note', track };
+      const props = {
+        ...defaultProps(),
+        sets: [makeSetSummary()],
+        activeSetId: 1,
+        activeSet: makeHydratedSet({ tracklist: [entry] }),
+      };
+      const { rerender } = render(<SetBuilder {...props} />);
+      expect(screen.getByPlaceholderText('Add note…')).toHaveValue('old note');
+
+      const updatedEntry = { ...entry, note: 'new note' };
+      rerender(
+        <SetBuilder
+          {...props}
+          activeSet={makeHydratedSet({ tracklist: [updatedEntry] })}
+        />,
+      );
+      expect(screen.getByPlaceholderText('Add note…')).toHaveValue('new note');
+    });
+
+    it('calls updateTracklistNote on note blur with changed value', async () => {
+      const updateTracklistNote = vi.fn();
+      const hydrated = makeHydratedSet({
+        tracklist: [{
+          id: 1, set_id: 1, track_id: 10, position: 0, note: '',
+          track: { id: 10, title: 'Track A', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+        }],
+      });
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+          updateTracklistNote={updateTracklistNote}
+        />,
+      );
+      const noteInput = screen.getByPlaceholderText('Add note…');
+      await userEvent.click(noteInput);
+      await userEvent.type(noteInput, 'transition here');
+      fireEvent.blur(noteInput);
+      expect(updateTracklistNote).toHaveBeenCalledWith(10, 'transition here');
+    });
+  });
+
+  describe('pool row drag to explorer', () => {
+    it('pool rows are draggable and set track_id on dragStart', async () => {
+      const addExplorerNode = vi.fn().mockResolvedValue(null);
+      const hydrated = makeHydratedSet({
+        pool: [{
+          id: 1, set_id: 1, track_id: 42, insertion_order: 0,
+          track: { id: 42, title: 'Drag Me', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+        }],
+        explorer_nodes: [{
+          id: 1, set_id: 1, node_id: 'n1', track_id: 99, level: 0,
+          track: { id: 99, title: 'Root Node', artist_names: [], bpm: 130, key: 'D', camelot_code: '10A', genre: null, label: null, energy: null },
+        }],
+        explorer_edges: [],
+      });
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+          addExplorerNode={addExplorerNode}
+        />,
+      );
+
+      await userEvent.click(screen.getByLabelText('Expand pool'));
+
+      const row = screen.getByText('Drag Me').closest('tr')!;
+      expect(row).toHaveAttribute('draggable', 'true');
+
+      const dataTransfer = { setData: vi.fn() };
+      fireEvent.dragStart(row, { dataTransfer });
+      expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', '42');
+    });
+  });
+
+  describe('tracklist row drag to explorer', () => {
+    it('tracklist rows are draggable and set track_id on dragStart', () => {
+      const hydrated = makeHydratedSet({
+        tracklist: [{
+          id: 1, set_id: 1, track_id: 55, position: 0,
+          track: { id: 55, title: 'TL Drag', artist_names: [], bpm: 125, key: 'A', camelot_code: '11B', genre: null, label: null, energy: null },
+        }],
+      });
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+        />,
+      );
+
+      const row = screen.getByText('TL Drag').closest('[draggable]')!;
+      expect(row).toHaveAttribute('draggable', 'true');
+
+      const dataTransfer = { setData: vi.fn() };
+      fireEvent.dragStart(row, { dataTransfer });
+      expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', '55');
+    });
+  });
+
+  describe('explorer sibling-add', () => {
+    it('shows sibling-add button on explorer nodes', async () => {
+      const hydrated = makeHydratedSet({
+        explorer_nodes: [{
+          id: 1, set_id: 1, node_id: 'n1', track_id: 10, level: 0,
+          track: { id: 10, title: 'Root', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+        }],
+        explorer_edges: [],
+      });
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+        />,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Explorer' }));
+      const addBtns = screen.getAllByTestId('sibling-add-btn');
+      expect(addBtns.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('explorer delete modal per-edge resolution', () => {
+    it('shows per-child resolution controls in delete modal', async () => {
+      const hydrated = makeHydratedSet({
+        explorer_nodes: [
+          { id: 1, set_id: 1, node_id: 'parent', track_id: 1, level: 0, track: { id: 1, title: 'Parent', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+          { id: 2, set_id: 1, node_id: 'mid', track_id: 2, level: 1, track: { id: 2, title: 'Middle', artist_names: [], bpm: 130, key: 'D', camelot_code: '10A', genre: null, label: null, energy: null } },
+          { id: 3, set_id: 1, node_id: 'child', track_id: 3, level: 2, track: { id: 3, title: 'Child', artist_names: [], bpm: 125, key: 'A', camelot_code: '11B', genre: null, label: null, energy: null } },
+        ],
+        explorer_edges: [
+          { id: 1, set_id: 1, parent_node_id: 'parent', child_node_id: 'mid' },
+          { id: 2, set_id: 1, parent_node_id: 'mid', child_node_id: 'child' },
+        ],
+      });
+      const deleteExplorerNode = vi.fn();
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={[makeSetSummary()]}
+          activeSetId={1}
+          activeSet={hydrated}
+          deleteExplorerNode={deleteExplorerNode}
+        />,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Explorer' }));
+
+      const deleteBtns = screen.getAllByLabelText('Delete node');
+      await userEvent.click(deleteBtns[1]);
+
+      expect(screen.getByText('Delete Node')).toBeInTheDocument();
+      const childRows = screen.getAllByTestId('delete-child-row');
+      expect(childRows.length).toBeGreaterThan(0);
     });
   });
 });

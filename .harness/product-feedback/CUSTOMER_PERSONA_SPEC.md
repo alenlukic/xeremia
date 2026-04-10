@@ -55,7 +55,7 @@ A software developer who DJs as a serious hobby or semi-professionally and wants
 ## Main Workflow Goals
 
 1. **Weekly library maintenance:** Download 10–30 new tracks → metadata agent enrichment → MIK analysis → Rekordbox import → ingestion pipeline → feature extraction → library is ready
-2. **Set preparation:** Pick a starting track → find matches → follow transition chains (A→B→C via "Use as source") → build a named set → verify transitions → export to m3u8. *(MVP set builder shipped April 2026; client-local named sets with transition quality display, reorder, and m3u8 export. USB/Rekordbox handoff remains deferred.)*
+2. **Set preparation:** Pick a starting track → find matches → follow transition chains (A→B→C via "Use as source") → build a named set → verify transitions → export to m3u8. *(Server-persisted set workspace shipped April 2026: PostgreSQL-backed sets with pool, tracklist, and visual explorer canvas. Per-track notes on tracklist entries for cue/mix reminders. Transition scoring, reorder, and m3u8 export. USB/Rekordbox handoff remains deferred.)*
 3. **Weight experimentation:** Adjust scoring weights for different set styles (high-energy techno vs deep house vs eclectic) → see how results change → save preferred weight profiles. *(Fusion subweights now materially affect live scoring as of April 2026.)*
 4. **Collection audit:** Browse by key/BPM/genre to identify gaps ("I have nothing in 4A around 124 BPM") or oversaturation
 

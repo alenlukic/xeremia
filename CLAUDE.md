@@ -14,6 +14,8 @@ Initialize a run before substantive work:
 Preserve role separation:
 - SME Product Red Team owns customer, market, and product reasoning
 - SME Technical Red Team owns architecture, tooling, sequencing, and feasibility reasoning
+- Thought Partners (design/product/technical) own interactive pre-implementation ideation and refinement
+- Red Teams own post-implementation adversarial audit
 - Meta Registry Steward consolidates repeated findings and tracks promotion state
 - Spec Contract Producer turns mixed findings into one scoped contract
 - Breaker findings normally become a fresh contract and new delivery run

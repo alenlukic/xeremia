@@ -158,3 +158,128 @@ class SetExportRequest(BaseModel):
 class SetExportResponse(BaseModel):
     content: str
     filename: str
+
+
+# ---------------------------------------------------------------------------
+# Set workspace
+# ---------------------------------------------------------------------------
+
+
+class SetSummary(BaseModel):
+    id: int
+    name: str
+    created_at: str
+    updated_at: str
+    pool_count: int = 0
+    tracklist_count: int = 0
+
+
+class SetCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class SetUpdateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class PoolEntryResponse(BaseModel):
+    id: int
+    set_id: int
+    track_id: int
+    insertion_order: int
+    track: Optional[TrackResponse] = None
+
+
+class TracklistEntryResponse(BaseModel):
+    id: int
+    set_id: int
+    track_id: int
+    position: int
+    note: str = ""
+    track: Optional[TrackResponse] = None
+
+
+class TracklistNoteUpdateRequest(BaseModel):
+    note: str = ""
+
+
+class ExplorerNodeResponse(BaseModel):
+    id: int
+    set_id: int
+    node_id: str
+    track_id: int
+    level: int
+    track: Optional[TrackResponse] = None
+
+
+class ExplorerEdgeResponse(BaseModel):
+    id: int
+    set_id: int
+    parent_node_id: str
+    child_node_id: str
+
+
+class HydratedSetResponse(BaseModel):
+    set: SetSummary
+    pool: List[PoolEntryResponse]
+    tracklist: List[TracklistEntryResponse]
+    explorer_nodes: List[ExplorerNodeResponse]
+    explorer_edges: List[ExplorerEdgeResponse]
+
+
+class PoolAddRequest(BaseModel):
+    track_id: int
+
+
+class TracklistAddRequest(BaseModel):
+    track_id: int
+
+
+class TracklistReorderRequest(BaseModel):
+    track_id: int
+    new_position: int
+
+
+class MoveRequest(BaseModel):
+    track_id: int
+
+
+class ExplorerAddNodeRequest(BaseModel):
+    track_id: int
+    parent_node_id: Optional[str] = None
+    level: int = 0
+
+
+class ExplorerAddEdgeRequest(BaseModel):
+    parent_node_id: str
+    child_node_id: str
+
+
+class DeleteNodeEdgeRewire(BaseModel):
+    parent_node_id: str
+    child_node_id: str
+
+
+class ExplorerDeleteNodeRequest(BaseModel):
+    node_id: str
+    rewire_edges: List[DeleteNodeEdgeRewire] = Field(default_factory=list)
+
+
+class ExplorerSwapRequest(BaseModel):
+    node_a_id: str
+    node_b_id: str
+
+
+class ExplorerNodeToTracklistRequest(BaseModel):
+    node_id: str
+
+
+class ExplorerEdgeScoreRequest(BaseModel):
+    pairs: List[List[int]] = Field(
+        ...,
+        description="List of [parent_track_id, child_track_id] pairs",
+    )
+
+
+class ExplorerEdgeScoreResponse(BaseModel):
+    scores: List[Optional[float]]
