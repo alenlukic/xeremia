@@ -331,8 +331,12 @@ class SetWorkspaceService:
         if error:
             return None, error
 
+        occupied = {n.col_index for n in nodes if n.level == level}
+        col_index = next(i for i in range(len(occupied) + 1) if i not in occupied)
+
         node = SetExplorerNode(
             set_id=set_id, node_id=node_id, track_id=track_id, level=level,
+            col_index=col_index,
         )
         self.session.add(node)
 

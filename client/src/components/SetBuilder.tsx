@@ -203,9 +203,9 @@ export function SetBuilder({
         </div>
       )}
 
-      {loading && <p className="table-status">Loading set…</p>}
+      {!activeSet && loading && <p className="table-status">Loading set…</p>}
 
-      {activeSet && !loading && (
+      {activeSet && (
         <>
           <div className="set-sub-tabs">
             <button

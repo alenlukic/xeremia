@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import type { ExplorerNode, ExplorerEdge, SearchSuggestion, TransitionMatch } from '../types';
 import { nodeColorForLevel, edgeColorForColumn, ACTION_FILL } from '../utils/explorer';
 import { searchTracks, fetchMatches } from '../api/http';
@@ -68,6 +68,19 @@ const SLOT_STEP = 10;   // px between adjacent slots within a bucket
 const BUCKET_GAP = 8;   // extra px between bucket groups (visually separates parent clusters)
 const LANE_STUB = 10;
 const LANE_S = 6;
+const ZOOM_STORAGE_KEY = 'explorer-zoom';
+
+function readStoredZoom(): number {
+  try {
+    const raw = localStorage.getItem(ZOOM_STORAGE_KEY);
+    if (raw === null) return 1;
+    const val = parseFloat(raw);
+    if (isNaN(val) || val < 0.2 || val > 3) return 1;
+    return val;
+  } catch {
+    return 1;
+  }
+}
 
 // 25 node slots: 5 parent-column buckets × 5 child-column sub-slots each.
 // laneIndex = parentColIdx * EDGE_SLOTS + childColIdx → unique departure and arrival per edge.
@@ -82,45 +95,250 @@ function truncateForSvg(text: string, max = 56): string {
   return text.slice(0, max - 1) + '…';
 }
 
-function buildForest(nodes: ExplorerNode[], edges: ExplorerEdge[]): LayoutNode[] {
-  const childSet = new Set(edges.map(e => e.child_node_id));
-  const childrenMap = new Map<string, string[]>();
-  for (const e of edges) {
-    const list = childrenMap.get(e.parent_node_id) ?? [];
-    list.push(e.child_node_id);
-    childrenMap.set(e.parent_node_id, list);
-  }
-  const nodeMap = new Map<string, ExplorerNode>();
-  for (const n of nodes) nodeMap.set(n.node_id, n);
+// ---------------------------------------------------------------------------
+// Memoized sub-components
+// Props use primitives (number, boolean, string) and stable object references
+// from the parent's props — never freshly-created objects derived inside render.
+// React.memo compares primitives by value, so layout recomputation that produces
+// the same numbers does not cause re-renders of unaffected items.
+// ---------------------------------------------------------------------------
 
-  const roots = nodes.filter(n => !childSet.has(n.node_id));
-
-  function build(nodeId: string): LayoutNode | null {
-    const n = nodeMap.get(nodeId);
-    if (!n) return null;
-    const kids = (childrenMap.get(nodeId) ?? [])
-      .map(build)
-      .filter((x): x is LayoutNode => x !== null);
-    return { node: n, x: 0, y: 0, children: kids };
-  }
-
-  return roots.map(r => build(r.node_id)).filter((x): x is LayoutNode => x !== null);
+interface ExplorerNodeItemProps {
+  x: number;
+  y: number;
+  nodeId: string;
+  trackId: number;
+  level: number;
+  colIndex: number;
+  trackTitle: string | undefined;
+  isSelected: boolean;
+  isSwapSource: boolean;
+  inTracklist: boolean;
+  onNodeClick: (nodeId: string) => void;
+  onNodeMouseDown: (e: React.MouseEvent, nodeId: string, level: number, x: number, y: number) => void;
+  onNodeMouseUp: (nodeId: string, level: number) => void;
+  onSetDeleteTarget: (nodeId: string) => void;
+  onSetSwapSource: (nodeId: string) => void;
+  openChildAdd: (nodeId: string) => void;
+  onNodeToTracklist: (nodeId: string) => void;
+  onAddNode: (trackId: number, parentNodeId: string, level: number) => void;
 }
 
-function collectByLevel(forest: LayoutNode[]): Map<number, LayoutNode[]> {
-  const byLevel = new Map<number, LayoutNode[]>();
-  const visited = new Set<string>();
-  function walk(node: LayoutNode) {
-    if (visited.has(node.node.node_id)) return;
-    visited.add(node.node.node_id);
-    const lv = node.node.level;
-    if (!byLevel.has(lv)) byLevel.set(lv, []);
-    byLevel.get(lv)!.push(node);
-    for (const c of node.children) walk(c);
+const ExplorerNodeItem = memo(function ExplorerNodeItem({
+  x, y, nodeId, trackId, level, colIndex, trackTitle, isSelected, isSwapSource, inTracklist,
+  onNodeClick, onNodeMouseDown, onNodeMouseUp,
+  onSetDeleteTarget, onSetSwapSource, openChildAdd, onNodeToTracklist, onAddNode,
+}: ExplorerNodeItemProps) {
+  const color = nodeColorForLevel(level);
+  const fullTitle = trackTitle ?? String(trackId);
+  const title = truncateForSvg(fullTitle);
+
+  const actions: { key: string; label: string; ariaLabel: string; fill: string; w: number; testId?: string; action: () => void }[] = [
+    { key: 'del', label: '×', ariaLabel: 'Delete node', fill: ACTION_FILL.danger, w: 22, action: () => onSetDeleteTarget(nodeId) },
+    { key: 'swap', label: '↕', ariaLabel: 'Swap track IDs', fill: ACTION_FILL.accent, w: 22, action: () => onSetSwapSource(nodeId) },
+    { key: 'child', label: '+Child', ariaLabel: 'Add child node', fill: ACTION_FILL.accent, w: 38, testId: 'child-add-btn', action: () => openChildAdd(nodeId) },
+  ];
+  if (!inTracklist) {
+    actions.push({ key: 'tl', label: '→TL', ariaLabel: 'Add to Tracklist', fill: ACTION_FILL.success, w: 26, action: () => onNodeToTracklist(nodeId) });
   }
-  for (const r of forest) walk(r);
-  return byLevel;
+
+  const totalActionsW = actions.reduce((s, a) => s + a.w, 0) + (actions.length - 1) * ACTION_GAP;
+  const actionsStartX = (NODE_W - totalActionsW) / 2;
+  const actionXs: number[] = [];
+  let runX = 0;
+  for (const a of actions) { actionXs.push(runX); runX += a.w + ACTION_GAP; }
+
+  return (
+    <g
+      transform={`translate(${x}, ${y})`}
+      className="explorer-node-group"
+      onClick={e => { e.stopPropagation(); onNodeClick(nodeId); }}
+      onMouseDown={e => onNodeMouseDown(e, nodeId, level, x, y)}
+      onMouseUp={() => onNodeMouseUp(nodeId, level)}
+      data-testid="explorer-node"
+      data-level={level}
+      data-col-index={colIndex}
+    >
+      <g transform={`translate(${actionsStartX}, ${-(ACTION_H + 4)})`}>
+        <g
+          className={`explorer-action-row ${isSelected ? 'explorer-action-row--visible' : ''}`}
+          data-testid="explorer-action-row"
+        >
+          {actions.map((a, i) => (
+            <g
+              key={a.key}
+              ref={(el) => { if (el) el.setAttribute('title', a.ariaLabel); }}
+              transform={`translate(${actionXs[i]}, 0)`}
+              className="explorer-action-btn"
+              onClick={e => { e.stopPropagation(); a.action(); }}
+              onMouseDown={e => e.stopPropagation()}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); a.action(); } }}
+              cursor="pointer"
+              role="button"
+              tabIndex={0}
+              aria-label={a.ariaLabel}
+              data-testid={a.testId}
+            >
+              <title>{a.ariaLabel}</title>
+              <rect width={a.w} height={ACTION_H} rx={4} fill="var(--surface)" stroke="var(--border)" strokeWidth={0.5}>
+                <title>{a.ariaLabel}</title>
+              </rect>
+              <text
+                x={a.w / 2}
+                y={ACTION_H / 2}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fill={a.fill}
+                fontSize={ACTION_LABEL_SIZE}
+                fontWeight="600"
+              >
+                {a.label}
+              </text>
+            </g>
+          ))}
+        </g>
+      </g>
+
+      <title>{fullTitle}</title>
+      <rect
+        width={NODE_W}
+        height={NODE_H}
+        rx={6}
+        fill={color}
+        opacity={isSwapSource ? 0.5 : 0.85}
+        stroke={isSelected ? '#fff' : isSwapSource ? '#fff' : 'none'}
+        strokeWidth={isSelected ? 2 : isSwapSource ? 2 : 0}
+      />
+      <text
+        x={NODE_W / 2}
+        y={NODE_H / 2}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="#fff"
+        fontSize={9}
+        className="explorer-node-title"
+      >
+        {title}
+      </text>
+
+      <rect
+        x={0}
+        y={NODE_H - 4}
+        width={NODE_W}
+        height={8}
+        fill="transparent"
+        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+        onDrop={e => {
+          e.preventDefault();
+          const trackId = parseInt(e.dataTransfer.getData('text/plain'), 10);
+          if (!isNaN(trackId)) onAddNode(trackId, nodeId, level + 1);
+        }}
+      />
+    </g>
+  );
+});
+
+interface ExplorerEdgeItemProps {
+  edgeId: number;
+  parentX: number;
+  parentY: number;
+  childX: number;
+  childY: number;
+  parentColIdx: number;
+  childColIdx: number;
+  isSelected: boolean;
+  score: number | null | undefined;
+  isLoading: boolean;
+  onEdgeClick: (e: React.MouseEvent, id: number) => void;
+  onDeleteEdge: (id: number) => void;
 }
+
+const ExplorerEdgeItem = memo(function ExplorerEdgeItem({
+  edgeId, parentX, parentY, childX, childY, parentColIdx, childColIdx,
+  isSelected, score, isLoading, onEdgeClick, onDeleteEdge,
+}: ExplorerEdgeItemProps) {
+  const parentBottom = parentY + NODE_H;
+  const childTop = childY;
+  const strokeColor = edgeColorForColumn(childColIdx);
+  const laneIndex = parentColIdx * EDGE_SLOTS + childColIdx;
+  const startX = nodeSlotX(parentX, laneIndex);
+  const endX = nodeSlotX(childX, laneIndex);
+  const laneY = parentBottom + LANE_STUB + laneIndex * LANE_S;
+  const pathD = `M ${startX} ${parentBottom} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${childTop}`;
+  const labelX = endX - 10;
+  const labelY = childTop - 8;
+  const edgeMidX = (startX + endX) / 2;
+
+  return (
+    <g key={`edge-${edgeId}`}>
+      <path
+        d={pathD}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={12}
+        style={{ cursor: 'pointer' }}
+        onClick={e => onEdgeClick(e, edgeId)}
+        data-testid="explorer-edge-hitbox"
+      />
+      <path
+        d={pathD}
+        fill="none"
+        stroke={isSelected ? 'var(--accent)' : strokeColor}
+        strokeWidth={isSelected ? 2.5 : 1.5}
+        pointerEvents="none"
+      />
+      {isLoading && score === undefined ? (
+        <g
+          className="explorer-score-spinner"
+          data-testid="explorer-score-spinner"
+          transform={`translate(${labelX}, ${labelY})`}
+        >
+          <circle
+            r={5}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth={1.5}
+            strokeDasharray="10 5"
+            opacity={0.7}
+          />
+        </g>
+      ) : score !== undefined ? (
+        <text
+          x={labelX}
+          y={labelY}
+          textAnchor="end"
+          dominantBaseline="auto"
+          className="explorer-edge-label"
+          fill={strokeColor}
+          data-testid="explorer-edge-label"
+        >
+          {score !== null ? formatOverallScore(score) : '—'}
+        </text>
+      ) : null}
+      {isSelected && (
+        <g
+          transform={`translate(${edgeMidX}, ${laneY})`}
+          className="explorer-edge-delete"
+          onClick={e => { e.stopPropagation(); onDeleteEdge(edgeId); }}
+          style={{ cursor: 'pointer' }}
+          role="button"
+          tabIndex={0}
+          aria-label="Delete edge"
+          data-testid="explorer-edge-delete-btn"
+        >
+          <circle r={10} fill="var(--surface)" stroke="var(--danger)" strokeWidth={1.5} />
+          <text
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill="var(--danger)"
+            fontSize={14}
+            fontWeight="700"
+          >×</text>
+        </g>
+      )}
+    </g>
+  );
+});
 
 export function SetExplorerCanvas({
   nodes, edges, onAddNode, onDeleteNode, onAddEdge, onDeleteEdge, onSwap,
@@ -131,7 +349,7 @@ export function SetExplorerCanvas({
   const [showSearch, setShowSearch] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ExplorerNode | null>(null);
   const [edgeScores, setEdgeScores] = useState<Map<string, number | null>>(new Map());
-  const [scoresLoading, setScoresLoading] = useState(false);
+  const [loadingEdgeKeys, setLoadingEdgeKeys] = useState<Set<string>>(new Set());
   const [swapSource, setSwapSource] = useState<string | null>(null);
   const [siblingAdd, setSiblingAdd] = useState<SiblingAddState | null>(null);
   const [childAdd, setChildAdd] = useState<ChildAddState | null>(null);
@@ -140,9 +358,58 @@ export function SetExplorerCanvas({
   const [connectDrag, setConnectDrag] = useState<ConnectDragState | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const scoreCacheRef = useRef(new Map<string, number | null>());
+  // Always-current refs so scoring effect can read latest nodes/edges without
+  // taking array references as dependencies (array identity changes every render).
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+  // Refs for volatile UI state consumed by stable callbacks — prevents callbacks
+  // from changing identity on every render, which would defeat React.memo on sub-components.
+  const connectDragRef = useRef<ConnectDragState | null>(null);
+  connectDragRef.current = connectDrag;
+  const swapSourceRef = useRef<string | null>(null);
+  swapSourceRef.current = swapSource;
+  const fetchEdgeScoresRef = useRef(fetchEdgeScores);
+  fetchEdgeScoresRef.current = fetchEdgeScores;
+
+  // Stable refs for ALL external callbacks from the parent.
+  // Many of these (onAddNode, onSwap, onAddEdge, etc.) come from useSetBuilder
+  // hooks where `activeSet` is a dep — so they get new references on every data
+  // refresh. Without refs, every ExplorerNodeItem/ExplorerEdgeItem would see a
+  // new callback prop and re-render, defeating React.memo entirely.
+  const onAddNodeRef = useRef(onAddNode);
+  onAddNodeRef.current = onAddNode;
+  const onDeleteNodeRef = useRef(onDeleteNode);
+  onDeleteNodeRef.current = onDeleteNode;
+  const onAddEdgeRef = useRef(onAddEdge);
+  onAddEdgeRef.current = onAddEdge;
+  const onDeleteEdgeRef = useRef(onDeleteEdge);
+  onDeleteEdgeRef.current = onDeleteEdge;
+  const onSwapRef = useRef(onSwap);
+  onSwapRef.current = onSwap;
+  const onNodeToTracklistRef = useRef(onNodeToTracklist);
+  onNodeToTracklistRef.current = onNodeToTracklist;
+  const onAddSiblingRef = useRef(onAddSibling);
+  onAddSiblingRef.current = onAddSibling;
+
+  // Stable wrapper callbacks — identity never changes, body reads via ref.
+  const stableOnAddNode = useCallback(
+    (trackId: number, parentNodeId?: string, level?: number) => onAddNodeRef.current(trackId, parentNodeId, level),
+    [],
+  );
+  const stableOnNodeToTracklist = useCallback(
+    (nodeId: string) => onNodeToTracklistRef.current(nodeId),
+    [],
+  );
+  const stableOnDeleteEdge = useCallback(
+    (id: number) => onDeleteEdgeRef.current(id),
+    [],
+  );
 
   const [pan, setPan] = useState({ x: 20, y: 20 });
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(readStoredZoom);
   const draggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const pendingDragRef = useRef<{ sourceNodeId: string; sourceLevel: number; sourceCX: number; sourceCY: number; startClientX: number; startClientY: number } | null>(null);
@@ -152,7 +419,11 @@ export function SetExplorerCanvas({
     e.preventDefault();
     if (e.ctrlKey) {
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(prev => Math.max(0.2, Math.min(3, prev + delta)));
+      setZoom(prev => {
+        const next = Math.max(0.2, Math.min(3, prev + delta));
+        try { localStorage.setItem(ZOOM_STORAGE_KEY, String(next)); } catch {}
+        return next;
+      });
     } else {
       const dy = e.deltaMode === 0 ? e.deltaY : e.deltaY * 14;
       setPan(prev => ({ ...prev, y: prev.y - dy }));
@@ -160,16 +431,17 @@ export function SetExplorerCanvas({
   }, []);
 
   const handleBgMouseDown = useCallback((e: React.MouseEvent) => {
-    if (connectDrag) return;
+    if (connectDragRef.current) return;
     pendingDragRef.current = null;
     if (e.target === svgRef.current || (e.target as Element).tagName === 'svg') {
       draggingRef.current = true;
       lastMouseRef.current = { x: e.clientX, y: e.clientY };
     }
-  }, [connectDrag]);
+  }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (pendingDragRef.current && !connectDrag) {
+    const cd = connectDragRef.current;
+    if (pendingDragRef.current && !cd) {
       const pd = pendingDragRef.current;
       const dx = e.clientX - pd.startClientX;
       const dy = e.clientY - pd.startClientY;
@@ -186,7 +458,7 @@ export function SetExplorerCanvas({
       }
       return;
     }
-    if (connectDrag) {
+    if (cd) {
       const svg = svgRef.current;
       if (!svg) return;
       const pt = svg.createSVGPoint();
@@ -203,36 +475,38 @@ export function SetExplorerCanvas({
     const dy = e.clientY - lastMouseRef.current.y;
     lastMouseRef.current = { x: e.clientX, y: e.clientY };
     setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
-  }, [connectDrag]);
+  }, []);
 
   const handleMouseUp = useCallback(() => {
     draggingRef.current = false;
     pendingDragRef.current = null;
-    if (connectDrag) {
-      setConnectDrag(null);
-    }
-  }, [connectDrag]);
-
-  const forest = useMemo(() => buildForest(nodes, edges), [nodes, edges]);
+    if (connectDragRef.current) setConnectDrag(null);
+  }, []);
 
   const { allFlat, totalWidth, totalHeight, columnIndices, byLevelMap } = useMemo(() => {
-    const byLevel = collectByLevel(forest);
+    const byLevel = new Map<number, LayoutNode[]>();
+    for (const n of nodes) {
+      const lv = n.level;
+      if (!byLevel.has(lv)) byLevel.set(lv, []);
+      byLevel.get(lv)!.push({ node: n, x: 0, y: 0, children: [] });
+    }
     const colIndices = new Map<string, number>();
     let maxLv = 0;
+    let maxColIndex = 0;
     for (const [lv, lvNodes] of byLevel) {
       if (lv > maxLv) maxLv = lv;
+      lvNodes.sort((a, b) => a.node.col_index - b.node.col_index);
       for (let i = 0; i < lvNodes.length; i++) {
-        const col = Math.min(i, MAX_COLS - 1);
+        const col = lvNodes[i].node.col_index;
+        if (col > maxColIndex) maxColIndex = col;
         colIndices.set(lvNodes[i].node.node_id, col);
-        lvNodes[i].x = col * SLOT_W + (SLOT_W - NODE_W) / 2;
+        lvNodes[i].x = Math.min(col, MAX_COLS - 1) * SLOT_W + (SLOT_W - NODE_W) / 2;
         lvNodes[i].y = TOP_PAD + lv * (NODE_H + V_GAP);
       }
     }
     const flat: LayoutNode[] = [];
     for (const ns of byLevel.values()) flat.push(...ns);
-    const usedCols = byLevel.size > 0
-      ? Math.max(...Array.from(byLevel.values()).map(ns => ns.length))
-      : 1;
+    const usedCols = byLevel.size > 0 ? maxColIndex + 1 : 1;
     return {
       allFlat: flat,
       totalWidth: Math.max(usedCols, MAX_COLS) * SLOT_W,
@@ -240,7 +514,7 @@ export function SetExplorerCanvas({
       columnIndices: colIndices,
       byLevelMap: byLevel,
     };
-  }, [forest]);
+  }, [nodes]);
 
   const levelEntries = useMemo(() => {
     const entries: { level: number; nodesAtLevel: LayoutNode[] }[] = [];
@@ -256,30 +530,91 @@ export function SetExplorerCanvas({
   const svgW = Math.max(totalWidth, 600);
   const svgH = Math.max(totalHeight, 400);
 
+  // Stable primitive that changes only when edges are actually added or removed.
+  // Using this instead of the `edges` array as a dependency prevents the scoring
+  // effect from re-firing on every parent render (new array reference ≠ new content).
+  const edgePairKey = useMemo(
+    () => edges.map(e => `${e.parent_node_id}-${e.child_node_id}`).sort().join(','),
+    [edges],
+  );
+
   useEffect(() => {
-    if (nodes.length < 2) return;
-    const pairs: [number, number][] = [];
-    const pairKeys: string[] = [];
-    for (const edge of edges) {
-      const parent = nodes.find(n => n.node_id === edge.parent_node_id);
-      const child = nodes.find(n => n.node_id === edge.child_node_id);
-      if (parent && child) {
-        pairs.push([parent.track_id, child.track_id]);
-        pairKeys.push(`${edge.parent_node_id}-${edge.child_node_id}`);
+    const currentNodes = nodesRef.current;
+    const currentEdges = edgesRef.current;
+    if (currentNodes.length < 2) return;
+    const newPairs: [number, number][] = [];
+    const newTrackKeys: string[] = [];
+    const newNodeKeys: string[] = [];
+    const fromCacheEntries: Array<[string, number | null]> = [];
+
+    for (const edge of currentEdges) {
+      const parent = currentNodes.find(n => n.node_id === edge.parent_node_id);
+      const child = currentNodes.find(n => n.node_id === edge.child_node_id);
+      if (!parent || !child) continue;
+      const trackKey = `${parent.track_id}-${child.track_id}`;
+      const nodeKey = `${edge.parent_node_id}-${edge.child_node_id}`;
+      const cached = scoreCacheRef.current.get(trackKey);
+      if (cached !== undefined) {
+        fromCacheEntries.push([nodeKey, cached]);
+      } else {
+        newPairs.push([parent.track_id, child.track_id]);
+        newTrackKeys.push(trackKey);
+        newNodeKeys.push(nodeKey);
       }
     }
-    if (pairs.length === 0) return;
-    setScoresLoading(true);
+
+    // Additive-only update: do not rebuild the whole map.
+    // Deleted edges leave stale entries in the map but they are never rendered
+    // because the edge is gone from the JSX loop. This avoids spurious state
+    // updates (and re-renders) on every edge deletion.
+    if (newPairs.length === 0) {
+      if (fromCacheEntries.length > 0) {
+        setEdgeScores(prev => {
+          const needsUpdate = fromCacheEntries.some(([k, v]) => prev.get(k) !== v);
+          if (!needsUpdate) return prev;
+          const next = new Map(prev);
+          for (const [k, v] of fromCacheEntries) next.set(k, v);
+          return next;
+        });
+      }
+      return;
+    }
+
+    setLoadingEdgeKeys(prev => {
+      const next = new Set(prev);
+      for (const nk of newNodeKeys) next.add(nk);
+      return next;
+    });
     let cancelled = false;
-    fetchEdgeScores(pairs).then(result => {
+    fetchEdgeScoresRef.current(newPairs).then(result => {
       if (cancelled) return;
-      const map = new Map<string, number | null>();
-      pairKeys.forEach((k, i) => map.set(k, result.scores[i] ?? null));
-      setEdgeScores(map);
-      setScoresLoading(false);
-    }).catch(() => { if (!cancelled) setScoresLoading(false); });
+      newTrackKeys.forEach((tk, i) => {
+        scoreCacheRef.current.set(tk, result.scores[i] ?? null);
+      });
+      setEdgeScores(prev => {
+        const next = new Map(prev);
+        for (const [k, v] of fromCacheEntries) next.set(k, v);
+        newNodeKeys.forEach((nk, i) => next.set(nk, result.scores[i] ?? null));
+        return next;
+      });
+      setLoadingEdgeKeys(prev => {
+        if (newNodeKeys.every(nk => !prev.has(nk))) return prev;
+        const next = new Set(prev);
+        for (const nk of newNodeKeys) next.delete(nk);
+        return next;
+      });
+    }).catch(() => {
+      if (!cancelled) {
+        setLoadingEdgeKeys(prev => {
+          if (newNodeKeys.every(nk => !prev.has(nk))) return prev;
+          const next = new Set(prev);
+          for (const nk of newNodeKeys) next.delete(nk);
+          return next;
+        });
+      }
+    });
     return () => { cancelled = true; };
-  }, [nodes, edges, fetchEdgeScores]);
+  }, [edgePairKey]);
 
   useEffect(() => {
     if (selectedEdgeId === null) return;
@@ -321,11 +656,11 @@ export function SetExplorerCanvas({
   }, []);
 
   const handleSearchSelect = useCallback((s: SearchSuggestion) => {
-    onAddNode(s.id);
+    stableOnAddNode(s.id);
     setSearchQuery('');
     setSearchResults([]);
     setShowSearch(false);
-  }, [onAddNode]);
+  }, [stableOnAddNode]);
 
   const handleSvgClick = useCallback((e: React.MouseEvent) => {
     if (e.target === svgRef.current || (e.target as Element).classList.contains('set-explorer-svg')) {
@@ -335,64 +670,58 @@ export function SetExplorerCanvas({
     }
   }, []);
 
-  const handleNodeClick = useCallback((node: ExplorerNode) => {
-    if (swapSource) {
-      if (swapSource !== node.node_id) {
-        onSwap(swapSource, node.node_id);
-      }
+  const handleNodeClick = useCallback((nodeId: string) => {
+    const ss = swapSourceRef.current;
+    if (ss) {
+      if (ss !== nodeId) onSwapRef.current(ss, nodeId);
       setSwapSource(null);
       return;
     }
-    setSelectedNodeId(prev => prev === node.node_id ? null : node.node_id);
+    setSelectedNodeId(prev => prev === nodeId ? null : nodeId);
     setSelectedEdgeId(null);
-  }, [swapSource, onSwap]);
+  }, []);
 
-  const handleNodeMouseDown = useCallback((e: React.MouseEvent, ln: LayoutNode) => {
+  const handleNodeMouseDown = useCallback((e: React.MouseEvent, nodeId: string, level: number, x: number, y: number) => {
     if (e.button !== 0) return;
-    if (swapSource) return;
+    if (swapSourceRef.current) return;
     const target = e.target as Element;
     if (target.closest('.explorer-action-row') || target.closest('.explorer-edge-delete')) return;
     e.stopPropagation();
-    const cx = ln.x + NODE_W / 2;
-    const cy = ln.y + NODE_H / 2;
+    const cx = x + NODE_W / 2;
+    const cy = y + NODE_H / 2;
     pendingDragRef.current = {
-      sourceNodeId: ln.node.node_id,
-      sourceLevel: ln.node.level,
+      sourceNodeId: nodeId,
+      sourceLevel: level,
       sourceCX: cx,
       sourceCY: cy,
       startClientX: e.clientX,
       startClientY: e.clientY,
     };
-  }, [swapSource]);
+  }, []);
 
-  const handleNodeMouseUp = useCallback((ln: LayoutNode) => {
-    if (!connectDrag) return;
-    if (connectDrag.sourceNodeId === ln.node.node_id) {
-      setConnectDrag(null);
-      return;
-    }
-    const srcLevel = connectDrag.sourceLevel;
-    const tgtLevel = ln.node.level;
-    const diff = Math.abs(srcLevel - tgtLevel);
-    if (diff === 1) {
-      const parentId = srcLevel < tgtLevel ? connectDrag.sourceNodeId : ln.node.node_id;
-      const childId = srcLevel < tgtLevel ? ln.node.node_id : connectDrag.sourceNodeId;
-      const alreadyConnected = edges.some(
+  const handleNodeMouseUp = useCallback((nodeId: string, level: number) => {
+    const cd = connectDragRef.current;
+    if (!cd) return;
+    if (cd.sourceNodeId === nodeId) { setConnectDrag(null); return; }
+    const srcLevel = cd.sourceLevel;
+    const tgtLevel = level;
+    if (Math.abs(srcLevel - tgtLevel) === 1) {
+      const parentId = srcLevel < tgtLevel ? cd.sourceNodeId : nodeId;
+      const childId = srcLevel < tgtLevel ? nodeId : cd.sourceNodeId;
+      const alreadyConnected = edgesRef.current.some(
         e => e.parent_node_id === parentId && e.child_node_id === childId,
       );
-      if (!alreadyConnected) {
-        onAddEdge(parentId, childId);
-      }
+      if (!alreadyConnected) onAddEdgeRef.current(parentId, childId);
     }
     setConnectDrag(null);
-  }, [connectDrag, edges, onAddEdge]);
+  }, []);
 
   const openLevelAdd = useCallback((level: number, nodesAtLevel: LayoutNode[]) => {
     const rightmost = nodesAtLevel.length > 0
-      ? nodesAtLevel[nodesAtLevel.length - 1]
+      ? nodesAtLevel.reduce((a, b) => a.node.col_index >= b.node.col_index ? a : b)
       : null;
     const parentIds = rightmost
-      ? edges.filter(e => e.child_node_id === rightmost.node.node_id).map(e => e.parent_node_id)
+      ? edgesRef.current.filter(e => e.child_node_id === rightmost.node.node_id).map(e => e.parent_node_id)
       : [];
     setSwapSource(null);
     setSelectedEdgeId(null);
@@ -404,9 +733,11 @@ export function SetExplorerCanvas({
       searchResults: [],
       showResults: false,
     });
-  }, [edges]);
+  }, []);
 
-  const openChildAdd = useCallback(async (node: ExplorerNode) => {
+  const openChildAdd = useCallback(async (nodeId: string) => {
+    const node = nodesRef.current.find(n => n.node_id === nodeId);
+    if (!node) return;
     setChildAdd({ parentNode: node, matches: [], loading: true });
     try {
       const matches = await fetchMatches(node.track_id);
@@ -418,9 +749,9 @@ export function SetExplorerCanvas({
 
   const handleChildSelect = useCallback((m: TransitionMatch) => {
     if (!childAdd) return;
-    onAddNode(m.candidate_id, childAdd.parentNode.node_id, childAdd.parentNode.level + 1);
+    stableOnAddNode(m.candidate_id, childAdd.parentNode.node_id, childAdd.parentNode.level + 1);
     setChildAdd(null);
-  }, [childAdd, onAddNode]);
+  }, [childAdd, stableOnAddNode]);
 
   const handleSiblingSearch = useCallback(async (q: string) => {
     setSiblingAdd(prev => prev ? { ...prev, searchQuery: q } : prev);
@@ -448,12 +779,12 @@ export function SetExplorerCanvas({
     if (!siblingAdd) return;
     const parentIds = Array.from(siblingAdd.selectedParents);
     if (parentIds.length > 0) {
-      await onAddSibling(s.id, parentIds, siblingAdd.targetLevel);
+      await onAddSiblingRef.current(s.id, parentIds, siblingAdd.targetLevel);
     } else {
-      await onAddNode(s.id, undefined, siblingAdd.targetLevel);
+      await stableOnAddNode(s.id, undefined, siblingAdd.targetLevel);
     }
     setSiblingAdd(null);
-  }, [siblingAdd, onAddSibling, onAddNode]);
+  }, [siblingAdd, stableOnAddNode]);
 
   const handleEdgeClick = useCallback((e: React.MouseEvent, edgeId: number) => {
     e.stopPropagation();
@@ -463,9 +794,19 @@ export function SetExplorerCanvas({
   }, []);
 
   const handleDeleteEdge = useCallback((edgeId: number) => {
-    onDeleteEdge(edgeId);
+    stableOnDeleteEdge(edgeId);
     setSelectedEdgeId(null);
-  }, [onDeleteEdge]);
+  }, [stableOnDeleteEdge]);
+
+  const onSetSwapSource = useCallback((nodeId: string) => {
+    setSwapSource(nodeId);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const handleSetDeleteTarget = useCallback((nodeId: string) => {
+    const node = nodesRef.current.find(n => n.node_id === nodeId);
+    if (node) setDeleteTarget(node);
+  }, []);
 
   const nodeMap = useMemo(() => {
     const map = new Map<string, LayoutNode>();
@@ -582,91 +923,26 @@ export function SetExplorerCanvas({
               const parent = nodeMap.get(edge.parent_node_id);
               const child = nodeMap.get(edge.child_node_id);
               if (!parent || !child) return null;
-              const parentBottom = parent.y + NODE_H;
-              const childTop = child.y;
               const parentColIdx = columnIndices.get(edge.parent_node_id) ?? 0;
               const childColIdx = (columnIndices.get(edge.child_node_id) ?? 0) % EDGE_SLOTS;
-              const strokeColor = edgeColorForColumn(childColIdx);
-              const laneIndex = parentColIdx * EDGE_SLOTS + childColIdx;
-              const startX = nodeSlotX(parent.x, laneIndex);
-              const endX = nodeSlotX(child.x, laneIndex);
-              const laneY = parentBottom + LANE_STUB + laneIndex * LANE_S;
-
-              const pathD = `M ${startX} ${parentBottom} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${childTop}`;
-              const scoreKey = `${edge.parent_node_id}-${edge.child_node_id}`;
-              const score = edgeScores.get(scoreKey);
-              const labelX = Math.min(startX, endX) - 8;
-              const labelY = laneY;
-              const isSelected = selectedEdgeId === edge.id;
-              const edgeMidX = (startX + endX) / 2;
+              const nodeKey = `${edge.parent_node_id}-${edge.child_node_id}`;
+              const score = edgeScores.get(nodeKey);
               return (
-                <g key={`edge-${edge.id}`}>
-                  <path
-                    d={pathD}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={12}
-                    style={{ cursor: 'pointer' }}
-                    onClick={e => handleEdgeClick(e, edge.id)}
-                    data-testid="explorer-edge-hitbox"
-                  />
-                  <path
-                    d={pathD}
-                    fill="none"
-                    stroke={isSelected ? 'var(--accent)' : strokeColor}
-                    strokeWidth={isSelected ? 2.5 : 1.5}
-                    pointerEvents="none"
-                  />
-                  {scoresLoading && score === undefined ? (
-                    <g
-                      className="explorer-score-spinner"
-                      data-testid="explorer-score-spinner"
-                      transform={`translate(${labelX}, ${labelY})`}
-                    >
-                      <circle
-                        r={5}
-                        fill="none"
-                        stroke={strokeColor}
-                        strokeWidth={1.5}
-                        strokeDasharray="10 5"
-                        opacity={0.7}
-                      />
-                    </g>
-                  ) : score !== undefined ? (
-                    <text
-                      x={labelX}
-                      y={labelY}
-                      textAnchor="end"
-                      dominantBaseline="central"
-                      className="explorer-edge-label"
-                      fill={strokeColor}
-                      data-testid="explorer-edge-label"
-                    >
-                      {score !== null ? formatOverallScore(score) : '—'}
-                    </text>
-                  ) : null}
-                  {isSelected && (
-                    <g
-                      transform={`translate(${edgeMidX}, ${laneY})`}
-                      className="explorer-edge-delete"
-                      onClick={e => { e.stopPropagation(); handleDeleteEdge(edge.id); }}
-                      style={{ cursor: 'pointer' }}
-                      role="button"
-                      tabIndex={0}
-                      aria-label="Delete edge"
-                      data-testid="explorer-edge-delete-btn"
-                    >
-                      <circle r={10} fill="var(--surface)" stroke="var(--danger)" strokeWidth={1.5} />
-                      <text
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fill="var(--danger)"
-                        fontSize={14}
-                        fontWeight="700"
-                      >×</text>
-                    </g>
-                  )}
-                </g>
+                <ExplorerEdgeItem
+                  key={`edge-${edge.id}`}
+                  edgeId={edge.id}
+                  parentX={parent.x}
+                  parentY={parent.y}
+                  childX={child.x}
+                  childY={child.y}
+                  parentColIdx={parentColIdx}
+                  childColIdx={childColIdx}
+                  isSelected={selectedEdgeId === edge.id}
+                  score={score}
+                  isLoading={loadingEdgeKeys.has(nodeKey)}
+                  onEdgeClick={handleEdgeClick}
+                  onDeleteEdge={handleDeleteEdge}
+                />
               );
             })}
 
@@ -686,125 +962,35 @@ export function SetExplorerCanvas({
             )}
 
             {/* Nodes */}
-            {allFlat.map(ln => {
-              const color = nodeColorForLevel(ln.node.level);
-              const isSwapSource = swapSource === ln.node.node_id;
-              const isSelected = selectedNodeId === ln.node.node_id;
-              const inTracklist = tracklistTrackIds.has(ln.node.track_id);
-              const fullTitle = ln.node.track?.title ?? String(ln.node.track_id);
-              const title = truncateForSvg(fullTitle);
-
-              const actions: { key: string; label: string; ariaLabel: string; fill: string; w: number; testId?: string; action: () => void }[] = [
-                { key: 'del', label: '×', ariaLabel: 'Delete node', fill: ACTION_FILL.danger, w: 22, action: () => setDeleteTarget(ln.node) },
-                { key: 'swap', label: '↕', ariaLabel: 'Swap track IDs', fill: ACTION_FILL.accent, w: 22, action: () => { setSwapSource(ln.node.node_id); setSelectedEdgeId(null); } },
-                { key: 'child', label: '+Child', ariaLabel: 'Add child node', fill: ACTION_FILL.accent, w: 38, testId: 'child-add-btn', action: () => openChildAdd(ln.node) },
-              ];
-              if (!inTracklist) {
-                actions.push({ key: 'tl', label: '→TL', ariaLabel: 'Add to Tracklist', fill: ACTION_FILL.success, w: 26, action: () => onNodeToTracklist(ln.node.node_id) });
-              }
-
-              const totalActionsW = actions.reduce((s, a) => s + a.w, 0) + (actions.length - 1) * ACTION_GAP;
-              const actionsStartX = (NODE_W - totalActionsW) / 2;
-              const actionXs: number[] = [];
-              let runX = 0;
-              for (const a of actions) { actionXs.push(runX); runX += a.w + ACTION_GAP; }
-
-              return (
-                <g
-                  key={ln.node.node_id}
-                  transform={`translate(${ln.x}, ${ln.y})`}
-                  className="explorer-node-group"
-                  onClick={e => { e.stopPropagation(); handleNodeClick(ln.node); }}
-                  onMouseDown={e => handleNodeMouseDown(e, ln)}
-                  onMouseUp={() => handleNodeMouseUp(ln)}
-                  data-testid="explorer-node"
-                  data-level={ln.node.level}
-                >
-                  {/* Action row: outer <g> for position, inner <g> for unfurl animation */}
-                  <g transform={`translate(${actionsStartX}, ${-(ACTION_H + 4)})`}>
-                    <g
-                      className={`explorer-action-row ${isSelected ? 'explorer-action-row--visible' : ''}`}
-                      data-testid="explorer-action-row"
-                    >
-                      {actions.map((a, i) => (
-                        <g
-                          key={a.key}
-                          ref={(el) => { if (el) el.setAttribute('title', a.ariaLabel); }}
-                          transform={`translate(${actionXs[i]}, 0)`}
-                          className="explorer-action-btn"
-                          onClick={e => { e.stopPropagation(); a.action(); }}
-                          onMouseDown={e => e.stopPropagation()}
-                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); a.action(); } }}
-                          cursor="pointer"
-                          role="button"
-                          tabIndex={0}
-                          aria-label={a.ariaLabel}
-                          data-testid={a.testId}
-                        >
-                          <title>{a.ariaLabel}</title>
-                          <rect width={a.w} height={ACTION_H} rx={4} fill="var(--surface)" stroke="var(--border)" strokeWidth={0.5}>
-                            <title>{a.ariaLabel}</title>
-                          </rect>
-                          <text
-                            x={a.w / 2}
-                            y={ACTION_H / 2}
-                            textAnchor="middle"
-                            dominantBaseline="central"
-                            fill={a.fill}
-                            fontSize={ACTION_LABEL_SIZE}
-                            fontWeight="600"
-                          >
-                            {a.label}
-                          </text>
-                        </g>
-                      ))}
-                    </g>
-                  </g>
-
-                  <title>{fullTitle}</title>
-                  <rect
-                    width={NODE_W}
-                    height={NODE_H}
-                    rx={6}
-                    fill={color}
-                    opacity={isSwapSource ? 0.5 : 0.85}
-                    stroke={isSelected ? '#fff' : isSwapSource ? '#fff' : 'none'}
-                    strokeWidth={isSelected ? 2 : isSwapSource ? 2 : 0}
-                  />
-                  <text
-                    x={NODE_W / 2}
-                    y={NODE_H / 2}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill="#fff"
-                    fontSize={9}
-                    className="explorer-node-title"
-                  >
-                    {title}
-                  </text>
-
-                  <rect
-                    x={0}
-                    y={NODE_H - 4}
-                    width={NODE_W}
-                    height={8}
-                    fill="transparent"
-                    onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
-                    onDrop={e => {
-                      e.preventDefault();
-                      const trackId = parseInt(e.dataTransfer.getData('text/plain'), 10);
-                      if (!isNaN(trackId)) {
-                        onAddNode(trackId, ln.node.node_id, ln.node.level + 1);
-                      }
-                    }}
-                  />
-                </g>
-              );
-            })}
+            {allFlat.map(ln => (
+              <ExplorerNodeItem
+                key={ln.node.node_id}
+                nodeId={ln.node.node_id}
+                trackId={ln.node.track_id}
+                level={ln.node.level}
+                colIndex={ln.node.col_index}
+                trackTitle={ln.node.track?.title}
+                x={ln.x}
+                y={ln.y}
+                isSelected={selectedNodeId === ln.node.node_id}
+                isSwapSource={swapSource === ln.node.node_id}
+                inTracklist={tracklistTrackIds.has(ln.node.track_id)}
+                onNodeClick={handleNodeClick}
+                onNodeMouseDown={handleNodeMouseDown}
+                onNodeMouseUp={handleNodeMouseUp}
+                onSetDeleteTarget={handleSetDeleteTarget}
+                onSetSwapSource={onSetSwapSource}
+                openChildAdd={openChildAdd}
+                onNodeToTracklist={stableOnNodeToTracklist}
+                onAddNode={stableOnAddNode}
+              />
+            ))}
 
             {/* Per-level +Add Track controls */}
             {levelEntries.map(({ level, nodesAtLevel }) => {
-              const lastNode = nodesAtLevel.length > 0 ? nodesAtLevel[nodesAtLevel.length - 1] : null;
+              const lastNode = nodesAtLevel.length > 0
+                ? nodesAtLevel.reduce((a, b) => a.node.col_index >= b.node.col_index ? a : b)
+                : null;
               const addX = lastNode
                 ? lastNode.x + NODE_W + LEVEL_ADD_GAP
                 : (SLOT_W - NODE_W) / 2;
@@ -855,7 +1041,7 @@ export function SetExplorerCanvas({
           edges={edges}
           nodes={nodes}
           onConfirm={(rewireEdges) => {
-            onDeleteNode(deleteTarget.node_id, rewireEdges);
+            onDeleteNodeRef.current(deleteTarget.node_id, rewireEdges);
             setDeleteTarget(null);
           }}
           onCancel={() => setDeleteTarget(null)}

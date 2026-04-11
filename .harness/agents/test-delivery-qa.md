@@ -82,7 +82,41 @@ Do not:
   - broken states or edge cases
 - focus only on areas impacted by the patch
 
-3.4 Validate system state (if applicable)
+3.4 DOM verification via Chrome DevTools (required for UI tasks)
+
+When the task touches UI components (TASK_KIND = ui_change, or any change to client/ files, React components, CSS, or HTML templates):
+
+3.4.1 Ensure the client is running
+- check whether the Vite dev server is already running on port 5173
+  - inspect open terminals or run `lsof -ti:5173`
+- if not running, start it: `npm --prefix client run dev`
+  - if the backend API is also needed (most UI tasks), start the full stack:
+    `bash src/scripts/start_web.sh`
+  - wait for the dev server to be ready before proceeding
+
+3.4.2 Inspect DOM with Chrome DevTools MCP
+Use the `user-chrome-devtools` MCP server to perform live DOM verification:
+- `navigate_page` to the relevant page (default: `http://localhost:5173`)
+- `take_snapshot` to capture the a11y tree / DOM structure
+- `evaluate_script` to query specific DOM elements, attributes, classes, text content, computed styles, or element counts relevant to the patch
+- `take_screenshot` for visual evidence
+- `list_console_messages` with `types: ["error", "warn"]` to detect runtime errors or warnings introduced by the patch
+- `click`, `type_text`, `fill` etc. to exercise interactive flows tied to the task
+
+3.4.3 DOM verification checklist
+For each UI requirement in the task, verify via DOM inspection:
+- expected elements exist in the DOM
+- element attributes, classes, and text content match requirements
+- no unexpected console errors or warnings
+- interactive behaviors work as specified (click handlers, state transitions, form submissions)
+- no regressions in adjacent DOM structure (elements that should still exist do, layout is intact)
+
+3.4.4 DOM verdict
+- if any DOM verification item fails, the overall QA verdict MUST be FAIL
+- record all DOM inspection evidence in the Manual Validation section of the QA report
+- include specific DOM queries used and their results as evidence
+
+3.5 Validate system state (if applicable)
 - inspect relevant system state to confirm correctness:
   - database records
   - API responses
@@ -90,7 +124,7 @@ Do not:
   - side effects (files, queues, etc.)
 - confirm state transitions match expected behavior
 
-3.5 Record limitations
+3.6 Record limitations
 - if manual validation is partial or blocked:
   - state exactly what could not be verified
   - explain why (missing scripts, env, data, etc.)
@@ -145,6 +179,14 @@ Write `QA_REPORT.md` using exactly this structure:
 - Observations: ...
 - State Verification: ...
 - Limitations: ...
+
+## DOM Verification (UI tasks only)
+- Client started: yes/no (method: ...)
+- Pages inspected: ...
+- DOM queries and results: ...
+- Console errors/warnings: ...
+- Interactive flows tested: ...
+- DOM verdict: PASS / FAIL
 
 ## Failures
 - ...

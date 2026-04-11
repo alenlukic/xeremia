@@ -38,6 +38,7 @@ from src.api.schemas import (
 )
 from src.api.queries import get_tracks
 from src.api.serializers import (
+    serialize_explorer_node,
     serialize_match_detail_track,
     serialize_matches,
     serialize_track_row,
@@ -538,14 +539,7 @@ def _serialize_hydrated(hydration, session) -> dict:
             for e in hydration["tracklist"]
         ],
         "explorer_nodes": [
-            {
-                "id": n.id,
-                "set_id": n.set_id,
-                "node_id": n.node_id,
-                "track_id": n.track_id,
-                "level": n.level,
-                "track": track_map.get(n.track_id),
-            }
+            serialize_explorer_node(n, track_map.get(n.track_id))
             for n in hydration["explorer_nodes"]
         ],
         "explorer_edges": [

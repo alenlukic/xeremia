@@ -18,6 +18,7 @@ function makeNode(overrides: Partial<ExplorerNode> & { node_id: string; track_id
   return {
     id: 1,
     set_id: 1,
+    col_index: 0,
     track: { id: overrides.track_id, title: `Track ${overrides.track_id}`, artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
     ...overrides,
   };
@@ -46,6 +47,7 @@ function defaultProps(overrides: {
 describe('SetExplorerCanvas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem('explorer-zoom');
   });
 
   describe('C1: per-level +Add Track control', () => {
@@ -254,8 +256,8 @@ describe('SetExplorerCanvas', () => {
 
     it('does not call onAddEdge when dragging between same-level nodes', async () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
       ];
       const props = defaultProps({ nodes });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -870,8 +872,8 @@ describe('SetExplorerCanvas', () => {
   describe('multi-parent DAG dedup', () => {
     it('renders each node exactly once even when it has two parents', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
@@ -909,8 +911,8 @@ describe('SetExplorerCanvas', () => {
 
     it('edge color is derived from the child column index', async () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
@@ -927,9 +929,9 @@ describe('SetExplorerCanvas', () => {
     it('parent with 3 children produces 3 distinct stroke colors keyed off child columns', () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
-        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
-        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1, col_index: 1 }),
+        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1, col_index: 2 }),
       ];
       const edges: ExplorerEdge[] = [
         { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
@@ -963,7 +965,7 @@ describe('SetExplorerCanvas', () => {
       expect(label.classList.contains('explorer-edge-label')).toBe(true);
     });
 
-    it('score label is positioned at laneY of the horizontal segment', async () => {
+    it('score label is positioned just above child node entry slot (childTop - 8)', async () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -977,13 +979,12 @@ describe('SetExplorerCanvas', () => {
 
       const label = await screen.findByTestId('explorer-edge-label');
       const labelYVal = parseFloat(label.getAttribute('y')!);
-      const pBottom = parentBottom(0);
-      const laneIndex = 0 * EDGE_SLOTS + 0;
-      const expectedLaneY = pBottom + LANE_STUB + laneIndex * LANE_S;
-      expect(labelYVal).toBeCloseTo(expectedLaneY, 0);
+      // childTop for level 1 = TOP_PAD + 1 * (NODE_H + V_GAP)
+      const childTop = TOP_PAD + 1 * (NODE_H + V_GAP);
+      expect(labelYVal).toBeCloseTo(childTop - 8, 0);
     });
 
-    it('score label uses textAnchor=end (left of edge)', async () => {
+    it('score label uses textAnchor=end, immediately left of the arrival vertical stub', async () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -997,15 +998,19 @@ describe('SetExplorerCanvas', () => {
 
       const label = await screen.findByTestId('explorer-edge-label');
       expect(label.getAttribute('text-anchor')).toBe('end');
+      // labelX = endX - 10, where endX = nodeSlotX(childX, laneIndex)
+      const childX = parentX(0); // n2 is col 0
+      const laneIndex = 0 * EDGE_SLOTS + 0;
+      const endX = nodeSlotX25(childX, laneIndex);
       const labelXVal = parseFloat(label.getAttribute('x')!);
-      expect(labelXVal).toBeLessThan(parentCX(0));
+      expect(labelXVal).toBeCloseTo(endX - 10, 1);
     });
 
     it('edges from same parent to different children use distinct child-column-based slots', () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
-        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1, col_index: 1 }),
       ];
       const edges: ExplorerEdge[] = [
         { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
@@ -1027,10 +1032,10 @@ describe('SetExplorerCanvas', () => {
 
     it('edge slot is determined by child column index', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
-        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
-        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1, col_index: 0 }),
+        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1, col_index: 1 }),
       ];
       const edges: ExplorerEdge[] = [
         { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
@@ -1070,16 +1075,16 @@ describe('SetExplorerCanvas', () => {
 
     it('edges from 5 different columns use all 5 distinct slot positions', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
-        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 0 }),
-        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 0 }),
-        makeNode({ id: 5, node_id: 'n5', track_id: 14, level: 0 }),
-        makeNode({ id: 6, node_id: 'n6', track_id: 15, level: 1 }),
-        makeNode({ id: 7, node_id: 'n7', track_id: 16, level: 1 }),
-        makeNode({ id: 8, node_id: 'n8', track_id: 17, level: 1 }),
-        makeNode({ id: 9, node_id: 'n9', track_id: 18, level: 1 }),
-        makeNode({ id: 10, node_id: 'n10', track_id: 19, level: 1 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 0, col_index: 2 }),
+        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 0, col_index: 3 }),
+        makeNode({ id: 5, node_id: 'n5', track_id: 14, level: 0, col_index: 4 }),
+        makeNode({ id: 6, node_id: 'n6', track_id: 15, level: 1, col_index: 0 }),
+        makeNode({ id: 7, node_id: 'n7', track_id: 16, level: 1, col_index: 1 }),
+        makeNode({ id: 8, node_id: 'n8', track_id: 17, level: 1, col_index: 2 }),
+        makeNode({ id: 9, node_id: 'n9', track_id: 18, level: 1, col_index: 3 }),
+        makeNode({ id: 10, node_id: 'n10', track_id: 19, level: 1, col_index: 4 }),
       ];
       const edges: ExplorerEdge[] = [
         { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n6' },
@@ -1098,8 +1103,8 @@ describe('SetExplorerCanvas', () => {
 
     it('endX uses laneIndex = parentColIdx * 5 + childColIdx (25-slot system)', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
@@ -1119,10 +1124,10 @@ describe('SetExplorerCanvas', () => {
 
     it('laneY = parentBottom + LANE_STUB + laneIndex * LANE_S for a known edge', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
-        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
-        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1, col_index: 0 }),
+        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1, col_index: 1 }),
       ];
       const edges: ExplorerEdge[] = [
         { id: 1, set_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
@@ -1211,6 +1216,102 @@ describe('SetExplorerCanvas', () => {
 
       expect(screen.queryByTestId('explorer-score-spinner')).toBeNull();
       expect(screen.queryByTestId('explorer-edge-label')).toBeNull();
+    });
+  });
+
+  describe('edge score caching', () => {
+    it('only fetches scores for uncached edges when new edges are added', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1, col_index: 1 }),
+      ];
+      const edges1: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ];
+      const fetchScores = vi.fn()
+        .mockResolvedValueOnce({ scores: [0.85] })
+        .mockResolvedValueOnce({ scores: [0.72] });
+
+      const props = { ...defaultProps({ nodes, edges: edges1 }), fetchEdgeScores: fetchScores };
+      const { rerender } = render(<SetExplorerCanvas {...props} />);
+
+      await screen.findByTestId('explorer-edge-label');
+      expect(fetchScores).toHaveBeenCalledTimes(1);
+      expect(fetchScores).toHaveBeenCalledWith([[10, 11]]);
+
+      const edges2: ExplorerEdge[] = [
+        ...edges1,
+        { id: 2, set_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
+      ];
+      rerender(<SetExplorerCanvas {...{ ...props, edges: edges2 }} />);
+
+      await vi.waitFor(() => {
+        expect(fetchScores).toHaveBeenCalledTimes(2);
+      });
+      expect(fetchScores).toHaveBeenLastCalledWith([[10, 12]]);
+    });
+
+    it('starting a connect-drag does not trigger score refetch', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
+      ];
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ];
+      const fetchScores = vi.fn().mockResolvedValue({ scores: [0.85] });
+      const props = { ...defaultProps({ nodes, edges }), fetchEdgeScores: fetchScores };
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      await screen.findByTestId('explorer-edge-label');
+      const callCount = fetchScores.mock.calls.length;
+
+      const nodeGroups = screen.getAllByTestId('explorer-node');
+      const viewport = container.querySelector('.set-explorer-viewport')!;
+      fireEvent.mouseDown(nodeGroups[0], { bubbles: true, clientX: 0, clientY: 0 });
+      fireEvent.mouseMove(viewport, { bubbles: true, clientX: 20, clientY: 20 });
+
+      expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
+      expect(fetchScores.mock.calls.length).toBe(callCount);
+
+      fireEvent.mouseUp(viewport);
+    });
+  });
+
+  describe('zoom persistence', () => {
+    it('restores zoom from localStorage on mount', () => {
+      localStorage.setItem('explorer-zoom', '1.5');
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+      const svg = document.querySelector('.set-explorer-svg') as HTMLElement;
+      expect(svg.style.transform).toContain('scale(1.5)');
+    });
+
+    it('falls back to default zoom for invalid stored value', () => {
+      localStorage.setItem('explorer-zoom', 'not-a-number');
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+      const svg = document.querySelector('.set-explorer-svg') as HTMLElement;
+      expect(svg.style.transform).toContain('scale(1)');
+    });
+
+    it('falls back to default zoom when value is out of range', () => {
+      localStorage.setItem('explorer-zoom', '10');
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+      const svg = document.querySelector('.set-explorer-svg') as HTMLElement;
+      expect(svg.style.transform).toContain('scale(1)');
+    });
+
+    it('persists zoom to localStorage on ctrl+wheel', () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
+      const { container } = render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+      const viewport = container.querySelector('.set-explorer-viewport')!;
+      fireEvent.wheel(viewport, { deltaY: -100, ctrlKey: true });
+      const stored = localStorage.getItem('explorer-zoom');
+      expect(stored).not.toBeNull();
+      expect(parseFloat(stored!)).toBeCloseTo(1.1, 1);
     });
   });
 });

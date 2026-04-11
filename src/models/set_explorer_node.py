@@ -22,4 +22,5 @@ class SetExplorerNode(Base):
     node_id = Column("node_id", String(64), nullable=False)
     track_id = Column("track_id", ForeignKey("track.id", ondelete="CASCADE"), nullable=False, index=True)
     level = Column("level", Integer, nullable=False, default=0)
+    col_index = Column("col_index", Integer, nullable=False, default=0)
     added_at = Column("added_at", DateTime, server_default=func.now(), nullable=False)

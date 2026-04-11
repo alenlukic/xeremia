@@ -2379,7 +2379,7 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px;
-  max-width: 400px;
+  max-width: 800px;
   width: 90%;
 }
 

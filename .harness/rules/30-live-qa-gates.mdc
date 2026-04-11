@@ -50,6 +50,18 @@ MANDATORY FAILURE CRITERIA
      - not leave orphan processes
      If any of these fail -> QA FAIL.
 
+  8. DOM INTEGRITY (UI tasks)
+     For any task that touches client/ files, React components, CSS, or HTML:
+     - The client dev server MUST be started (port 5173) if not already running
+     - DOM MUST be inspected via the `user-chrome-devtools` MCP server
+     - Use `take_snapshot` to verify the a11y tree / DOM structure is intact
+     - Use `evaluate_script` to verify expected elements, attributes, and content
+     - Use `list_console_messages` (types: error, warn) to detect runtime errors
+     - Use `take_screenshot` for visual evidence
+     - If the DOM does not render, shows runtime errors, is missing expected
+       elements, or has regressions in existing elements -> QA FAIL
+     - "Could not inspect DOM" is NOT acceptable for PASS — the verdict is FAIL
+
 VERIFICATION PROCEDURE
 
   QA agents MUST:
@@ -60,7 +72,8 @@ VERIFICATION PROCEDURE
   5. Verify cache stats update (Admin tab or API)
   6. Check for any 4XX/5XX in the server logs during the above
   7. Verify response times are within the 500ms threshold
-  8. If any step fails, verdict is FAIL with concrete evidence
+  8. For UI tasks: inspect DOM via Chrome DevTools MCP (see gate 8 above)
+  9. If any step fails, verdict is FAIL with concrete evidence
 
   "Could not test" or "Docker not available" is NOT an acceptable reason to
   skip these checks and still issue PASS or CONDITIONAL. If the live stack
