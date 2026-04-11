@@ -209,6 +209,7 @@ class ExplorerNodeResponse(BaseModel):
     node_id: str
     track_id: int
     level: int
+    col_index: int
     track: Optional[TrackResponse] = None
 
 

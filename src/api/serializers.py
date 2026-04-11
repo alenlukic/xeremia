@@ -96,6 +96,19 @@ def serialize_trait_info(trait):
     return result if result else None
 
 
+def serialize_explorer_node(node, track=None):
+    """Convert an explorer node ORM instance to a response dict."""
+    return {
+        "id": node.id,
+        "set_id": node.set_id,
+        "node_id": node.node_id,
+        "track_id": node.track_id,
+        "level": node.level,
+        "col_index": node.col_index,
+        "track": track,
+    }
+
+
 def serialize_match_detail_track(track, trait):
     """Serialize a track + its trait data for the match detail endpoint."""
     return {

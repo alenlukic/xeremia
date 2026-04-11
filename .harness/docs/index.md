@@ -13,6 +13,7 @@ Start with [AGENTS.md](../../AGENTS.md) for the top-level map.
 | Ledgers | [../ledgers/README.md](../ledgers/README.md) | Durable run summaries and doc sync state |
 | Contracts | [../contracts/README.md](../contracts/README.md) | Development contract production and usage guidance |
 | Product feedback | [../product-feedback/README.md](../product-feedback/README.md) | Persona guidance and stakeholder feedback loop |
+| Live QA gates | [../rules/30-live-qa-gates.mdc](../rules/30-live-qa-gates.mdc) | Hard live-stack verification gates, including Chrome DevTools DOM integrity checks for UI tasks |
 | State machine | [../state_machine/README.md](../state_machine/README.md) | Run states, transitions, and terminal states |
 | Schedules | [../schedules/README.md](../schedules/README.md) | Deterministic recurring jobs and trigger patterns |
 | Quality | [quality/rubric.md](quality/rubric.md) | Rubric, grade bands, scorecards, findings registry schema |

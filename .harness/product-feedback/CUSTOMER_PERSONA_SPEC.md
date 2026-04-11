@@ -51,11 +51,12 @@ A software developer who DJs as a serious hobby or semi-professionally and wants
 - **Configuration correctness.** If the tool documents that weights should sum to 1.0, they must actually sum to 1.0. Precision is expected.
 - **No data loss.** Audio files are irreplaceable purchased assets. The ingestion pipeline must never corrupt, overwrite, or lose files.
 - **Deterministic behavior.** Same inputs should produce same outputs. The user will test the tool against tracks they know well and verify that results match their intuition.
+- **Visible UI integrity.** For UI-heavy workflows like the set explorer, the user needs the live app to prove that expected elements render, stay mounted when they should, and avoid runtime console noise; mocked-only confidence is not enough.
 
 ## Main Workflow Goals
 
 1. **Weekly library maintenance:** Download 10–30 new tracks → metadata agent enrichment → MIK analysis → Rekordbox import → ingestion pipeline → feature extraction → library is ready
-2. **Set preparation:** Pick a starting track → find matches → follow transition chains (A→B→C via "Use as source") → build a named set → verify transitions → export to m3u8. *(Server-persisted set workspace shipped April 2026: PostgreSQL-backed sets with pool, tracklist, and visual explorer canvas. Per-track notes on tracklist entries for cue/mix reminders. Transition scoring, reorder, and m3u8 export. USB/Rekordbox handoff remains deferred.)*
+2. **Set preparation:** Pick a starting track → find matches → follow transition chains (A→B→C via "Use as source") → build a named set → verify transitions → export to m3u8. *(Server-persisted set workspace shipped April 2026: PostgreSQL-backed sets with pool, tracklist, and visual explorer canvas. Per-track notes on tracklist entries for cue/mix reminders. Transition scoring, reorder, and m3u8 export. Explorer verification now expects live DOM/render checks for canvas stability, not just unit coverage. USB/Rekordbox handoff remains deferred.)*
 3. **Weight experimentation:** Adjust scoring weights for different set styles (high-energy techno vs deep house vs eclectic) → see how results change → save preferred weight profiles. *(Fusion subweights now materially affect live scoring as of April 2026.)*
 4. **Collection audit:** Browse by key/BPM/genre to identify gaps ("I have nothing in 4A around 124 BPM") or oversaturation
 

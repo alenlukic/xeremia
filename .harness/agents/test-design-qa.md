@@ -65,21 +65,34 @@ Do not:
    - acceptance criteria
    - source artifact
 
-### Pass 2 — visual inspection
-1. Inspect the implemented UI for each item in the checklist.
-2. For each item, assess:
+### Pass 1.5 — ensure client is running
+Before visual inspection, confirm the client dev server is live:
+1. Check whether Vite is already running on port 5173 (inspect terminals or `lsof -ti:5173`).
+2. If not running, start it: `npm --prefix client run dev`.
+   - If the backend API is also needed, start the full stack: `bash src/scripts/start_web.sh`.
+3. Wait for the dev server to be ready before proceeding.
+
+### Pass 2 — visual inspection via Chrome DevTools MCP
+Use the `user-chrome-devtools` MCP server for all live DOM inspection:
+1. `navigate_page` to the relevant page (default: `http://localhost:5173`).
+2. `take_snapshot` to capture the a11y tree / DOM structure.
+3. For each item in the checklist, assess:
    - Does the implementation match the acceptance criteria exactly?
    - Are there partial implementations?
    - Are there regressions from the prior state?
-3. Use screenshots, browser inspection, or runtime observation as evidence.
-4. When verifying spacing, alignment, and sizing: measure or compare against specified values rather than eyeballing.
+4. Use `evaluate_script` to measure specific DOM properties — spacing, sizing, computed styles, class names, text content — rather than eyeballing.
+5. Use `take_screenshot` to capture visual evidence for key findings.
+6. Use `list_console_messages` with `types: ["error", "warn"]` to detect runtime issues.
+7. If DOM inspection reveals that any design requirement is not met, mark the item as FAIL or REGRESSED.
+8. DOM evidence must accompany every verdict — "looks fine" without DOM proof is not acceptable.
 
-### Pass 3 — interaction verification
+### Pass 3 — interaction verification via Chrome DevTools MCP
 For items involving interaction quality, states, or motion:
-1. Exercise the relevant interactions.
-2. Verify state treatments (hover, focus, active, disabled, loading, error, empty, success).
-3. Verify transition quality (smoothness, timing, continuity).
-4. Note any interaction dead ends or broken states.
+1. Use `click`, `hover`, `type_text`, `fill`, `press_key` via the `user-chrome-devtools` MCP server to exercise the relevant interactions.
+2. After each interaction, `take_snapshot` to verify DOM state transitions.
+3. Verify state treatments (hover, focus, active, disabled, loading, error, empty, success) by inspecting DOM attributes and classes.
+4. Use `evaluate_script` to check computed styles for transition/animation properties.
+5. Note any interaction dead ends or broken states with DOM evidence.
 
 ### Pass 4 — consistency check
 1. Verify that systemic pattern fixes were applied consistently across all specified surfaces, not just the most obvious instance.

@@ -161,6 +161,7 @@ export interface ExplorerNode {
   node_id: string;
   track_id: number;
   level: number;
+  col_index: number;
   track: Track | null;
 }
 

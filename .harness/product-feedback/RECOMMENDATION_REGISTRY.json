@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-04-10T03:45:00Z",
+  "updated_at": "2026-04-11T08:44:15Z",
   "next_id": 13,
   "items": [
     {
@@ -305,7 +305,8 @@
       "source_runs": [
         "20260409T091130Z-delivery-development-contract-source-inpu",
         "20260409T231234Z-delivery-development-contract-source-inpu",
-        "20260410T004356Z-delivery-development-contract-source-inpu"
+        "20260410T004356Z-delivery-development-contract-source-inpu",
+        "20260411T064618Z-delivery-add-col_index-to-setexplorernode"
       ],
       "priority": "P1",
       "type": "verification",
@@ -313,13 +314,14 @@
       "status": "promoted",
       "promotion_readiness": "promoted",
       "blocking": [],
-      "summary": "Finish the remaining high-risk explorer confidence work so the set workspace has regression proof for cleaned titles, modal labeling, swap and delete completion, sibling-add behavior, child-level arithmetic, and edge-score rendering instead of relying on partial UI-open tests.",
+      "summary": "Finish the remaining high-risk explorer confidence work so the set workspace has regression proof for cleaned titles, modal labeling, swap and delete completion, sibling-add behavior, child-level arithmetic, edge-score rendering, and live DOM-identity stability instead of relying on partial UI-open tests or unit coverage alone.",
       "acceptance_criteria": [
         "Explorer tests complete the swap flow, delete confirmation flow, and nonzero child-level arithmetic instead of only checking intermediate UI state.",
         "Sibling-add modal coverage exercises parent selection, search, selection routing, close/reset behavior, and the same cleaned-title presentation path used by the canvas.",
-        "Edge-score rendering is covered end to end, including fetch inputs, non-null labels, and the `-` fallback for null scores."
+        "Edge-score rendering is covered end to end, including fetch inputs, non-null labels, and the `-` fallback for null scores.",
+        "Live Chrome DevTools DOM verification confirms explorer nodes preserve DOM identity across add/delete flows instead of remounting the whole canvas."
       ],
-      "evidence_count": 3,
+      "evidence_count": 4,
       "related_findings": []
     },
     {
