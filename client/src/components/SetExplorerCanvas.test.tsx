@@ -888,24 +888,23 @@ describe('SetExplorerCanvas', () => {
   describe('C2: edge score styling and fixed-slot geometry', () => {
     const NODE_W = 360;
     const NODE_H = 48;
-    const V_GAP = 88;
+    const V_GAP = 176;
     const SLOT_W = 390;
     const TOP_PAD = 24 + 8;
     const EDGE_PAD = 40;
     const EDGE_SLOTS = 5;
-    const MAX_COLS = 5;
-    const TOTAL_LANES = EDGE_SLOTS * EDGE_SLOTS;
-    const LANE_PITCH = (MAX_COLS * SLOT_W) / TOTAL_LANES;
-    const STUB_H = 26;
+    const LANE_STUB = 10;
+    const LANE_S = 6;
+    const SLOT_STEP = 10;
+    const BUCKET_GAP = 8;
 
     function parentX(col: number) { return col * SLOT_W + (SLOT_W - NODE_W) / 2; }
     function parentCX(col: number) { return parentX(col) + NODE_W / 2; }
     function parentBottom(level: number) { return TOP_PAD + level * (NODE_H + V_GAP) + NODE_H; }
-    function slotX(nodeX: number, slotIdx: number) {
-      return nodeX + EDGE_PAD + (NODE_W - 2 * EDGE_PAD) * slotIdx / (EDGE_SLOTS - 1);
-    }
-    function laneX(parentColIdx: number, childColIdx: number) {
-      return LANE_PITCH * (parentColIdx * EDGE_SLOTS + childColIdx + 0.5);
+    function nodeSlotX25(nodeX: number, laneIndex: number) {
+      const bucket = Math.floor(laneIndex / EDGE_SLOTS);
+      const slot = laneIndex % EDGE_SLOTS;
+      return nodeX + EDGE_PAD + bucket * (EDGE_SLOTS * SLOT_STEP + BUCKET_GAP) + slot * SLOT_STEP;
     }
 
     it('edge color is derived from the child column index', async () => {
@@ -964,7 +963,7 @@ describe('SetExplorerCanvas', () => {
       expect(label.classList.contains('explorer-edge-label')).toBe(true);
     });
 
-    it('score label is positioned at midpoint of the lane segment', async () => {
+    it('score label is positioned at laneY of the horizontal segment', async () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -979,9 +978,9 @@ describe('SetExplorerCanvas', () => {
       const label = await screen.findByTestId('explorer-edge-label');
       const labelYVal = parseFloat(label.getAttribute('y')!);
       const pBottom = parentBottom(0);
-      const childTop = TOP_PAD + 1 * (NODE_H + V_GAP);
-      const midY = (pBottom + childTop) / 2;
-      expect(labelYVal).toBeCloseTo(midY, 0);
+      const laneIndex = 0 * EDGE_SLOTS + 0;
+      const expectedLaneY = pBottom + LANE_STUB + laneIndex * LANE_S;
+      expect(labelYVal).toBeCloseTo(expectedLaneY, 0);
     });
 
     it('score label uses textAnchor=end (left of edge)', async () => {
@@ -1020,8 +1019,9 @@ describe('SetExplorerCanvas', () => {
       const d2 = hitboxes[1].getAttribute('d')!;
       const startX1 = parseFloat(d1.split(' ')[1]);
       const startX2 = parseFloat(d2.split(' ')[1]);
-      expect(startX1).toBeCloseTo(slotX(parentX(0), 0), 1);
-      expect(startX2).toBeCloseTo(slotX(parentX(0), 1), 1);
+      // parent col 0 → child col 0: laneIndex=0; parent col 0 → child col 1: laneIndex=1
+      expect(startX1).toBeCloseTo(nodeSlotX25(parentX(0), 0), 1);
+      expect(startX2).toBeCloseTo(nodeSlotX25(parentX(0), 1), 1);
       expect(startX1).not.toBe(startX2);
     });
 
@@ -1043,8 +1043,9 @@ describe('SetExplorerCanvas', () => {
       const d2 = hitboxes[1].getAttribute('d')!;
       const startX1 = parseFloat(d1.split(' ')[1]);
       const startX2 = parseFloat(d2.split(' ')[1]);
-      expect(startX1).toBeCloseTo(slotX(parentX(0), 0), 1);
-      expect(startX2).toBeCloseTo(slotX(parentX(1), 1), 1);
+      // n1(col 0)→n3(col 0): laneIndex=0*5+0=0; n2(col 1)→n4(col 1): laneIndex=1*5+1=6
+      expect(startX1).toBeCloseTo(nodeSlotX25(parentX(0), 0), 1);
+      expect(startX2).toBeCloseTo(nodeSlotX25(parentX(1), 6), 1);
     });
 
     it('child entry uses slot-aligned position, not child center', () => {
@@ -1062,7 +1063,8 @@ describe('SetExplorerCanvas', () => {
       const parts = d.split(' ');
       const endX = parseFloat(parts[parts.length - 2]);
       const childNodeX = parentX(0);
-      const expectedEndX = slotX(childNodeX, 0);
+      // n1(col 0)→n2(col 0): laneIndex=0, endX = nodeSlotX25(childNodeX, 0)
+      const expectedEndX = nodeSlotX25(childNodeX, 0);
       expect(endX).toBeCloseTo(expectedEndX, 1);
     });
 
@@ -1092,6 +1094,68 @@ describe('SetExplorerCanvas', () => {
       const starts = hitboxes.map(h => parseFloat(h.getAttribute('d')!.split(' ')[1]));
       const uniqueStarts = new Set(starts.map(s => Math.round(s)));
       expect(uniqueStarts.size).toBe(5);
+    });
+
+    it('endX uses laneIndex = parentColIdx * 5 + childColIdx (25-slot system)', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
+      ];
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
+      ];
+      render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
+
+      const hitbox = screen.getByTestId('explorer-edge-hitbox');
+      const d = hitbox.getAttribute('d')!;
+      const parts = d.split(' ');
+      const endX = parseFloat(parts[10]);
+      const childNodeX = parentX(0);
+      // n2(col 1)→n3(col 0): laneIndex = 1*5+0 = 5
+      const expectedEndX = nodeSlotX25(childNodeX, 5);
+      expect(endX).toBeCloseTo(expectedEndX, 1);
+    });
+
+    it('laneY = parentBottom + LANE_STUB + laneIndex * LANE_S for a known edge', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
+        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1 }),
+      ];
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
+      ];
+      render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
+
+      const hitbox = screen.getByTestId('explorer-edge-hitbox');
+      const d = hitbox.getAttribute('d')!;
+      const parts = d.split(' ');
+      const laneYFromPath = parseFloat(parts[5]);
+      const parentColIdx = 1;
+      const childColIdx = 0;
+      const laneIndex = parentColIdx * EDGE_SLOTS + childColIdx;
+      const expectedLaneY = parentBottom(0) + LANE_STUB + laneIndex * LANE_S;
+      expect(laneYFromPath).toBeCloseTo(expectedLaneY, 1);
+    });
+
+    it('same-column parent and child produce startX == endX (straight vertical)', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
+      ];
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ];
+      render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
+
+      const hitbox = screen.getByTestId('explorer-edge-hitbox');
+      const d = hitbox.getAttribute('d')!;
+      const parts = d.split(' ');
+      const startX = parseFloat(parts[1]);
+      const endX = parseFloat(parts[10]);
+      expect(startX).toBe(endX);
     });
   });
 

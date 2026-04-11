@@ -2342,6 +2342,7 @@ body,
 
 .explorer-score-spinner circle {
   animation: edge-score-spin 1s linear infinite;
+  transform-box: fill-box;
   transform-origin: center;
 }
 

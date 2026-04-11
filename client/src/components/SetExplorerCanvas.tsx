@@ -52,7 +52,7 @@ interface LayoutNode {
 
 const NODE_W = 360;
 const NODE_H = 48;
-const V_GAP = 88;
+const V_GAP = 176;
 const MAX_COLS = 5;
 const SLOT_W = 390;
 const ACTION_H = 24;
@@ -64,17 +64,17 @@ const LEVEL_ADD_H = 28;
 const LEVEL_ADD_GAP = 16;
 const EDGE_SLOTS = 5;
 const EDGE_PAD = 40;
-const TOTAL_LANES = EDGE_SLOTS * EDGE_SLOTS; // 25
-const LANE_PITCH = (MAX_COLS * SLOT_W) / TOTAL_LANES; // 78px per lane
-const STUB_H = 26; // diagonal transition depth at parent exit and child entry
+const SLOT_STEP = 10;   // px between adjacent slots within a bucket
+const BUCKET_GAP = 8;   // extra px between bucket groups (visually separates parent clusters)
+const LANE_STUB = 10;
+const LANE_S = 6;
 
-function edgeSlotX(nodeX: number, slotIndex: number): number {
-  return nodeX + EDGE_PAD + (NODE_W - 2 * EDGE_PAD) * slotIndex / (EDGE_SLOTS - 1);
-}
-
-function edgeLaneX(parentColIdx: number, childColIdx: number): number {
-  const laneIndex = parentColIdx * EDGE_SLOTS + childColIdx;
-  return LANE_PITCH * (laneIndex + 0.5);
+// 25 node slots: 5 parent-column buckets × 5 child-column sub-slots each.
+// laneIndex = parentColIdx * EDGE_SLOTS + childColIdx → unique departure and arrival per edge.
+function nodeSlotX(nodeX: number, laneIndex: number): number {
+  const bucket = Math.floor(laneIndex / EDGE_SLOTS);
+  const slot = laneIndex % EDGE_SLOTS;
+  return nodeX + EDGE_PAD + bucket * (EDGE_SLOTS * SLOT_STEP + BUCKET_GAP) + slot * SLOT_STEP;
 }
 
 function truncateForSvg(text: string, max = 56): string {
@@ -584,24 +584,21 @@ export function SetExplorerCanvas({
               if (!parent || !child) return null;
               const parentBottom = parent.y + NODE_H;
               const childTop = child.y;
-              const midY = (parentBottom + childTop) / 2;
               const parentColIdx = columnIndices.get(edge.parent_node_id) ?? 0;
               const childColIdx = (columnIndices.get(edge.child_node_id) ?? 0) % EDGE_SLOTS;
               const strokeColor = edgeColorForColumn(childColIdx);
+              const laneIndex = parentColIdx * EDGE_SLOTS + childColIdx;
+              const startX = nodeSlotX(parent.x, laneIndex);
+              const endX = nodeSlotX(child.x, laneIndex);
+              const laneY = parentBottom + LANE_STUB + laneIndex * LANE_S;
 
-              const startX = edgeSlotX(parent.x, childColIdx);
-              const endX = edgeSlotX(child.x, childColIdx);
-              const laneX = edgeLaneX(parentColIdx, childColIdx);
-
-              // 25-lane diagonal routing: exit stub → diagonal to lane → vertical in lane → diagonal to child entry
-              // No horizontal segments: diagonals eliminate 0-degree overlaps between different edges
-              const pathD = `M ${startX} ${parentBottom} L ${laneX} ${parentBottom + STUB_H} L ${laneX} ${childTop - STUB_H} L ${endX} ${childTop}`;
+              const pathD = `M ${startX} ${parentBottom} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${childTop}`;
               const scoreKey = `${edge.parent_node_id}-${edge.child_node_id}`;
               const score = edgeScores.get(scoreKey);
-              const labelX = laneX - 8;
-              const labelY = midY;
+              const labelX = Math.min(startX, endX) - 8;
+              const labelY = laneY;
               const isSelected = selectedEdgeId === edge.id;
-              const edgeMidX = laneX;
+              const edgeMidX = (startX + endX) / 2;
               return (
                 <g key={`edge-${edge.id}`}>
                   <path
@@ -650,7 +647,7 @@ export function SetExplorerCanvas({
                   ) : null}
                   {isSelected && (
                     <g
-                      transform={`translate(${edgeMidX}, ${midY})`}
+                      transform={`translate(${edgeMidX}, ${laneY})`}
                       className="explorer-edge-delete"
                       onClick={e => { e.stopPropagation(); handleDeleteEdge(edge.id); }}
                       style={{ cursor: 'pointer' }}

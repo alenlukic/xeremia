@@ -474,5 +474,19 @@
     "build_status": "FAIL",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "UNKNOWN"
+  },
+  {
+    "run_id": "20260410T204841Z-delivery-fix-explorer-edge-routing-y-base",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\nFix the explorer edge-routing bug in `client/src/components/SetExplorerCanvas.tsx`\nby replacing the current X-based lane routing with the agreed Y-based",
+    "published_at": "2026-04-10T21:15:53.290604+00:00",
+    "path": ".harness/ledgers/20260410T204841Z-delivery-fix-explorer-edge-routing-y-base.md",
+    "files_changed": 2,
+    "eval_score": 91,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "NONE"
   }
 ]
