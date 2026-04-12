@@ -8,11 +8,6 @@ const CAMELOT_CODES = [
 
 const RANGE_DEBOUNCE_MS = 300;
 
-interface ColumnConfig {
-  id: string;
-  label: string;
-}
-
 interface Props {
   camelotCodes: string[];
   bpm: number | undefined;
@@ -23,9 +18,6 @@ interface Props {
   setBpmMin: (min: number | undefined) => void;
   setBpmMax: (max: number | undefined) => void;
   onClearFilters?: () => void;
-  configurableColumns?: ColumnConfig[];
-  columnVisibility?: Record<string, boolean>;
-  onToggleColumn?: (id: string) => void;
 }
 
 export function FilterBar({
@@ -38,14 +30,9 @@ export function FilterBar({
   setBpmMin,
   setBpmMax,
   onClearFilters,
-  configurableColumns,
-  columnVisibility,
-  onToggleColumn,
 }: Props) {
   const [camelotOpen, setCamelotOpen] = useState(false);
   const camelotRef = useRef<HTMLDivElement>(null);
-  const [colConfigOpen, setColConfigOpen] = useState(false);
-  const colConfigRef = useRef<HTMLDivElement>(null);
 
   const [bpmText, setBpmText] = useState(bpm != null ? String(bpm) : '');
   const bpmTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -80,24 +67,6 @@ export function FilterBar({
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [camelotOpen]);
-
-  useEffect(() => {
-    if (!colConfigOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (colConfigRef.current && !colConfigRef.current.contains(e.target as Node)) {
-        setColConfigOpen(false);
-      }
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setColConfigOpen(false);
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [colConfigOpen]);
 
   useEffect(() => {
     setBpmText(bpm != null ? String(bpm) : '');
@@ -193,7 +162,6 @@ export function FilterBar({
             <button className="clear-btn" onClick={() => setCamelotCodes([])} tabIndex={-1}>×</button>
           )}
         </div>
-        <label className="filter-label">Camelot</label>
         {camelotOpen && (
           <div className="camelot-grid">
             {CAMELOT_CODES.map((code) => (
@@ -219,7 +187,7 @@ export function FilterBar({
           <input
             type="number"
             className="filter-input mono"
-            placeholder="Exact"
+            placeholder="BPM"
             value={bpmText}
             onChange={handleBpmChange}
             onBlur={handleBpmBlur}
@@ -228,7 +196,6 @@ export function FilterBar({
             <button className="clear-btn" onClick={() => { clearTimeout(bpmTimer.current); setBpmText(''); setBpm(undefined); }} tabIndex={-1}>×</button>
           )}
         </div>
-        <label className="filter-label">BPM</label>
       </div>
 
       <div className="filter-group">
@@ -267,7 +234,6 @@ export function FilterBar({
             </button>
           )}
         </div>
-        <label className="filter-label">BPM Range</label>
       </div>
 
       {onClearFilters && (
@@ -283,32 +249,6 @@ export function FilterBar({
         >
           Clear Filters
         </button>
-      )}
-
-      {configurableColumns && configurableColumns.length > 0 && (
-        <div className="column-config-group" ref={colConfigRef}>
-          <button
-            className="column-config-btn"
-            onClick={() => setColConfigOpen(!colConfigOpen)}
-          >
-            Columns
-            <span className="caret">{colConfigOpen ? '▲' : '▼'}</span>
-          </button>
-          {colConfigOpen && (
-            <div className="column-config-popover">
-              {configurableColumns.map((col) => (
-                <label key={col.id} className="column-config-item">
-                  <input
-                    type="checkbox"
-                    checked={columnVisibility?.[col.id] !== false}
-                    onChange={() => onToggleColumn?.(col.id)}
-                  />
-                  {col.label}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
       )}
     </div>
   );

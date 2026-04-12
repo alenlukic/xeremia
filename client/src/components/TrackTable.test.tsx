@@ -50,11 +50,9 @@ type ROCallback = (entries: ResizeObserverEntry[]) => void;
 let roInstances: { cb: ROCallback; targets: Element[] }[] = [];
 
 class ResizeObserverMock {
-  private _cb: ROCallback;
   private _targets: Element[] = [];
 
   constructor(cb: ROCallback) {
-    this._cb = cb;
     roInstances.push({ cb, targets: this._targets });
   }
 

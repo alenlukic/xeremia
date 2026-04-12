@@ -11,13 +11,9 @@ interface Props {
   searchPadding?: { left: number; right: number } | null;
   onClearSelectedTrack?: () => void;
   searchText?: string;
-  onWeightsToggle?: () => void;
-  showWeights?: boolean;
-  onAdminToggle?: () => void;
-  showAdmin?: boolean;
 }
 
-export function SearchPanel({ selectedTrack, selectTrack, onSearchTextChange, searchPadding, onClearSelectedTrack, searchText, onWeightsToggle, showWeights, onAdminToggle, showAdmin }: Props) {
+export function SearchPanel({ selectedTrack, selectTrack, onSearchTextChange, searchPadding, onClearSelectedTrack, searchText }: Props) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -173,28 +169,6 @@ export function SearchPanel({ selectedTrack, selectTrack, onSearchTextChange, se
               </li>
             ))}
           </ul>
-        )}
-      </div>
-      <div className="search-actions">
-        {onWeightsToggle && (
-          <button
-            className={`search-weights-btn${showWeights ? ' search-weights-btn--active' : ''}`}
-            onClick={onWeightsToggle}
-            title="Weights"
-            aria-label="Toggle weights"
-          >
-            ⚖
-          </button>
-        )}
-        {onAdminToggle && (
-          <button
-            className={`dock-admin-btn${showAdmin ? ' dock-admin-btn--active' : ''}`}
-            onClick={onAdminToggle}
-            title="Admin Dashboard"
-            aria-label="Admin Dashboard"
-          >
-            ⚙
-          </button>
         )}
       </div>
     </div>

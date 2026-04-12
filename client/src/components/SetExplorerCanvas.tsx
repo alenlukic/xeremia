@@ -563,7 +563,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     return {
       allFlat: flat,
       totalWidth: Math.max(usedCols, MAX_COLS) * SLOT_W,
-      totalHeight: TOP_PAD + (maxLv + 2) * (NODE_H + V_GAP) + 40,
+      totalHeight: TOP_PAD + maxLv * (NODE_H + V_GAP) + NODE_H + 100,
       columnIndices: colIndices,
       byLevelMap: byLevel,
     };

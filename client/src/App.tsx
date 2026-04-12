@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, useDeferredValue } from 'react';
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, PointerSensor, useSensor, useSensors, MeasuringStrategy } from '@dnd-kit/core';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { SearchPanel } from './components/SearchPanel';
 import { FilterBar } from './components/FilterBar';
 import { TrackTable } from './components/TrackTable';
@@ -21,12 +22,12 @@ import type { DragPayload } from './dnd';
 import { MAX_COLS } from './dnd';
 
 const BROWSE_PAGE_SIZE = 250;
-const EMPTY_MODIFIERS: never[] = [];
+const SNAP_MODIFIERS = [snapCenterToCursor];
 
 const COL_VIS_STORAGE_KEY = 'dj-tools-browse-col-visibility';
 const PANEL_SPLIT_PREFIX = 'dj-tools-panel-split-';
 const POOL_EXPANDED_KEY = 'dj-tools-pool-expanded';
-const DEFAULT_PANEL_HEIGHT = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.66) : 350;
+const DEFAULT_PANEL_HEIGHT = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.51) : 350;
 
 const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'camelot_code', label: 'Camelot' },
@@ -101,13 +102,19 @@ export default function App() {
     explorer: loadPanelHeight('explorer'),
   });
 
-  const currentPanelHeight = activePanel ? panelHeights[activePanel] : DEFAULT_PANEL_HEIGHT;
+  const currentPanelHeight = activePanel ? panelHeights[activePanel] : panelHeights.matches;
 
   const handlePanelHeightChange = useCallback(
     (h: number) => {
-      if (!activePanel) return;
-      setPanelHeights((prev) => ({ ...prev, [activePanel]: h }));
-      savePanelHeight(activePanel, h);
+      if (activePanel) {
+        setPanelHeights((prev) => ({ ...prev, [activePanel]: h }));
+        savePanelHeight(activePanel, h);
+      } else {
+        setPanelHeights({ matches: h, set: h, explorer: h });
+        savePanelHeight('matches', h);
+        savePanelHeight('set', h);
+        savePanelHeight('explorer', h);
+      }
     },
     [activePanel],
   );
@@ -491,10 +498,6 @@ export default function App() {
               onSearchTextChange={setSearchText}
               onClearSelectedTrack={handleClearSelectedTrack}
               searchText={searchText}
-              onWeightsToggle={() => setShowWeights(prev => !prev)}
-              showWeights={showWeights}
-              onAdminToggle={() => setShowAdmin(prev => !prev)}
-              showAdmin={showAdmin}
             />
             <FilterBar
               camelotCodes={filters.camelotCodes}
@@ -505,9 +508,6 @@ export default function App() {
               setBpm={setBpm}
               setBpmMin={setBpmMin}
               setBpmMax={setBpmMax}
-              configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
-              columnVisibility={browseColumnVisibility}
-              onToggleColumn={toggleBrowseColumn}
               onClearFilters={handleClearFilters}
             />
           </div>
@@ -517,6 +517,25 @@ export default function App() {
               Failed to load track traits — {traitsError}
             </p>
           )}
+
+          <div className="gutter-actions">
+            <button
+              className={`search-weights-btn${showWeights ? ' search-weights-btn--active' : ''}`}
+              onClick={() => setShowWeights(prev => !prev)}
+              title="Weights"
+              aria-label="Toggle weights"
+            >
+              ⚖
+            </button>
+            <button
+              className={`dock-admin-btn${showAdmin ? ' dock-admin-btn--active' : ''}`}
+              onClick={() => setShowAdmin(prev => !prev)}
+              title="Admin Dashboard"
+              aria-label="Admin Dashboard"
+            >
+              ⚙
+            </button>
+          </div>
 
           <div className="table-panel">
             <TrackTable
@@ -528,8 +547,8 @@ export default function App() {
               onLoadMore={handleLoadMore}
               error={tracksError}
               columnVisibility={browseColumnVisibility}
-              onAddToPool={handleAddToPool}
-              onAddToTracklist={handleAddToTracklist}
+              configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
+              onToggleColumn={toggleBrowseColumn}
             />
           </div>
         </div>
@@ -592,8 +611,6 @@ export default function App() {
                   matchesError={matchesError}
                   onViewDetail={setDetailMatch}
                   onUseAsSource={handleUseAsSource}
-                  onAddToPool={handleAddToPool}
-                  onAddToTracklist={handleAddToTracklist}
                 />
               </div>
             )}
@@ -779,7 +796,7 @@ export default function App() {
         )}
       </div>
 
-      <DragOverlay dropAnimation={null} adjustScale={false} modifiers={EMPTY_MODIFIERS}>
+      <DragOverlay dropAnimation={null} adjustScale={false} modifiers={SNAP_MODIFIERS}>
         {dragItem && (
           <div className="dnd-drag-preview">
             {dragItem.title}

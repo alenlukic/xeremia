@@ -63,11 +63,10 @@ body,
 /* === Unified Controls Strip === */
 .controls-strip {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
 }
 
 /* === Persistent Search Bar === */
@@ -75,8 +74,8 @@ body,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px var(--content-gutter) 12px var(--content-gutter);
-  flex: 1 1 100%;
+  padding: 8px var(--content-gutter) 8px var(--content-gutter);
+  flex: 1 1 0%;
   min-width: 0;
   overflow: visible;
 }
@@ -283,17 +282,16 @@ body,
 /* === Filter Bar === */
 .filter-bar {
   display: flex;
-  gap: 20px;
-  align-items: flex-end;
-  padding: 8px var(--content-gutter) 8px var(--content-gutter);
-  flex: 1 1 100%;
+  gap: 12px;
+  align-items: center;
+  padding: 8px var(--content-gutter) 8px 0;
+  flex: 0 0 auto;
   min-width: 0;
-  flex-wrap: wrap;
 }
 
 .filter-group {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 4px;
   position: relative;
 }
@@ -308,7 +306,7 @@ body,
 
 .filter-input {
   width: 80px;
-  padding: 6px 10px;
+  padding: 10px 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -371,7 +369,7 @@ body,
 }
 
 .clear-filters-btn {
-  padding: 6px 14px;
+  padding: 10px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -380,7 +378,6 @@ body,
   cursor: pointer;
   white-space: nowrap;
   transition: color var(--transition), border-color var(--transition);
-  align-self: flex-end;
 }
 
 .clear-filters-btn:hover:not(:disabled) {
@@ -394,7 +391,7 @@ body,
 }
 
 .filter-camelot-toggle {
-  padding: 6px 12px;
+  padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1908,6 +1905,35 @@ body,
   align-items: center;
 }
 
+/* --- Column Chooser (header three-dot trigger) --- */
+.col-chooser-th {
+  position: relative;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.col-chooser-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.col-chooser-btn:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
 /* --- Column Configurator --- */
 .column-config-group {
   position: relative;
@@ -2580,6 +2606,19 @@ body,
   flex-direction: column;
   overflow: hidden;
   min-height: 200px;
+  position: relative;
+}
+
+/* === Gutter Action Stack === */
+.gutter-actions {
+  position: absolute;
+  right: var(--content-gutter);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 3;
 }
 
 /* === Dock Bar === */
@@ -2591,17 +2630,13 @@ body,
 
 .dock-resize-handle {
   height: 4px;
-  cursor: default;
+  cursor: ns-resize;
   background: var(--border);
   flex-shrink: 0;
   transition: background 150ms ease;
 }
 
-.dock-resize-handle--active {
-  cursor: ns-resize;
-}
-
-.dock-resize-handle--active:hover,
+.dock-resize-handle:hover,
 .dock-resize-handle--dragging {
   background: var(--accent);
 }

@@ -103,21 +103,18 @@ export function DockBar({
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
-      if (!activePanel) return;
       e.preventDefault();
       dragging.current = true;
       startY.current = e.clientY;
       startH.current = panelHeight;
       setIsResizing(true);
     },
-    [activePanel, panelHeight],
+    [panelHeight],
   );
 
   const handleResetSplit = useCallback(() => {
-    if (activePanel) {
-      onPanelHeightChange(defaultHeight);
-    }
-  }, [activePanel, defaultHeight, onPanelHeightChange]);
+    onPanelHeightChange(defaultHeight);
+  }, [defaultHeight, onPanelHeightChange]);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -146,7 +143,7 @@ export function DockBar({
   return (
     <div className="dock-bar-zone">
       <div
-        className={`dock-resize-handle${activePanel ? ' dock-resize-handle--active' : ''}${isResizing ? ' dock-resize-handle--dragging' : ''}`}
+        className={`dock-resize-handle dock-resize-handle--active${isResizing ? ' dock-resize-handle--dragging' : ''}`}
         onMouseDown={handleResizeStart}
         onDoubleClick={handleResetSplit}
         role="separator"

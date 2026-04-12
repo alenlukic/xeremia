@@ -3,6 +3,26 @@
   "description": "Outstanding contract index for durable development contracts",
   "contracts": [
     {
+      "id": "2026-04-12-top-workspace-layout-and-table-polish",
+      "path": ".harness/contracts/2026-04-12/DEVELOPMENT_CONTRACT_1.md",
+      "title": "Top Workspace Layout And Table Polish",
+      "status": "outstanding",
+      "intent": "delivery",
+      "driver": "design-driven",
+      "date": "2026-04-12",
+      "summary": "Increase anchor height, unify search and filters, clean up table controls, fix browse header alignment, and tighten Explorer canvas spacing."
+    },
+    {
+      "id": "2026-04-12-track-drag-preview-pointer-alignment",
+      "path": ".harness/contracts/2026-04-12/DEVELOPMENT_CONTRACT_2.md",
+      "title": "Track Drag Preview Pointer Alignment",
+      "status": "outstanding",
+      "intent": "delivery",
+      "driver": "technical-driven",
+      "date": "2026-04-12",
+      "summary": "Fix the virtualized track-row drag overlay so it stays anchored to the pointer without regressing drag performance or drop behavior."
+    },
+    {
       "id": "2026-04-09-set-building-expansion",
       "path": ".harness/contracts/2026-04-09/set-building-expansion.md",
       "title": "Set Building Expansion",

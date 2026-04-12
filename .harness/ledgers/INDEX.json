@@ -619,5 +619,47 @@
     "build_status": "PASS",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260412T032222Z-delivery-ui-polish-batch-anchor-height-re",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Run\n- Run ID: `20260412T032222Z-delivery-ui-polish-batch-anchor-height-re`\n- Contract: `.harness/contracts/2026-04-12/DEVELOPMENT_CONTRACT_1.md`\n- Mo",
+    "published_at": "2026-04-12T04:50:35.227873+00:00",
+    "path": ".harness/ledgers/20260412T032222Z-delivery-ui-polish-batch-anchor-height-re.md",
+    "files_changed": 15,
+    "eval_score": 85,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "PASS",
+    "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260412T050810Z-delivery-dnd-pointer-offset-fix-drag-prev",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Summary\nFix the browse-table drag preview pointer offset regression so the drag overlay stays centered on the pointer during row drags.\n\n## Requireme",
+    "published_at": "2026-04-12T05:33:17.143438+00:00",
+    "path": ".harness/ledgers/20260412T050810Z-delivery-dnd-pointer-offset-fix-drag-prev.md",
+    "files_changed": 0,
+    "eval_score": 48,
+    "eval_verdict": "FAIL",
+    "qa_verdict": "FAIL",
+    "build_status": "PASS_WITH_NOTES",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "MEDIUM"
+  },
+  {
+    "run_id": "20260412T053212Z-delivery-follow-on-diagnose-dnd-drop-path",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\nRun ID: `20260412T053212Z-delivery-follow-on-diagnose-dnd-drop-path`\n\n## Objective\n\nClose the follow-on DnD verification blocker without reopening the a",
+    "published_at": "2026-04-12T05:59:29.276160+00:00",
+    "path": ".harness/ledgers/20260412T053212Z-delivery-follow-on-diagnose-dnd-drop-path.md",
+    "files_changed": 0,
+    "eval_score": 59,
+    "eval_verdict": "FAIL",
+    "qa_verdict": "FAIL",
+    "build_status": "PASS_WITH_NOTES",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "LOW"
   }
 ]

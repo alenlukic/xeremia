@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import App from './App';
 import type { Track, TransitionMatch } from './types';
 import { useCollectionCache } from './hooks/useCollectionCache';
@@ -115,7 +118,7 @@ beforeEach(() => {
 });
 
 function getRowCount(): number {
-  return document.querySelectorAll('.track-table tbody tr').length;
+  return document.querySelectorAll('.track-table tbody tr:not(:has(.table-status))').length;
 }
 
 async function renderApp() {
@@ -270,7 +273,7 @@ describe('Browse infinite scroll', () => {
     });
     expect(getRowCount()).toBe(500);
 
-    const bpmInput = screen.getByPlaceholderText('Exact');
+    const bpmInput = screen.getByPlaceholderText('BPM');
     await userEvent.type(bpmInput, '120');
 
     await waitFor(() => {
@@ -475,7 +478,7 @@ describe('BPM exclusivity', () => {
     expect(minInput).toHaveValue(100);
     expect(maxInput).toHaveValue(140);
 
-    const exactInput = screen.getByPlaceholderText('Exact');
+    const exactInput = screen.getByPlaceholderText('BPM');
     await userEvent.type(exactInput, '120');
 
     await waitFor(() => {
@@ -487,7 +490,7 @@ describe('BPM exclusivity', () => {
   it('typing BPM range clears active exact BPM', async () => {
     await renderApp();
 
-    const exactInput = screen.getByPlaceholderText('Exact');
+    const exactInput = screen.getByPlaceholderText('BPM');
     await userEvent.type(exactInput, '120');
     expect(exactInput).toHaveValue(120);
 
@@ -502,7 +505,7 @@ describe('BPM exclusivity', () => {
   it('clearing exact BPM does not affect range fields', async () => {
     await renderApp();
 
-    const exactInput = screen.getByPlaceholderText('Exact');
+    const exactInput = screen.getByPlaceholderText('BPM');
     await userEvent.type(exactInput, '120');
     expect(exactInput).toHaveValue(120);
 
@@ -714,7 +717,7 @@ describe('Browse column visibility localStorage round-trip', () => {
     expect(headers()).not.toContain('BPM');
     expect(headers()).toContain('Title');
 
-    await user.click(screen.getByRole('button', { name: /Columns/ }));
+    await user.click(screen.getByRole('button', { name: /columns/i }));
     const bpmCheckbox = screen.getByLabelText('BPM') as HTMLInputElement;
     expect(bpmCheckbox.checked).toBe(false);
 
@@ -734,7 +737,7 @@ describe('Browse column visibility localStorage round-trip', () => {
 
     expect(headers()).toContain('BPM');
 
-    await user.click(screen.getByRole('button', { name: /Columns/ }));
+    await user.click(screen.getByRole('button', { name: /columns/i }));
     const restoredCheckbox = screen.getByLabelText('BPM') as HTMLInputElement;
     expect(restoredCheckbox.checked).toBe(true);
   });
@@ -812,34 +815,6 @@ describe('Set tab', () => {
     expect(setPanel.textContent).toMatch(/No sets yet/);
   });
 
-  it('renders dual add-to-pool/tracklist buttons in matches panel', async () => {
-    const httpMod = await import('./api/http');
-    const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
-
-    await act(async () => {
-      render(<App />);
-    });
-
-    await selectTrackViaBrowse('Track 1');
-
-    await waitFor(() => {
-      const poolBtns = screen.getAllByTitle('Add to Pool');
-      const tlBtns = screen.getAllByTitle('Add to Tracklist');
-      expect(poolBtns.length).toBeGreaterThan(0);
-      expect(tlBtns.length).toBeGreaterThan(0);
-    });
-  });
-
-  it('renders dual add buttons in track table', async () => {
-    render(<App />);
-    await act(async () => {});
-
-    const poolBtns = screen.getAllByTitle('Add to Pool');
-    const tlBtns = screen.getAllByTitle('Add to Tracklist');
-    expect(poolBtns.length).toBeGreaterThan(0);
-    expect(tlBtns.length).toBeGreaterThan(0);
-  });
 });
 
 describe('DockBar keyboard navigation', () => {
@@ -950,7 +925,7 @@ describe('Clear Filters with exact BPM', () => {
     const user = userEvent.setup();
     await renderApp();
 
-    const exactInput = screen.getByPlaceholderText('Exact');
+    const exactInput = screen.getByPlaceholderText('BPM');
     await user.type(exactInput, '128');
     await act(async () => { exactInput.blur(); });
     expect(exactInput).toHaveValue(128);
@@ -1217,5 +1192,22 @@ describe('Shell state model', () => {
       screen.getByRole('tab', { name: 'Set' }).click();
     });
     expect(panelZone.style.height).toBe('250px');
+  });
+});
+
+describe('DragOverlay snapCenterToCursor modifier guard', () => {
+  const appSrc = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), 'App.tsx'),
+    'utf-8',
+  );
+
+  it('fails if snapCenterToCursor is removed from the shared DragOverlay modifiers', () => {
+    expect(appSrc).toMatch(
+      /import\s*\{[^}]*snapCenterToCursor[^}]*\}\s*from\s+['"]@dnd-kit\/modifiers['"]/,
+    );
+
+    expect(appSrc).toMatch(/SNAP_MODIFIERS\s*=\s*\[.*snapCenterToCursor.*\]/);
+
+    expect(appSrc).toMatch(/<DragOverlay[\s\S]*?modifiers=\{SNAP_MODIFIERS\}/);
   });
 });
