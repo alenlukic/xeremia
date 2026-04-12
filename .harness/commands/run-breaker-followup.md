@@ -31,7 +31,7 @@ Optional:
 - if `auto_start_delivery=true`, run:
   - `python3 .harness/bin/pipeline.py start --mode delivery --task-file <run_dir>/BREAKER_FOLLOW_ON_CONTRACT.md --parent-run <run_id> --source-kind breaker_follow_on --source-artifact <run_dir>/BREAKER_REPORT.md`
 - record linkage with:
-  - `python3 .harness/bin/pipeline.py record-follow-on --run-dir <run_dir> --new-run-dir <new_run_dir> --reason breaker_follow_on --source-artifact <run_dir>/BREAKER_REPORT.md`
+  - `python3 .harness/bin/pipeline.py record-follow-on --from-run <run_dir> --to-run <new_run_dir> --reason "breaker_follow_on"`
 
 ## ACCEPTANCE
 

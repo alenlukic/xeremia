@@ -79,6 +79,23 @@ def slugify(text: str) -> str:
     return re.sub(r'[^a-zA-Z0-9._-]+', '-', text).strip('-').lower()[:80] or 'task'
 
 
+def resolve_run_dir(raw: str) -> pathlib.Path:
+    """Resolve a run directory argument to its canonical path under RUNS_DIR.
+
+    Accepts a full path, a relative path containing '.harness/runs', or a bare
+    run ID.  Falls back to RUNS_DIR / raw when the literal path doesn't exist.
+    """
+    p = pathlib.Path(raw)
+    if p.is_absolute() and p.exists():
+        return p
+    if p.exists():
+        return p.resolve()
+    candidate = RUNS_DIR / p.name
+    if candidate.exists():
+        return candidate
+    return RUNS_DIR / raw
+
+
 def run_shell(cmd: str) -> dict[str, Any]:
     proc = subprocess.run(cmd, shell=True, cwd=ROOT, text=True, capture_output=True)
     return {
@@ -789,12 +806,11 @@ def main() -> int:
         print(json.dumps(bad_state_scan(active=args.active), indent=2)); return 0
 
     if args.command in {'run','diff','validate','evaluate','prepare-retry','bad-state-check','context-manifest','publish-ledger','state-machine-check'}:
-        run_dir = pathlib.Path(args.run_dir)
+        run_dir = resolve_run_dir(args.run_dir)
         if not run_dir.exists():
             print(f'Run directory does not exist: {args.run_dir}', file=sys.stderr); return 1
 
     if args.command == 'run':
-        run_dir = pathlib.Path(args.run_dir)
         results = run_intent(config, args.intent)
         report_path = run_dir / 'TEST_REPORT.json'
         existing = read_json(report_path, {'commands': [], 'last_intent': None, 'applicable': True})
@@ -806,21 +822,21 @@ def main() -> int:
         capture_diff(run_dir)
         print(str(report_path)); return 0
     if args.command == 'diff':
-        capture_diff(pathlib.Path(args.run_dir)); print(str(pathlib.Path(args.run_dir) / 'PATCH.diff')); return 0
+        capture_diff(run_dir); print(str(run_dir / 'PATCH.diff')); return 0
     if args.command == 'validate':
-        print(json.dumps(validate_policy(pathlib.Path(args.run_dir), config), indent=2)); return 0
+        print(json.dumps(validate_policy(run_dir, config), indent=2)); return 0
     if args.command == 'evaluate':
-        print(json.dumps(evaluate(pathlib.Path(args.run_dir), config), indent=2)); return 0
+        print(json.dumps(evaluate(run_dir, config), indent=2)); return 0
     if args.command == 'prepare-retry':
-        print(json.dumps(prepare_retry(pathlib.Path(args.run_dir), config, args.reason), indent=2)); return 0
+        print(json.dumps(prepare_retry(run_dir, config, args.reason), indent=2)); return 0
     if args.command == 'bad-state-check':
-        print(json.dumps(bad_state_check(pathlib.Path(args.run_dir), config), indent=2)); return 0
+        print(json.dumps(bad_state_check(run_dir, config), indent=2)); return 0
     if args.command == 'context-manifest':
-        print(json.dumps(context_manifest(pathlib.Path(args.run_dir)), indent=2)); return 0
+        print(json.dumps(context_manifest(run_dir), indent=2)); return 0
     if args.command == 'publish-ledger':
-        print(json.dumps(publish_ledger(pathlib.Path(args.run_dir)), indent=2)); return 0
+        print(json.dumps(publish_ledger(run_dir), indent=2)); return 0
     if args.command == 'record-follow-on':
-        print(json.dumps(record_follow_on(pathlib.Path(args.from_run), pathlib.Path(args.to_run), args.reason), indent=2)); return 0
+        print(json.dumps(record_follow_on(resolve_run_dir(args.from_run), resolve_run_dir(args.to_run), args.reason), indent=2)); return 0
     if args.command == 'contract-add':
         print(json.dumps(contract_index_add(args.name, args.path, args.description, args.status), indent=2)); return 0
     if args.command == 'contract-update':
@@ -828,7 +844,7 @@ def main() -> int:
     if args.command == 'rebuild-contract-index':
         print(json.dumps(rebuild_contract_index(), indent=2)); return 0
     if args.command == 'state-machine-check':
-        print(json.dumps(state_machine_check(pathlib.Path(args.run_dir)), indent=2)); return 0
+        print(json.dumps(state_machine_check(run_dir), indent=2)); return 0
     return 1
 
 
