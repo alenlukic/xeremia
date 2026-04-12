@@ -63,9 +63,34 @@ def _get_session():
 def _get_match_finder():
     global _match_finder
     if _match_finder is None:
-        from src.harmonic_mixing.cosine_cache import CosineCache
+        from src.harmonic_mixing.cosine_cache import CosineCache, TransitionScoreCache
         from src.harmonic_mixing.transition_match_finder import TransitionMatchFinder
-        _match_finder = TransitionMatchFinder(cosine_cache=CosineCache())
+
+        cosine_cache = CosineCache()
+        ts_cache = TransitionScoreCache()
+        finder = TransitionMatchFinder(
+            cosine_cache=cosine_cache,
+            transition_score_cache=ts_cache,
+        )
+
+        def _warm_transition_scores(track_id: int) -> None:
+            from src.models.track import Track
+            session = _get_session()
+            try:
+                track = session.query(Track).filter_by(id=track_id).first()
+                if track is not None:
+                    finder.get_transition_matches(track)
+            except Exception:
+                logger.debug(
+                    "Transition score warm-path failed for track %s",
+                    track_id,
+                    exc_info=True,
+                )
+            finally:
+                session.close()
+
+        cosine_cache._on_warmup_complete = _warm_transition_scores
+        _match_finder = finder
     return _match_finder
 
 
@@ -261,6 +286,12 @@ def api_match_detail(track_id: int, candidate_id: int):
 def api_cache_stats():
     finder = _get_match_finder()
     cache = finder.cosine_cache
+
+    ts_cache = finder.transition_score_cache
+    ts_stats = None
+    if ts_cache is not None:
+        ts_stats = ts_cache.get_stats()
+
     if cache is None:
         return CacheStatsResponse(
             used=0, capacity=0, usage_ratio=0.0,
@@ -269,6 +300,7 @@ def api_cache_stats():
             hit_rate_basis="process_lifetime",
             key_distribution=[], bpm_distribution=[],
             recent_entries=[], recent_exits=[],
+            transition_score_cache=ts_stats,
         )
 
     stats = cache.get_stats()
@@ -289,6 +321,7 @@ def api_cache_stats():
              "reason": e.get("reason")}
             for e in stats["recent_exits"]
         ],
+        transition_score_cache=ts_stats,
     )
 
 
@@ -384,6 +417,8 @@ def api_update_weights(body: WeightUpdateRequest):
     finder._sync_effective_weights()
     if finder.cosine_cache is not None:
         finder.cosine_cache.clear()
+    if finder.transition_score_cache is not None:
+        finder.transition_score_cache.clear()
     _clear_similarity_cache()
     return result
 
@@ -401,10 +436,23 @@ def api_transition_scores(body: TransitionScoreRequest):
     session = _get_session()
     try:
         finder = _get_match_finder()
+        ts_cache = finder.transition_score_cache
 
-        source_ids = {p[0] for p in body.pairs if len(p) == 2}
+        cached_scores: dict = {}
+        uncached_sources: set = set()
+        for pair in body.pairs:
+            if len(pair) != 2:
+                continue
+            sid, cid = pair
+            if ts_cache is not None:
+                score = ts_cache.get(sid, cid)
+                if score is not None:
+                    cached_scores.setdefault(sid, {})[cid] = score
+                    continue
+            uncached_sources.add(sid)
+
         match_cache: dict = {}
-        for sid in source_ids:
+        for sid in uncached_sources:
             source = session.query(Track).filter_by(id=sid).first()
             if source is None:
                 continue
@@ -425,8 +473,10 @@ def api_transition_scores(body: TransitionScoreRequest):
                 results.append(None)
                 continue
             sid, cid = pair
-            source_scores = match_cache.get(sid, {})
-            results.append(source_scores.get(cid))
+            score = cached_scores.get(sid, {}).get(cid)
+            if score is None:
+                score = match_cache.get(sid, {}).get(cid)
+            results.append(score)
 
         return {"scores": results}
     except HTTPException:
@@ -1009,9 +1059,23 @@ def api_explorer_edge_scores(set_id: int, body: ExplorerEdgeScoreRequest):
     session = _get_session()
     try:
         finder = _get_match_finder()
-        source_ids = {p[0] for p in body.pairs if len(p) == 2}
+        ts_cache = finder.transition_score_cache
+
+        cached_scores: dict = {}
+        uncached_sources: set = set()
+        for pair in body.pairs:
+            if len(pair) != 2:
+                continue
+            sid, cid = pair
+            if ts_cache is not None:
+                score = ts_cache.get(sid, cid)
+                if score is not None:
+                    cached_scores.setdefault(sid, {})[cid] = score
+                    continue
+            uncached_sources.add(sid)
+
         match_cache: dict = {}
-        for sid in source_ids:
+        for sid in uncached_sources:
             source = session.query(Track).filter_by(id=sid).first()
             if source is None:
                 continue
@@ -1032,8 +1096,10 @@ def api_explorer_edge_scores(set_id: int, body: ExplorerEdgeScoreRequest):
                 results.append(None)
                 continue
             sid, cid = pair
-            source_scores = match_cache.get(sid, {})
-            results.append(source_scores.get(cid))
+            score = cached_scores.get(sid, {}).get(cid)
+            if score is None:
+                score = match_cache.get(sid, {}).get(cid)
+            results.append(score)
 
         return {"scores": results}
     except HTTPException:

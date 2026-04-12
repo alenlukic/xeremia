@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import type { PoolEntry } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: Props) {
+  const { setNodeRef: setPoolDropRef, isOver: isPoolOver } = useDroppable({ id: 'drop-pool' });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
@@ -68,7 +70,7 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: 
   };
 
   return (
-    <div className="set-pool">
+    <div ref={setPoolDropRef} className={`set-pool${isPoolOver ? ' drop-zone--active' : ''}`}>
       <div className="set-pool-header">
         <h3 className="set-section-title">Pool ({pool.length})</h3>
         <div className="set-pool-search-wrapper">

@@ -41,6 +41,10 @@ Optional:
      - `take_snapshot` to confirm the page renders a valid DOM tree
      - `list_console_messages` with `types: ["error"]` to detect runtime errors
      - `evaluate_script` to spot-check that key UI elements from the patch exist in the DOM
+   - when all Chrome DevTools checks are complete, clean up browser resources:
+     - call `list_pages` to enumerate all open pages
+     - call `close_page` for each page opened during this session
+     - if only one page remains (it cannot be closed), navigate it to `about:blank` to release DOM memory
    3.3 If the DOM fails to render, shows runtime errors, or key elements are missing, the build status MUST be FAIL
 4. Decide whether build status is:
    - PASS

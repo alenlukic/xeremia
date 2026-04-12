@@ -9,9 +9,13 @@ import {
   type ColumnOrderState,
   type SortingState,
   type Updater,
+  type Row,
 } from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useDraggable } from '@dnd-kit/core';
 import type { Track, SearchSuggestion } from '../types';
 import { formatFloat, formatBpm, displayGenre } from '../utils';
+import type { DragPayload } from '../dnd';
 
 const col = createColumnHelper<Track>();
 
@@ -20,6 +24,7 @@ const FIXED_COUNT = 4;
 const FLEX_MINS = [280, 100, 100];
 const TOTAL_FLEX = FLEX_MINS.reduce((a, b) => a + b, 0);
 const TOTAL_FIXED = FIXED_COUNT * FIXED_PX;
+const DRAG_HANDLE_WIDTH = 24;
 
 function computeColWidths(container: number): number[] {
   if (container <= 0) {
@@ -94,13 +99,83 @@ interface Props {
   onAddToTracklist?: (trackId: number) => void;
 }
 
+function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth, measureRef, virtualIndex }: {
+  row: Row<Track>;
+  isSelected: boolean;
+  onSelect: (track: Track) => void;
+  virtualTop?: number;
+  totalWidth?: number;
+  measureRef?: (node: HTMLElement | null) => void;
+  virtualIndex?: number;
+}) {
+  const payload: DragPayload = {
+    trackId: row.original.id,
+    title: row.original.title,
+    source: 'browse',
+  };
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: `browse-track-${row.original.id}`,
+    data: payload,
+    attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
+  });
+
+  const combinedRef = useCallback((node: HTMLElement | null) => {
+    setNodeRef(node);
+    measureRef?.(node);
+  }, [setNodeRef, measureRef]);
+
+  const rowListeners = useMemo(() => {
+    if (!listeners) return {};
+    const { onPointerDown, ...rest } = listeners as Record<string, unknown>;
+    return {
+      ...rest,
+      onPointerDown: (e: React.PointerEvent) => {
+        if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        (onPointerDown as (e: React.PointerEvent) => void)?.(e);
+      },
+    };
+  }, [listeners]);
+
+  const isVirtual = virtualTop !== undefined;
+  const style: React.CSSProperties = isVirtual
+    ? {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: totalWidth,
+        transform: `translateY(${virtualTop}px)`,
+        display: 'table-row',
+        cursor: isDragging ? 'grabbing' : 'grab',
+      }
+    : { cursor: isDragging ? 'grabbing' : 'grab' };
+
+  return (
+    <tr
+      ref={combinedRef}
+      data-index={virtualIndex}
+      className={`${isSelected ? 'row-selected' : ''}${isDragging ? ' row-dragging' : ''}`}
+      style={style}
+      onClick={() => onSelect(row.original)}
+      {...rowListeners}
+    >
+      <td className="drag-handle-cell"><span className="drag-handle" aria-hidden="true">⠿</span></td>
+      {row.getVisibleCells().map((cell) => (
+        <td key={cell.id}>
+          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        </td>
+      ))}
+    </tr>
+  );
+}
+
 export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, onAddToPool, onAddToTracklist }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const [containerWidth, setContainerWidth] = useState(0);
+  const [scrollbarGap, setScrollbarGap] = useState(0);
+  const [wrapperScrollWidth, setWrapperScrollWidth] = useState(0);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([
     ...COLUMN_IDS.slice(0, 4), 'add_to_set', ...COLUMN_IDS.slice(4),
@@ -119,6 +194,19 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     measure(parent);
     const ro = new ResizeObserver(() => measure(parent));
     ro.observe(parent);
+    return () => ro.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    const w = wrapperRef.current;
+    if (!w) return;
+    const measure = () => {
+      setScrollbarGap(w.offsetWidth - w.clientWidth);
+      setWrapperScrollWidth(w.scrollWidth);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(w);
     return () => ro.disconnect();
   }, []);
 
@@ -199,17 +287,28 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     getSortedRowModel: getSortedRowModel(),
   });
 
-  const totalWidth = table.getTotalSize();
+  const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH;
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth;
+
+  useLayoutEffect(() => {
+    const w = wrapperRef.current;
+    if (w) setWrapperScrollWidth(w.scrollWidth);
+  }, [totalWidth]);
 
   const handleTopScroll = useCallback(() => {
     if (ignoreNextScroll.current === 'top') {
       ignoreNextScroll.current = null;
       return;
     }
-    if (wrapperRef.current && topScrollRef.current) {
-      ignoreNextScroll.current = 'wrapper';
-      wrapperRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    const w = wrapperRef.current;
+    const t = topScrollRef.current;
+    if (w && t) {
+      const maxW = Math.max(0, w.scrollWidth - w.clientWidth);
+      const sl = Math.min(t.scrollLeft, maxW);
+      if (w.scrollLeft !== sl) {
+        ignoreNextScroll.current = 'wrapper';
+        w.scrollLeft = sl;
+      }
     }
   }, []);
 
@@ -218,9 +317,15 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
       ignoreNextScroll.current = null;
       return;
     }
-    if (topScrollRef.current && wrapperRef.current) {
-      ignoreNextScroll.current = 'top';
-      topScrollRef.current.scrollLeft = wrapperRef.current.scrollLeft;
+    const t = topScrollRef.current;
+    const w = wrapperRef.current;
+    if (t && w) {
+      const maxT = Math.max(0, t.scrollWidth - t.clientWidth);
+      const sl = Math.min(w.scrollLeft, maxT);
+      if (t.scrollLeft !== sl) {
+        ignoreNextScroll.current = 'top';
+        t.scrollLeft = sl;
+      }
     }
   }, []);
 
@@ -258,27 +363,43 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     setDraggedColumn(null);
   }, []);
 
+  const rows = table.getRowModel().rows;
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => wrapperRef.current,
+    estimateSize: () => 40,
+    overscan: 5,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
+  const loadMoreFiredForCount = useRef<number | null>(null);
+
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || !hasMore || !onLoadMore) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) onLoadMore();
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, onLoadMore, tracks.length]);
+    if (!hasMore || !onLoadMore) return;
+    const range = rowVirtualizer.range;
+    if (!range) return;
+    const nearEnd = range.endIndex >= rows.length - 5;
+    if (nearEnd) {
+      if (loadMoreFiredForCount.current === rows.length) return;
+      loadMoreFiredForCount.current = rows.length;
+      onLoadMore();
+    } else {
+      loadMoreFiredForCount.current = null;
+    }
+  }, [rowVirtualizer.range, rows.length, hasMore, onLoadMore]);
 
   return (
     <div className="track-table-outer" ref={outerRef}>
       {isOverflowing && (
         <div className="track-table-top-scrollbar" ref={topScrollRef} onScroll={handleTopScroll}>
-          <div style={{ width: totalWidth, height: 1 }} />
+          <div style={{ width: (wrapperScrollWidth || totalWidth) + scrollbarGap, height: 1 }} />
         </div>
       )}
       <div
         className="track-table-wrapper"
         ref={wrapperRef}
-        onScroll={isOverflowing ? handleWrapperScroll : undefined}
+        onScroll={handleWrapperScroll}
       >
         <table
           className="track-table"
@@ -287,6 +408,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
+                <th className="drag-handle-cell" style={{ width: 24 }} />
                 {hg.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sorted = header.column.getIsSorted();
@@ -325,50 +447,53 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
               </tr>
             ))}
           </thead>
-          <tbody>
+          <tbody style={virtualItems.length > 0 ? { height: rowVirtualizer.getTotalSize(), position: 'relative' } : undefined}>
             {loading ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length} className="table-status">
+                <td colSpan={table.getVisibleLeafColumns().length + 1} className="table-status">
                   Loading tracks…
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length} className="table-status table-status--error">
+                <td colSpan={table.getVisibleLeafColumns().length + 1} className="table-status table-status--error">
                   Failed to load tracks — {error}
                 </td>
               </tr>
             ) : tracks.length === 0 ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length} className="table-status">
+                <td colSpan={table.getVisibleLeafColumns().length + 1} className="table-status">
                   No tracks found
                 </td>
               </tr>
-            ) : (
-              table.getRowModel().rows.map((row) => {
-                const isSelected = selectedTrack?.id === row.original.id;
+            ) : virtualItems.length > 0 ? (
+              virtualItems.map((virtualRow) => {
+                const row = rows[virtualRow.index];
                 return (
-                  <tr
+                  <DraggableBrowseRow
                     key={row.id}
-                    className={isSelected ? 'row-selected' : ''}
-                    onClick={() => selectTrack(row.original)}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
+                    row={row}
+                    isSelected={selectedTrack?.id === row.original.id}
+                    onSelect={selectTrack}
+                    virtualTop={virtualRow.start}
+                    totalWidth={totalWidth}
+                    measureRef={rowVirtualizer.measureElement}
+                    virtualIndex={virtualRow.index}
+                  />
                 );
               })
+            ) : (
+              rows.map((row) => (
+                <DraggableBrowseRow
+                  key={row.id}
+                  row={row}
+                  isSelected={selectedTrack?.id === row.original.id}
+                  onSelect={selectTrack}
+                />
+              ))
             )}
           </tbody>
         </table>
-        {hasMore && (
-          <div ref={sentinelRef} className="scroll-sentinel">
-            Loading more tracks…
-          </div>
-        )}
       </div>
     </div>
   );

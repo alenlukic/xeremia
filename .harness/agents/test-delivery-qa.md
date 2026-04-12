@@ -116,6 +116,12 @@ For each UI requirement in the task, verify via DOM inspection:
 - record all DOM inspection evidence in the Manual Validation section of the QA report
 - include specific DOM queries used and their results as evidence
 
+3.4.5 Close Chrome pages after DOM verification
+- call `list_pages` to enumerate all open pages
+- call `close_page` for each page opened during this verification session
+- if only one page remains (it cannot be closed), navigate it to `about:blank` to release DOM memory
+- perform this cleanup regardless of whether the DOM verdict is PASS or FAIL
+
 3.5 Validate system state (if applicable)
 - inspect relevant system state to confirm correctness:
   - database records

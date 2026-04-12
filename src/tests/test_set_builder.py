@@ -34,6 +34,7 @@ def weight_patches():
 def mock_finder():
     finder = MagicMock()
     finder.cosine_cache = None
+    finder.transition_score_cache = None
     finder._sync_effective_weights = MagicMock()
     return finder
 

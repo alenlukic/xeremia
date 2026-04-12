@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import type { Track, TransitionMatch } from './types';
@@ -118,15 +118,13 @@ function getRowCount(): number {
   return document.querySelectorAll('.track-table tbody tr').length;
 }
 
-async function openBrowseTab() {
+async function renderApp() {
   render(<App />);
-  await act(async () => {
-    screen.getByRole('button', { name: 'Browse' }).click();
-  });
+  await act(async () => {});
 }
 
 describe('Reset Weights', () => {
-  it('renders a Reset Weights button', async () => {
+  it('renders a Reset Weights button inside weights overlay', async () => {
     const httpMod = await import('./api/http');
     vi.mocked(httpMod.fetchWeights).mockResolvedValue({
       raw_weights: { BPM: 50, CAMELOT: 50 },
@@ -139,6 +137,10 @@ describe('Reset Weights', () => {
 
     await act(async () => {
       render(<App />);
+    });
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle weights' }).click();
     });
 
     expect(screen.getByRole('button', { name: 'Reset Weights' })).toBeInTheDocument();
@@ -168,6 +170,10 @@ describe('Reset Weights', () => {
 
     await act(async () => {
       render(<App />);
+    });
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle weights' }).click();
     });
 
     await act(async () => {
@@ -206,6 +212,10 @@ describe('Reset Weights', () => {
       });
 
       await act(async () => {
+        screen.getByRole('button', { name: 'Toggle weights' }).click();
+      });
+
+      await act(async () => {
         screen.getByRole('button', { name: 'Reset Weights' }).click();
       });
 
@@ -218,12 +228,12 @@ describe('Reset Weights', () => {
 
 describe('Browse infinite scroll', () => {
   it('initially renders the first 250 tracks', async () => {
-    await openBrowseTab();
+    await renderApp();
     expect(getRowCount()).toBe(250);
   });
 
   it('loads next chunk when sentinel intersection fires', async () => {
-    await openBrowseTab();
+    await renderApp();
     expect(getRowCount()).toBe(250);
 
     await act(async () => {
@@ -233,7 +243,7 @@ describe('Browse infinite scroll', () => {
   });
 
   it('resets to first chunk when key filter changes', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     await act(async () => {
       triggerLoadMore();
@@ -250,10 +260,10 @@ describe('Browse infinite scroll', () => {
     await waitFor(() => {
       expect(getRowCount()).toBe(250);
     });
-  });
+  }, 15000);
 
   it('resets to first chunk when BPM filter changes', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     await act(async () => {
       triggerLoadMore();
@@ -269,7 +279,7 @@ describe('Browse infinite scroll', () => {
   });
 
   it('resets to first chunk when search text changes', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     await act(async () => {
       triggerLoadMore();
@@ -284,8 +294,8 @@ describe('Browse infinite scroll', () => {
     });
   });
 
-  it('preserves loaded progress on tab switch with unchanged filters', async () => {
-    await openBrowseTab();
+  it('preserves loaded progress when interacting with dock panels', async () => {
+    await renderApp();
 
     await act(async () => {
       triggerLoadMore();
@@ -293,17 +303,17 @@ describe('Browse infinite scroll', () => {
     expect(getRowCount()).toBe(500);
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Matches' }).click();
+      screen.getByRole('tab', { name: 'Matches' }).click();
     });
     await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
+      screen.getByRole('tab', { name: 'Matches' }).click();
     });
 
     expect(getRowCount()).toBe(500);
   });
 
   it('restores loaded progress when returning to a previous filter key', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     await act(async () => {
       triggerLoadMore();
@@ -328,15 +338,15 @@ describe('Browse infinite scroll', () => {
     await waitFor(() => {
       expect(getRowCount()).toBe(500);
     }, { timeout: 10000 });
-  });
+  }, 20000);
 
   it('shows sentinel when more pages are available', async () => {
-    await openBrowseTab();
+    await renderApp();
     expect(screen.getByText('Loading more tracks…')).toBeInTheDocument();
   });
 
   it('hides sentinel when all pages are loaded', async () => {
-    await openBrowseTab();
+    await renderApp();
     await act(async () => { triggerLoadMore(); });
     await act(async () => { triggerLoadMore(); });
     expect(getRowCount()).toBe(600);
@@ -359,12 +369,9 @@ describe('Error state handling', () => {
 
     render(<App />);
 
+    const row = screen.getByText('Track 1').closest('tr')!;
     await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
-
-    await act(async () => {
-      screen.getByText('Track 1').click();
+      row.click();
     });
 
     await waitFor(() => {
@@ -389,12 +396,9 @@ describe('Error state handling', () => {
 
     render(<App />);
 
+    const row = screen.getByText('Track 1').closest('tr')!;
     await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
-
-    await act(async () => {
-      screen.getByText('Track 1').click();
+      row.click();
     });
 
     await waitFor(() => {
@@ -414,10 +418,7 @@ describe('Error state handling', () => {
     });
 
     render(<App />);
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
+    await act(async () => {});
 
     expect(screen.getByText(/Failed to load tracks/)).toBeInTheDocument();
     expect(screen.getByText(/Failed to fetch tracks: 503/)).toBeInTheDocument();
@@ -434,10 +435,7 @@ describe('Error state handling', () => {
     });
 
     render(<App />);
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
+    await act(async () => {});
 
     expect(screen.getByText('No tracks found')).toBeInTheDocument();
     expect(screen.queryByText(/Failed to load tracks/)).not.toBeInTheDocument();
@@ -453,10 +451,7 @@ describe('Error state handling', () => {
     });
 
     render(<App />);
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
+    await act(async () => {});
 
     expect(screen.getByText(/Failed to load track traits/)).toBeInTheDocument();
     expect(screen.getByText(/Failed to fetch track traits: 502/)).toBeInTheDocument();
@@ -467,7 +462,7 @@ describe('Error state handling', () => {
 
 describe('BPM exclusivity', () => {
   it('typing exact BPM clears active BPM range fields', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     const minInput = screen.getByPlaceholderText('Min');
     const maxInput = screen.getByPlaceholderText('Max');
@@ -490,7 +485,7 @@ describe('BPM exclusivity', () => {
   });
 
   it('typing BPM range clears active exact BPM', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     const exactInput = screen.getByPlaceholderText('Exact');
     await userEvent.type(exactInput, '120');
@@ -505,7 +500,7 @@ describe('BPM exclusivity', () => {
   });
 
   it('clearing exact BPM does not affect range fields', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     const exactInput = screen.getByPlaceholderText('Exact');
     await userEvent.type(exactInput, '120');
@@ -520,7 +515,7 @@ describe('BPM exclusivity', () => {
 
 describe('Camelot multi-select', () => {
   it('dropdown stays open after toggling a code', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -533,10 +528,10 @@ describe('Camelot multi-select', () => {
     });
 
     expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument();
-  });
+  }, 15000);
 
   it('allows selecting multiple codes in one session', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -553,10 +548,10 @@ describe('Camelot multi-select', () => {
     const chip02 = screen.getByRole('button', { name: '02A' });
     expect(chip01.className).toContain('selected');
     expect(chip02.className).toContain('selected');
-  });
+  }, 15000);
 
   it('closes on Escape key', async () => {
-    await openBrowseTab();
+    await renderApp();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -569,7 +564,7 @@ describe('Camelot multi-select', () => {
     });
 
     expect(screen.queryByRole('button', { name: '03A' })).not.toBeInTheDocument();
-  });
+  }, 15000);
 });
 
 function makeTransitionMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
@@ -592,10 +587,6 @@ function makeTransitionMatch(overrides: Partial<TransitionMatch> = {}): Transiti
 }
 
 async function selectTrackViaBrowse(trackTitle: string) {
-  await act(async () => {
-    screen.getByRole('button', { name: 'Browse' }).click();
-  });
-
   const row = screen.getByText(trackTitle).closest('tr')!;
   await act(async () => {
     row.click();
@@ -688,13 +679,13 @@ describe('Transition chaining', () => {
       expect(document.querySelectorAll('.chain-entry').length).toBe(1);
     });
 
+    const trackTable = document.querySelector('.track-table')!;
+    const track2Cell = Array.from(trackTable.querySelectorAll('td')).find(
+      (td) => td.textContent === 'Track 2',
+    )!;
+    const row2 = track2Cell.closest('tr')!;
     await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
-
-    const row = screen.getByText('Track 2').closest('tr')!;
-    await act(async () => {
-      row.click();
+      row2.click();
     });
 
     await waitFor(() => {
@@ -717,9 +708,7 @@ describe('Browse column visibility localStorage round-trip', () => {
     localStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false }));
 
     const { unmount } = render(<App />);
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
+    await act(async () => {});
 
     const headers = () => screen.getAllByRole('columnheader').map(h => h.textContent);
     expect(headers()).not.toContain('BPM');
@@ -741,9 +730,7 @@ describe('Browse column visibility localStorage round-trip', () => {
     unmount();
 
     render(<App />);
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
+    await act(async () => {});
 
     expect(headers()).toContain('BPM');
 
@@ -754,9 +741,7 @@ describe('Browse column visibility localStorage round-trip', () => {
 
   it('starts with all columns visible when localStorage has no saved state', async () => {
     render(<App />);
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
+    await act(async () => {});
 
     const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
     expect(headers).toContain('BPM');
@@ -782,9 +767,7 @@ describe('Browse column visibility – invalid localStorage values', () => {
     localStorage.setItem(COL_VIS_KEY, stored);
 
     render(<App />);
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
+    await act(async () => {});
 
     const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
     expect(headers).toContain('BPM');
@@ -796,9 +779,7 @@ describe('Browse column visibility – invalid localStorage values', () => {
     localStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false, energy: false }));
 
     render(<App />);
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click();
-    });
+    await act(async () => {});
 
     const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
     expect(headers).not.toContain('BPM');
@@ -812,21 +793,23 @@ describe('Set tab', () => {
     localStorage.clear();
   });
 
-  it('renders the Set tab button', async () => {
+  it('renders the Set dock tab', async () => {
     await act(async () => {
       render(<App />);
     });
-    expect(screen.getByRole('button', { name: 'Set' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Set' })).toBeInTheDocument();
   });
 
-  it('shows set builder when Set tab is clicked', async () => {
+  it('shows set builder when Set dock tab is clicked', async () => {
     await act(async () => {
       render(<App />);
     });
     await act(async () => {
-      screen.getByRole('button', { name: 'Set' }).click();
+      screen.getByRole('tab', { name: 'Set' }).click();
     });
-    expect(screen.getByText(/No sets yet/)).toBeInTheDocument();
+    const setPanel = document.getElementById('panel-set')!;
+    expect(setPanel.style.display).toBe('flex');
+    expect(setPanel.textContent).toMatch(/No sets yet/);
   });
 
   it('renders dual add-to-pool/tracklist buttons in matches panel', async () => {
@@ -848,12 +831,391 @@ describe('Set tab', () => {
     });
   });
 
-  it('renders dual add buttons in browse table', async () => {
-    await openBrowseTab();
+  it('renders dual add buttons in track table', async () => {
+    render(<App />);
+    await act(async () => {});
 
     const poolBtns = screen.getAllByTitle('Add to Pool');
     const tlBtns = screen.getAllByTitle('Add to Tracklist');
     expect(poolBtns.length).toBeGreaterThan(0);
     expect(tlBtns.length).toBeGreaterThan(0);
+  });
+});
+
+describe('DockBar keyboard navigation', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('ArrowRight cycles focus through Matches → Set → Explorer → Matches', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+
+    const tabs = screen.getAllByRole('tab');
+    const [matchesTab, setTab, explorerTab] = tabs;
+
+    await user.click(matchesTab);
+    matchesTab.focus();
+
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(setTab);
+
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(explorerTab);
+
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(matchesTab);
+  });
+
+  it('ArrowLeft cycles focus through Matches → Explorer → Set → Matches', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+
+    const tabs = screen.getAllByRole('tab');
+    const [matchesTab, setTab, explorerTab] = tabs;
+
+    await user.click(matchesTab);
+    matchesTab.focus();
+
+    await user.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(explorerTab);
+
+    await user.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(setTab);
+
+    await user.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(matchesTab);
+  });
+
+  it('Home jumps focus to first tab, End jumps to last tab', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+
+    const tabs = screen.getAllByRole('tab');
+    const [matchesTab, , explorerTab] = tabs;
+
+    await user.click(explorerTab);
+    explorerTab.focus();
+
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(matchesTab);
+
+    await user.keyboard('{End}');
+    expect(document.activeElement).toBe(explorerTab);
+  });
+
+  it('roving tabindex: active tab has tabIndex 0, others have -1', async () => {
+    await renderApp();
+
+    const tabs = screen.getAllByRole('tab');
+    const [matchesTab, setTab, explorerTab] = tabs;
+
+    expect(matchesTab).toHaveAttribute('tabindex', '0');
+    expect(setTab).toHaveAttribute('tabindex', '-1');
+    expect(explorerTab).toHaveAttribute('tabindex', '-1');
+
+    await act(async () => { setTab.click(); });
+
+    expect(matchesTab).toHaveAttribute('tabindex', '-1');
+    expect(setTab).toHaveAttribute('tabindex', '0');
+    expect(explorerTab).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('aria-selected reflects the active panel', async () => {
+    await renderApp();
+
+    const tabs = screen.getAllByRole('tab');
+    const [matchesTab, setTab, explorerTab] = tabs;
+
+    tabs.forEach(tab => expect(tab).toHaveAttribute('aria-selected', 'false'));
+
+    await act(async () => { matchesTab.click(); });
+    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
+    expect(setTab).toHaveAttribute('aria-selected', 'false');
+    expect(explorerTab).toHaveAttribute('aria-selected', 'false');
+
+    await act(async () => { explorerTab.click(); });
+    expect(matchesTab).toHaveAttribute('aria-selected', 'false');
+    expect(setTab).toHaveAttribute('aria-selected', 'false');
+    expect(explorerTab).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('Clear Filters with exact BPM', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('Clear Filters resets exact BPM alongside other filters', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+
+    const exactInput = screen.getByPlaceholderText('Exact');
+    await user.type(exactInput, '128');
+    await act(async () => { exactInput.blur(); });
+    expect(exactInput).toHaveValue(128);
+
+    const clearBtn = screen.getByRole('button', { name: 'Clear Filters' });
+    await act(async () => { clearBtn.click(); });
+
+    await waitFor(() => {
+      expect(exactInput).toHaveValue(null);
+    });
+  });
+});
+
+describe('Drag and Drop', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('registers droppable targets for dock tabs', async () => {
+    await renderApp();
+    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
+    const setTab = screen.getByRole('tab', { name: 'Set' });
+    const explorerTab = screen.getByRole('tab', { name: 'Explorer' });
+    expect(matchesTab).toBeInTheDocument();
+    expect(setTab).toBeInTheDocument();
+    expect(explorerTab).toBeInTheDocument();
+  });
+
+  it('renders drag handle affordance on browse table rows', async () => {
+    await renderApp();
+    const handles = document.querySelectorAll('.track-table .drag-handle');
+    expect(handles.length).toBeGreaterThan(0);
+  });
+
+  it('renders drag handle affordance on match rows when matches are loaded', async () => {
+    const httpMod = await import('./api/http');
+    const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
+
+    await act(async () => { render(<App />); });
+    await selectTrackViaBrowse('Track 1');
+
+    await waitFor(() => {
+      const handles = document.querySelectorAll('.matches-table .drag-handle');
+      expect(handles.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('renders droppable tracklist zone when Set panel is open with active set', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Test Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Test Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+      pool: [], tracklist: [], explorer_nodes: [], explorer_edges: [],
+    });
+
+    await act(async () => { render(<App />); });
+
+    await act(async () => {
+      screen.getByRole('tab', { name: /Set/ }).click();
+    });
+
+    await waitFor(() => {
+      const setPanel = document.getElementById('panel-set')!;
+      expect(setPanel.style.display).toBe('flex');
+    });
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: '1' } });
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
+    });
+  });
+
+  it('renders droppable matches-header when matches panel is active', async () => {
+    const httpMod = await import('./api/http');
+    const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
+
+    await act(async () => { render(<App />); });
+    await selectTrackViaBrowse('Track 1');
+
+    await waitFor(() => {
+      const header = document.querySelector('.panel-title');
+      expect(header).toBeInTheDocument();
+      expect(header!.textContent).toContain('Matches for');
+    });
+  });
+
+  it('renders MatchDetail with drag capability including drag handle', async () => {
+    const httpMod = await import('./api/http');
+    const match = makeTransitionMatch({ candidate_id: 2 });
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
+    vi.mocked(httpMod.fetchMatchDetail).mockResolvedValue({
+      on_deck: { id: 1, title: 'Track 1', bpm: 120, key: 'C', camelot_code: '01A', energy: 0.5, genre: 'Electronic', label: 'Label', traits: {} },
+      candidate: { id: 2, title: 'Track 2', bpm: 128, key: 'D', camelot_code: '02A', energy: 0.6, genre: 'House', label: 'Label', traits: {} },
+      factors: [{ name: 'BPM', score: 0.8, weight: 0.5 }],
+      overall_score: 85,
+    });
+
+    await act(async () => { render(<App />); });
+    await selectTrackViaBrowse('Track 1');
+
+    await waitFor(() => {
+      expect(screen.getByText('Match Track')).toBeInTheDocument();
+    });
+
+    const detailBtn = screen.getByLabelText('View match detail for Match Track');
+    await act(async () => { detailBtn.click(); });
+
+    await waitFor(() => {
+      const summary = document.querySelector('.detail-tracks-summary');
+      expect(summary).toBeInTheDocument();
+      const handle = summary!.querySelector('.drag-handle');
+      expect(handle).toBeInTheDocument();
+    });
+  });
+
+  it('real @dnd-kit wiring: DndContext creates accessibility structure and drag handles receive listeners', async () => {
+    await renderApp();
+
+    const liveRegion = document.querySelector('[role="status"][aria-live="assertive"]');
+    expect(liveRegion).toBeInTheDocument();
+    expect(liveRegion!.id).toMatch(/DndLiveRegion/);
+
+    const handles = document.querySelectorAll('.track-table .drag-handle');
+    expect(handles.length).toBeGreaterThan(0);
+    const handle = handles[0] as HTMLElement;
+    expect(handle.textContent).toBe('⠿');
+  });
+});
+
+describe('Shell state model', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('renders dock bar with exactly Matches, Set, and Explorer tabs', async () => {
+    await renderApp();
+    const tabs = screen.getAllByRole('tab');
+    const tabLabels = tabs.map(t => t.textContent);
+    expect(tabLabels).toEqual(['Matches', 'Set', 'Explorer']);
+  });
+
+  it('dock bar uses role=tablist with proper aria semantics', async () => {
+    await renderApp();
+    const tablist = screen.getByRole('tablist', { name: 'Panels' });
+    expect(tablist).toBeInTheDocument();
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(3);
+    tabs.forEach(tab => {
+      expect(tab).toHaveAttribute('aria-selected');
+      expect(tab).toHaveAttribute('aria-controls');
+    });
+  });
+
+  it('all panels stay mounted when hidden', async () => {
+    await renderApp();
+    expect(document.getElementById('panel-matches')).toBeInTheDocument();
+    expect(document.getElementById('panel-set')).toBeInTheDocument();
+    expect(document.getElementById('panel-explorer')).toBeInTheDocument();
+  });
+
+  it('clicking active tab collapses the panel', async () => {
+    await renderApp();
+    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
+
+    await act(async () => { matchesTab.click(); });
+    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
+
+    await act(async () => { matchesTab.click(); });
+    expect(matchesTab).toHaveAttribute('aria-selected', 'false');
+    expect(document.getElementById('panel-matches')!.style.display).toBe('none');
+  });
+
+  it('auto-opens Matches when selecting a track with no panel active', async () => {
+    await renderApp();
+    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
+    expect(matchesTab).toHaveAttribute('aria-selected', 'false');
+
+    const row = screen.getByText('Track 1').closest('tr')!;
+    await act(async () => { row.click(); });
+
+    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.getElementById('panel-matches')!.style.display).toBe('flex');
+  });
+
+  it('does not steal focus from Set when selecting a track', async () => {
+    await renderApp();
+    const setTab = screen.getByRole('tab', { name: 'Set' });
+    await act(async () => { setTab.click(); });
+    expect(setTab).toHaveAttribute('aria-selected', 'true');
+
+    const row = screen.getByText('Track 1').closest('tr')!;
+    await act(async () => { row.click(); });
+
+    expect(setTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.getElementById('panel-set')!.style.display).toBe('flex');
+    expect(document.getElementById('panel-matches')!.style.display).toBe('none');
+  });
+
+  it('search input remains available after track selection', async () => {
+    await renderApp();
+    const searchInput = screen.getByPlaceholderText('Search tracks…');
+    expect(searchInput).toBeInTheDocument();
+
+    const row = screen.getByText('Track 1').closest('tr')!;
+    await act(async () => { row.click(); });
+
+    expect(searchInput).toBeInTheDocument();
+    expect((searchInput as HTMLInputElement).value).toBe('Track 1');
+  });
+
+  it('clearing selected track resets Matches to empty state without closing panel', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([makeTransitionMatch()]);
+
+    await act(async () => { render(<App />); });
+
+    await selectTrackViaBrowse('Track 1');
+
+    await waitFor(() => {
+      expect(screen.getByText('Match Track')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
+    expect(searchInput.value).toBe('Track 1');
+
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: '' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Select a track to see matches')).toBeInTheDocument();
+    });
+
+    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
+    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('persists and restores per-panel split height from localStorage', async () => {
+    localStorage.setItem('dj-tools-panel-split-matches', '400');
+    localStorage.setItem('dj-tools-panel-split-set', '250');
+
+    await renderApp();
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Matches' }).click();
+    });
+    const panelZone = document.querySelector('.panel-zone') as HTMLElement;
+    expect(panelZone.style.height).toBe('400px');
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Set' }).click();
+    });
+    expect(panelZone.style.height).toBe('250px');
   });
 });

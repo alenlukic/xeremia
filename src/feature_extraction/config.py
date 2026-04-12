@@ -76,7 +76,7 @@ TRAIT_CLASSIFIER_MAEST = "discogs-maest-30s-pw-519l"
 # Number of parallel worker processes for compute_track_traits.py.
 # Each worker loads the full ONNX model set (~430 MB); keep this low on
 # memory-constrained machines. Override with the TRAIT_WORKERS env var.
-TRAIT_WORKERS = int(os.getenv("TRAIT_WORKERS", "2"))
+TRAIT_WORKERS = int(os.getenv("TRAIT_WORKERS", "4"))
 
 # Number of parallel worker processes for compute_cosine_similarities.py.
 # Each worker loads TransitionMatchFinder (all tracks + camelot map) but no

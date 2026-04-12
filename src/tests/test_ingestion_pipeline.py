@@ -2,13 +2,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ingestion_pipeline.config import TAG_COLUMNS
 from src.ingestion_pipeline.tag_record_factory import (
     FinalRecordFactory,
     InitialRecordFactory,
     PostMIKRecordFactory,
     PostRBRecordFactory,
-    TagRecordFactory,
 )
 
 

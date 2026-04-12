@@ -93,6 +93,10 @@ For items involving interaction quality, states, or motion:
 3. Verify state treatments (hover, focus, active, disabled, loading, error, empty, success) by inspecting DOM attributes and classes.
 4. Use `evaluate_script` to check computed styles for transition/animation properties.
 5. Note any interaction dead ends or broken states with DOM evidence.
+6. Once all Chrome DevTools inspection is complete, clean up browser resources:
+   - call `list_pages` to enumerate all open pages
+   - call `close_page` for each page opened during this session
+   - if only one page remains (it cannot be closed), navigate it to `about:blank` to release DOM memory
 
 ### Pass 4 — consistency check
 1. Verify that systemic pattern fixes were applied consistently across all specified surfaces, not just the most obvious instance.
