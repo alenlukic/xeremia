@@ -307,7 +307,7 @@ describe('useSetBuilder addExplorerNode', () => {
       await result.current.addExplorerNode(99, 'parent', 1);
     });
 
-    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 'parent', 1, 1);
+    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 'parent', 1, 1, undefined);
     expect(http.explorerAddEdge).not.toHaveBeenCalled();
   });
 });

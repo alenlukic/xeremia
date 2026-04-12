@@ -531,6 +531,7 @@ class SetWorkspaceService:
         parent_node_id: Optional[str] = None,
         level: int = 0,
         tree_id: Optional[int] = None,
+        col_index: Optional[int] = None,
     ) -> Tuple[Optional[SetExplorerNode], Optional[str]]:
         if tree_id is None:
             tree = self.get_or_create_default_tree(set_id)
@@ -547,7 +548,14 @@ class SetWorkspaceService:
             return None, error
 
         occupied = {n.col_index for n in nodes if n.level == level}
-        col_index = next(i for i in range(len(occupied) + 1) if i not in occupied)
+
+        if col_index is not None:
+            if col_index < 0 or col_index > 4:
+                return None, f"col_index must be 0–4, got {col_index}"
+            if col_index in occupied:
+                return None, f"Slot ({level}, {col_index}) is already occupied"
+        else:
+            col_index = next(i for i in range(len(occupied) + 1) if i not in occupied)
 
         node = SetExplorerNode(
             set_id=set_id, tree_id=tree_id, node_id=node_id, track_id=track_id,

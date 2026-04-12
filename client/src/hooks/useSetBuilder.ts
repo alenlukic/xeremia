@@ -347,14 +347,14 @@ export function useSetBuilder() {
   }, [activeSetId, refreshActive]);
 
   const addExplorerNode = useCallback(async (
-    trackId: number, parentNodeId?: string, level: number = 0,
+    trackId: number, parentNodeId?: string, level: number = 0, colIndex?: number,
   ) => {
     if (activeSetId === null) return null;
     try {
       const treeNodes = activeTreeId !== null && activeSet
         ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId)
         : activeSet?.explorer_nodes ?? [];
-      if (parentNodeId && activeSet) {
+      if (colIndex === undefined && parentNodeId && activeSet) {
         const parentNode = treeNodes.find(n => n.node_id === parentNodeId);
         if (parentNode) {
           const targetLevel = parentNode.level + 1;
@@ -368,7 +368,7 @@ export function useSetBuilder() {
           }
         }
       }
-      const result = await explorerAddNode(activeSetId, trackId, parentNodeId, level, activeTreeId ?? undefined);
+      const result = await explorerAddNode(activeSetId, trackId, parentNodeId, level, activeTreeId ?? undefined, colIndex);
       await refreshActive();
       return result;
     } catch (err) {
@@ -419,11 +419,12 @@ export function useSetBuilder() {
     trackId: number,
     inheritParentIds: string[],
     level: number,
+    colIndex?: number,
   ) => {
     if (activeSetId === null) return null;
     try {
       const firstParent = inheritParentIds[0];
-      const result = await explorerAddNode(activeSetId, trackId, firstParent, level, activeTreeId ?? undefined);
+      const result = await explorerAddNode(activeSetId, trackId, firstParent, level, activeTreeId ?? undefined, colIndex);
       if (!result) return null;
       for (let i = 1; i < inheritParentIds.length; i++) {
         await explorerAddEdge(activeSetId, inheritParentIds[i], result.node_id);

@@ -36,3 +36,11 @@ export function nodeColorForLevel(level: number): string {
 export function edgeColorForColumn(columnIndex: number): string {
   return EDGE_COLORS[columnIndex % EDGE_COLORS.length];
 }
+
+export const NODE_H_DEFAULT = 48;
+export const NODE_H_WRAPPED = 60;
+const WRAP_CHAR_THRESHOLD = 40;
+
+export function nodeHeight(title: string): number {
+  return title.length > WRAP_CHAR_THRESHOLD ? NODE_H_WRAPPED : NODE_H_DEFAULT;
+}

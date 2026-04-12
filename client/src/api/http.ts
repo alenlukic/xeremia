@@ -269,11 +269,14 @@ export async function explorerAddNode(
   parentNodeId?: string,
   level: number = 0,
   treeId?: number,
+  colIndex?: number,
 ): Promise<{ ok: boolean; node_id: string; track_id: number; level: number }> {
+  const payload: Record<string, unknown> = { track_id: trackId, parent_node_id: parentNodeId, level, tree_id: treeId };
+  if (colIndex !== undefined) payload.col_index = colIndex;
   const res = await fetch(`/api/sets/${setId}/explorer/nodes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ track_id: trackId, parent_node_id: parentNodeId, level, tree_id: treeId }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

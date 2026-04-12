@@ -773,5 +773,33 @@
     "build_status": "PASS",
     "breaker_verdict": "CONCERNS",
     "regression_severity": "MEDIUM"
+  },
+  {
+    "run_id": "20260412T182615Z-delivery-explorer-coordinate-system-still",
+    "mode": "delivery",
+    "task_excerpt": "# TASK: Fix Explorer drop targeting from Matches\n\n## Run ID\n`20260412T182615Z-delivery-explorer-coordinate-system-still`\n\n## Task\nExplorer coordinate system sti",
+    "published_at": "2026-04-12T19:05:26.920161+00:00",
+    "path": ".harness/ledgers/20260412T182615Z-delivery-explorer-coordinate-system-still.md",
+    "files_changed": 7,
+    "eval_score": 84,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS_WITH_NOTES",
+    "build_status": "FAIL",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "NONE"
+  },
+  {
+    "run_id": "20260412T191001Z-delivery-re-imagine-explorer-as-a-100x5-g",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Run\n- Run ID: `20260412T191001Z-delivery-re-imagine-explorer-as-a-100x5-g`\n- Contract: `.harness/runs/20260412T191001Z-delivery-re-imagine-explorer-a",
+    "published_at": "2026-04-12T20:41:13.265606+00:00",
+    "path": ".harness/ledgers/20260412T191001Z-delivery-re-imagine-explorer-as-a-100x5-g.md",
+    "files_changed": 23,
+    "eval_score": 84,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS_WITH_NOTES",
+    "build_status": "CONDITIONAL",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "LOW"
   }
 ]

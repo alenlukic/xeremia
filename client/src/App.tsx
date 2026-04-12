@@ -21,7 +21,6 @@ import { useWeights } from './hooks/useWeights';
 import { useSetBuilder } from './hooks/useSetBuilder';
 import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 import type { DragPayload } from './dnd';
-import { MAX_COLS } from './dnd';
 
 const BROWSE_PAGE_SIZE = 250;
 const SNAP_MODIFIERS = [snapCenterToCursor];
@@ -42,7 +41,14 @@ const BROWSE_CONFIGURABLE_COLUMNS = [
 
 const dndCollisionDetection: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
-  if (pointer.length > 0) return pointer;
+  if (pointer.length > 0) {
+    const hasCell = pointer.some(c => String(c.id).startsWith('drop-explorer-cell-'));
+    if (hasCell) {
+      const filtered = pointer.filter(c => String(c.id).startsWith('drop-explorer-cell-'));
+      if (filtered.length > 0) return filtered;
+    }
+    return pointer;
+  }
   return rectIntersection(args);
 };
 
@@ -482,78 +488,43 @@ export default function App() {
       }
       addToPoolFn(payload.trackId, payload.title);
       if (!poolExpanded) handlePoolExpandedChange(true);
-    } else if (targetId === 'dock-explorer' || targetId === 'drop-explorer') {
+    } else if (targetId === 'dock-explorer') {
       if (sb.activeSet) {
-        const allNodes = sb.activeSet.explorer_nodes;
-        const allEdges = sb.activeSet.explorer_edges;
-        const nodes = sb.activeTreeId != null ? allNodes.filter(n => n.tree_id === sb.activeTreeId) : allNodes;
-        const edges = sb.activeTreeId != null ? allEdges.filter(e => e.tree_id === sb.activeTreeId) : allEdges;
-        const maxLevel = nodes.length > 0 ? Math.max(...nodes.map(n => n.level)) : -1;
-        if (maxLevel < 0) {
-          sb.addExplorerNode(payload.trackId, undefined, 0);
+        const treeNodes = sb.activeTreeId != null
+          ? sb.activeSet.explorer_nodes.filter(n => n.tree_id === sb.activeTreeId)
+          : sb.activeSet.explorer_nodes;
+        const maxLevel = treeNodes.length > 0 ? Math.max(...treeNodes.map(n => n.level)) : -1;
+        const targetLevel = maxLevel < 0 ? 0 : maxLevel;
+        const occupied = new Set(treeNodes.filter(n => n.level === targetLevel).map(n => n.col_index));
+        const freeCol = [0, 1, 2, 3, 4].find(c => !occupied.has(c));
+        if (freeCol !== undefined) {
+          sb.addExplorerNode(payload.trackId, undefined, targetLevel, freeCol);
         } else {
-          const nodesAtMaxLevel = nodes.filter(n => n.level === maxLevel);
-          const targetLevel = nodesAtMaxLevel.length < MAX_COLS ? maxLevel : maxLevel + 1;
-          const nodesAtTarget = nodes.filter(n => n.level === targetLevel);
-          const parentIds = nodesAtTarget.length > 0
-            ? [...new Set(edges
-                .filter(e => nodesAtTarget.some(n => n.node_id === e.child_node_id))
-                .map(e => e.parent_node_id))]
-            : [];
-          if (parentIds.length > 0) {
-            sb.addSiblingNode(payload.trackId, parentIds, targetLevel);
-          } else {
-            sb.addExplorerNode(payload.trackId, undefined, targetLevel);
-          }
+          sb.addExplorerNode(payload.trackId, undefined, targetLevel + 1, 0);
         }
       } else {
         setDndWarning('Select or create a set first');
         setTimeout(() => setDndWarning(null), 2000);
       }
-      if (targetId === 'dock-explorer') setActivePanel('explorer');
+      setActivePanel('explorer');
     } else if (targetId === 'drop-matches-header') {
       const track = allTracks.find(t => t.id === payload.trackId);
       if (track) handleSelectTrack(track);
-    } else if (targetId.startsWith('drop-explorer-level-')) {
-      const level = parseInt(targetId.replace('drop-explorer-level-', ''), 10);
-      if (!isNaN(level) && sb.activeSet) {
+    } else if (targetId.startsWith('drop-explorer-cell-')) {
+      const parts = targetId.replace('drop-explorer-cell-', '').split('-');
+      const level = parseInt(parts[0], 10);
+      const colIndex = parseInt(parts[1], 10);
+      if (!isNaN(level) && !isNaN(colIndex) && sb.activeSet) {
         const treeNodes = sb.activeTreeId != null
-          ? sb.activeSet.explorer_nodes.filter(n => n.tree_id === sb.activeTreeId) : sb.activeSet.explorer_nodes;
-        const treeEdges = sb.activeTreeId != null
-          ? sb.activeSet.explorer_edges.filter(e => e.tree_id === sb.activeTreeId) : sb.activeSet.explorer_edges;
-        const nodesAtLevel = treeNodes.filter(n => n.level === level);
-        if (nodesAtLevel.length >= MAX_COLS) {
-          setDndWarning(`Maximum ${MAX_COLS} children per level`);
-          setTimeout(() => setDndWarning(null), 2000);
+          ? sb.activeSet.explorer_nodes.filter(n => n.tree_id === sb.activeTreeId)
+          : sb.activeSet.explorer_nodes;
+        const occupant = treeNodes.find(n => n.level === level && n.col_index === colIndex);
+        if (occupant) {
+          setDndWarning('Cell is already occupied');
+          setDndWarningNodeId(occupant.node_id);
+          setTimeout(() => { setDndWarning(null); setDndWarningNodeId(null); }, 2000);
         } else {
-          const parentIds = nodesAtLevel.length > 0
-            ? [...new Set(treeEdges
-                .filter(e => nodesAtLevel.some(n => n.node_id === e.child_node_id))
-                .map(e => e.parent_node_id))]
-            : [];
-          if (parentIds.length > 0) {
-            sb.addSiblingNode(payload.trackId, parentIds, level);
-          } else {
-            sb.addExplorerNode(payload.trackId, undefined, level);
-          }
-        }
-      }
-    } else if (targetId.startsWith('drop-explorer-node-')) {
-      const nodeId = targetId.replace('drop-explorer-node-', '');
-      if (sb.activeSet) {
-        const treeNodes = sb.activeTreeId != null
-          ? sb.activeSet.explorer_nodes.filter(n => n.tree_id === sb.activeTreeId) : sb.activeSet.explorer_nodes;
-        const parentNode = treeNodes.find(n => n.node_id === nodeId);
-        if (parentNode) {
-          const childLevel = parentNode.level + 1;
-          const childrenAtLevel = treeNodes.filter(n => n.level === childLevel);
-          if (childrenAtLevel.length >= MAX_COLS) {
-            setDndWarning(`Maximum ${MAX_COLS} children per level`);
-            setDndWarningNodeId(nodeId);
-            setTimeout(() => { setDndWarning(null); setDndWarningNodeId(null); }, 2000);
-          } else {
-            sb.addExplorerNode(payload.trackId, nodeId, childLevel);
-          }
+          sb.addExplorerNode(payload.trackId, undefined, level, colIndex);
         }
       }
     }

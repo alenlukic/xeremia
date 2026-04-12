@@ -1120,6 +1120,7 @@ def api_explorer_add_node(set_id: int, body: ExplorerAddNodeRequest):
         node, error = svc.explorer_add_node(
             set_id, body.track_id, body.parent_node_id, body.level,
             tree_id=body.tree_id,
+            col_index=body.col_index,
         )
         if error:
             raise HTTPException(status_code=400, detail=error)

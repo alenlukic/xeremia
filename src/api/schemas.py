@@ -274,6 +274,7 @@ class ExplorerAddNodeRequest(BaseModel):
     parent_node_id: Optional[str] = None
     level: int = 0
     tree_id: Optional[int] = None
+    col_index: Optional[int] = None
 
 
 class ExplorerAddEdgeRequest(BaseModel):
