@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo, useDeferredValue } from 'react';
-import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, PointerSensor, useSensor, useSensors, MeasuringStrategy } from '@dnd-kit/core';
+import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, type DragMoveEvent, PointerSensor, useSensor, useSensors, MeasuringStrategy, pointerWithin, rectIntersection, type CollisionDetection } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { SearchPanel } from './components/SearchPanel';
 import { FilterBar } from './components/FilterBar';
@@ -11,6 +11,8 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { SetBuilder } from './components/SetBuilder';
 import { SetExplorerCanvas } from './components/SetExplorerCanvas';
 import { DockBar, type PanelKey } from './components/DockBar';
+import { PlayerBar } from './components/PlayerBar';
+import { AudioPlayerProvider } from './hooks/useAudioPlayer';
 import { useSelectedTrack } from './hooks/useSelectedTrack';
 import { useTrackFilters } from './hooks/useTrackFilters';
 import { useCollectionCache } from './hooks/useCollectionCache';
@@ -38,6 +40,12 @@ const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'genre', label: 'Genre' },
 ];
 
+const dndCollisionDetection: CollisionDetection = (args) => {
+  const pointer = pointerWithin(args);
+  if (pointer.length > 0) return pointer;
+  return rectIntersection(args);
+};
+
 function isPlainObject(v: unknown): v is Record<string, boolean> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -53,9 +61,9 @@ function loadColumnVisibility(): Record<string, boolean> {
   }
 }
 
-function loadPanelHeight(panel: PanelKey): number {
+function loadPanelHeight(): number {
   try {
-    const raw = localStorage.getItem(PANEL_SPLIT_PREFIX + panel);
+    const raw = localStorage.getItem(PANEL_SPLIT_PREFIX + 'shared');
     if (!raw) return DEFAULT_PANEL_HEIGHT;
     const n = parseInt(raw, 10);
     return Number.isFinite(n) && n >= 120 ? n : DEFAULT_PANEL_HEIGHT;
@@ -64,8 +72,8 @@ function loadPanelHeight(panel: PanelKey): number {
   }
 }
 
-function savePanelHeight(panel: PanelKey, h: number) {
-  localStorage.setItem(PANEL_SPLIT_PREFIX + panel, String(Math.round(h)));
+function savePanelHeight(h: number) {
+  localStorage.setItem(PANEL_SPLIT_PREFIX + 'shared', String(Math.round(h)));
 }
 
 function loadPoolExpanded(): boolean {
@@ -95,28 +103,17 @@ export default function App() {
   const [dndWarningNodeId, setDndWarningNodeId] = useState<string | null>(null);
 
   const weightsChangedRef = useRef(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastHoverPanelRef = useRef<PanelKey | null>(null);
 
-  const [panelHeights, setPanelHeights] = useState<Record<PanelKey, number>>({
-    matches: loadPanelHeight('matches'),
-    set: loadPanelHeight('set'),
-    explorer: loadPanelHeight('explorer'),
-  });
-
-  const currentPanelHeight = activePanel ? panelHeights[activePanel] : panelHeights.matches;
+  const [panelHeight, setPanelHeight] = useState<number>(loadPanelHeight);
 
   const handlePanelHeightChange = useCallback(
     (h: number) => {
-      if (activePanel) {
-        setPanelHeights((prev) => ({ ...prev, [activePanel]: h }));
-        savePanelHeight(activePanel, h);
-      } else {
-        setPanelHeights({ matches: h, set: h, explorer: h });
-        savePanelHeight('matches', h);
-        savePanelHeight('set', h);
-        savePanelHeight('explorer', h);
-      }
+      setPanelHeight(h);
+      savePanelHeight(h);
     },
-    [activePanel],
+    [],
   );
 
   const handlePoolExpandedChange = useCallback((expanded: boolean) => {
@@ -208,11 +205,15 @@ export default function App() {
     addToPool: sbAddToPool,
     addToTracklist: sbAddToTracklist,
     removeFromPool,
+    clearPool,
     removeFromTracklist,
+    clearTracklist,
     movePoolToTracklist,
     moveTracklistToPool,
     reorderTracklist,
     updateTracklistNote,
+    togglePoolStar,
+    toggleTracklistStar,
     addExplorerNode,
     deleteExplorerNode,
     addExplorerEdge,
@@ -225,7 +226,18 @@ export default function App() {
     resolvePendingAdd,
     clearPendingAdd,
     clearError,
+    activeTreeId,
+    selectTree,
+    createTree,
   } = useSetBuilder();
+
+  const starredTrackIds = useMemo(() => {
+    if (!activeSet) return new Set<number>();
+    const ids = new Set<number>();
+    for (const e of activeSet.pool) { if (e.starred) ids.add(e.track_id); }
+    for (const e of activeSet.tracklist) { if (e.starred) ids.add(e.track_id); }
+    return ids;
+  }, [activeSet]);
 
   const [browseColumnVisibility, setBrowseColumnVisibility] = useState<Record<string, boolean>>(loadColumnVisibility);
 
@@ -331,10 +343,10 @@ export default function App() {
   const addToTracklistFn = sbAddToTracklist;
 
   const setBuilderRef = useRef({
-    activeSet, isPoolAddInFlight, addExplorerNode, addSiblingNode,
+    activeSet, isPoolAddInFlight, addExplorerNode, addSiblingNode, activeTreeId,
   });
   setBuilderRef.current = {
-    activeSet, isPoolAddInFlight, addExplorerNode, addSiblingNode,
+    activeSet, isPoolAddInFlight, addExplorerNode, addSiblingNode, activeTreeId,
   };
 
   const handleAddToPool = useCallback(
@@ -399,7 +411,43 @@ export default function App() {
     if (data) setDragItem(data);
   }, []);
 
+  const handleDragMove = useCallback((event: DragMoveEvent) => {
+    const overId = event.over ? String(event.over.id) : null;
+    const panelKey: PanelKey | null =
+      overId === 'dock-matches' ? 'matches' :
+      overId === 'dock-set'     ? 'set'     :
+      overId === 'dock-explorer'? 'explorer': null;
+
+    if (panelKey === lastHoverPanelRef.current) return;
+    lastHoverPanelRef.current = panelKey;
+
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+
+    if (panelKey) {
+      hoverTimerRef.current = setTimeout(() => {
+        setActivePanel(panelKey);
+      }, 400);
+    }
+  }, []);
+
+  const handleDragCancel = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    lastHoverPanelRef.current = null;
+    setDragItem(null);
+  }, []);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    lastHoverPanelRef.current = null;
     setDragItem(null);
     const { active, over } = event;
     if (!over) return;
@@ -415,6 +463,12 @@ export default function App() {
         setActivePanel('matches');
       }
     } else if (targetId === 'dock-set' || targetId === 'drop-tracklist') {
+      if (!sb.activeSet) {
+        setDndWarning('Select or create a set first');
+        setTimeout(() => setDndWarning(null), 2000);
+        if (targetId === 'dock-set') setActivePanel('set');
+        return;
+      }
       addToTracklistFn(payload.trackId, payload.title);
       if (targetId === 'dock-set') setActivePanel('set');
     } else if (targetId === 'drop-pool') {
@@ -430,13 +484,27 @@ export default function App() {
       if (!poolExpanded) handlePoolExpandedChange(true);
     } else if (targetId === 'dock-explorer' || targetId === 'drop-explorer') {
       if (sb.activeSet) {
-        const nodes = sb.activeSet.explorer_nodes;
+        const allNodes = sb.activeSet.explorer_nodes;
+        const allEdges = sb.activeSet.explorer_edges;
+        const nodes = sb.activeTreeId != null ? allNodes.filter(n => n.tree_id === sb.activeTreeId) : allNodes;
+        const edges = sb.activeTreeId != null ? allEdges.filter(e => e.tree_id === sb.activeTreeId) : allEdges;
         const maxLevel = nodes.length > 0 ? Math.max(...nodes.map(n => n.level)) : -1;
         if (maxLevel < 0) {
           sb.addExplorerNode(payload.trackId, undefined, 0);
         } else {
           const nodesAtMaxLevel = nodes.filter(n => n.level === maxLevel);
-          sb.addExplorerNode(payload.trackId, undefined, nodesAtMaxLevel.length < MAX_COLS ? maxLevel : maxLevel + 1);
+          const targetLevel = nodesAtMaxLevel.length < MAX_COLS ? maxLevel : maxLevel + 1;
+          const nodesAtTarget = nodes.filter(n => n.level === targetLevel);
+          const parentIds = nodesAtTarget.length > 0
+            ? [...new Set(edges
+                .filter(e => nodesAtTarget.some(n => n.node_id === e.child_node_id))
+                .map(e => e.parent_node_id))]
+            : [];
+          if (parentIds.length > 0) {
+            sb.addSiblingNode(payload.trackId, parentIds, targetLevel);
+          } else {
+            sb.addExplorerNode(payload.trackId, undefined, targetLevel);
+          }
         }
       } else {
         setDndWarning('Select or create a set first');
@@ -449,13 +517,17 @@ export default function App() {
     } else if (targetId.startsWith('drop-explorer-level-')) {
       const level = parseInt(targetId.replace('drop-explorer-level-', ''), 10);
       if (!isNaN(level) && sb.activeSet) {
-        const nodesAtLevel = sb.activeSet.explorer_nodes.filter(n => n.level === level);
+        const treeNodes = sb.activeTreeId != null
+          ? sb.activeSet.explorer_nodes.filter(n => n.tree_id === sb.activeTreeId) : sb.activeSet.explorer_nodes;
+        const treeEdges = sb.activeTreeId != null
+          ? sb.activeSet.explorer_edges.filter(e => e.tree_id === sb.activeTreeId) : sb.activeSet.explorer_edges;
+        const nodesAtLevel = treeNodes.filter(n => n.level === level);
         if (nodesAtLevel.length >= MAX_COLS) {
           setDndWarning(`Maximum ${MAX_COLS} children per level`);
           setTimeout(() => setDndWarning(null), 2000);
         } else {
           const parentIds = nodesAtLevel.length > 0
-            ? [...new Set(sb.activeSet.explorer_edges
+            ? [...new Set(treeEdges
                 .filter(e => nodesAtLevel.some(n => n.node_id === e.child_node_id))
                 .map(e => e.parent_node_id))]
             : [];
@@ -469,10 +541,12 @@ export default function App() {
     } else if (targetId.startsWith('drop-explorer-node-')) {
       const nodeId = targetId.replace('drop-explorer-node-', '');
       if (sb.activeSet) {
-        const parentNode = sb.activeSet.explorer_nodes.find(n => n.node_id === nodeId);
+        const treeNodes = sb.activeTreeId != null
+          ? sb.activeSet.explorer_nodes.filter(n => n.tree_id === sb.activeTreeId) : sb.activeSet.explorer_nodes;
+        const parentNode = treeNodes.find(n => n.node_id === nodeId);
         if (parentNode) {
           const childLevel = parentNode.level + 1;
-          const childrenAtLevel = sb.activeSet.explorer_nodes.filter(n => n.level === childLevel);
+          const childrenAtLevel = treeNodes.filter(n => n.level === childLevel);
           if (childrenAtLevel.length >= MAX_COLS) {
             setDndWarning(`Maximum ${MAX_COLS} children per level`);
             setDndWarningNodeId(nodeId);
@@ -486,7 +560,8 @@ export default function App() {
   }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, poolExpanded, handlePoolExpandedChange]);
 
   return (
-    <DndContext sensors={sensors} measuring={measuringConfig} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <AudioPlayerProvider>
+    <DndContext sensors={sensors} collisionDetection={dndCollisionDetection} measuring={measuringConfig} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
       <div className="app-shell-v2">
         {/* ─── Top Anchor Zone ─── */}
         <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: '28vh' }}>
@@ -549,6 +624,7 @@ export default function App() {
               columnVisibility={browseColumnVisibility}
               configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
               onToggleColumn={toggleBrowseColumn}
+              starredTrackIds={starredTrackIds}
             />
           </div>
         </div>
@@ -558,7 +634,7 @@ export default function App() {
           activePanel={activePanel}
           onPanelChange={setActivePanel}
           setLabel={setTabLabel}
-          panelHeight={currentPanelHeight}
+          panelHeight={panelHeight}
           onPanelHeightChange={handlePanelHeightChange}
           defaultHeight={DEFAULT_PANEL_HEIGHT}
           isDragging={dragItem !== null}
@@ -567,7 +643,7 @@ export default function App() {
         {/* ─── Panel Zone (always visible, idle when no panel active) ─── */}
         <div
           className="panel-zone"
-          style={{ height: currentPanelHeight }}
+          style={{ height: panelHeight }}
         >
           {/* Matches panel */}
           <div
@@ -611,6 +687,7 @@ export default function App() {
                   matchesError={matchesError}
                   onViewDetail={setDetailMatch}
                   onUseAsSource={handleUseAsSource}
+                  starredTrackIds={starredTrackIds}
                 />
               </div>
             )}
@@ -646,12 +723,16 @@ export default function App() {
               selectSet={selectSet}
               deleteSet={deleteSet}
               removeFromPool={removeFromPool}
+              clearPool={clearPool}
               movePoolToTracklist={movePoolToTracklist}
               addToPool={sbAddToPool}
               removeFromTracklist={removeFromTracklist}
+              clearTracklist={clearTracklist}
               moveTracklistToPool={moveTracklistToPool}
               reorderTracklist={reorderTracklist}
               updateTracklistNote={updateTracklistNote}
+              togglePoolStar={togglePoolStar}
+              toggleTracklistStar={toggleTracklistStar}
               addToTracklist={sbAddToTracklist}
               resolvePendingAdd={resolvePendingAdd}
               clearPendingAdd={clearPendingAdd}
@@ -671,8 +752,12 @@ export default function App() {
           >
             {activeSet ? (
               <SetExplorerCanvas
-                nodes={activeSet.explorer_nodes}
-                edges={activeSet.explorer_edges}
+                nodes={activeTreeId != null
+                  ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId)
+                  : activeSet.explorer_nodes}
+                edges={activeTreeId != null
+                  ? activeSet.explorer_edges.filter(e => e.tree_id === activeTreeId)
+                  : activeSet.explorer_edges}
                 onAddNode={addExplorerNode}
                 onDeleteNode={deleteExplorerNode}
                 onAddEdge={addExplorerEdge}
@@ -683,6 +768,10 @@ export default function App() {
                 tracklistTrackIds={tracklistTrackIds}
                 fetchEdgeScores={fetchEdgeScores}
                 warningNodeId={dndWarningNodeId}
+                trees={activeSet.explorer_trees}
+                activeTreeId={activeTreeId}
+                onSelectTree={selectTree}
+                onCreateTree={createTree}
               />
             ) : (
               <div className="set-builder">
@@ -794,6 +883,9 @@ export default function App() {
             {dndWarning}
           </div>
         )}
+
+        {/* Global Player Bar */}
+        <PlayerBar />
       </div>
 
       <DragOverlay dropAnimation={null} adjustScale={false} modifiers={SNAP_MODIFIERS}>
@@ -804,5 +896,6 @@ export default function App() {
         )}
       </DragOverlay>
     </DndContext>
+    </AudioPlayerProvider>
   );
 }

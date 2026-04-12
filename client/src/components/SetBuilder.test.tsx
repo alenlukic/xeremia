@@ -4,6 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { SetBuilder } from './SetBuilder';
 import type { SetSummary, HydratedSet } from '../types';
 
+vi.mock('../hooks/useAudioPlayer', () => ({
+  useAudioPlayer: () => ({
+    track: null, playing: false, loading: false, currentTime: 0, duration: 0,
+    volume: 0.8, error: null, play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+    togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
+  }),
+}));
+
 vi.mock('../api/http', () => ({
   fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
   exportSetM3u8: vi.fn().mockResolvedValue({ content: '#EXTM3U\n', filename: 'test.m3u8' }),
@@ -28,6 +36,7 @@ function makeHydratedSet(overrides: Partial<HydratedSet> = {}): HydratedSet {
     set: makeSetSummary(),
     pool: [],
     tracklist: [],
+    explorer_trees: [],
     explorer_nodes: [],
     explorer_edges: [],
     ...overrides,
@@ -55,10 +64,14 @@ function defaultProps() {
     moveTracklistToPool: noop,
     reorderTracklist: noop,
     updateTracklistNote: noop,
+    togglePoolStar: noop,
+    toggleTracklistStar: noop,
     addToTracklist: noop,
     resolvePendingAdd: noop,
     clearPendingAdd: noop,
     clearError: noop,
+    clearPool: noop,
+    clearTracklist: noop,
   };
 }
 
@@ -219,7 +232,7 @@ describe('SetBuilder', () => {
       const movePoolToTracklist = vi.fn();
       const hydrated = makeHydratedSet({
         pool: [{
-          id: 1, set_id: 1, track_id: 10, insertion_order: 0,
+          id: 1, set_id: 1, track_id: 10, insertion_order: 0, starred: false,
           track: { id: 10, title: 'Pool Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
         }],
       });
@@ -241,7 +254,7 @@ describe('SetBuilder', () => {
       const moveTracklistToPool = vi.fn();
       const hydrated = makeHydratedSet({
         tracklist: [{
-          id: 1, set_id: 1, track_id: 20, position: 0,
+          id: 1, set_id: 1, track_id: 20, position: 0, starred: false,
           track: { id: 20, title: 'TL Track', artist_names: [], bpm: 130, key: 'D', camelot_code: '9B', genre: null, label: null, energy: null },
         }],
       });
@@ -322,7 +335,7 @@ describe('SetBuilder', () => {
     it('renders #, Title, Note, Actions headers when tracklist has entries', () => {
       const hydrated = makeHydratedSet({
         tracklist: [{
-          id: 1, set_id: 1, track_id: 10, position: 0, note: '',
+          id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false,
           track: { id: 10, title: 'Test Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
         }],
       });
@@ -345,9 +358,9 @@ describe('SetBuilder', () => {
     it('renders a note input for each tracklist entry', () => {
       const hydrated = makeHydratedSet({
         tracklist: [
-          { id: 1, set_id: 1, track_id: 10, position: 0, note: 'hello',
+          { id: 1, set_id: 1, track_id: 10, position: 0, note: 'hello', starred: false,
             track: { id: 10, title: 'Track A', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
-          { id: 2, set_id: 1, track_id: 20, position: 1, note: '',
+          { id: 2, set_id: 1, track_id: 20, position: 1, note: '', starred: false,
             track: { id: 20, title: 'Track B', artist_names: [], bpm: 130, key: 'D', camelot_code: '10A', genre: null, label: null, energy: null } },
         ],
       });
@@ -367,7 +380,7 @@ describe('SetBuilder', () => {
 
     it('updates note input when hydrated data changes for the same track_id', () => {
       const track = { id: 10, title: 'Track A', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null };
-      const entry = { id: 1, set_id: 1, track_id: 10, position: 0, note: 'old note', track };
+      const entry = { id: 1, set_id: 1, track_id: 10, position: 0, note: 'old note', starred: false, track };
       const props = {
         ...defaultProps(),
         sets: [makeSetSummary()],
@@ -391,7 +404,7 @@ describe('SetBuilder', () => {
       const updateTracklistNote = vi.fn();
       const hydrated = makeHydratedSet({
         tracklist: [{
-          id: 1, set_id: 1, track_id: 10, position: 0, note: '',
+          id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false,
           track: { id: 10, title: 'Track A', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
         }],
       });

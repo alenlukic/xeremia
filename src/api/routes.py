@@ -1,10 +1,13 @@
 """API route definitions."""
 
 import logging
+import os
 from collections import Counter
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from src.api.schemas import (
     CacheStatsResponse,
@@ -15,6 +18,8 @@ from src.api.schemas import (
     ExplorerEdgeScoreResponse,
     ExplorerNodeToTracklistRequest,
     ExplorerSwapRequest,
+    ExplorerTreeCreateRequest,
+    ExplorerTreeResponse,
     HydratedSetResponse,
     MatchDetailResponse,
     MoveRequest,
@@ -25,6 +30,7 @@ from src.api.schemas import (
     SetExportResponse,
     SetSummary,
     SetUpdateRequest,
+    StarToggleRequest,
     TracklistAddRequest,
     TracklistNoteUpdateRequest,
     TracklistReorderRequest,
@@ -171,6 +177,61 @@ def api_track_traits():
         session.rollback()
         logger.exception("Track trait listing failed")
         raise HTTPException(status_code=500, detail="Track trait listing failed")
+    finally:
+        session.close()
+
+
+_SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".wav"}
+_AUDIO_MEDIA_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+}
+
+
+@router.get("/tracks/{track_id}/audio")
+def api_track_audio(track_id: int):
+    from src.models.track import Track
+    from src.config import PROCESSED_MUSIC_DIR
+
+    if not PROCESSED_MUSIC_DIR:
+        raise HTTPException(status_code=500, detail="Audio directory not configured")
+
+    session = _get_session()
+    try:
+        track = session.query(Track).filter_by(id=track_id).first()
+        if track is None:
+            raise HTTPException(status_code=404, detail="Track not found")
+
+        file_name = track.file_name
+        if not file_name:
+            raise HTTPException(status_code=404, detail="Track has no associated file")
+
+        ext = os.path.splitext(file_name)[1].lower()
+        if ext not in _SUPPORTED_AUDIO_EXTENSIONS:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported audio format '{ext}'. Only MP3 and WAV are supported.",
+            )
+
+        file_path = Path(PROCESSED_MUSIC_DIR) / file_name
+        if not file_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Audio file not found on disk for track {track_id}",
+            )
+
+        media_type = _AUDIO_MEDIA_TYPES[ext]
+        return FileResponse(
+            path=str(file_path),
+            media_type=media_type,
+            filename=file_name,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Audio streaming failed for track_id=%s", track_id)
+        raise HTTPException(status_code=500, detail="Audio streaming failed")
     finally:
         session.close()
 
@@ -573,6 +634,7 @@ def _serialize_hydrated(hydration, session) -> dict:
                 "set_id": e.set_id,
                 "track_id": e.track_id,
                 "insertion_order": e.insertion_order,
+                "starred": getattr(e, "starred", False) or False,
                 "track": track_map.get(e.track_id),
             }
             for e in hydration["pool"]
@@ -584,9 +646,14 @@ def _serialize_hydrated(hydration, session) -> dict:
                 "track_id": e.track_id,
                 "position": e.position,
                 "note": getattr(e, "note", "") or "",
+                "starred": getattr(e, "starred", False) or False,
                 "track": track_map.get(e.track_id),
             }
             for e in hydration["tracklist"]
+        ],
+        "explorer_trees": [
+            {"id": t.id, "set_id": t.set_id, "name": t.name}
+            for t in hydration["explorer_trees"]
         ],
         "explorer_nodes": [
             serialize_explorer_node(n, track_map.get(n.track_id))
@@ -596,6 +663,7 @@ def _serialize_hydrated(hydration, session) -> dict:
             {
                 "id": e.id,
                 "set_id": e.set_id,
+                "tree_id": e.tree_id,
                 "parent_node_id": e.parent_node_id,
                 "child_node_id": e.child_node_id,
             }
@@ -757,6 +825,28 @@ def api_pool_remove(set_id: int, track_id: int):
         session.close()
 
 
+@router.delete("/sets/{set_id}/pool", status_code=200)
+def api_pool_clear(set_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        removed = svc.pool_clear(set_id)
+        session.commit()
+        return {"ok": True, "removed": removed}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Pool clear failed")
+        raise HTTPException(status_code=500, detail="Pool clear failed")
+    finally:
+        session.close()
+
+
 @router.post("/sets/{set_id}/pool/move-to-tracklist")
 def api_pool_move_to_tracklist(set_id: int, body: MoveRequest):
     from src.set_workspace.service import SetWorkspaceService
@@ -829,6 +919,28 @@ def api_tracklist_remove(set_id: int, track_id: int):
         session.close()
 
 
+@router.delete("/sets/{set_id}/tracklist", status_code=200)
+def api_tracklist_clear(set_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        removed = svc.tracklist_clear(set_id)
+        session.commit()
+        return {"ok": True, "removed": removed}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Tracklist clear failed")
+        raise HTTPException(status_code=500, detail="Tracklist clear failed")
+    finally:
+        session.close()
+
+
 @router.post("/sets/{set_id}/tracklist/reorder")
 def api_tracklist_reorder(set_id: int, body: TracklistReorderRequest):
     from src.set_workspace.service import SetWorkspaceService
@@ -873,6 +985,50 @@ def api_tracklist_update_note(set_id: int, track_id: int, body: TracklistNoteUpd
         session.close()
 
 
+@router.patch("/sets/{set_id}/pool/{track_id}/star")
+def api_pool_toggle_star(set_id: int, track_id: int, body: StarToggleRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.toggle_pool_star(set_id, track_id, body.starred)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Pool star toggle failed")
+        raise HTTPException(status_code=500, detail="Star toggle failed")
+    finally:
+        session.close()
+
+
+@router.patch("/sets/{set_id}/tracklist/{track_id}/star")
+def api_tracklist_toggle_star(set_id: int, track_id: int, body: StarToggleRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.toggle_tracklist_star(set_id, track_id, body.starred)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Tracklist star toggle failed")
+        raise HTTPException(status_code=500, detail="Star toggle failed")
+    finally:
+        session.close()
+
+
 @router.post("/sets/{set_id}/tracklist/move-to-pool")
 def api_tracklist_move_to_pool(set_id: int, body: MoveRequest):
     from src.set_workspace.service import SetWorkspaceService
@@ -896,6 +1052,58 @@ def api_tracklist_move_to_pool(set_id: int, body: MoveRequest):
 
 
 # ---------------------------------------------------------------------------
+# Explorer tree endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sets/{set_id}/explorer/trees", response_model=List[ExplorerTreeResponse])
+def api_explorer_list_trees(set_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        trees = svc.list_explorer_trees(set_id)
+        return [{"id": t.id, "set_id": t.set_id, "name": t.name} for t in trees]
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer list trees failed")
+        raise HTTPException(status_code=500, detail="List trees failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/explorer/trees", response_model=ExplorerTreeResponse, status_code=201)
+def api_explorer_create_tree(set_id: int, body: ExplorerTreeCreateRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        tree, error = svc.create_explorer_tree(
+            set_id, body.name, body.mode, body.source_tree_id, body.source_node_id,
+        )
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"id": tree.id, "set_id": tree.set_id, "name": tree.name}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer create tree failed")
+        raise HTTPException(status_code=500, detail="Create tree failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
 # Explorer endpoints
 # ---------------------------------------------------------------------------
 
@@ -911,6 +1119,7 @@ def api_explorer_add_node(set_id: int, body: ExplorerAddNodeRequest):
             raise HTTPException(status_code=404, detail="Set not found")
         node, error = svc.explorer_add_node(
             set_id, body.track_id, body.parent_node_id, body.level,
+            tree_id=body.tree_id,
         )
         if error:
             raise HTTPException(status_code=400, detail=error)

@@ -49,10 +49,9 @@ Do not expand task scope without explicit justification.
 ## DO
 
 1. Intake
-- restate the task as clear requirements
-- identify constraints, risks, and likely relevant files
-- define acceptance criteria and non-goals
-- update `TASK.md` and `PLAN.md`
+- if the input is already a development contract (has DEVDSL header, explicit scope/acceptance/DO sections), use it directly
+- otherwise, delegate to `Spec Contract Producer` to normalize the input into a development contract before proceeding
+- derive `TASK.md` and `PLAN.md` from the contract — extract scope, requirements, acceptance criteria, and plan steps; do not independently distill requirements or invent plan structure beyond what the contract specifies
 
 2. Coordinate implementation
 - use `Dev Delivery Coder` for implementation
@@ -136,7 +135,7 @@ Require the pipeline / specialized agents to maintain:
 ## VALIDATION
 
 Before declaring completion, verify:
-- task was restated into explicit requirements
+- intake produced or consumed a development contract before planning began
 - scope remained narrow
 - review and QA were both invoked
 - breaker and ledger curation were both invoked

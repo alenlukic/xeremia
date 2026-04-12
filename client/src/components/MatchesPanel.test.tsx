@@ -6,6 +6,14 @@ import type { ReactElement } from 'react';
 import { MatchesPanel } from './MatchesPanel';
 import type { TransitionMatch } from '../types';
 
+vi.mock('../hooks/useAudioPlayer', () => ({
+  useAudioPlayer: () => ({
+    track: null, playing: false, loading: false, currentTime: 0, duration: 0,
+    volume: 0.8, error: null, play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+    togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
+  }),
+}));
+
 function renderWithDnd(ui: ReactElement, options?: RenderOptions) {
   return render(<DndContext>{ui}</DndContext>, options);
 }
@@ -45,8 +53,8 @@ const SCORE_HEADERS = [
   'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
 ];
 
-const ALL_HEADERS = ['', 'Track', ...SCORE_HEADERS, 'DETAILS', '⋮'];
-const ALL_HEADERS_WITH_SET = ['', '', 'Track', ...SCORE_HEADERS, 'DETAILS', '⋮'];
+const ALL_HEADERS = ['', '', 'Track', ...SCORE_HEADERS, 'DETAILS', '⋮'];
+const ALL_HEADERS_WITH_SET = ['', '', '', 'Track', ...SCORE_HEADERS, 'DETAILS', '⋮'];
 
 const selectedTrack = {
   id: 1, title: 'On Deck', artist_names: ['A'],
@@ -107,17 +115,18 @@ describe('MatchesPanel', () => {
       const headers = screen.getAllByRole('columnheader');
       const widths = headers.map(h => (h as HTMLElement).style.width);
       expect(widths[0]).toBe('24px');   // drag handle
-      expect(widths[1]).toBe('484px');  // Track
-      expect(widths[2]).toBe('70px');   // SCORE
-      expect(widths[3]).toBe('60px');   // Spectral
-      expect(widths[4]).toBe('60px');   // Key
-      expect(widths[5]).toBe('60px');   // BPM
-      expect(widths[6]).toBe('60px');   // Genre
-      expect(widths[7]).toBe('60px');   // Recency
-      expect(widths[8]).toBe('73px');   // Energy (MIK)
-      expect(widths[9]).toBe('60px');   // Mood
-      expect(widths[10]).toBe('73px');  // Instruments
-      expect(widths[11]).toBe('60px');  // Vocals
+      expect(widths[1]).toBe('32px');   // play button
+      expect(widths[2]).toBe('484px');  // Track
+      expect(widths[3]).toBe('70px');   // SCORE
+      expect(widths[4]).toBe('60px');   // Spectral
+      expect(widths[5]).toBe('60px');   // Key
+      expect(widths[6]).toBe('60px');   // BPM
+      expect(widths[7]).toBe('60px');   // Genre
+      expect(widths[8]).toBe('60px');   // Recency
+      expect(widths[9]).toBe('73px');   // Energy (MIK)
+      expect(widths[10]).toBe('60px');  // Mood
+      expect(widths[11]).toBe('73px');  // Instruments
+      expect(widths[12]).toBe('60px');  // Vocals
     });
 
     it('track column renders at 484px', () => {
@@ -129,7 +138,7 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect((headers[1] as HTMLElement).style.width).toBe('484px');
+      expect((headers[2] as HTMLElement).style.width).toBe('484px');
     });
 
     it('add_to_set column is 74px and details column is 70px when onAddToSet provided', () => {
@@ -142,11 +151,11 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect((headers[1] as HTMLElement).style.width).toBe('74px');   // add_to_set
-      expect((headers[2] as HTMLElement).style.width).toBe('484px');  // Track
-      expect((headers[9] as HTMLElement).style.width).toBe('73px');   // Energy (MIK)
-      expect((headers[11] as HTMLElement).style.width).toBe('73px');  // Instruments
-      expect((headers[13] as HTMLElement).style.width).toBe('70px');  // DETAILS
+      expect((headers[2] as HTMLElement).style.width).toBe('74px');   // add_to_set
+      expect((headers[3] as HTMLElement).style.width).toBe('484px');  // Track
+      expect((headers[10] as HTMLElement).style.width).toBe('73px');  // Energy (MIK)
+      expect((headers[12] as HTMLElement).style.width).toBe('73px');  // Instruments
+      expect((headers[14] as HTMLElement).style.width).toBe('70px');  // DETAILS
     });
   });
 
@@ -164,7 +173,7 @@ describe('MatchesPanel', () => {
       expect(resizers.length).toBe(SCORE_HEADERS.length + 3); // add_to_set + Track + score columns + details
 
       const headers = document.querySelectorAll('.matches-table thead th');
-      const trackTh = headers[1];
+      const trackTh = headers[2];
       expect(trackTh.querySelector('.col-resizer')).toBeTruthy();
     });
 
@@ -177,7 +186,7 @@ describe('MatchesPanel', () => {
         />
       );
       const draggables = document.querySelectorAll('.th-content[draggable="true"]');
-      expect(draggables.length).toBe(ALL_HEADERS.length - 2);
+      expect(draggables.length).toBe(ALL_HEADERS.length - 3);
     });
   });
 
@@ -524,7 +533,7 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
-      expect(headers).toEqual(['', 'Track', 'SCORE', 'BPM', 'Key', 'Spectral',
+      expect(headers).toEqual(['', '', 'Track', 'SCORE', 'BPM', 'Key', 'Spectral',
         'Genre', 'Recency', 'Energy (MIK)', 'Mood', 'Instruments', 'Vocals', 'DETAILS', '⋮']);
     });
 

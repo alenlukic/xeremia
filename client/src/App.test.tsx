@@ -42,7 +42,7 @@ vi.mock('./api/http', () => ({
   createSet: vi.fn().mockResolvedValue({ id: 1, name: 'Test', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 }),
   fetchHydratedSet: vi.fn().mockResolvedValue({
     set: { id: 1, name: 'Test', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
-    pool: [], tracklist: [], explorer_nodes: [], explorer_edges: [],
+    pool: [], tracklist: [], explorer_trees: [], explorer_nodes: [], explorer_edges: [],
   }),
   deleteSet: vi.fn().mockResolvedValue(undefined),
   poolAdd: vi.fn().mockResolvedValue(undefined),
@@ -981,7 +981,7 @@ describe('Drag and Drop', () => {
     ]);
     vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
       set: { id: 1, name: 'Test Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
-      pool: [], tracklist: [], explorer_nodes: [], explorer_edges: [],
+      pool: [], tracklist: [], explorer_trees: [], explorer_nodes: [], explorer_edges: [],
     });
 
     await act(async () => { render(<App />); });
@@ -1176,9 +1176,8 @@ describe('Shell state model', () => {
     expect(matchesTab).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('persists and restores per-panel split height from localStorage', async () => {
-    localStorage.setItem('dj-tools-panel-split-matches', '400');
-    localStorage.setItem('dj-tools-panel-split-set', '250');
+  it('persists and restores shared panel split height from localStorage', async () => {
+    localStorage.setItem('dj-tools-panel-split-shared', '400');
 
     await renderApp();
 
@@ -1191,7 +1190,7 @@ describe('Shell state model', () => {
     await act(async () => {
       screen.getByRole('tab', { name: 'Set' }).click();
     });
-    expect(panelZone.style.height).toBe('250px');
+    expect(panelZone.style.height).toBe('400px');
   });
 });
 

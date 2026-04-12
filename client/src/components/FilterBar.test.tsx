@@ -3,6 +3,14 @@ import { render, screen } from '@testing-library/react';
 import { TrackTable } from './TrackTable';
 import type { Track } from '../types';
 
+vi.mock('../hooks/useAudioPlayer', () => ({
+  useAudioPlayer: () => ({
+    track: null, playing: false, loading: false, currentTime: 0, duration: 0,
+    volume: 0.8, error: null, play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+    togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
+  }),
+}));
+
 class ResizeObserverMock {
   observe = vi.fn();
   unobserve = vi.fn();

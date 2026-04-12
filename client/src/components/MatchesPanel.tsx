@@ -15,6 +15,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { Track, SearchSuggestion, TransitionMatch } from '../types';
 import { formatScore, formatOverallScore } from '../utils';
 import type { DragPayload } from '../dnd';
+import { PlayButton } from './PlayButton';
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key';
 
@@ -165,9 +166,10 @@ interface Props {
   onViewDetail?: (match: TransitionMatch) => void;
   onUseAsSource?: (candidateId: number) => void;
   onAddToSet?: (candidateId: number) => void;
+  starredTrackIds?: Set<number>;
 }
 
-function DraggableMatchRow({ row, isLoading, hasColChooser }: { row: Row<TransitionMatch>; isLoading: boolean; hasColChooser?: boolean }) {
+function DraggableMatchRow({ row, isLoading, hasColChooser, isStarred }: { row: Row<TransitionMatch>; isLoading: boolean; hasColChooser?: boolean; isStarred?: boolean }) {
   const payload: DragPayload = {
     trackId: row.original.candidate_id,
     title: row.original.title,
@@ -197,7 +199,14 @@ function DraggableMatchRow({ row, isLoading, hasColChooser }: { row: Row<Transit
       style={isLoading ? { opacity: 0.6, cursor: 'grab' } : isDragging ? { opacity: 0.4, cursor: 'grabbing' } : { cursor: 'grab' }}
       {...rowListeners}
     >
-      <td className="drag-handle-cell"><span className="drag-handle" aria-hidden="true">⠿</span></td>
+      <td className="drag-handle-cell">
+        {isStarred
+          ? <span className="star-indicator" title="Starred in active set" aria-label="Starred">★</span>
+          : <span className="drag-handle" aria-hidden="true">⠿</span>}
+      </td>
+      <td className="play-cell">
+        <PlayButton trackId={row.original.candidate_id} title={row.original.title} />
+      </td>
       {row.getVisibleCells().map((cell) => (
         <td key={cell.id}>
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -209,9 +218,12 @@ function DraggableMatchRow({ row, isLoading, hasColChooser }: { row: Row<Transit
 }
 
 export const MatchesPanel = memo(function MatchesPanel({
-  selectedTrack, matches, loading, matchesError, onViewDetail, onUseAsSource, onAddToSet,
+  selectedTrack, matches, loading, matchesError, onViewDetail, onUseAsSource, onAddToSet, starredTrackIds,
 }: Props) {
   const [bucketTab, setBucketTab] = useState<BucketKey>('same_key');
+
+  useEffect(() => { setBucketTab('same_key'); }, [selectedTrack?.id]);
+
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -481,6 +493,7 @@ export const MatchesPanel = memo(function MatchesPanel({
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
                   <th className="drag-handle-cell" style={{ width: 24 }} />
+                  <th className="play-cell" style={{ width: 32 }} />
                   {hg.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const sorted = header.column.getIsSorted();
@@ -569,7 +582,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                 </tr>
               ) : (
                 table.getRowModel().rows.map((row) => (
-                  <DraggableMatchRow key={row.id} row={row} isLoading={loading} hasColChooser />
+                  <DraggableMatchRow key={row.id} row={row} isLoading={loading} hasColChooser isStarred={starredTrackIds?.has(row.original.candidate_id)} />
                 ))
               )}
             </tbody>

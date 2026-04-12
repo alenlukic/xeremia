@@ -67,7 +67,7 @@ vi.mock('./api/http', () => ({
   createSet: vi.fn().mockResolvedValue({ id: 1, name: 'Test', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 }),
   fetchHydratedSet: vi.fn().mockResolvedValue({
     set: { id: 1, name: 'Test', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
-    pool: [], tracklist: [], explorer_nodes: [], explorer_edges: [],
+    pool: [], tracklist: [], explorer_trees: [], explorer_nodes: [], explorer_edges: [],
   }),
   deleteSet: vi.fn().mockResolvedValue(undefined),
   poolAdd: vi.fn().mockResolvedValue(undefined),
@@ -151,7 +151,14 @@ function makeSetBuilderMock(overrides: Record<string, unknown> = {}) {
     resolvePendingAdd: vi.fn(),
     clearPendingAdd: vi.fn(),
     clearError: vi.fn(),
+    clearPool: vi.fn(),
+    clearTracklist: vi.fn(),
     refreshActive: vi.fn(),
+    activeTreeId: null as number | null,
+    selectTree: vi.fn(),
+    createTree: vi.fn(),
+    togglePoolStar: vi.fn(),
+    toggleTracklistStar: vi.fn(),
     ...overrides,
   };
 }
@@ -262,7 +269,7 @@ describe('DnD: dock-bar closed-panel drops', () => {
   it('drop on dock-set adds to tracklist and opens Set panel', async () => {
     mockSB = makeSetBuilderMock({
       activeSetId: 1,
-      activeSet: { pool: [], tracklist: [], explorer_nodes: [], explorer_edges: [] },
+      activeSet: { pool: [], tracklist: [], explorer_trees: [], explorer_nodes: [], explorer_edges: [] },
     });
     vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
     await renderApp();
@@ -298,7 +305,7 @@ describe('DnD: open-panel drops', () => {
   beforeEach(() => {
     mockSB = makeSetBuilderMock({
       activeSetId: 1,
-      activeSet: { pool: [], tracklist: [], explorer_nodes: [], explorer_edges: [] },
+      activeSet: { pool: [], tracklist: [], explorer_trees: [], explorer_nodes: [], explorer_edges: [] },
     });
     vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
   });
@@ -415,8 +422,9 @@ describe('DnD: duplicate Pool drop no-op', () => {
     mockSB = makeSetBuilderMock({
       activeSetId: 1,
       activeSet: {
-        pool: [{ id: 1, set_id: 1, track_id: 1, insertion_order: 0, track: null }],
+        pool: [{ id: 1, set_id: 1, track_id: 1, insertion_order: 0, starred: false, track: null }],
         tracklist: [],
+        explorer_trees: [],
         explorer_nodes: [],
         explorer_edges: [],
       },
@@ -440,6 +448,7 @@ describe('DnD: duplicate Pool drop no-op', () => {
       activeSet: {
         pool: [],
         tracklist: [],
+        explorer_trees: [],
         explorer_nodes: [],
         explorer_edges: [],
       },
@@ -462,8 +471,9 @@ describe('DnD: duplicate Pool drop no-op', () => {
     mockSB = makeSetBuilderMock({
       activeSetId: 1,
       activeSet: {
-        pool: [{ id: 1, set_id: 1, track_id: 99, insertion_order: 0, track: null }],
+        pool: [{ id: 1, set_id: 1, track_id: 99, insertion_order: 0, starred: false, track: null }],
         tracklist: [],
+        explorer_trees: [],
         explorer_nodes: [],
         explorer_edges: [],
       },

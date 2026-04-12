@@ -16,6 +16,7 @@ import { useDraggable } from '@dnd-kit/core';
 import type { Track, SearchSuggestion } from '../types';
 import { formatFloat, formatBpm, displayGenre } from '../utils';
 import type { DragPayload } from '../dnd';
+import { PlayButton } from './PlayButton';
 
 const col = createColumnHelper<Track>();
 
@@ -104,9 +105,10 @@ interface Props {
   onAddToSet?: (trackId: number) => void;
   configurableColumns?: ColumnConfig[];
   onToggleColumn?: (id: string) => void;
+  starredTrackIds?: Set<number>;
 }
 
-function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth, measureRef, virtualIndex, hasColChooser }: {
+function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth, measureRef, virtualIndex, hasColChooser, isStarred }: {
   row: Row<Track>;
   isSelected: boolean;
   onSelect: (track: Track) => void;
@@ -115,6 +117,7 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
   measureRef?: (node: HTMLElement | null) => void;
   virtualIndex?: number;
   hasColChooser?: boolean;
+  isStarred?: boolean;
 }) {
   const payload: DragPayload = {
     trackId: row.original.id,
@@ -166,7 +169,14 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
       onClick={() => onSelect(row.original)}
       {...rowListeners}
     >
-      <td className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }}><span className="drag-handle" aria-hidden="true">⠿</span></td>
+      <td className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }}>
+        {isStarred
+          ? <span className="star-indicator" title="Starred in active set" aria-label="Starred">★</span>
+          : <span className="drag-handle" aria-hidden="true">⠿</span>}
+      </td>
+      <td className="play-cell">
+        <PlayButton trackId={row.original.id} title={row.original.title} />
+      </td>
       {row.getVisibleCells().map((cell) => (
         <td key={cell.id} style={{ width: cell.column.getSize() }}>
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -177,7 +187,7 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
   );
 }
 
-export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, configurableColumns, onToggleColumn }: Props) {
+export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, configurableColumns, onToggleColumn, starredTrackIds }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -431,6 +441,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 <th className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }} />
+                <th className="play-cell" style={{ width: 32 }} />
                 {hg.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sorted = header.column.getIsSorted();
@@ -528,6 +539,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                     measureRef={rowVirtualizer.measureElement}
                     virtualIndex={virtualRow.index}
                     hasColChooser={hasColChooser}
+                    isStarred={starredTrackIds?.has(row.original.id)}
                   />
                 );
               })
@@ -540,6 +552,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                     isSelected={selectedTrack?.id === row.original.id}
                     onSelect={selectTrack}
                     hasColChooser={hasColChooser}
+                    isStarred={starredTrackIds?.has(row.original.id)}
                   />
                 ))}
                 {hasMore && onLoadMore && (

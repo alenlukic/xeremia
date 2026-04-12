@@ -10,9 +10,11 @@ vi.mock('../api/http', () => ({
   deleteSet: vi.fn(),
   poolAdd: vi.fn(),
   poolRemove: vi.fn(),
+  poolClear: vi.fn(),
   poolMoveToTracklist: vi.fn(),
   tracklistAdd: vi.fn(),
   tracklistRemove: vi.fn(),
+  tracklistClear: vi.fn(),
   tracklistReorder: vi.fn(),
   tracklistMoveToPool: vi.fn(),
   updateTracklistNote: vi.fn(),
@@ -23,6 +25,8 @@ vi.mock('../api/http', () => ({
   explorerNodeToTracklist: vi.fn(),
   explorerDeleteEdge: vi.fn(),
   explorerEdgeScores: vi.fn(),
+  togglePoolStar: vi.fn(),
+  toggleTracklistStar: vi.fn(),
 }));
 
 function makeSetSummary(overrides: Partial<SetSummary> = {}): SetSummary {
@@ -57,6 +61,7 @@ function makeExplorerNode(
   return {
     id: 1,
     set_id: 1,
+    tree_id: 1,
     col_index: 0,
     track: makeTrack(overrides.track_id),
     ...overrides,
@@ -68,6 +73,7 @@ function makeHydratedSet(overrides: Partial<HydratedSet> = {}): HydratedSet {
     set: makeSetSummary(),
     pool: [],
     tracklist: [],
+    explorer_trees: [{ id: 1, set_id: 1, name: 'Main' }],
     explorer_nodes: [],
     explorer_edges: [],
     ...overrides,
@@ -144,7 +150,7 @@ describe('useSetBuilder poolAddInFlightRef duplicate suppression', () => {
     expect(result.current.isPoolAddInFlight(7)).toBe(true);
 
     const withTrack = makeHydratedSet({
-      pool: [{ id: 1, set_id: 1, track_id: 7, insertion_order: 0, track: makeTrack(7) }],
+      pool: [{ id: 1, set_id: 1, track_id: 7, insertion_order: 0, starred: false, track: makeTrack(7) }],
     });
     vi.mocked(http.fetchHydratedSet).mockResolvedValue(withTrack);
 
@@ -204,7 +210,7 @@ describe('useSetBuilder addExplorerNode', () => {
         makeExplorerNode({ node_id: 'n2', track_id: 11, level: 1 }),
       ],
       explorer_edges: [
-        { id: 42, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 42, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ],
     });
     vi.mocked(http.fetchHydratedSet).mockResolvedValue(hydrated);
@@ -233,7 +239,7 @@ describe('useSetBuilder addExplorerNode', () => {
         makeExplorerNode({ node_id: 'n2', track_id: 11, level: 1 }),
       ],
       explorer_edges: [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ],
     });
     vi.mocked(http.fetchHydratedSet).mockResolvedValue(hydrated);
@@ -301,7 +307,146 @@ describe('useSetBuilder addExplorerNode', () => {
       await result.current.addExplorerNode(99, 'parent', 1);
     });
 
-    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 'parent', 1);
+    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 'parent', 1, 1);
     expect(http.explorerAddEdge).not.toHaveBeenCalled();
+  });
+});
+
+describe('useSetBuilder clearPool / clearTracklist', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    const http = await import('../api/http');
+    vi.mocked(http.fetchSets).mockResolvedValue([makeSetSummary({ pool_count: 2, tracklist_count: 3 })]);
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet({
+      pool: [
+        { id: 1, set_id: 1, track_id: 10, insertion_order: 0, starred: false, track: makeTrack(10) },
+        { id: 2, set_id: 1, track_id: 20, insertion_order: 1, starred: false, track: makeTrack(20) },
+      ],
+      tracklist: [
+        { id: 3, set_id: 1, track_id: 30, position: 0, note: '', starred: false, track: makeTrack(30) },
+        { id: 4, set_id: 1, track_id: 40, position: 1, note: '', starred: false, track: makeTrack(40) },
+        { id: 5, set_id: 1, track_id: 50, position: 2, note: '', starred: false, track: makeTrack(50) },
+      ],
+    }));
+    vi.mocked(http.poolClear).mockResolvedValue({ removed: 2 });
+    vi.mocked(http.tracklistClear).mockResolvedValue({ removed: 3 });
+  });
+
+  it('clearPool empties pool in local state and calls API once', async () => {
+    const http = await import('../api/http');
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSet?.pool.length).toBe(2));
+
+    await act(async () => { await result.current.clearPool(); });
+
+    expect(http.poolClear).toHaveBeenCalledTimes(1);
+    expect(http.poolClear).toHaveBeenCalledWith(1);
+    expect(result.current.activeSet?.pool).toEqual([]);
+  });
+
+  it('clearPool does not affect tracklist', async () => {
+    const http = await import('../api/http');
+    vi.mocked(http.fetchSets).mockResolvedValue([makeSetSummary({ pool_count: 0, tracklist_count: 3 })]);
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSet?.tracklist.length).toBe(3));
+
+    await act(async () => { await result.current.clearPool(); });
+
+    expect(result.current.activeSet?.tracklist.length).toBe(3);
+  });
+
+  it('clearTracklist empties tracklist in local state and calls API once', async () => {
+    const http = await import('../api/http');
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSet?.tracklist.length).toBe(3));
+
+    await act(async () => { await result.current.clearTracklist(); });
+
+    expect(http.tracklistClear).toHaveBeenCalledTimes(1);
+    expect(http.tracklistClear).toHaveBeenCalledWith(1);
+    expect(result.current.activeSet?.tracklist).toEqual([]);
+  });
+
+  it('clearTracklist does not affect pool', async () => {
+    const http = await import('../api/http');
+    vi.mocked(http.fetchSets).mockResolvedValue([makeSetSummary({ pool_count: 2, tracklist_count: 0 })]);
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSet?.pool.length).toBe(2));
+
+    await act(async () => { await result.current.clearTracklist(); });
+
+    expect(result.current.activeSet?.pool.length).toBe(2);
+  });
+
+  it('clearPool sets error on API failure', async () => {
+    const http = await import('../api/http');
+    vi.mocked(http.poolClear).mockRejectedValueOnce(new Error('Server error'));
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSetId).toBe(1));
+
+    await act(async () => { await result.current.clearPool(); });
+
+    expect(result.current.error).toBeTruthy();
+  });
+
+  it('clearTracklist sets error on API failure', async () => {
+    const http = await import('../api/http');
+    vi.mocked(http.tracklistClear).mockRejectedValueOnce(new Error('Server error'));
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSetId).toBe(1));
+
+    await act(async () => { await result.current.clearTracklist(); });
+
+    expect(result.current.error).toBeTruthy();
+  });
+});
+
+describe('useSetBuilder star toggle', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    const http = await import('../api/http');
+    vi.mocked(http.fetchSets).mockResolvedValue([makeSetSummary({ pool_count: 1, tracklist_count: 1 })]);
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet({
+      pool: [
+        { id: 1, set_id: 1, track_id: 10, insertion_order: 0, starred: false, track: makeTrack(10) },
+      ],
+      tracklist: [
+        { id: 2, set_id: 1, track_id: 20, position: 0, note: '', starred: false, track: makeTrack(20) },
+      ],
+    }));
+    vi.mocked(http.togglePoolStar).mockResolvedValue(undefined);
+    vi.mocked(http.toggleTracklistStar).mockResolvedValue(undefined);
+  });
+
+  it('togglePoolStar optimistically updates pool starred state', async () => {
+    const http = await import('../api/http');
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSet?.pool.length).toBe(1));
+
+    await act(async () => { await result.current.togglePoolStar(10, true); });
+
+    expect(http.togglePoolStar).toHaveBeenCalledWith(1, 10, true);
+    expect(result.current.activeSet?.pool[0].starred).toBe(true);
+  });
+
+  it('toggleTracklistStar optimistically updates tracklist starred state', async () => {
+    const http = await import('../api/http');
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSet?.tracklist.length).toBe(1));
+
+    await act(async () => { await result.current.toggleTracklistStar(20, true); });
+
+    expect(http.toggleTracklistStar).toHaveBeenCalledWith(1, 20, true);
+    expect(result.current.activeSet?.tracklist[0].starred).toBe(true);
   });
 });
