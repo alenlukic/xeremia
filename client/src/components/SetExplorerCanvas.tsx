@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import type { ExplorerNode, ExplorerEdge, SearchSuggestion, TransitionMatch } from '../types';
 import { nodeColorForLevel, edgeColorForColumn, ACTION_FILL } from '../utils/explorer';
 import { searchTracks, fetchMatches } from '../api/http';
@@ -17,6 +18,7 @@ interface Props {
   onAddSibling: (trackId: number, inheritParentIds: string[], level: number) => Promise<unknown>;
   tracklistTrackIds: Set<number>;
   fetchEdgeScores: (pairs: [number, number][]) => Promise<{ scores: (number | null)[] }>;
+  warningNodeId?: string | null;
 }
 
 interface SiblingAddState {
@@ -113,6 +115,7 @@ interface ExplorerNodeItemProps {
   trackTitle: string | undefined;
   isSelected: boolean;
   isSwapSource: boolean;
+  isWarning: boolean;
   inTracklist: boolean;
   onNodeClick: (nodeId: string) => void;
   onNodeMouseDown: (e: React.MouseEvent, nodeId: string, level: number, x: number, y: number) => void;
@@ -125,10 +128,11 @@ interface ExplorerNodeItemProps {
 }
 
 const ExplorerNodeItem = memo(function ExplorerNodeItem({
-  x, y, nodeId, trackId, level, colIndex, trackTitle, isSelected, isSwapSource, inTracklist,
+  x, y, nodeId, trackId, level, colIndex, trackTitle, isSelected, isSwapSource, isWarning, inTracklist,
   onNodeClick, onNodeMouseDown, onNodeMouseUp,
   onSetDeleteTarget, onSetSwapSource, openChildAdd, onNodeToTracklist, onAddNode,
 }: ExplorerNodeItemProps) {
+  const { setNodeRef: setDropRef, isOver: isDropOver } = useDroppable({ id: `drop-explorer-node-${nodeId}` });
   const color = nodeColorForLevel(level);
   const fullTitle = trackTitle ?? String(trackId);
   const title = truncateForSvg(fullTitle);
@@ -148,10 +152,13 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   let runX = 0;
   for (const a of actions) { actionXs.push(runX); runX += a.w + ACTION_GAP; }
 
+  const nodeClassName = `explorer-node-group${isDropOver ? ' drop-zone--active' : ''}${isWarning ? ' drop-zone--warning' : ''}`;
+
   return (
     <g
+      ref={setDropRef}
       transform={`translate(${x}, ${y})`}
-      className="explorer-node-group"
+      className={nodeClassName}
       onClick={e => { e.stopPropagation(); onNodeClick(nodeId); }}
       onMouseDown={e => onNodeMouseDown(e, nodeId, level, x, y)}
       onMouseUp={() => onNodeMouseUp(nodeId, level)}
@@ -340,9 +347,55 @@ const ExplorerEdgeItem = memo(function ExplorerEdgeItem({
   );
 });
 
-export function SetExplorerCanvas({
+interface ExplorerLevelDropZoneProps {
+  level: number;
+  addX: number;
+  addY: number;
+  onClick: (e: React.MouseEvent) => void;
+}
+
+const ExplorerLevelDropZone = memo(function ExplorerLevelDropZone({ level, addX, addY, onClick }: ExplorerLevelDropZoneProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: `drop-explorer-level-${level}` });
+  return (
+    <g
+      ref={setNodeRef}
+      transform={`translate(${addX}, ${addY})`}
+      className={`explorer-level-add-btn${isOver ? ' drop-zone--active' : ''}`}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={`Add track to level ${level}`}
+      data-testid="level-add-btn"
+      data-level={level}
+      style={{ cursor: 'pointer' }}
+    >
+      <rect
+        width={LEVEL_ADD_W}
+        height={LEVEL_ADD_H}
+        rx={4}
+        fill="var(--surface)"
+        stroke="var(--border)"
+        strokeWidth={1}
+        strokeDasharray="4 2"
+      />
+      <text
+        x={LEVEL_ADD_W / 2}
+        y={LEVEL_ADD_H / 2}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="var(--success)"
+        fontSize={10}
+        fontWeight="600"
+      >
+        + Add Track
+      </text>
+    </g>
+  );
+});
+
+export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   nodes, edges, onAddNode, onDeleteNode, onAddEdge, onDeleteEdge, onSwap,
-  onNodeToTracklist, onAddSibling, tracklistTrackIds, fetchEdgeScores,
+  onNodeToTracklist, onAddSibling, tracklistTrackIds, fetchEdgeScores, warningNodeId,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
@@ -814,18 +867,10 @@ export function SetExplorerCanvas({
     return map;
   }, [allFlat]);
 
-  const parentChildMap = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const e of edges) {
-      const list = map.get(e.parent_node_id) ?? [];
-      list.push(e.child_node_id);
-      map.set(e.parent_node_id, list);
-    }
-    return map;
-  }, [edges]);
+  const { setNodeRef: setExplorerDropRef, isOver: isExplorerOver } = useDroppable({ id: 'drop-explorer' });
 
   return (
-    <div className="set-explorer">
+    <div ref={setExplorerDropRef} className={`set-explorer${isExplorerOver ? ' drop-zone--active' : ''}`}>
       <div className="set-explorer-controls">
         <div className="set-explorer-search-wrapper">
           <input
@@ -974,6 +1019,7 @@ export function SetExplorerCanvas({
                 y={ln.y}
                 isSelected={selectedNodeId === ln.node.node_id}
                 isSwapSource={swapSource === ln.node.node_id}
+                isWarning={warningNodeId === ln.node.node_id}
                 inTracklist={tracklistTrackIds.has(ln.node.track_id)}
                 onNodeClick={handleNodeClick}
                 onNodeMouseDown={handleNodeMouseDown}
@@ -986,7 +1032,7 @@ export function SetExplorerCanvas({
               />
             ))}
 
-            {/* Per-level +Add Track controls */}
+            {/* Per-level +Add Track controls (droppable) */}
             {levelEntries.map(({ level, nodesAtLevel }) => {
               const lastNode = nodesAtLevel.length > 0
                 ? nodesAtLevel.reduce((a, b) => a.node.col_index >= b.node.col_index ? a : b)
@@ -996,39 +1042,13 @@ export function SetExplorerCanvas({
                 : (SLOT_W - NODE_W) / 2;
               const addY = TOP_PAD + level * (NODE_H + V_GAP) + (NODE_H - LEVEL_ADD_H) / 2;
               return (
-                <g
+                <ExplorerLevelDropZone
                   key={`level-add-${level}`}
-                  transform={`translate(${addX}, ${addY})`}
-                  className="explorer-level-add-btn"
+                  level={level}
+                  addX={addX}
+                  addY={addY}
                   onClick={e => { e.stopPropagation(); openLevelAdd(level, nodesAtLevel); }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Add track to level ${level}`}
-                  data-testid="level-add-btn"
-                  data-level={level}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <rect
-                    width={LEVEL_ADD_W}
-                    height={LEVEL_ADD_H}
-                    rx={4}
-                    fill="var(--surface)"
-                    stroke="var(--border)"
-                    strokeWidth={1}
-                    strokeDasharray="4 2"
-                  />
-                  <text
-                    x={LEVEL_ADD_W / 2}
-                    y={LEVEL_ADD_H / 2}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill="var(--success)"
-                    fontSize={10}
-                    fontWeight="600"
-                  >
-                    + Add Track
-                  </text>
-                </g>
+                />
               );
             })}
           </svg>
@@ -1145,4 +1165,4 @@ export function SetExplorerCanvas({
       )}
     </div>
   );
-}
+});

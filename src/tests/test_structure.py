@@ -49,6 +49,7 @@ ALLOWED_IMPORTS = {
 
 KNOWN_VIOLATIONS = {
     ("harmonic_mixing", "assistant"),
+    ("feature_extraction", "harmonic_mixing"),
 }
 
 

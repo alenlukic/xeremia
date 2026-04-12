@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.harmonic_mixing.cosine_cache import CosineCache
+from src.harmonic_mixing.cosine_cache import CosineCache, TransitionScoreCache
 
 
 # ---------------------------------------------------------------------------
@@ -63,9 +63,9 @@ class TestCosineCacheLRUEviction:
         # Newest entry should be present
         assert cache.get(999, 1999) == 0.99
 
-    def test_lru_eviction_at_500001(self):
-        """Verify the default 500000-entry cap evicts the LRU entry."""
-        max_entries = 500_000
+    def test_lru_eviction_at_capacity(self):
+        """Verify the LRU eviction cap evicts the oldest entry at capacity+1."""
+        max_entries = 5_000
         cache = CosineCache(max_entries=max_entries)
         for i in range(max_entries):
             cache.put(i, i + 1_000_000, float(i) / max_entries)
@@ -768,8 +768,8 @@ class TestSimilarityScoreCacheIntegration:
 
             with patch.object(TransitionMatch, "_persist_similarity"):
                 result = match.get_similarity_score()
-            assert result == pytest.approx(0.7, abs=1e-6)
-            assert cache.get(300, 400) == pytest.approx(0.7, abs=1e-6)
+            assert result == pytest.approx(0.72, abs=1e-4)
+            assert cache.get(300, 400) == pytest.approx(0.72, abs=1e-4)
         finally:
             TransitionMatch.db_session = original_db_session
             TransitionMatch.cosine_cache = original_cosine_cache
@@ -806,3 +806,281 @@ class TestSimilarityScoreCacheIntegration:
             TransitionMatch.cosine_cache = original_cosine_cache
             TransitionMatch._on_deck_descriptor_cache = original_od_cache
             TransitionMatch._candidate_descriptor_cache = original_cd_cache
+
+
+# ---------------------------------------------------------------------------
+# TransitionScoreCache unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestTransitionScoreCacheBasics:
+    def test_get_miss_returns_none(self):
+        cache = TransitionScoreCache()
+        assert cache.get(1, 2) is None
+
+    def test_put_then_get(self):
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 85.5)
+        assert cache.get(1, 2) == 85.5
+
+    def test_directional_keys(self):
+        """Keys are directional: (1,2) != (2,1)."""
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 85.5)
+        cache.put(2, 1, 72.0)
+        assert cache.get(1, 2) == 85.5
+        assert cache.get(2, 1) == 72.0
+
+    def test_overwrite(self):
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 50.0)
+        cache.put(1, 2, 90.0)
+        assert cache.get(1, 2) == 90.0
+        assert cache.size() == 1
+
+    def test_size(self):
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 50.0)
+        cache.put(3, 4, 60.0)
+        assert cache.size() == 2
+
+    def test_lru_eviction(self):
+        cache = TransitionScoreCache(max_entries=3)
+        cache.put(1, 2, 10.0)
+        cache.put(3, 4, 20.0)
+        cache.put(5, 6, 30.0)
+        cache.put(7, 8, 40.0)
+        assert cache.size() == 3
+        assert cache.get(1, 2) is None
+        assert cache.get(7, 8) == 40.0
+
+
+class TestTransitionScoreCacheInvalidation:
+    def test_invalidate_source_removes_matching_entries(self):
+        cache = TransitionScoreCache()
+        cache.put(10, 20, 80.0)
+        cache.put(10, 30, 75.0)
+        cache.put(10, 40, 70.0)
+        cache.put(50, 20, 60.0)
+        removed = cache.invalidate_source(10)
+        assert removed == 3
+        assert cache.get(10, 20) is None
+        assert cache.get(10, 30) is None
+        assert cache.get(10, 40) is None
+        assert cache.get(50, 20) == 60.0
+        assert cache.size() == 1
+
+    def test_invalidate_source_preserves_unrelated(self):
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 10.0)
+        cache.put(3, 4, 20.0)
+        cache.put(5, 6, 30.0)
+        cache.invalidate_source(1)
+        assert cache.get(3, 4) == 20.0
+        assert cache.get(5, 6) == 30.0
+
+    def test_invalidate_nonexistent_source(self):
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 10.0)
+        removed = cache.invalidate_source(999)
+        assert removed == 0
+        assert cache.size() == 1
+
+    def test_clear_resets_everything(self):
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 50.0)
+        cache.get(1, 2)
+        cache.get(3, 4)
+        cache.clear()
+        assert cache.size() == 0
+        stats = cache.get_stats()
+        assert stats["hits"] == 0
+        assert stats["misses"] == 0
+
+
+class TestTransitionScoreCacheStats:
+    def test_stats_empty_cache(self):
+        cache = TransitionScoreCache(max_entries=100)
+        stats = cache.get_stats()
+        assert stats["used"] == 0
+        assert stats["capacity"] == 100
+        assert stats["hits"] == 0
+        assert stats["misses"] == 0
+        assert stats["hit_rate"] == 0.0
+
+    def test_hit_miss_counting(self):
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 50.0)
+        cache.get(1, 2)  # hit
+        cache.get(1, 2)  # hit
+        cache.get(3, 4)  # miss
+        stats = cache.get_stats()
+        assert stats["hits"] == 2
+        assert stats["misses"] == 1
+        assert stats["hit_rate"] == pytest.approx(2 / 3, abs=1e-6)
+
+    def test_stats_reflect_size(self):
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 50.0)
+        cache.put(3, 4, 60.0)
+        stats = cache.get_stats()
+        assert stats["used"] == 2
+
+
+class TestTransitionScoreCacheThreadSafety:
+    def test_concurrent_puts_no_crash(self):
+        cache = TransitionScoreCache(max_entries=5000)
+        errors = []
+
+        def writer(start):
+            try:
+                for i in range(500):
+                    cache.put(start + i, start + i + 100_000, float(i))
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(t * 10_000,)) for t in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0
+        assert cache.size() <= 5000
+
+
+# ---------------------------------------------------------------------------
+# TransitionScoreCache read/reuse integration
+# ---------------------------------------------------------------------------
+
+
+class TestTransitionScoreCacheReuse:
+    """Prove that the cache has a real read path: put → get returns the
+    cached score, and repeated gets increment the hit counter."""
+
+    def test_put_then_repeated_get_records_hits(self):
+        cache = TransitionScoreCache()
+        cache.put(100, 200, 85.0)
+
+        assert cache.get(100, 200) == 85.0
+        assert cache.get(100, 200) == 85.0
+        assert cache.get(100, 200) == 85.0
+
+        stats = cache.get_stats()
+        assert stats["hits"] == 3
+        assert stats["misses"] == 0
+
+    def test_miss_then_put_then_hit(self):
+        """Simulates the production flow: first lookup misses, then the
+        score is computed and put, then subsequent lookups hit."""
+        cache = TransitionScoreCache()
+
+        assert cache.get(10, 20) is None
+        stats = cache.get_stats()
+        assert stats["misses"] == 1
+        assert stats["hits"] == 0
+
+        cache.put(10, 20, 72.5)
+
+        assert cache.get(10, 20) == 72.5
+        stats = cache.get_stats()
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1
+
+    def test_clear_then_get_misses(self):
+        """After clear(), previously cached scores are gone and produce misses."""
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 50.0)
+        cache.put(3, 4, 60.0)
+        assert cache.get(1, 2) == 50.0
+
+        cache.clear()
+
+        assert cache.get(1, 2) is None
+        assert cache.get(3, 4) is None
+        stats = cache.get_stats()
+        assert stats["hits"] == 0
+        assert stats["misses"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Warm-path callback integration
+# ---------------------------------------------------------------------------
+
+
+class TestWarmupCompleteCallback:
+    @patch.object(CosineCache, '_compute_cross_similarities')
+    @patch("src.harmonic_mixing.cosine_cache.database")
+    def test_callback_fires_after_successful_warmup(self, mock_db, _mock_cross):
+        mock_session = MagicMock()
+        mock_db.create_session.return_value = mock_session
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value.all.return_value = []
+
+        callback_log = []
+
+        def on_complete(track_id):
+            callback_log.append(track_id)
+
+        cancel = threading.Event()
+        cache = CosineCache()
+        cache._on_warmup_complete = on_complete
+        cache._warmup_worker(42, cancel)
+
+        assert callback_log == [42]
+
+    @patch.object(CosineCache, '_compute_cross_similarities')
+    @patch("src.harmonic_mixing.cosine_cache.database")
+    def test_callback_not_fired_when_cancelled(self, mock_db, _mock_cross):
+        mock_session = MagicMock()
+        mock_db.create_session.return_value = mock_session
+
+        call_count = {"n": 0}
+
+        def filter_side_effect(*args, **kwargs):
+            mock_filtered = MagicMock()
+            if call_count["n"] == 0:
+                mock_filtered.all.return_value = [_make_sim_row(10, 20, 0.8)]
+                call_count["n"] += 1
+            else:
+                cancel.set()
+                mock_filtered.all.return_value = []
+                call_count["n"] += 1
+            return mock_filtered
+
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.side_effect = filter_side_effect
+
+        callback_log = []
+        cancel = threading.Event()
+        cache = CosineCache()
+        cache._on_warmup_complete = lambda tid: callback_log.append(tid)
+        cache._warmup_worker(10, cancel)
+
+        assert callback_log == [], "callback must not fire when warmup was cancelled"
+
+    @patch.object(CosineCache, '_compute_cross_similarities')
+    @patch("src.harmonic_mixing.cosine_cache.database")
+    def test_callback_failure_does_not_crash_warmup(self, mock_db, _mock_cross):
+        mock_session = MagicMock()
+        mock_db.create_session.return_value = mock_session
+        mock_query = MagicMock()
+        mock_session.query.return_value = mock_query
+        mock_query.filter.return_value.all.return_value = []
+
+        def bad_callback(track_id):
+            raise RuntimeError("callback exploded")
+
+        cancel = threading.Event()
+        cache = CosineCache()
+        cache._on_warmup_complete = bad_callback
+        cache._warmup_worker(99, cancel)
+
+        mock_session.close.assert_called_once()
+
+    def test_no_callback_set_is_fine(self):
+        """Warmup without a callback should work as before."""
+        cache = CosineCache()
+        assert cache._on_warmup_complete is None

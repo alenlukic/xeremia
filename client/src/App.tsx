@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, useDeferredValue } from 'react';
+import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, PointerSensor, useSensor, useSensors, MeasuringStrategy } from '@dnd-kit/core';
 import { SearchPanel } from './components/SearchPanel';
 import { FilterBar } from './components/FilterBar';
 import { TrackTable } from './components/TrackTable';
@@ -7,6 +8,8 @@ import { MatchDetail } from './components/MatchDetail';
 import { WeightControls } from './components/WeightControls';
 import { AdminDashboard } from './components/AdminDashboard';
 import { SetBuilder } from './components/SetBuilder';
+import { SetExplorerCanvas } from './components/SetExplorerCanvas';
+import { DockBar, type PanelKey } from './components/DockBar';
 import { useSelectedTrack } from './hooks/useSelectedTrack';
 import { useTrackFilters } from './hooks/useTrackFilters';
 import { useCollectionCache } from './hooks/useCollectionCache';
@@ -14,12 +17,16 @@ import { useCacheStats } from './hooks/useCacheStats';
 import { useWeights } from './hooks/useWeights';
 import { useSetBuilder } from './hooks/useSetBuilder';
 import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
-
-type TabKey = 'matches' | 'browse' | 'admin' | 'set';
+import type { DragPayload } from './dnd';
+import { MAX_COLS } from './dnd';
 
 const BROWSE_PAGE_SIZE = 250;
+const EMPTY_MODIFIERS: never[] = [];
 
 const COL_VIS_STORAGE_KEY = 'dj-tools-browse-col-visibility';
+const PANEL_SPLIT_PREFIX = 'dj-tools-panel-split-';
+const POOL_EXPANDED_KEY = 'dj-tools-pool-expanded';
+const DEFAULT_PANEL_HEIGHT = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.66) : 350;
 
 const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'camelot_code', label: 'Camelot' },
@@ -45,25 +52,77 @@ function loadColumnVisibility(): Record<string, boolean> {
   }
 }
 
+function loadPanelHeight(panel: PanelKey): number {
+  try {
+    const raw = localStorage.getItem(PANEL_SPLIT_PREFIX + panel);
+    if (!raw) return DEFAULT_PANEL_HEIGHT;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 120 ? n : DEFAULT_PANEL_HEIGHT;
+  } catch {
+    return DEFAULT_PANEL_HEIGHT;
+  }
+}
+
+function savePanelHeight(panel: PanelKey, h: number) {
+  localStorage.setItem(PANEL_SPLIT_PREFIX + panel, String(Math.round(h)));
+}
+
+function loadPoolExpanded(): boolean {
+  try {
+    return localStorage.getItem(POOL_EXPANDED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const { allTracks, traitMap, loading: collectionLoading, tracksError, traitsError } = useCollectionCache();
 
-  const [activeTab, setActiveTab] = useState<TabKey>('matches');
+  const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null);
   const [searchText, setSearchText] = useState('');
+  const rawDeferredSearchText = useDeferredValue(searchText);
+  const effectiveSearchText = searchText === '' ? '' : rawDeferredSearchText;
   const [loadedPages, setLoadedPages] = useState(1);
   const loadedPageCacheRef = useRef<Map<string, number>>(new Map());
   const [transitionChain, setTransitionChain] = useState<TransitionChainEntry[]>([]);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showWeights, setShowWeights] = useState(false);
+  const [poolExpanded, setPoolExpanded] = useState(loadPoolExpanded);
+  const [dragItem, setDragItem] = useState<DragPayload | null>(null);
+  const [dndWarning, setDndWarning] = useState<string | null>(null);
+  const [dndWarningNodeId, setDndWarningNodeId] = useState<string | null>(null);
 
-  const gaugeRowRef = useRef<HTMLDivElement>(null);
-  const [searchPadding, setSearchPadding] = useState<{ left: number; right: number } | null>(null);
+  const weightsChangedRef = useRef(false);
+
+  const [panelHeights, setPanelHeights] = useState<Record<PanelKey, number>>({
+    matches: loadPanelHeight('matches'),
+    set: loadPanelHeight('set'),
+    explorer: loadPanelHeight('explorer'),
+  });
+
+  const currentPanelHeight = activePanel ? panelHeights[activePanel] : DEFAULT_PANEL_HEIGHT;
+
+  const handlePanelHeightChange = useCallback(
+    (h: number) => {
+      if (!activePanel) return;
+      setPanelHeights((prev) => ({ ...prev, [activePanel]: h }));
+      savePanelHeight(activePanel, h);
+    },
+    [activePanel],
+  );
+
+  const handlePoolExpandedChange = useCallback((expanded: boolean) => {
+    setPoolExpanded(expanded);
+    try { localStorage.setItem(POOL_EXPANDED_KEY, String(expanded)); } catch {}
+  }, []);
 
   const {
     stats: cacheStats,
     loading: cacheLoading,
     error: cacheError,
     refresh: refreshCacheStats,
-  } = useCacheStats(activeTab === 'admin');
+  } = useCacheStats(showAdmin);
 
   const {
     selectedTrack,
@@ -83,7 +142,7 @@ export default function App() {
     setBpm,
     setBpmMin,
     setBpmMax,
-  } = useTrackFilters(allTracks, searchText);
+  } = useTrackFilters(allTracks, effectiveSearchText);
 
   const {
     weights,
@@ -91,7 +150,7 @@ export default function App() {
     error: weightsError,
     saving: weightsSaving,
     saveSuccess: weightsSaveSuccess,
-    setWeight,
+    setWeight: rawSetWeight,
     rawSum,
     isSumValid,
     warningMessage: weightsWarning,
@@ -99,7 +158,67 @@ export default function App() {
     resetWeights,
   } = useWeights(refetchMatches);
 
-  const setBuilder = useSetBuilder();
+  const setWeight = useCallback((factor: string, value: number) => {
+    weightsChangedRef.current = true;
+    rawSetWeight(factor, value);
+  }, [rawSetWeight]);
+
+  const handleCloseWeights = useCallback(() => {
+    setShowWeights(false);
+    if (weightsChangedRef.current) {
+      refetchMatches();
+      weightsChangedRef.current = false;
+    }
+  }, [refetchMatches]);
+
+  useEffect(() => {
+    if (!showWeights) return;
+    weightsChangedRef.current = false;
+  }, [showWeights]);
+
+  useEffect(() => {
+    if (!showWeights && !showAdmin) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showWeights) handleCloseWeights();
+        else if (showAdmin) setShowAdmin(false);
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [showWeights, showAdmin, handleCloseWeights]);
+
+  const {
+    sets,
+    activeSetId: sbActiveSetId,
+    activeSet,
+    loading: sbLoading,
+    error: sbError,
+    pendingAdd,
+    createSet,
+    selectSet,
+    deleteSet,
+    addToPool: sbAddToPool,
+    addToTracklist: sbAddToTracklist,
+    removeFromPool,
+    removeFromTracklist,
+    movePoolToTracklist,
+    moveTracklistToPool,
+    reorderTracklist,
+    updateTracklistNote,
+    addExplorerNode,
+    deleteExplorerNode,
+    addExplorerEdge,
+    deleteExplorerEdge,
+    addSiblingNode,
+    swapExplorerNodes,
+    explorerNodeAddToTracklist,
+    fetchEdgeScores,
+    isPoolAddInFlight,
+    resolvePendingAdd,
+    clearPendingAdd,
+    clearError,
+  } = useSetBuilder();
 
   const [browseColumnVisibility, setBrowseColumnVisibility] = useState<Record<string, boolean>>(loadColumnVisibility);
 
@@ -113,43 +232,6 @@ export default function App() {
       [id]: prev[id] !== false ? false : true,
     }));
   }, []);
-
-  useLayoutEffect(() => {
-    const wrapper = gaugeRowRef.current;
-    if (!wrapper) {
-      setSearchPadding(null);
-      return;
-    }
-
-    const row = wrapper.querySelector('.weight-controls-row') as HTMLElement | null;
-    if (!row) return;
-
-    const measure = () => {
-      const groups = row.querySelectorAll(':scope > .gauge-group');
-      if (groups.length < 2) {
-        setSearchPadding(null);
-        return;
-      }
-
-      const rowRect = row.getBoundingClientRect();
-      const rects = Array.from(groups).map(g => g.getBoundingClientRect());
-      const allSameRow = rects.every(r => Math.abs(r.top - rects[0].top) < 10);
-
-      if (allSameRow) {
-        setSearchPadding({
-          left: Math.round(rects[0].left - rowRect.left),
-          right: Math.round(rowRect.right - rects[rects.length - 1].right),
-        });
-      } else {
-        setSearchPadding(null);
-      }
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(row);
-    return () => ro.disconnect();
-  }, [weightsLoading]);
 
   const browsePages = useMemo(() => {
     const pages: Track[][] = [];
@@ -166,11 +248,6 @@ export default function App() {
     return browsePages.slice(0, cap).flat();
   }, [browsePages, loadedPages, totalPages]);
 
-  const browseTracks = useMemo(
-    () => selectedTrack ? allTracks.filter(t => t.id === selectedTrack.id) : visibleTracks,
-    [selectedTrack, allTracks, visibleTracks],
-  );
-
   const hasMorePages = loadedPages < totalPages;
 
   useEffect(() => {
@@ -186,13 +263,18 @@ export default function App() {
     });
   }, [totalPages, filterCacheKey]);
 
+  const activePanelRef = useRef(activePanel);
+  activePanelRef.current = activePanel;
+
   const handleSelectTrack = useCallback(
     (track: Track | SearchSuggestion) => {
       setDetailMatch(null);
       setTransitionChain([]);
       selectTrack(track);
-      setActiveTab('matches');
-      setSearchText('');
+      setSearchText(track.title);
+      if (activePanelRef.current === null) {
+        setActivePanel('matches');
+      }
     },
     [selectTrack],
   );
@@ -200,7 +282,6 @@ export default function App() {
   const handleBrowseSelect = useCallback(
     (track: Track) => {
       handleSelectTrack(track);
-      setActiveTab('matches');
     },
     [handleSelectTrack],
   );
@@ -213,6 +294,7 @@ export default function App() {
       setTransitionChain(prev => [...prev, { track: selectedTrack }]);
       setDetailMatch(null);
       selectTrack(candidate);
+      setSearchText(candidate.title);
     },
     [selectedTrack, allTracks, selectTrack],
   );
@@ -224,6 +306,7 @@ export default function App() {
       setTransitionChain(prev => prev.slice(0, index));
       setDetailMatch(null);
       selectTrack(entry.track);
+      setSearchText(entry.track.title);
     },
     [transitionChain, selectTrack],
   );
@@ -234,163 +317,185 @@ export default function App() {
     setTransitionChain(prev => prev.slice(0, -1));
     setDetailMatch(null);
     selectTrack(last.track);
+    setSearchText(last.track.title);
   }, [transitionChain, selectTrack]);
+
+  const addToPoolFn = sbAddToPool;
+  const addToTracklistFn = sbAddToTracklist;
+
+  const setBuilderRef = useRef({
+    activeSet, isPoolAddInFlight, addExplorerNode, addSiblingNode,
+  });
+  setBuilderRef.current = {
+    activeSet, isPoolAddInFlight, addExplorerNode, addSiblingNode,
+  };
 
   const handleAddToPool = useCallback(
     (candidateId: number) => {
       const track = allTracks.find(t => t.id === candidateId);
-      if (track) setBuilder.addToPool(track.id, track.title);
+      if (track) addToPoolFn(track.id, track.title);
     },
-    [allTracks, setBuilder],
+    [allTracks, addToPoolFn],
   );
 
   const handleAddToTracklist = useCallback(
     (candidateId: number) => {
       const track = allTracks.find(t => t.id === candidateId);
-      if (track) setBuilder.addToTracklist(track.id, track.title);
+      if (track) addToTracklistFn(track.id, track.title);
     },
-    [allTracks, setBuilder],
+    [allTracks, addToTracklistFn],
   );
-
-  const handleAddSelectedToPool = useCallback(() => {
-    if (!selectedTrack) return;
-    const track = allTracks.find(t => t.id === selectedTrack.id);
-    if (track) setBuilder.addToPool(track.id, track.title);
-  }, [selectedTrack, allTracks, setBuilder]);
-
-  const handleAddSelectedToTracklist = useCallback(() => {
-    if (!selectedTrack) return;
-    const track = allTracks.find(t => t.id === selectedTrack.id);
-    if (track) setBuilder.addToTracklist(track.id, track.title);
-  }, [selectedTrack, allTracks, setBuilder]);
 
   const handleClearFilters = useCallback(() => {
     setCamelotCodes([]);
+    setBpm(undefined);
     setBpmMin(undefined);
     setBpmMax(undefined);
-    setSearchText('');
-  }, [setCamelotCodes, setBpmMin, setBpmMax]);
+    if (!selectedTrack) {
+      setSearchText('');
+    }
+  }, [setCamelotCodes, setBpm, setBpmMin, setBpmMax, selectedTrack]);
+
+  const handleClearSelectedTrack = useCallback(() => {
+    setDetailMatch(null);
+    setTransitionChain([]);
+    clearSelectedTrack();
+  }, [clearSelectedTrack]);
 
   const setTabLabel = useMemo(() => {
-    if (setBuilder.activeSet) {
-      const total = setBuilder.activeSet.pool.length + setBuilder.activeSet.tracklist.length;
+    if (activeSet) {
+      const total = activeSet.pool.length + activeSet.tracklist.length;
       return `Set (${total})`;
     }
     return 'Set';
-  }, [setBuilder.activeSet]);
+  }, [activeSet]);
+
+  const tracklistTrackIds = useMemo(() => {
+    if (!activeSet) return new Set<number>();
+    return new Set(activeSet.tracklist.map(e => e.track_id));
+  }, [activeSet]);
+
+  const panelIsOpen = activePanel !== null;
+
+  // --- DnD ---
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const measuringConfig = useMemo(() => ({
+    droppable: {
+      strategy: MeasuringStrategy.WhileDragging,
+      frequency: 100,
+    },
+  }), []);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const data = event.active.data.current as DragPayload | undefined;
+    if (data) setDragItem(data);
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setDragItem(null);
+    const { active, over } = event;
+    if (!over) return;
+    const payload = active.data.current as DragPayload | undefined;
+    if (!payload) return;
+    const targetId = String(over.id);
+    const sb = setBuilderRef.current;
+
+    if (targetId === 'dock-matches') {
+      const track = allTracks.find(t => t.id === payload.trackId);
+      if (track) {
+        handleSelectTrack(track);
+        setActivePanel('matches');
+      }
+    } else if (targetId === 'dock-set' || targetId === 'drop-tracklist') {
+      addToTracklistFn(payload.trackId, payload.title);
+      if (targetId === 'dock-set') setActivePanel('set');
+    } else if (targetId === 'drop-pool') {
+      if (
+        (sb.activeSet && sb.activeSet.pool.some(e => e.track_id === payload.trackId))
+        || sb.isPoolAddInFlight(payload.trackId)
+      ) {
+        setDndWarning('Track already in pool');
+        setTimeout(() => setDndWarning(null), 2000);
+        return;
+      }
+      addToPoolFn(payload.trackId, payload.title);
+      if (!poolExpanded) handlePoolExpandedChange(true);
+    } else if (targetId === 'dock-explorer' || targetId === 'drop-explorer') {
+      if (sb.activeSet) {
+        const nodes = sb.activeSet.explorer_nodes;
+        const maxLevel = nodes.length > 0 ? Math.max(...nodes.map(n => n.level)) : -1;
+        if (maxLevel < 0) {
+          sb.addExplorerNode(payload.trackId, undefined, 0);
+        } else {
+          const nodesAtMaxLevel = nodes.filter(n => n.level === maxLevel);
+          sb.addExplorerNode(payload.trackId, undefined, nodesAtMaxLevel.length < MAX_COLS ? maxLevel : maxLevel + 1);
+        }
+      } else {
+        setDndWarning('Select or create a set first');
+        setTimeout(() => setDndWarning(null), 2000);
+      }
+      if (targetId === 'dock-explorer') setActivePanel('explorer');
+    } else if (targetId === 'drop-matches-header') {
+      const track = allTracks.find(t => t.id === payload.trackId);
+      if (track) handleSelectTrack(track);
+    } else if (targetId.startsWith('drop-explorer-level-')) {
+      const level = parseInt(targetId.replace('drop-explorer-level-', ''), 10);
+      if (!isNaN(level) && sb.activeSet) {
+        const nodesAtLevel = sb.activeSet.explorer_nodes.filter(n => n.level === level);
+        if (nodesAtLevel.length >= MAX_COLS) {
+          setDndWarning(`Maximum ${MAX_COLS} children per level`);
+          setTimeout(() => setDndWarning(null), 2000);
+        } else {
+          const parentIds = nodesAtLevel.length > 0
+            ? [...new Set(sb.activeSet.explorer_edges
+                .filter(e => nodesAtLevel.some(n => n.node_id === e.child_node_id))
+                .map(e => e.parent_node_id))]
+            : [];
+          if (parentIds.length > 0) {
+            sb.addSiblingNode(payload.trackId, parentIds, level);
+          } else {
+            sb.addExplorerNode(payload.trackId, undefined, level);
+          }
+        }
+      }
+    } else if (targetId.startsWith('drop-explorer-node-')) {
+      const nodeId = targetId.replace('drop-explorer-node-', '');
+      if (sb.activeSet) {
+        const parentNode = sb.activeSet.explorer_nodes.find(n => n.node_id === nodeId);
+        if (parentNode) {
+          const childLevel = parentNode.level + 1;
+          const childrenAtLevel = sb.activeSet.explorer_nodes.filter(n => n.level === childLevel);
+          if (childrenAtLevel.length >= MAX_COLS) {
+            setDndWarning(`Maximum ${MAX_COLS} children per level`);
+            setDndWarningNodeId(nodeId);
+            setTimeout(() => { setDndWarning(null); setDndWarningNodeId(null); }, 2000);
+          } else {
+            sb.addExplorerNode(payload.trackId, nodeId, childLevel);
+          }
+        }
+      }
+    }
+  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, poolExpanded, handlePoolExpandedChange]);
 
   return (
-    <div className="app-shell-v2">
-      {!weightsLoading && Object.keys(weights).length > 0 && (
-        <div ref={gaugeRowRef}>
-          <WeightControls
-            weights={weights}
-            setWeight={setWeight}
-            saving={weightsSaving}
-            saveSuccess={weightsSaveSuccess}
-            saveError={weightsError}
-            warningMessage={weightsWarning}
-          />
-        </div>
-      )}
-
-      <SearchPanel
-        selectedTrack={selectedTrack}
-        selectTrack={handleSelectTrack}
-        clearSelectedTrack={clearSelectedTrack}
-        normalizeWeights={normalizeWeights}
-        resetWeights={resetWeights}
-        isSumValid={isSumValid}
-        rawSum={rawSum}
-        onSearchTextChange={setSearchText}
-        searchPadding={searchPadding}
-        onAddToPool={handleAddSelectedToPool}
-        onAddToTracklist={handleAddSelectedToTracklist}
-        searchText={searchText}
-      />
-
-      <div className="tab-bar">
-        <button
-          className={`tab${activeTab === 'matches' ? ' active' : ''}`}
-          onClick={() => {
-            setActiveTab('matches');
-            setDetailMatch(null);
-          }}
-        >
-          Matches
-        </button>
-        <button
-          className={`tab${activeTab === 'browse' ? ' active' : ''}`}
-          onClick={() => setActiveTab('browse')}
-        >
-          Browse
-        </button>
-        <button
-          className={`tab${activeTab === 'admin' ? ' active' : ''}`}
-          onClick={() => setActiveTab('admin')}
-        >
-          Admin
-        </button>
-        <button
-          className={`tab${activeTab === 'set' ? ' active' : ''}`}
-          onClick={() => setActiveTab('set')}
-        >
-          {setTabLabel}
-        </button>
-      </div>
-
-      <div className="tab-content">
-        {activeTab === 'matches' && transitionChain.length > 0 && selectedTrack && (
-          <div className="transition-chain">
-            <button
-              className="chain-back-btn"
-              onClick={handleChainBack}
-              title="Go back to previous source"
-            >
-              ← Back
-            </button>
-            {transitionChain.map((entry, i) => (
-              <span key={`chain-${entry.track.id}-${i}`} className="chain-step">
-                <button
-                  className="chain-entry"
-                  onClick={() => handleChainNavigate(i)}
-                  title={`Return to ${entry.track.title}`}
-                >
-                  {entry.track.title}
-                </button>
-                <span className="chain-arrow">→</span>
-              </span>
-            ))}
-            <span className="chain-current">{selectedTrack.title}</span>
-          </div>
-        )}
-        {activeTab === 'matches' && !detailMatch && (
-          <div className="table-panel">
-            <MatchesPanel
+    <DndContext sensors={sensors} measuring={measuringConfig} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="app-shell-v2">
+        {/* ─── Top Anchor Zone ─── */}
+        <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: '28vh' }}>
+          {/* ─── Unified search + filter row ─── */}
+          <div className="controls-strip">
+            <SearchPanel
               selectedTrack={selectedTrack}
-              matches={matches}
-              loading={matchesLoading}
-              matchesError={matchesError}
-              onViewDetail={setDetailMatch}
-              onUseAsSource={handleUseAsSource}
-              onAddToPool={handleAddToPool}
-              onAddToTracklist={handleAddToTracklist}
+              selectTrack={handleSelectTrack}
+              onSearchTextChange={setSearchText}
+              onClearSelectedTrack={handleClearSelectedTrack}
+              searchText={searchText}
+              onWeightsToggle={() => setShowWeights(prev => !prev)}
+              showWeights={showWeights}
+              onAdminToggle={() => setShowAdmin(prev => !prev)}
+              showAdmin={showAdmin}
             />
-          </div>
-        )}
-        {activeTab === 'matches' && detailMatch && (
-          <MatchDetail
-            sourceTrack={selectedTrack}
-            match={detailMatch}
-            onBack={() => setDetailMatch(null)}
-            traitMap={traitMap}
-            onUseAsSource={handleUseAsSource}
-            onAddToPool={handleAddToPool}
-            onAddToTracklist={handleAddToTracklist}
-          />
-        )}
-        {activeTab === 'browse' && (
-          <div className="table-panel">
             <FilterBar
               camelotCodes={filters.camelotCodes}
               bpm={filters.bpm}
@@ -405,65 +510,282 @@ export default function App() {
               onToggleColumn={toggleBrowseColumn}
               onClearFilters={handleClearFilters}
             />
-            {traitsError && (
-              <p className="table-status table-status--error">
-                Failed to load track traits — {traitsError}
-              </p>
-            )}
+          </div>
+
+          {traitsError && (
+            <p className="table-status table-status--error" style={{ margin: '0 var(--content-gutter)' }}>
+              Failed to load track traits — {traitsError}
+            </p>
+          )}
+
+          <div className="table-panel">
             <TrackTable
-              tracks={browseTracks}
+              tracks={visibleTracks}
               loading={collectionLoading}
               selectedTrack={selectedTrack}
               selectTrack={handleBrowseSelect}
-              hasMore={!selectedTrack ? hasMorePages : undefined}
-              onLoadMore={!selectedTrack ? handleLoadMore : undefined}
+              hasMore={hasMorePages}
+              onLoadMore={handleLoadMore}
               error={tracksError}
               columnVisibility={browseColumnVisibility}
               onAddToPool={handleAddToPool}
               onAddToTracklist={handleAddToTracklist}
             />
           </div>
+        </div>
+
+        {/* ─── Dock Bar ─── */}
+        <DockBar
+          activePanel={activePanel}
+          onPanelChange={setActivePanel}
+          setLabel={setTabLabel}
+          panelHeight={currentPanelHeight}
+          onPanelHeightChange={handlePanelHeightChange}
+          defaultHeight={DEFAULT_PANEL_HEIGHT}
+          isDragging={dragItem !== null}
+        />
+
+        {/* ─── Panel Zone (always visible, idle when no panel active) ─── */}
+        <div
+          className="panel-zone"
+          style={{ height: currentPanelHeight }}
+        >
+          {/* Matches panel */}
+          <div
+            id="panel-matches"
+            role="tabpanel"
+            aria-labelledby="dock-tab-matches"
+            className="panel-content"
+            style={{ display: activePanel === 'matches' ? 'flex' : 'none' }}
+          >
+            {transitionChain.length > 0 && selectedTrack && (
+              <div className="transition-chain">
+                <button
+                  className="chain-back-btn"
+                  onClick={handleChainBack}
+                  title="Go back to previous source"
+                >
+                  ← Back
+                </button>
+                {transitionChain.map((entry, i) => (
+                  <span key={`chain-${entry.track.id}-${i}`} className="chain-step">
+                    <button
+                      className="chain-entry"
+                      onClick={() => handleChainNavigate(i)}
+                      title={`Return to ${entry.track.title}`}
+                    >
+                      {entry.track.title}
+                    </button>
+                    <span className="chain-arrow">→</span>
+                  </span>
+                ))}
+                <span className="chain-current">{selectedTrack.title}</span>
+              </div>
+            )}
+
+            {!detailMatch && (
+              <div className="panel-matches-table">
+                <MatchesPanel
+                  selectedTrack={selectedTrack}
+                  matches={matches}
+                  loading={matchesLoading}
+                  matchesError={matchesError}
+                  onViewDetail={setDetailMatch}
+                  onUseAsSource={handleUseAsSource}
+                  onAddToPool={handleAddToPool}
+                  onAddToTracklist={handleAddToTracklist}
+                />
+              </div>
+            )}
+            {detailMatch && (
+              <MatchDetail
+                sourceTrack={selectedTrack}
+                match={detailMatch}
+                onBack={() => setDetailMatch(null)}
+                traitMap={traitMap}
+                onUseAsSource={handleUseAsSource}
+                onAddToPool={handleAddToPool}
+                onAddToTracklist={handleAddToTracklist}
+              />
+            )}
+          </div>
+
+          {/* Set panel */}
+          <div
+            id="panel-set"
+            role="tabpanel"
+            aria-labelledby="dock-tab-set"
+            className="panel-content"
+            style={{ display: activePanel === 'set' ? 'flex' : 'none' }}
+          >
+            <SetBuilder
+              sets={sets}
+              activeSetId={sbActiveSetId}
+              activeSet={activeSet}
+              loading={sbLoading}
+              error={sbError}
+              pendingAdd={pendingAdd}
+              createSet={createSet}
+              selectSet={selectSet}
+              deleteSet={deleteSet}
+              removeFromPool={removeFromPool}
+              movePoolToTracklist={movePoolToTracklist}
+              addToPool={sbAddToPool}
+              removeFromTracklist={removeFromTracklist}
+              moveTracklistToPool={moveTracklistToPool}
+              reorderTracklist={reorderTracklist}
+              updateTracklistNote={updateTracklistNote}
+              addToTracklist={sbAddToTracklist}
+              resolvePendingAdd={resolvePendingAdd}
+              clearPendingAdd={clearPendingAdd}
+              clearError={clearError}
+              poolExpanded={poolExpanded}
+              onPoolExpandedChange={handlePoolExpandedChange}
+            />
+          </div>
+
+          {/* Explorer panel */}
+          <div
+            id="panel-explorer"
+            role="tabpanel"
+            aria-labelledby="dock-tab-explorer"
+            className="panel-content"
+            style={{ display: activePanel === 'explorer' ? 'flex' : 'none' }}
+          >
+            {activeSet ? (
+              <SetExplorerCanvas
+                nodes={activeSet.explorer_nodes}
+                edges={activeSet.explorer_edges}
+                onAddNode={addExplorerNode}
+                onDeleteNode={deleteExplorerNode}
+                onAddEdge={addExplorerEdge}
+                onDeleteEdge={deleteExplorerEdge}
+                onSwap={swapExplorerNodes}
+                onNodeToTracklist={explorerNodeAddToTracklist}
+                onAddSibling={addSiblingNode}
+                tracklistTrackIds={tracklistTrackIds}
+                fetchEdgeScores={fetchEdgeScores}
+                warningNodeId={dndWarningNodeId}
+              />
+            ) : (
+              <div className="set-builder">
+                <div className="set-empty">
+                  <p>Select or create a set to use the Explorer.</p>
+                  {sets.length > 0 ? (
+                    <select
+                      className="set-select"
+                      value=""
+                      onChange={e => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) selectSet(val);
+                      }}
+                    >
+                      <option value="" disabled>Select a set…</option>
+                      {sets.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-muted">No sets exist yet. Create one in the Set panel.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Idle panel state */}
+          {!panelIsOpen && (
+            <div className="panel-content panel-idle" data-testid="panel-idle">
+              <p className="text-muted" style={{ textAlign: 'center', padding: '32px 0' }}>
+                Select a panel above to get started
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ─── Weights overlay ─── */}
+        {showWeights && (
+          <>
+            <div className="overlay-scrim" onClick={handleCloseWeights} />
+            <div className="weights-overlay">
+              <div className="weights-overlay__header">
+                <span className="weights-overlay__title">Match Weights</span>
+                <button
+                  className="clear-btn"
+                  onClick={handleCloseWeights}
+                  title="Close weights"
+                >
+                  ×
+                </button>
+              </div>
+              {!weightsLoading && Object.keys(weights).length > 0 && (
+                <WeightControls
+                  weights={weights}
+                  setWeight={setWeight}
+                  saving={weightsSaving}
+                  saveSuccess={weightsSaveSuccess}
+                  saveError={weightsError}
+                  warningMessage={weightsWarning}
+                />
+              )}
+              <div className="weights-overlay__actions">
+                <button
+                  className="weight-normalize-btn weight-normalize-btn--secondary"
+                  onClick={resetWeights}
+                >
+                  Reset Weights
+                </button>
+                <button
+                  className={`weight-normalize-btn${isSumValid ? ' inactive' : ''}`}
+                  disabled={isSumValid}
+                  onClick={normalizeWeights}
+                >
+                  Normalize Weights{!isSumValid && ` (${parseFloat(rawSum.toFixed(1))})`}
+                </button>
+              </div>
+            </div>
+          </>
         )}
-        {activeTab === 'admin' && (
-          <AdminDashboard
-            stats={cacheStats}
-            loading={cacheLoading}
-            error={cacheError}
-          />
+
+        {/* ─── Admin modal (centered) ─── */}
+        {showAdmin && (
+          <>
+            <div className="overlay-scrim" onClick={() => setShowAdmin(false)} />
+            <div className="admin-modal">
+              <div className="admin-modal__header">
+                <span className="admin-modal__title">Admin Dashboard</span>
+                <button
+                  className="clear-btn"
+                  onClick={() => setShowAdmin(false)}
+                  title="Close admin"
+                >
+                  ×
+                </button>
+              </div>
+              <AdminDashboard
+                stats={cacheStats}
+                loading={cacheLoading}
+                error={cacheError}
+              />
+            </div>
+          </>
         )}
-        {activeTab === 'set' && (
-          <SetBuilder
-            sets={setBuilder.sets}
-            activeSetId={setBuilder.activeSetId}
-            activeSet={setBuilder.activeSet}
-            loading={setBuilder.loading}
-            error={setBuilder.error}
-            pendingAdd={setBuilder.pendingAdd}
-            createSet={setBuilder.createSet}
-            selectSet={setBuilder.selectSet}
-            deleteSet={setBuilder.deleteSet}
-            removeFromPool={setBuilder.removeFromPool}
-            movePoolToTracklist={setBuilder.movePoolToTracklist}
-            addToPool={setBuilder.addToPool}
-            removeFromTracklist={setBuilder.removeFromTracklist}
-            moveTracklistToPool={setBuilder.moveTracklistToPool}
-            reorderTracklist={setBuilder.reorderTracklist}
-            updateTracklistNote={setBuilder.updateTracklistNote}
-            addToTracklist={setBuilder.addToTracklist}
-            addExplorerNode={setBuilder.addExplorerNode}
-            deleteExplorerNode={setBuilder.deleteExplorerNode}
-            addExplorerEdge={setBuilder.addExplorerEdge}
-            deleteExplorerEdge={setBuilder.deleteExplorerEdge}
-            swapExplorerNodes={setBuilder.swapExplorerNodes}
-            explorerNodeAddToTracklist={setBuilder.explorerNodeAddToTracklist}
-            addSiblingNode={setBuilder.addSiblingNode}
-            fetchEdgeScores={setBuilder.fetchEdgeScores}
-            resolvePendingAdd={setBuilder.resolvePendingAdd}
-            clearPendingAdd={setBuilder.clearPendingAdd}
-            clearError={setBuilder.clearError}
-          />
+
+        {/* DnD warning toast */}
+        {dndWarning && (
+          <div className="dnd-warning-toast" role="status" data-testid="dnd-warning-toast">
+            {dndWarning}
+          </div>
         )}
       </div>
-    </div>
+
+      <DragOverlay dropAnimation={null} adjustScale={false} modifiers={EMPTY_MODIFIERS}>
+        {dragItem && (
+          <div className="dnd-drag-preview">
+            {dragItem.title}
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }

@@ -45,6 +45,9 @@ export function useSetBuilder() {
   const [pendingAdd, setPendingAdd] = useState<PendingAdd | null>(null);
   const mountedRef = useRef(true);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const poolAddInFlightRef = useRef(new Set<number>());
+  const activeSetRef = useRef(activeSet);
+  activeSetRef.current = activeSet;
 
   const setErrorWithAutoClear = useCallback((msg: string) => {
     if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
@@ -121,6 +124,7 @@ export function useSetBuilder() {
   }, [refreshSets, hydrateSet]);
 
   const selectSet = useCallback((id: number) => {
+    if (activeSetRef.current?.set.id === id) return;
     hydrateSet(id);
   }, [hydrateSet]);
 
@@ -144,15 +148,36 @@ export function useSetBuilder() {
     }
   }, [activeSetId, hydrateSet, refreshSets]);
 
+  useEffect(() => {
+    if (activeSet && poolAddInFlightRef.current.size > 0) {
+      const poolTrackIds = new Set(activeSet.pool.map(e => e.track_id));
+      for (const id of poolAddInFlightRef.current) {
+        if (poolTrackIds.has(id)) {
+          poolAddInFlightRef.current.delete(id);
+        }
+      }
+    }
+  }, [activeSet]);
+
+  const isPoolAddInFlight = useCallback(
+    (trackId: number) => poolAddInFlightRef.current.has(trackId),
+    [],
+  );
+
   const addToPool = useCallback(async (trackId: number, title?: string) => {
     if (activeSetId === null) {
       setPendingAdd({ type: 'pool', trackId, title: title ?? `Track #${trackId}` });
       return;
     }
+    const cur = activeSetRef.current;
+    if (cur && cur.pool.some(e => e.track_id === trackId)) return;
+    if (poolAddInFlightRef.current.has(trackId)) return;
+    poolAddInFlightRef.current.add(trackId);
     try {
       await poolAdd(activeSetId, trackId);
       await refreshActive();
     } catch (err) {
+      poolAddInFlightRef.current.delete(trackId);
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add track to pool.'));
     }
   }, [activeSetId, refreshActive]);
@@ -400,6 +425,7 @@ export function useSetBuilder() {
     swapExplorerNodes,
     explorerNodeAddToTracklist,
     fetchEdgeScores,
+    isPoolAddInFlight,
     resolvePendingAdd,
     clearPendingAdd,
     clearError,

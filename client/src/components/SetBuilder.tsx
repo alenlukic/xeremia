@@ -1,12 +1,9 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import type { SetSummary, HydratedSet } from '../types';
 import type { PendingAdd } from '../hooks/useSetBuilder';
 import { exportSetM3u8 } from '../api/http';
 import { SetPoolTable } from './SetPoolTable';
 import { SetTracklist } from './SetTracklist';
-import { SetExplorerCanvas } from './SetExplorerCanvas';
-
-type SubTab = 'tracks' | 'explorer';
 
 interface Props {
   sets: SetSummary[];
@@ -26,32 +23,25 @@ interface Props {
   reorderTracklist: (trackId: number, newPosition: number) => void;
   updateTracklistNote: (trackId: number, note: string) => void;
   addToTracklist: (trackId: number, title?: string) => void;
-  addExplorerNode: (trackId: number, parentNodeId?: string, level?: number) => Promise<unknown>;
-  deleteExplorerNode: (nodeId: string, rewireEdges?: { parent_node_id: string; child_node_id: string }[]) => void;
-  addExplorerEdge: (parentNodeId: string, childNodeId: string) => Promise<void>;
-  deleteExplorerEdge: (edgeId: number) => Promise<void>;
-  swapExplorerNodes: (nodeAId: string, nodeBId: string) => void;
-  explorerNodeAddToTracklist: (nodeId: string) => void;
-  addSiblingNode: (trackId: number, inheritParentIds: string[], level: number) => Promise<unknown>;
-  fetchEdgeScores: (pairs: [number, number][]) => Promise<{ scores: (number | null)[] }>;
   resolvePendingAdd: (setId: number) => void;
   clearPendingAdd: () => void;
   clearError: () => void;
+  poolExpanded?: boolean;
+  onPoolExpandedChange?: (expanded: boolean) => void;
 }
 
-export function SetBuilder({
+export const SetBuilder = memo(function SetBuilder({
   sets, activeSetId, activeSet, loading, error, pendingAdd,
   createSet, selectSet, deleteSet,
   removeFromPool, movePoolToTracklist, addToPool,
   removeFromTracklist, moveTracklistToPool, reorderTracklist, updateTracklistNote, addToTracklist,
-  addExplorerNode, deleteExplorerNode, addExplorerEdge, deleteExplorerEdge, swapExplorerNodes,
-  explorerNodeAddToTracklist, addSiblingNode, fetchEdgeScores,
   resolvePendingAdd, clearPendingAdd, clearError,
+  poolExpanded: poolExpandedProp = false,
+  onPoolExpandedChange,
 }: Props) {
-  const [subTab, setSubTab] = useState<SubTab>('tracks');
   const [newSetName, setNewSetName] = useState('');
   const [showNewInput, setShowNewInput] = useState(false);
-  const [poolExpanded, setPoolExpanded] = useState(false);
+  const poolExpanded = poolExpandedProp;
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -102,16 +92,12 @@ export function SetBuilder({
 
   const handlePoolAddTrack = useCallback((trackId: number, title?: string) => {
     addToPool(trackId, title);
-  }, [addToPool]);
+    if (!poolExpanded) onPoolExpandedChange?.(true);
+  }, [addToPool, poolExpanded, onPoolExpandedChange]);
 
   const handleTracklistAddTrack = useCallback((trackId: number, title?: string) => {
     addToTracklist(trackId, title);
   }, [addToTracklist]);
-
-  const tracklistTrackIds = useMemo(() => {
-    if (!activeSet) return new Set<number>();
-    return new Set(activeSet.tracklist.map(e => e.track_id));
-  }, [activeSet]);
 
   if (sets.length === 0 && !showNewInput && !pendingAdd) {
     return (
@@ -131,6 +117,7 @@ export function SetBuilder({
 
   return (
     <div className="set-builder">
+      {/* Selector row */}
       <div className="set-header">
         <div className="set-selector">
           {sets.length > 0 && (
@@ -165,6 +152,11 @@ export function SetBuilder({
               ×
             </button>
           )}
+          {activeSet && activeSet.tracklist.length > 0 && (
+            <button className="set-export-btn" onClick={handleExport}>
+              Export m3u8
+            </button>
+          )}
         </div>
 
         {showNewInput && (
@@ -193,7 +185,6 @@ export function SetBuilder({
             </button>
           </div>
         )}
-
       </div>
 
       {error && (
@@ -205,90 +196,56 @@ export function SetBuilder({
 
       {!activeSet && loading && <p className="table-status">Loading set…</p>}
 
+      {!activeSet && !loading && sets.length > 0 && (
+        <div className="set-empty">
+          <p>Select a set above, or create a new one.</p>
+        </div>
+      )}
+
       {activeSet && (
-        <>
-          <div className="set-sub-tabs">
-            <button
-              className={`set-sub-tab${subTab === 'tracks' ? ' active' : ''}`}
-              onClick={() => setSubTab('tracks')}
-            >
-              Tracks
-            </button>
-            <button
-              className={`set-sub-tab${subTab === 'explorer' ? ' active' : ''}`}
-              onClick={() => setSubTab('explorer')}
-            >
-              Explorer
-            </button>
-            {activeSet.tracklist.length > 0 && (
-              <button className="set-export-btn" onClick={handleExport}>
-                Export m3u8
+        <div className="set-workspace-split">
+          <SetTracklist
+            tracklist={activeSet.tracklist}
+            onRemove={removeFromTracklist}
+            onMoveToPool={moveTracklistToPool}
+            onReorder={reorderTracklist}
+            onUpdateNote={updateTracklistNote}
+            onAddTrack={handleTracklistAddTrack}
+          />
+          <div className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}>
+            {poolExpanded && (
+              <button
+                className="set-pool-collapse-handle"
+                onClick={() => onPoolExpandedChange?.(false)}
+                aria-label="Collapse pool"
+                title="Collapse pool"
+              >
+                ‹
               </button>
             )}
-          </div>
-
-          {subTab === 'tracks' && (
-            <div className="set-workspace-split">
-              <SetTracklist
-                tracklist={activeSet.tracklist}
-                onRemove={removeFromTracklist}
-                onMoveToPool={moveTracklistToPool}
-                onReorder={reorderTracklist}
-                onUpdateNote={updateTracklistNote}
-                onAddTrack={handleTracklistAddTrack}
-              />
-              <div className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}>
-                {poolExpanded && (
-                  <button
-                    className="set-pool-collapse-handle"
-                    onClick={() => setPoolExpanded(false)}
-                    aria-label="Collapse pool"
-                    title="Collapse pool"
-                  >
-                    ‹
-                  </button>
-                )}
-                {!poolExpanded ? (
-                  <button
-                    className="set-pool-expand-tab"
-                    onClick={() => setPoolExpanded(true)}
-                    aria-label="Expand pool"
-                    title="Expand pool"
-                  >
-                    <span className="set-pool-expand-chevron" aria-hidden="true">›</span>
-                    <span className="set-pool-expand-label">Pool ({activeSet.pool.length})</span>
-                  </button>
-                ) : (
-                  <div className="set-pool-accordion-content">
-                    <SetPoolTable
-                      pool={activeSet.pool}
-                      onRemove={removeFromPool}
-                      onMoveToTracklist={movePoolToTracklist}
-                      onAddTrack={handlePoolAddTrack}
-                    />
-                  </div>
-                )}
+            {!poolExpanded ? (
+              <button
+                className="set-pool-expand-tab"
+                onClick={() => onPoolExpandedChange?.(true)}
+                aria-label="Expand pool"
+                title="Expand pool"
+              >
+                <span className="set-pool-expand-chevron" aria-hidden="true">›</span>
+                <span className="set-pool-expand-label">Pool ({activeSet.pool.length})</span>
+              </button>
+            ) : (
+              <div className="set-pool-accordion-content">
+                <SetPoolTable
+                  pool={activeSet.pool}
+                  onRemove={removeFromPool}
+                  onMoveToTracklist={movePoolToTracklist}
+                  onAddTrack={handlePoolAddTrack}
+                />
               </div>
-            </div>
-          )}
-
-          {subTab === 'explorer' && (
-            <SetExplorerCanvas
-              nodes={activeSet.explorer_nodes}
-              edges={activeSet.explorer_edges}
-              onAddNode={addExplorerNode}
-              onDeleteNode={deleteExplorerNode}
-              onAddEdge={addExplorerEdge}
-              onDeleteEdge={deleteExplorerEdge}
-              onSwap={swapExplorerNodes}
-              onNodeToTracklist={explorerNodeAddToTracklist}
-              onAddSibling={addSiblingNode}
-              tracklistTrackIds={tracklistTrackIds}
-              fetchEdgeScores={fetchEdgeScores}
-            />
-          )}
-        </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
-}
+});

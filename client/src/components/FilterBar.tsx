@@ -47,6 +47,8 @@ export function FilterBar({
   const [colConfigOpen, setColConfigOpen] = useState(false);
   const colConfigRef = useRef<HTMLDivElement>(null);
 
+  const [bpmText, setBpmText] = useState(bpm != null ? String(bpm) : '');
+  const bpmTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [minText, setMinText] = useState(bpmMin != null ? String(bpmMin) : '');
   const [maxText, setMaxText] = useState(bpmMax != null ? String(bpmMax) : '');
   const minTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -54,6 +56,7 @@ export function FilterBar({
 
   useEffect(() => {
     return () => {
+      clearTimeout(bpmTimer.current);
       clearTimeout(minTimer.current);
       clearTimeout(maxTimer.current);
     };
@@ -97,6 +100,10 @@ export function FilterBar({
   }, [colConfigOpen]);
 
   useEffect(() => {
+    setBpmText(bpm != null ? String(bpm) : '');
+  }, [bpm]);
+
+  useEffect(() => {
     setMinText(bpmMin != null ? String(bpmMin) : '');
   }, [bpmMin]);
 
@@ -117,10 +124,34 @@ export function FilterBar({
     return Number.isNaN(n) ? undefined : n;
   }
 
+  function handleBpmChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const text = e.target.value;
+    setBpmText(text);
+    if (text && (minText || maxText)) {
+      clearTimeout(minTimer.current);
+      clearTimeout(maxTimer.current);
+      setMinText('');
+      setMaxText('');
+      setBpmMin(undefined);
+      setBpmMax(undefined);
+    }
+    clearTimeout(bpmTimer.current);
+    bpmTimer.current = setTimeout(() => setBpm(parseNum(text)), RANGE_DEBOUNCE_MS);
+  }
+
+  function handleBpmBlur() {
+    clearTimeout(bpmTimer.current);
+    setBpm(parseNum(bpmText));
+  }
+
   function handleMinChange(e: React.ChangeEvent<HTMLInputElement>) {
     const text = e.target.value;
     setMinText(text);
-    if (text && bpm != null) setBpm(undefined);
+    if (text && bpmText) {
+      clearTimeout(bpmTimer.current);
+      setBpmText('');
+      setBpm(undefined);
+    }
     clearTimeout(minTimer.current);
     minTimer.current = setTimeout(() => setBpmMin(parseNum(text)), RANGE_DEBOUNCE_MS);
   }
@@ -128,7 +159,11 @@ export function FilterBar({
   function handleMaxChange(e: React.ChangeEvent<HTMLInputElement>) {
     const text = e.target.value;
     setMaxText(text);
-    if (text && bpm != null) setBpm(undefined);
+    if (text && bpmText) {
+      clearTimeout(bpmTimer.current);
+      setBpmText('');
+      setBpm(undefined);
+    }
     clearTimeout(maxTimer.current);
     maxTimer.current = setTimeout(() => setBpmMax(parseNum(text)), RANGE_DEBOUNCE_MS);
   }
@@ -146,7 +181,6 @@ export function FilterBar({
   return (
     <div className="filter-bar">
       <div className="filter-group" ref={camelotRef}>
-        <label className="filter-label">Camelot</label>
         <div className="filter-input-row">
           <button
             className="filter-camelot-toggle"
@@ -159,6 +193,7 @@ export function FilterBar({
             <button className="clear-btn" onClick={() => setCamelotCodes([])} tabIndex={-1}>×</button>
           )}
         </div>
+        <label className="filter-label">Camelot</label>
         {camelotOpen && (
           <div className="camelot-grid">
             {CAMELOT_CODES.map((code) => (
@@ -180,23 +215,23 @@ export function FilterBar({
       </div>
 
       <div className="filter-group">
-        <label className="filter-label">BPM</label>
         <div className="filter-input-row">
           <input
             type="number"
             className="filter-input mono"
             placeholder="Exact"
-            value={bpm ?? ''}
-            onChange={(e) => setBpm(parseNum(e.target.value))}
+            value={bpmText}
+            onChange={handleBpmChange}
+            onBlur={handleBpmBlur}
           />
-          {bpm != null && (
-            <button className="clear-btn" onClick={() => setBpm(undefined)} tabIndex={-1}>×</button>
+          {bpmText && (
+            <button className="clear-btn" onClick={() => { clearTimeout(bpmTimer.current); setBpmText(''); setBpm(undefined); }} tabIndex={-1}>×</button>
           )}
         </div>
+        <label className="filter-label">BPM</label>
       </div>
 
       <div className="filter-group">
-        <label className="filter-label">BPM Range</label>
         <div className="filter-range">
           <input
             type="number"
@@ -232,6 +267,7 @@ export function FilterBar({
             </button>
           )}
         </div>
+        <label className="filter-label">BPM Range</label>
       </div>
 
       {onClearFilters && (

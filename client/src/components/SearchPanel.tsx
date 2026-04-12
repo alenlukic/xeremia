@@ -7,20 +7,17 @@ const searchCache = new Map<string, SearchSuggestion[]>();
 interface Props {
   selectedTrack: Track | SearchSuggestion | null;
   selectTrack: (track: Track | SearchSuggestion) => void;
-  clearSelectedTrack: () => void;
-  normalizeWeights: () => void;
-  resetWeights: () => void;
-  isSumValid: boolean;
-  rawSum: number;
   onSearchTextChange?: (text: string) => void;
   searchPadding?: { left: number; right: number } | null;
-  onAddToSet?: () => void;
-  onAddToPool?: () => void;
-  onAddToTracklist?: () => void;
+  onClearSelectedTrack?: () => void;
   searchText?: string;
+  onWeightsToggle?: () => void;
+  showWeights?: boolean;
+  onAdminToggle?: () => void;
+  showAdmin?: boolean;
 }
 
-export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange, searchPadding, onAddToSet, onAddToPool, onAddToTracklist, searchText }: Props) {
+export function SearchPanel({ selectedTrack, selectTrack, onSearchTextChange, searchPadding, onClearSelectedTrack, searchText, onWeightsToggle, showWeights, onAdminToggle, showAdmin }: Props) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -31,14 +28,18 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
   useEffect(() => {
     if (selectedTrack) {
       setQuery(selectedTrack.title);
+      setSuggestions([]);
+      setOpen(false);
     }
   }, [selectedTrack]);
 
   useEffect(() => {
-    if (searchText === '' && !selectedTrack && query !== '') {
+    if (searchText === '' && query !== '') {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       setQuery('');
       setSuggestions([]);
       setOpen(false);
+      onClearSelectedTrack?.();
     }
   }, [searchText]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -46,17 +47,22 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newQuery = e.target.value;
       setQuery(newQuery);
-      clearSelectedTrack();
-      onSearchTextChange?.(newQuery);
+
+      if (selectedTrack) {
+        onClearSelectedTrack?.();
+      }
 
       if (debounceRef.current) clearTimeout(debounceRef.current);
 
       const trimmed = newQuery.trim();
       if (!trimmed) {
+        onSearchTextChange?.('');
         setSuggestions([]);
         setOpen(false);
         return;
       }
+
+      onSearchTextChange?.(newQuery);
 
       const cached = searchCache.get(trimmed);
       if (cached) {
@@ -73,9 +79,9 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           setOpen(results.length > 0);
           setActiveIdx(-1);
         });
-      }, 200);
+      }, 100);
     },
-    [clearSelectedTrack, onSearchTextChange],
+    [onSearchTextChange, selectedTrack, onClearSelectedTrack],
   );
 
   useEffect(() => {
@@ -96,6 +102,7 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
 
   function handleSelect(suggestion: SearchSuggestion) {
     selectTrack(suggestion);
+    setSuggestions([]);
     setOpen(false);
   }
 
@@ -136,11 +143,12 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           <button
             className="clear-btn clear-btn--search"
             onClick={() => {
+              if (debounceRef.current) clearTimeout(debounceRef.current);
               setQuery('');
               setSuggestions([]);
               setOpen(false);
-              clearSelectedTrack();
               onSearchTextChange?.('');
+              onClearSelectedTrack?.();
             }}
             tabIndex={-1}
           >
@@ -167,53 +175,27 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           </ul>
         )}
       </div>
-      {(onAddToPool || onAddToTracklist) ? (
-        <div className="set-dual-actions search-dual-actions">
-          {onAddToPool && (
-            <button
-              className="match-action-btn match-action-btn--small"
-              onClick={onAddToPool}
-              disabled={!selectedTrack}
-              title={selectedTrack ? 'Add to Pool' : 'Select a track first'}
-            >
-              + Pool
-            </button>
-          )}
-          {onAddToTracklist && (
-            <button
-              className="match-action-btn match-action-btn--small"
-              onClick={onAddToTracklist}
-              disabled={!selectedTrack}
-              title={selectedTrack ? 'Add to Tracklist' : 'Select a track first'}
-            >
-              + TL
-            </button>
-          )}
-        </div>
-      ) : (
-        <button
-          className="match-action-btn search-add-to-set-btn"
-          onClick={onAddToSet}
-          disabled={!selectedTrack}
-          title={selectedTrack ? 'Add selected track to set' : 'Select a track first'}
-        >
-          + Set
-        </button>
-      )}
       <div className="search-actions">
-        <button
-          className="weight-normalize-btn weight-normalize-btn--secondary"
-          onClick={resetWeights}
-        >
-          Reset Weights
-        </button>
-        <button
-          className={`weight-normalize-btn${isSumValid ? ' inactive' : ''}`}
-          disabled={isSumValid}
-          onClick={normalizeWeights}
-        >
-          Normalize Weights{!isSumValid && ` (${parseFloat(rawSum.toFixed(1))})`}
-        </button>
+        {onWeightsToggle && (
+          <button
+            className={`search-weights-btn${showWeights ? ' search-weights-btn--active' : ''}`}
+            onClick={onWeightsToggle}
+            title="Weights"
+            aria-label="Toggle weights"
+          >
+            ⚖
+          </button>
+        )}
+        {onAdminToggle && (
+          <button
+            className={`dock-admin-btn${showAdmin ? ' dock-admin-btn--active' : ''}`}
+            onClick={onAdminToggle}
+            title="Admin Dashboard"
+            aria-label="Admin Dashboard"
+          >
+            ⚙
+          </button>
+        )}
       </div>
     </div>
   );

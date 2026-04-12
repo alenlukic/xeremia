@@ -9,9 +9,12 @@ import {
   type ColumnOrderState,
   type SortingState,
   type Updater,
+  type Row,
 } from '@tanstack/react-table';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { Track, SearchSuggestion, TransitionMatch } from '../types';
 import { formatScore, formatOverallScore } from '../utils';
+import type { DragPayload } from '../dnd';
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key';
 
@@ -161,6 +164,46 @@ interface Props {
   onAddToSet?: (candidateId: number) => void;
   onAddToPool?: (candidateId: number) => void;
   onAddToTracklist?: (candidateId: number) => void;
+}
+
+function DraggableMatchRow({ row, isLoading }: { row: Row<TransitionMatch>; isLoading: boolean }) {
+  const payload: DragPayload = {
+    trackId: row.original.candidate_id,
+    title: row.original.title,
+    source: 'matches',
+  };
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: `match-track-${row.original.candidate_id}`,
+    data: payload,
+    attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
+  });
+
+  const rowListeners = useMemo(() => {
+    if (!listeners) return {};
+    const { onPointerDown, ...rest } = listeners as Record<string, unknown>;
+    return {
+      ...rest,
+      onPointerDown: (e: React.PointerEvent) => {
+        if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        (onPointerDown as (e: React.PointerEvent) => void)?.(e);
+      },
+    };
+  }, [listeners]);
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={isLoading ? { opacity: 0.6, cursor: 'grab' } : isDragging ? { opacity: 0.4, cursor: 'grabbing' } : { cursor: 'grab' }}
+      {...rowListeners}
+    >
+      <td className="drag-handle-cell"><span className="drag-handle" aria-hidden="true">⠿</span></td>
+      {row.getVisibleCells().map((cell) => (
+        <td key={cell.id}>
+          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        </td>
+      ))}
+    </tr>
+  );
 }
 
 export const MatchesPanel = memo(function MatchesPanel({
@@ -408,6 +451,8 @@ export const MatchesPanel = memo(function MatchesPanel({
     setDraggedColumn(null);
   }, []);
 
+  const { setNodeRef: setMatchesHeaderRef, isOver: isMatchesHeaderOver } = useDroppable({ id: 'drop-matches-header' });
+
   if (!selectedTrack) {
     return (
       <div className="matches-panel">
@@ -418,7 +463,10 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   return (
     <div className="matches-panel">
-      <h2 className="panel-title">
+      <h2
+        ref={setMatchesHeaderRef}
+        className={`panel-title${isMatchesHeaderOver ? ' drop-zone--active' : ''}`}
+      >
         Matches for <span className="matches-track-name">{selectedTrack.title}</span>
       </h2>
       <div className="bucket-tabs">
@@ -477,6 +525,7 @@ export const MatchesPanel = memo(function MatchesPanel({
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
+                  <th className="drag-handle-cell" style={{ width: 24 }} />
                   {hg.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const sorted = header.column.getIsSorted();
@@ -538,13 +587,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                 </tr>
               ) : (
                 table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} style={loading ? { opacity: 0.6 } : undefined}>
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
+                  <DraggableMatchRow key={row.id} row={row} isLoading={loading} />
                 ))
               )}
             </tbody>

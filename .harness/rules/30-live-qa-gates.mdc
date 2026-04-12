@@ -61,6 +61,9 @@ MANDATORY FAILURE CRITERIA
      - If the DOM does not render, shows runtime errors, is missing expected
        elements, or has regressions in existing elements -> QA FAIL
      - "Could not inspect DOM" is NOT acceptable for PASS — the verdict is FAIL
+     - After all Chrome DevTools checks are complete, MUST clean up:
+       call `list_pages`, then `close_page` for each page opened during the session;
+       if only one page remains (cannot be closed), navigate it to `about:blank`
 
 VERIFICATION PROCEDURE
 
