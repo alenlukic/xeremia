@@ -19,6 +19,7 @@ class SetExplorerNode(Base):
     )
 
     set_id = Column("set_id", ForeignKey("dj_set.id", ondelete="CASCADE"), nullable=False, index=True)
+    tree_id = Column("tree_id", ForeignKey("set_explorer_tree.id", ondelete="CASCADE"), nullable=False, index=True)
     node_id = Column("node_id", String(64), nullable=False)
     track_id = Column("track_id", ForeignKey("track.id", ondelete="CASCADE"), nullable=False, index=True)
     level = Column("level", Integer, nullable=False, default=0)

@@ -4,15 +4,18 @@ import type { PoolEntry } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
 import type { SearchSuggestion } from '../types';
+import { PlayButton } from './PlayButton';
 
 interface Props {
   pool: PoolEntry[];
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
+  onToggleStar: (trackId: number, starred: boolean) => void;
   onAddTrack: (trackId: number, title?: string) => void;
+  onClearAll?: () => void;
 }
 
-export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: Props) {
+export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onToggleStar, onAddTrack, onClearAll }: Props) {
   const { setNodeRef: setPoolDropRef, isOver: isPoolOver } = useDroppable({ id: 'drop-pool' });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
@@ -73,6 +76,18 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: 
     <div ref={setPoolDropRef} className={`set-pool${isPoolOver ? ' drop-zone--active' : ''}`}>
       <div className="set-pool-header">
         <h3 className="set-section-title">Pool ({pool.length})</h3>
+        {pool.length > 0 && onClearAll && (
+          <button
+            className="set-action-btn set-action-btn--danger set-clear-all-btn"
+            onClick={() => {
+              if (window.confirm(`Clear all ${pool.length} track${pool.length === 1 ? '' : 's'} from Pool?`)) {
+                onClearAll();
+              }
+            }}
+          >
+            Clear All
+          </button>
+        )}
         <div className="set-pool-search-wrapper">
           <input
             className="set-pool-search"
@@ -104,6 +119,8 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: 
       ) : (
         <table className="set-pool-table">
           <colgroup>
+            <col className="set-ws-col-star" />
+            <col className="set-ws-col-play" />
             <col className="set-ws-col-num" />
             <col className="set-ws-col-title" />
             <col className="set-ws-col-key" />
@@ -112,6 +129,8 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: 
           </colgroup>
           <thead>
             <tr>
+              <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
+              <th className="set-ws-th" style={{ width: 32 }} />
               <th className="set-ws-th set-ws-th-sortable" onClick={() => handleSort('insertion_order')}>
                 #{sortIndicator('insertion_order')}
               </th>
@@ -134,6 +153,19 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: 
                 draggable
                 onDragStart={e => e.dataTransfer.setData('text/plain', String(entry.track_id))}
               >
+                <td className="set-ws-cell-star">
+                  <button
+                    className={`star-toggle${entry.starred ? ' starred' : ''}`}
+                    onClick={() => onToggleStar(entry.track_id, !entry.starred)}
+                    title={entry.starred ? 'Unstar' : 'Star'}
+                    aria-label={entry.starred ? 'Unstar track' : 'Star track'}
+                  >
+                    {entry.starred ? '★' : '☆'}
+                  </button>
+                </td>
+                <td className="play-cell">
+                  <PlayButton trackId={entry.track_id} title={cleanTitle(entry.track, entry.track_id)} />
+                </td>
                 <td className="mono set-ws-cell-num">{entry.insertion_order + 1}</td>
                 <td className="set-ws-cell-title">{cleanTitle(entry.track, entry.track_id)}</td>
                 <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>

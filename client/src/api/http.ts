@@ -1,4 +1,4 @@
-import type { Track, SearchSuggestion, TransitionMatch, MatchDetail, CacheStats, WeightsResponse, TrackTraitEntry, SetSummary, HydratedSet } from '../types';
+import type { Track, SearchSuggestion, TransitionMatch, MatchDetail, CacheStats, WeightsResponse, TrackTraitEntry, SetSummary, HydratedSet, ExplorerTree } from '../types';
 
 export async function fetchTracks(params: {
   camelot_code?: string;
@@ -147,6 +147,12 @@ export async function poolAdd(setId: number, trackId: number): Promise<void> {
   }
 }
 
+export async function poolClear(setId: number): Promise<{ removed: number }> {
+  const res = await fetch(`/api/sets/${setId}/pool`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Pool clear failed: ${res.status}`);
+  return res.json();
+}
+
 export async function poolRemove(setId: number, trackId: number): Promise<void> {
   const res = await fetch(`/api/sets/${setId}/pool/${trackId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`Pool remove failed: ${res.status}`);
@@ -184,6 +190,12 @@ export async function updateTracklistNote(
   if (!res.ok) throw new Error(`Note update failed: ${res.status}`);
 }
 
+export async function tracklistClear(setId: number): Promise<{ removed: number }> {
+  const res = await fetch(`/api/sets/${setId}/tracklist`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Tracklist clear failed: ${res.status}`);
+  return res.json();
+}
+
 export async function tracklistRemove(setId: number, trackId: number): Promise<void> {
   const res = await fetch(`/api/sets/${setId}/tracklist/${trackId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`Tracklist remove failed: ${res.status}`);
@@ -200,6 +212,24 @@ export async function tracklistReorder(
   if (!res.ok) throw new Error(`Tracklist reorder failed: ${res.status}`);
 }
 
+export async function togglePoolStar(setId: number, trackId: number, starred: boolean): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/${trackId}/star`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ starred }),
+  });
+  if (!res.ok) throw new Error(`Pool star toggle failed: ${res.status}`);
+}
+
+export async function toggleTracklistStar(setId: number, trackId: number, starred: boolean): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/tracklist/${trackId}/star`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ starred }),
+  });
+  if (!res.ok) throw new Error(`Tracklist star toggle failed: ${res.status}`);
+}
+
 export async function tracklistMoveToPool(setId: number, trackId: number): Promise<void> {
   const res = await fetch(`/api/sets/${setId}/tracklist/move-to-pool`, {
     method: 'POST',
@@ -209,16 +239,41 @@ export async function tracklistMoveToPool(setId: number, trackId: number): Promi
   if (!res.ok) throw new Error(`Tracklist move to pool failed: ${res.status}`);
 }
 
+export async function explorerCreateTree(
+  setId: number,
+  name: string,
+  mode: 'empty' | 'full_copy' | 'subtree_copy' = 'empty',
+  sourceTreeId?: number,
+  sourceNodeId?: string,
+): Promise<ExplorerTree> {
+  const res = await fetch(`/api/sets/${setId}/explorer/trees`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      mode,
+      source_tree_id: sourceTreeId,
+      source_node_id: sourceNodeId,
+    }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Create tree failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function explorerAddNode(
   setId: number,
   trackId: number,
   parentNodeId?: string,
   level: number = 0,
+  treeId?: number,
 ): Promise<{ ok: boolean; node_id: string; track_id: number; level: number }> {
   const res = await fetch(`/api/sets/${setId}/explorer/nodes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ track_id: trackId, parent_node_id: parentNodeId, level }),
+    body: JSON.stringify({ track_id: trackId, parent_node_id: parentNodeId, level, tree_id: treeId }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

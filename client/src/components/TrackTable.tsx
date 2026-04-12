@@ -16,6 +16,7 @@ import { useDraggable } from '@dnd-kit/core';
 import type { Track, SearchSuggestion } from '../types';
 import { formatFloat, formatBpm, displayGenre } from '../utils';
 import type { DragPayload } from '../dnd';
+import { PlayButton } from './PlayButton';
 
 const col = createColumnHelper<Track>();
 
@@ -85,6 +86,13 @@ const dataColumns = [
   }),
 ];
 
+const COL_CHOOSER_WIDTH = 28;
+
+interface ColumnConfig {
+  id: string;
+  label: string;
+}
+
 interface Props {
   tracks: Track[];
   loading: boolean;
@@ -95,11 +103,12 @@ interface Props {
   error?: string | null;
   columnVisibility?: Record<string, boolean>;
   onAddToSet?: (trackId: number) => void;
-  onAddToPool?: (trackId: number) => void;
-  onAddToTracklist?: (trackId: number) => void;
+  configurableColumns?: ColumnConfig[];
+  onToggleColumn?: (id: string) => void;
+  starredTrackIds?: Set<number>;
 }
 
-function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth, measureRef, virtualIndex }: {
+function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth, measureRef, virtualIndex, hasColChooser, isStarred }: {
   row: Row<Track>;
   isSelected: boolean;
   onSelect: (track: Track) => void;
@@ -107,6 +116,8 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
   totalWidth?: number;
   measureRef?: (node: HTMLElement | null) => void;
   virtualIndex?: number;
+  hasColChooser?: boolean;
+  isStarred?: boolean;
 }) {
   const payload: DragPayload = {
     trackId: row.original.id,
@@ -158,17 +169,25 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
       onClick={() => onSelect(row.original)}
       {...rowListeners}
     >
-      <td className="drag-handle-cell"><span className="drag-handle" aria-hidden="true">⠿</span></td>
+      <td className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }}>
+        {isStarred
+          ? <span className="star-indicator" title="Starred in active set" aria-label="Starred">★</span>
+          : <span className="drag-handle" aria-hidden="true">⠿</span>}
+      </td>
+      <td className="play-cell">
+        <PlayButton trackId={row.original.id} title={row.original.title} />
+      </td>
       {row.getVisibleCells().map((cell) => (
-        <td key={cell.id}>
+        <td key={cell.id} style={{ width: cell.column.getSize() }}>
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
         </td>
       ))}
+      {hasColChooser && <td style={{ width: COL_CHOOSER_WIDTH }} />}
     </tr>
   );
 }
 
-export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, onAddToPool, onAddToTracklist }: Props) {
+export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, configurableColumns, onToggleColumn, starredTrackIds }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -182,8 +201,30 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
   ]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const [colConfigOpen, setColConfigOpen] = useState(false);
+  const colConfigRef = useRef<HTMLTableCellElement>(null);
+
+  const hasColChooser = !!(configurableColumns && configurableColumns.length > 0);
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null);
+
+  useEffect(() => {
+    if (!colConfigOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (colConfigRef.current && !colConfigRef.current.contains(e.target as Node)) {
+        setColConfigOpen(false);
+      }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setColConfigOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [colConfigOpen]);
 
   useLayoutEffect(() => {
     const el = outerRef.current;
@@ -236,28 +277,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     size: 74,
     minSize: 60,
     enableSorting: false,
-    cell: ({ row }) => (onAddToPool || onAddToTracklist) ? (
-      <div className="set-dual-actions">
-        {onAddToPool && (
-          <button
-            className="match-action-btn match-action-btn--small"
-            onClick={(e) => { e.stopPropagation(); onAddToPool(row.original.id); }}
-            title="Add to Pool"
-          >
-            + Pool
-          </button>
-        )}
-        {onAddToTracklist && (
-          <button
-            className="match-action-btn match-action-btn--small"
-            onClick={(e) => { e.stopPropagation(); onAddToTracklist(row.original.id); }}
-            title="Add to Tracklist"
-          >
-            + TL
-          </button>
-        )}
-      </div>
-    ) : onAddToSet ? (
+    cell: ({ row }) => onAddToSet ? (
       <button
         className="match-action-btn"
         onClick={(e) => { e.stopPropagation(); onAddToSet(row.original.id); }}
@@ -266,11 +286,11 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
         + Set
       </button>
     ) : null,
-  }), [onAddToSet, onAddToPool, onAddToTracklist]);
+  }), [onAddToSet]);
 
   const allColumns = useMemo(
-    () => [...dataColumns, addToSetColumn],
-    [addToSetColumn],
+    () => onAddToSet ? [...dataColumns, addToSetColumn] : dataColumns,
+    [onAddToSet, addToSetColumn],
   );
 
   const fullColumnOrder = columnOrder;
@@ -287,7 +307,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     getSortedRowModel: getSortedRowModel(),
   });
 
-  const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH;
+  const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH + (hasColChooser ? COL_CHOOSER_WIDTH : 0);
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth;
 
   useLayoutEffect(() => {
@@ -374,6 +394,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
   const virtualItems = rowVirtualizer.getVirtualItems();
 
   const loadMoreFiredForCount = useRef<number | null>(null);
+  const sentinelRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
     if (!hasMore || !onLoadMore) return;
@@ -388,6 +409,17 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
       loadMoreFiredForCount.current = null;
     }
   }, [rowVirtualizer.range, rows.length, hasMore, onLoadMore]);
+
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || virtualItems.length > 0) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) onLoadMore();
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, onLoadMore, virtualItems.length]);
 
   return (
     <div className="track-table-outer" ref={outerRef}>
@@ -408,7 +440,8 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                <th className="drag-handle-cell" style={{ width: 24 }} />
+                <th className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }} />
+                <th className="play-cell" style={{ width: 32 }} />
                 {hg.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sorted = header.column.getIsSorted();
@@ -444,25 +477,51 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                     </th>
                   );
                 })}
+                {hasColChooser && (
+                  <th className="col-chooser-th" ref={colConfigRef} style={{ width: COL_CHOOSER_WIDTH }}>
+                    <button
+                      className="col-chooser-btn"
+                      onClick={() => setColConfigOpen(prev => !prev)}
+                      title="Configure columns"
+                      aria-label="Configure columns"
+                    >
+                      ⋮
+                    </button>
+                    {colConfigOpen && (
+                      <div className="column-config-popover">
+                        {configurableColumns!.map((c) => (
+                          <label key={c.id} className="column-config-item">
+                            <input
+                              type="checkbox"
+                              checked={columnVisibility?.[c.id] !== false}
+                              onChange={() => onToggleColumn?.(c.id)}
+                            />
+                            {c.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </th>
+                )}
               </tr>
             ))}
           </thead>
           <tbody style={virtualItems.length > 0 ? { height: rowVirtualizer.getTotalSize(), position: 'relative' } : undefined}>
             {loading ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length + 1} className="table-status">
+                <td colSpan={table.getVisibleLeafColumns().length + 1 + (hasColChooser ? 1 : 0)} className="table-status">
                   Loading tracks…
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length + 1} className="table-status table-status--error">
+                <td colSpan={table.getVisibleLeafColumns().length + 1 + (hasColChooser ? 1 : 0)} className="table-status table-status--error">
                   Failed to load tracks — {error}
                 </td>
               </tr>
             ) : tracks.length === 0 ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length + 1} className="table-status">
+                <td colSpan={table.getVisibleLeafColumns().length + 1 + (hasColChooser ? 1 : 0)} className="table-status">
                   No tracks found
                 </td>
               </tr>
@@ -479,18 +538,31 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                     totalWidth={totalWidth}
                     measureRef={rowVirtualizer.measureElement}
                     virtualIndex={virtualRow.index}
+                    hasColChooser={hasColChooser}
+                    isStarred={starredTrackIds?.has(row.original.id)}
                   />
                 );
               })
             ) : (
-              rows.map((row) => (
-                <DraggableBrowseRow
-                  key={row.id}
-                  row={row}
-                  isSelected={selectedTrack?.id === row.original.id}
-                  onSelect={selectTrack}
-                />
-              ))
+              <>
+                {rows.map((row) => (
+                  <DraggableBrowseRow
+                    key={row.id}
+                    row={row}
+                    isSelected={selectedTrack?.id === row.original.id}
+                    onSelect={selectTrack}
+                    hasColChooser={hasColChooser}
+                    isStarred={starredTrackIds?.has(row.original.id)}
+                  />
+                ))}
+                {hasMore && onLoadMore && (
+                  <tr ref={sentinelRef}>
+                    <td colSpan={table.getVisibleLeafColumns().length + 1 + (hasColChooser ? 1 : 0)} className="table-status">
+                      Loading more tracks…
+                    </td>
+                  </tr>
+                )}
+              </>
             )}
           </tbody>
         </table>

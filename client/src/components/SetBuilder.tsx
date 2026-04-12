@@ -16,12 +16,16 @@ interface Props {
   selectSet: (id: number) => void;
   deleteSet: (id: number) => void;
   removeFromPool: (trackId: number) => void;
+  clearPool: () => void;
   movePoolToTracklist: (trackId: number) => void;
   addToPool: (trackId: number, title?: string) => void;
   removeFromTracklist: (trackId: number) => void;
+  clearTracklist: () => void;
   moveTracklistToPool: (trackId: number) => void;
   reorderTracklist: (trackId: number, newPosition: number) => void;
   updateTracklistNote: (trackId: number, note: string) => void;
+  togglePoolStar: (trackId: number, starred: boolean) => void;
+  toggleTracklistStar: (trackId: number, starred: boolean) => void;
   addToTracklist: (trackId: number, title?: string) => void;
   resolvePendingAdd: (setId: number) => void;
   clearPendingAdd: () => void;
@@ -33,8 +37,9 @@ interface Props {
 export const SetBuilder = memo(function SetBuilder({
   sets, activeSetId, activeSet, loading, error, pendingAdd,
   createSet, selectSet, deleteSet,
-  removeFromPool, movePoolToTracklist, addToPool,
-  removeFromTracklist, moveTracklistToPool, reorderTracklist, updateTracklistNote, addToTracklist,
+  removeFromPool, clearPool, movePoolToTracklist, addToPool,
+  removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist, updateTracklistNote,
+  togglePoolStar, toggleTracklistStar, addToTracklist,
   resolvePendingAdd, clearPendingAdd, clearError,
   poolExpanded: poolExpandedProp = false,
   onPoolExpandedChange,
@@ -207,9 +212,11 @@ export const SetBuilder = memo(function SetBuilder({
           <SetTracklist
             tracklist={activeSet.tracklist}
             onRemove={removeFromTracklist}
+            onClearAll={clearTracklist}
             onMoveToPool={moveTracklistToPool}
             onReorder={reorderTracklist}
             onUpdateNote={updateTracklistNote}
+            onToggleStar={toggleTracklistStar}
             onAddTrack={handleTracklistAddTrack}
           />
           <div className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}>
@@ -238,7 +245,9 @@ export const SetBuilder = memo(function SetBuilder({
                 <SetPoolTable
                   pool={activeSet.pool}
                   onRemove={removeFromPool}
+                  onClearAll={clearPool}
                   onMoveToTracklist={movePoolToTracklist}
+                  onToggleStar={togglePoolStar}
                   onAddTrack={handlePoolAddTrack}
                 />
               </div>

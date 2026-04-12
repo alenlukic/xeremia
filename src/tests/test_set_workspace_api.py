@@ -12,6 +12,7 @@ from src.db import Base
 from src.models.dj_set import DjSet
 from src.models.set_pool_entry import SetPoolEntry
 from src.models.set_tracklist_entry import SetTracklistEntry
+from src.models.set_explorer_tree import SetExplorerTree
 from src.models.set_explorer_node import SetExplorerNode
 from src.models.set_explorer_edge import SetExplorerEdge
 from src.set_workspace.service import SetWorkspaceService
@@ -21,6 +22,7 @@ _TABLES = [
     DjSet.__table__,
     SetPoolEntry.__table__,
     SetTracklistEntry.__table__,
+    SetExplorerTree.__table__,
     SetExplorerNode.__table__,
     SetExplorerEdge.__table__,
 ]
@@ -167,6 +169,69 @@ class TestPoolTracklistExclusivity:
         assert err is None
         assert session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).count() == 0
         assert session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).count() == 1
+
+
+class TestPoolClear:
+    def test_pool_clear_empties_pool(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        svc.pool_add(s.id, 20)
+        svc.pool_add(s.id, 30)
+        session.commit()
+        removed = svc.pool_clear(s.id)
+        session.commit()
+        assert removed == 3
+        assert session.query(SetPoolEntry).filter_by(set_id=s.id).count() == 0
+
+    def test_pool_clear_leaves_tracklist_intact(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        svc.tracklist_add(s.id, 20)
+        session.commit()
+        svc.pool_clear(s.id)
+        session.commit()
+        assert session.query(SetPoolEntry).filter_by(set_id=s.id).count() == 0
+        assert session.query(SetTracklistEntry).filter_by(set_id=s.id).count() == 1
+        assert session.query(SetTracklistEntry).filter_by(set_id=s.id).first().track_id == 20
+
+    def test_pool_clear_empty_returns_zero(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        removed = svc.pool_clear(s.id)
+        assert removed == 0
+
+
+class TestTracklistClear:
+    def test_tracklist_clear_empties_tracklist(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        svc.tracklist_add(s.id, 20)
+        session.commit()
+        removed = svc.tracklist_clear(s.id)
+        session.commit()
+        assert removed == 2
+        assert session.query(SetTracklistEntry).filter_by(set_id=s.id).count() == 0
+
+    def test_tracklist_clear_leaves_pool_intact(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        svc.tracklist_add(s.id, 20)
+        session.commit()
+        svc.tracklist_clear(s.id)
+        session.commit()
+        assert session.query(SetTracklistEntry).filter_by(set_id=s.id).count() == 0
+        assert session.query(SetPoolEntry).filter_by(set_id=s.id).count() == 1
+        assert session.query(SetPoolEntry).filter_by(set_id=s.id).first().track_id == 10
+
+    def test_tracklist_clear_empty_returns_zero(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        removed = svc.tracklist_clear(s.id)
+        assert removed == 0
 
 
 class TestTracklistReorder:
@@ -447,6 +512,113 @@ class TestTracklistNote:
         assert tl[0].note == "Energy peak"
 
 
+class TestStarToggle:
+    def test_pool_star_toggle(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        session.commit()
+
+        ok, err = svc.toggle_pool_star(s.id, 10, True)
+        assert ok is True
+        assert err is None
+        entry = session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).first()
+        assert entry.starred is True
+
+    def test_pool_star_unstar(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        session.commit()
+        svc.toggle_pool_star(s.id, 10, True)
+        svc.toggle_pool_star(s.id, 10, False)
+        entry = session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).first()
+        assert entry.starred is False
+
+    def test_pool_star_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.toggle_pool_star(s.id, 999, True)
+        assert ok is False
+        assert "not found" in err.lower()
+
+    def test_tracklist_star_toggle(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        session.commit()
+
+        ok, err = svc.toggle_tracklist_star(s.id, 10, True)
+        assert ok is True
+        assert err is None
+        entry = session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).first()
+        assert entry.starred is True
+
+    def test_tracklist_star_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.toggle_tracklist_star(s.id, 999, True)
+        assert ok is False
+        assert "not found" in err.lower()
+
+    def test_starred_default_false(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        entry, _ = svc.pool_add(s.id, 10)
+        assert entry.starred is False
+        tl, _ = svc.tracklist_add(s.id, 20)
+        assert tl.starred is False
+
+    def test_starred_preserved_pool_to_tracklist(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        session.commit()
+        svc.toggle_pool_star(s.id, 10, True)
+        session.commit()
+
+        ok, err = svc.pool_move_to_tracklist(s.id, 10)
+        assert ok is True
+        assert err is None
+        session.commit()
+
+        tl = session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).first()
+        assert tl is not None
+        assert tl.starred is True
+
+    def test_starred_preserved_tracklist_to_pool(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        session.commit()
+        svc.toggle_tracklist_star(s.id, 10, True)
+        session.commit()
+
+        ok, err = svc.tracklist_move_to_pool(s.id, 10)
+        assert ok is True
+        assert err is None
+        session.commit()
+
+        pool = session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).first()
+        assert pool is not None
+        assert pool.starred is True
+
+    def test_starred_persists_through_hydration(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        svc.tracklist_add(s.id, 20)
+        session.commit()
+        svc.toggle_pool_star(s.id, 10, True)
+        svc.toggle_tracklist_star(s.id, 20, True)
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        assert h is not None
+        assert h["pool"][0].starred is True
+        assert h["tracklist"][0].starred is True
+
+
 class TestEdgeScoreRequestShape:
     """Verify the add-edge service method validates properly."""
 
@@ -486,3 +658,155 @@ class TestEdgeScoreRequestShape:
         assert edge is None
         assert err is not None
         assert "cycle" in err.lower()
+
+
+class TestExplorerTrees:
+    def test_default_tree_created_on_add_node(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        node, err = svc.explorer_add_node(s.id, 1, level=0)
+        assert err is None
+        session.commit()
+
+        trees = svc.list_explorer_trees(s.id)
+        assert len(trees) == 1
+        assert trees[0].name == "Main"
+        assert node.tree_id == trees[0].id
+
+    def test_hydrate_returns_trees(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.explorer_add_node(s.id, 1, level=0)
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        assert "explorer_trees" in h
+        assert len(h["explorer_trees"]) == 1
+        assert h["explorer_trees"][0].name == "Main"
+
+    def test_nodes_scoped_to_tree(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        tree = svc.get_or_create_default_tree(s.id)
+        session.commit()
+
+        n1, _ = svc.explorer_add_node(s.id, 1, level=0, tree_id=tree.id)
+        session.commit()
+
+        t2, err = svc.create_explorer_tree(s.id, "Alt")
+        assert err is None
+        session.commit()
+
+        n2, _ = svc.explorer_add_node(s.id, 2, level=0, tree_id=t2.id)
+        session.commit()
+
+        main_nodes, _, _, _ = svc._get_explorer_state(s.id, tree.id)
+        alt_nodes, _, _, _ = svc._get_explorer_state(s.id, t2.id)
+        assert len(main_nodes) == 1
+        assert main_nodes[0].track_id == 1
+        assert len(alt_nodes) == 1
+        assert alt_nodes[0].track_id == 2
+
+    def test_create_empty_tree(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        tree, err = svc.create_explorer_tree(s.id, "Empty", mode="empty")
+        assert err is None
+        assert tree is not None
+        session.commit()
+
+        nodes = session.query(SetExplorerNode).filter_by(tree_id=tree.id).all()
+        assert len(nodes) == 0
+
+    def test_create_full_copy(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        main = svc.get_or_create_default_tree(s.id)
+        session.commit()
+
+        root, _ = svc.explorer_add_node(s.id, 10, level=0, tree_id=main.id)
+        child, _ = svc.explorer_add_node(s.id, 20, parent_node_id=root.node_id, level=1, tree_id=main.id)
+        session.commit()
+
+        copy, err = svc.create_explorer_tree(s.id, "Copy", mode="full_copy", source_tree_id=main.id)
+        assert err is None
+        session.commit()
+
+        copy_nodes = session.query(SetExplorerNode).filter_by(tree_id=copy.id).all()
+        copy_edges = session.query(SetExplorerEdge).filter_by(tree_id=copy.id).all()
+        assert len(copy_nodes) == 2
+        assert len(copy_edges) == 1
+        track_ids = {n.track_id for n in copy_nodes}
+        assert track_ids == {10, 20}
+
+    def test_create_subtree_copy(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        main = svc.get_or_create_default_tree(s.id)
+        session.commit()
+
+        root, _ = svc.explorer_add_node(s.id, 10, level=0, tree_id=main.id)
+        child, _ = svc.explorer_add_node(s.id, 20, parent_node_id=root.node_id, level=1, tree_id=main.id)
+        grandchild, _ = svc.explorer_add_node(s.id, 30, parent_node_id=child.node_id, level=2, tree_id=main.id)
+        session.commit()
+
+        sub, err = svc.create_explorer_tree(
+            s.id, "SubCopy", mode="subtree_copy",
+            source_tree_id=main.id, source_node_id=child.node_id,
+        )
+        assert err is None
+        session.commit()
+
+        sub_nodes = session.query(SetExplorerNode).filter_by(tree_id=sub.id).all()
+        sub_edges = session.query(SetExplorerEdge).filter_by(tree_id=sub.id).all()
+        assert len(sub_nodes) == 2
+        track_ids = {n.track_id for n in sub_nodes}
+        assert track_ids == {20, 30}
+
+        copied_root_ids = {n.node_id for n in sub_nodes if n.track_id == child.track_id}
+        assert len(copied_root_ids) == 1
+        copied_root_id = copied_root_ids.pop()
+        incoming = session.query(SetExplorerEdge).filter_by(
+            tree_id=sub.id, child_node_id=copied_root_id,
+        ).count()
+        assert incoming == 0, "Copied root must have zero parent edges"
+
+        assert len(sub_edges) == 1
+
+    def test_duplicate_tree_name_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.create_explorer_tree(s.id, "Foo")
+        session.commit()
+
+        t2, err = svc.create_explorer_tree(s.id, "Foo")
+        assert t2 is None
+        assert err is not None
+        assert "already exists" in err
+
+    def test_delete_set_cascades_trees(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.get_or_create_default_tree(s.id)
+        svc.explorer_add_node(s.id, 1, level=0)
+        session.commit()
+
+        svc.delete_set(s.id)
+        session.commit()
+
+        assert session.query(SetExplorerTree).count() == 0
+        assert session.query(SetExplorerNode).count() == 0
+        assert session.query(SetExplorerEdge).count() == 0
+
+    def test_all_nodes_have_tree_id_after_creation(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+
+        svc.explorer_add_node(s.id, 1, level=0)
+        svc.explorer_add_node(s.id, 2, level=0)
+        session.commit()
+
+        null_tree_nodes = session.query(SetExplorerNode).filter(
+            SetExplorerNode.tree_id.is_(None)
+        ).count()
+        assert null_tree_nodes == 0

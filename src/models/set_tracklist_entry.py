@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Sequence, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Sequence, Text, UniqueConstraint, func
 
 from src.db import metadata, Base
 
@@ -22,4 +22,5 @@ class SetTracklistEntry(Base):
     track_id = Column("track_id", ForeignKey("track.id", ondelete="CASCADE"), nullable=False, index=True)
     position = Column("position", Integer, nullable=False, default=0)
     note = Column("note", Text, nullable=False, default="", server_default="")
+    starred = Column("starred", Boolean, nullable=False, default=False, server_default="false")
     added_at = Column("added_at", DateTime, server_default=func.now(), nullable=False)

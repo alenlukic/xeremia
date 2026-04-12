@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import type { ExplorerNode, ExplorerEdge, SearchSuggestion, TransitionMatch } from '../types';
+import type { ExplorerNode, ExplorerEdge, ExplorerTree, SearchSuggestion, TransitionMatch } from '../types';
 import { nodeColorForLevel, edgeColorForColumn, ACTION_FILL } from '../utils/explorer';
 import { searchTracks, fetchMatches } from '../api/http';
 import { SetExplorerDeleteModal } from './SetExplorerDeleteModal';
 import { formatOverallScore } from '../utils';
+import { useAudioPlayer } from '../hooks/useAudioPlayer';
 
 interface Props {
   nodes: ExplorerNode[];
@@ -19,6 +20,15 @@ interface Props {
   tracklistTrackIds: Set<number>;
   fetchEdgeScores: (pairs: [number, number][]) => Promise<{ scores: (number | null)[] }>;
   warningNodeId?: string | null;
+  trees?: ExplorerTree[];
+  activeTreeId?: number | null;
+  onSelectTree?: (treeId: number) => void;
+  onCreateTree?: (
+    name: string,
+    mode?: 'empty' | 'full_copy' | 'subtree_copy',
+    sourceTreeId?: number,
+    sourceNodeId?: string,
+  ) => Promise<ExplorerTree | null>;
 }
 
 interface SiblingAddState {
@@ -117,6 +127,7 @@ interface ExplorerNodeItemProps {
   isSwapSource: boolean;
   isWarning: boolean;
   inTracklist: boolean;
+  isPlaying: boolean;
   onNodeClick: (nodeId: string) => void;
   onNodeMouseDown: (e: React.MouseEvent, nodeId: string, level: number, x: number, y: number) => void;
   onNodeMouseUp: (nodeId: string, level: number) => void;
@@ -124,13 +135,14 @@ interface ExplorerNodeItemProps {
   onSetSwapSource: (nodeId: string) => void;
   openChildAdd: (nodeId: string) => void;
   onNodeToTracklist: (nodeId: string) => void;
+  onPlayTrack: (trackId: number, title: string) => void;
   onAddNode: (trackId: number, parentNodeId: string, level: number) => void;
 }
 
 const ExplorerNodeItem = memo(function ExplorerNodeItem({
-  x, y, nodeId, trackId, level, colIndex, trackTitle, isSelected, isSwapSource, isWarning, inTracklist,
+  x, y, nodeId, trackId, level, colIndex, trackTitle, isSelected, isSwapSource, isWarning, inTracklist, isPlaying,
   onNodeClick, onNodeMouseDown, onNodeMouseUp,
-  onSetDeleteTarget, onSetSwapSource, openChildAdd, onNodeToTracklist, onAddNode,
+  onSetDeleteTarget, onSetSwapSource, openChildAdd, onNodeToTracklist, onPlayTrack, onAddNode,
 }: ExplorerNodeItemProps) {
   const { setNodeRef: setDropRef, isOver: isDropOver } = useDroppable({ id: `drop-explorer-node-${nodeId}` });
   const color = nodeColorForLevel(level);
@@ -138,6 +150,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   const title = truncateForSvg(fullTitle);
 
   const actions: { key: string; label: string; ariaLabel: string; fill: string; w: number; testId?: string; action: () => void }[] = [
+    { key: 'play', label: isPlaying ? '⏸' : '▶', ariaLabel: isPlaying ? 'Pause' : 'Play', fill: ACTION_FILL.accent, w: 22, testId: 'explorer-play-btn', action: () => onPlayTrack(trackId, fullTitle) },
     { key: 'del', label: '×', ariaLabel: 'Delete node', fill: ACTION_FILL.danger, w: 22, action: () => onSetDeleteTarget(nodeId) },
     { key: 'swap', label: '↕', ariaLabel: 'Swap track IDs', fill: ACTION_FILL.accent, w: 22, action: () => onSetSwapSource(nodeId) },
     { key: 'child', label: '+Child', ariaLabel: 'Add child node', fill: ACTION_FILL.accent, w: 38, testId: 'child-add-btn', action: () => openChildAdd(nodeId) },
@@ -354,6 +367,9 @@ interface ExplorerLevelDropZoneProps {
   onClick: (e: React.MouseEvent) => void;
 }
 
+const LEVEL_HIT_PAD_X = 35;
+const LEVEL_HIT_PAD_Y = 14;
+
 const ExplorerLevelDropZone = memo(function ExplorerLevelDropZone({ level, addX, addY, onClick }: ExplorerLevelDropZoneProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `drop-explorer-level-${level}` });
   return (
@@ -369,6 +385,14 @@ const ExplorerLevelDropZone = memo(function ExplorerLevelDropZone({ level, addX,
       data-level={level}
       style={{ cursor: 'pointer' }}
     >
+      <rect
+        x={-LEVEL_HIT_PAD_X}
+        y={-LEVEL_HIT_PAD_Y}
+        width={LEVEL_ADD_W + LEVEL_HIT_PAD_X * 2}
+        height={LEVEL_ADD_H + LEVEL_HIT_PAD_Y * 2}
+        fill="transparent"
+        data-testid="level-add-hitzone"
+      />
       <rect
         width={LEVEL_ADD_W}
         height={LEVEL_ADD_H}
@@ -396,7 +420,29 @@ const ExplorerLevelDropZone = memo(function ExplorerLevelDropZone({ level, addX,
 export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   nodes, edges, onAddNode, onDeleteNode, onAddEdge, onDeleteEdge, onSwap,
   onNodeToTracklist, onAddSibling, tracklistTrackIds, fetchEdgeScores, warningNodeId,
+  trees, activeTreeId, onSelectTree, onCreateTree,
 }: Props) {
+  const [showNewTreeInput, setShowNewTreeInput] = useState(false);
+  const [newTreeName, setNewTreeName] = useState('');
+  const [newTreeMode, setNewTreeMode] = useState<'empty' | 'full_copy' | 'subtree_copy'>('empty');
+  const newTreeInputRef = useRef<HTMLInputElement>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (showNewTreeInput && newTreeInputRef.current) newTreeInputRef.current.focus();
+  }, [showNewTreeInput]);
+
+  const handleCreateTree = useCallback(async () => {
+    const name = newTreeName.trim();
+    if (!name || !onCreateTree) return;
+    const sourceNode = newTreeMode === 'subtree_copy' ? selectedNodeId ?? undefined : undefined;
+    await onCreateTree(name, newTreeMode, activeTreeId ?? undefined, sourceNode);
+    setNewTreeName('');
+    setShowNewTreeInput(false);
+    setNewTreeMode('empty');
+  }, [newTreeName, newTreeMode, activeTreeId, selectedNodeId, onCreateTree]);
+
+  const { track: playingTrack, playing: isAudioPlaying, togglePlayPause } = useAudioPlayer();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
@@ -406,7 +452,6 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   const [swapSource, setSwapSource] = useState<string | null>(null);
   const [siblingAdd, setSiblingAdd] = useState<SiblingAddState | null>(null);
   const [childAdd, setChildAdd] = useState<ChildAddState | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [connectDrag, setConnectDrag] = useState<ConnectDragState | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -460,6 +505,23 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     (id: number) => onDeleteEdgeRef.current(id),
     [],
   );
+  const handlePlayTrack = useCallback(
+    (trackId: number, title: string) => togglePlayPause(trackId, title),
+    [togglePlayPause],
+  );
+
+  const [containerSize, setContainerSize] = useState({ w: 600, h: 400 });
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setContainerSize({ w: width, h: height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const [pan, setPan] = useState({ x: 20, y: 20 });
   const [zoom, setZoom] = useState(readStoredZoom);
@@ -474,6 +536,16 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
       setZoom(prev => {
         const next = Math.max(0.2, Math.min(3, prev + delta));
+        const vp = viewportRef.current;
+        if (vp) {
+          const rect = vp.getBoundingClientRect();
+          const cx = e.clientX - rect.left;
+          const cy = e.clientY - rect.top;
+          setPan(p => ({
+            x: cx - (cx - p.x) * (next / prev),
+            y: cy - (cy - p.y) * (next / prev),
+          }));
+        }
         try { localStorage.setItem(ZOOM_STORAGE_KEY, String(next)); } catch {}
         return next;
       });
@@ -563,7 +635,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     return {
       allFlat: flat,
       totalWidth: Math.max(usedCols, MAX_COLS) * SLOT_W,
-      totalHeight: TOP_PAD + (maxLv + 2) * (NODE_H + V_GAP) + 40,
+      totalHeight: TOP_PAD + maxLv * (NODE_H + V_GAP) + NODE_H + 100,
       columnIndices: colIndices,
       byLevelMap: byLevel,
     };
@@ -871,6 +943,56 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
 
   return (
     <div ref={setExplorerDropRef} className={`set-explorer${isExplorerOver ? ' drop-zone--active' : ''}`}>
+      {trees && trees.length > 0 && (
+        <div className="explorer-tree-tabs" role="tablist" aria-label="Explorer trees">
+          {trees.map(t => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={t.id === activeTreeId}
+              className={`explorer-tree-tab${t.id === activeTreeId ? ' explorer-tree-tab--active' : ''}`}
+              onClick={() => onSelectTree?.(t.id)}
+            >
+              {t.name}
+            </button>
+          ))}
+          {onCreateTree && !showNewTreeInput && (
+            <button
+              className="explorer-tree-tab explorer-tree-tab--add"
+              onClick={() => setShowNewTreeInput(true)}
+              title="Create new tree"
+            >
+              +
+            </button>
+          )}
+          {showNewTreeInput && (
+            <span className="explorer-tree-new-inline">
+              <input
+                ref={newTreeInputRef}
+                className="explorer-tree-name-input"
+                placeholder="Tree name…"
+                value={newTreeName}
+                onChange={e => setNewTreeName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleCreateTree();
+                  if (e.key === 'Escape') { setShowNewTreeInput(false); setNewTreeName(''); }
+                }}
+              />
+              <select
+                className="explorer-tree-mode-select"
+                value={newTreeMode}
+                onChange={e => setNewTreeMode(e.target.value as 'empty' | 'full_copy' | 'subtree_copy')}
+              >
+                <option value="empty">Empty</option>
+                <option value="full_copy">Copy current</option>
+                <option value="subtree_copy">Copy subtree</option>
+              </select>
+              <button className="explorer-tree-tab explorer-tree-tab--confirm" onClick={handleCreateTree}>Create</button>
+              <button className="explorer-tree-tab" onClick={() => { setShowNewTreeInput(false); setNewTreeName(''); }}>Cancel</button>
+            </span>
+          )}
+        </div>
+      )}
       <div className="set-explorer-controls">
         <div className="set-explorer-search-wrapper">
           <input
@@ -957,10 +1079,9 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
           <svg
             ref={svgRef}
             className="set-explorer-svg"
-            width={svgW}
-            height={svgH}
-            viewBox={`0 0 ${svgW} ${svgH}`}
-            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
+            width={containerSize.w}
+            height={containerSize.h}
+            viewBox={`${-pan.x / zoom} ${-pan.y / zoom} ${containerSize.w / zoom} ${containerSize.h / zoom}`}
             onClick={handleSvgClick}
           >
             {/* Edges */}
@@ -1021,6 +1142,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
                 isSwapSource={swapSource === ln.node.node_id}
                 isWarning={warningNodeId === ln.node.node_id}
                 inTracklist={tracklistTrackIds.has(ln.node.track_id)}
+                isPlaying={isAudioPlaying && playingTrack?.id === ln.node.track_id}
                 onNodeClick={handleNodeClick}
                 onNodeMouseDown={handleNodeMouseDown}
                 onNodeMouseUp={handleNodeMouseUp}
@@ -1028,6 +1150,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
                 onSetSwapSource={onSetSwapSource}
                 openChildAdd={openChildAdd}
                 onNodeToTracklist={stableOnNodeToTracklist}
+                onPlayTrack={handlePlayTrack}
                 onAddNode={stableOnAddNode}
               />
             ))}
@@ -1051,6 +1174,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
                 />
               );
             })}
+
           </svg>
         )}
       </div>

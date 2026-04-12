@@ -143,6 +143,7 @@ export interface PoolEntry {
   set_id: number;
   track_id: number;
   insertion_order: number;
+  starred: boolean;
   track: Track | null;
 }
 
@@ -152,12 +153,20 @@ export interface TracklistEntry {
   track_id: number;
   position: number;
   note?: string;
+  starred: boolean;
   track: Track | null;
+}
+
+export interface ExplorerTree {
+  id: number;
+  set_id: number;
+  name: string;
 }
 
 export interface ExplorerNode {
   id: number;
   set_id: number;
+  tree_id: number;
   node_id: string;
   track_id: number;
   level: number;
@@ -168,6 +177,7 @@ export interface ExplorerNode {
 export interface ExplorerEdge {
   id: number;
   set_id: number;
+  tree_id: number;
   parent_node_id: string;
   child_node_id: string;
 }
@@ -176,6 +186,7 @@ export interface HydratedSet {
   set: SetSummary;
   pool: PoolEntry[];
   tracklist: TracklistEntry[];
+  explorer_trees: ExplorerTree[];
   explorer_nodes: ExplorerNode[];
   explorer_edges: ExplorerEdge[];
 }

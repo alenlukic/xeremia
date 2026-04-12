@@ -19,6 +19,7 @@ class SetExplorerEdge(Base):
     )
 
     set_id = Column("set_id", ForeignKey("dj_set.id", ondelete="CASCADE"), nullable=False, index=True)
+    tree_id = Column("tree_id", ForeignKey("set_explorer_tree.id", ondelete="CASCADE"), nullable=False, index=True)
     parent_node_id = Column("parent_node_id", String(64), nullable=False)
     child_node_id = Column("child_node_id", String(64), nullable=False)
     added_at = Column("added_at", DateTime, server_default=func.now(), nullable=False)

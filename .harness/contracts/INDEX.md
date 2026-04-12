@@ -16,6 +16,8 @@ Contracts are stored under `.harness/contracts/YYYY-MM-DD/` directories, one per
 
 ## Outstanding Contracts
 
+- `2026-04-12/DEVELOPMENT_CONTRACT_1.md` — `outstanding` — Top workspace layout, table controls, and Explorer spacing polish for the virtualized browse workspace.
+- `2026-04-12/DEVELOPMENT_CONTRACT_2.md` — `outstanding` — Fix virtualized track-row drag preview pointer alignment without regressing drag performance.
 - `2026-04-09/set-workspace-security-hardening.md` — `outstanding` — Backend-only hardening for set-workspace CORS exposure and explorer edge-score request-size validation.
 
 ## Recently Completed

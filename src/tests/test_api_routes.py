@@ -4,11 +4,14 @@ Covers:
     GET  /api/admin/cache-stats
     GET  /api/weights
     PUT  /api/weights
+    GET  /api/tracks/{id}/audio
 
 Run with:
     python -m pytest src/tests/test_api_routes.py -v
 """
 
+import os
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -363,3 +366,120 @@ class TestPutWeightsEndpoint:
 
         assert resp.status_code == 200
         assert ts_cache.size() == 0, "transition cache must be empty after weight update"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/tracks/{track_id}/audio
+# ---------------------------------------------------------------------------
+
+
+class TestTrackAudioEndpoint:
+    @pytest.fixture()
+    def audio_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            yield d
+
+    def _make_client(self, mock_session, audio_dir):
+        finder = MagicMock()
+        finder.cosine_cache = None
+        finder.transition_score_cache = None
+        finder._sync_effective_weights = MagicMock()
+
+        with patch("src.api.routes._get_match_finder", return_value=finder), \
+             patch("src.api.routes._get_session", return_value=mock_session), \
+             patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
+             patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"), \
+             patch("src.config.PROCESSED_MUSIC_DIR", audio_dir):
+            from src.api.app import create_app
+            yield TestClient(create_app())
+
+    def _mock_track(self, track_id, file_name):
+        t = MagicMock()
+        t.id = track_id
+        t.file_name = file_name
+        return t
+
+    def test_streams_mp3(self, audio_dir):
+        file_name = "song.mp3"
+        with open(os.path.join(audio_dir, file_name), "wb") as f:
+            f.write(b"\xff\xfb\x90\x00" + b"\x00" * 100)
+
+        mock_session = MagicMock()
+        mock_track = self._mock_track(1, file_name)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_track
+
+        for tc in self._make_client(mock_session, audio_dir):
+            resp = tc.get("/api/tracks/1/audio")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "audio/mpeg"
+
+    def test_streams_wav(self, audio_dir):
+        file_name = "song.wav"
+        with open(os.path.join(audio_dir, file_name), "wb") as f:
+            f.write(b"RIFF" + b"\x00" * 100)
+
+        mock_session = MagicMock()
+        mock_track = self._mock_track(1, file_name)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_track
+
+        for tc in self._make_client(mock_session, audio_dir):
+            resp = tc.get("/api/tracks/1/audio")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "audio/wav"
+
+    def test_404_for_unknown_track(self, audio_dir):
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+
+        for tc in self._make_client(mock_session, audio_dir):
+            resp = tc.get("/api/tracks/999/audio")
+            assert resp.status_code == 404
+            assert "not found" in resp.json()["detail"].lower()
+
+    def test_415_for_unsupported_format(self, audio_dir):
+        file_name = "song.aiff"
+        with open(os.path.join(audio_dir, file_name), "wb") as f:
+            f.write(b"\x00" * 100)
+
+        mock_session = MagicMock()
+        mock_track = self._mock_track(1, file_name)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_track
+
+        for tc in self._make_client(mock_session, audio_dir):
+            resp = tc.get("/api/tracks/1/audio")
+            assert resp.status_code == 415
+            assert "unsupported" in resp.json()["detail"].lower()
+
+    def test_404_for_missing_file(self, audio_dir):
+        mock_session = MagicMock()
+        mock_track = self._mock_track(1, "missing.mp3")
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_track
+
+        for tc in self._make_client(mock_session, audio_dir):
+            resp = tc.get("/api/tracks/1/audio")
+            assert resp.status_code == 404
+            assert "not found" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sets/{set_id}/explorer/trees — mode validation
+# ---------------------------------------------------------------------------
+
+
+class TestExplorerTreeCreateModeValidation:
+    def test_invalid_mode_returns_422(self):
+        with patch("src.api.routes._get_session") as mock_get_session:
+            mock_session = MagicMock()
+            mock_get_session.return_value = mock_session
+
+            from src.api.app import create_app
+            app = create_app()
+            tc = TestClient(app)
+            resp = tc.post("/api/sets/1/explorer/trees", json={"name": "Bad", "mode": "bogus"})
+            assert resp.status_code == 422
+
+    def test_valid_modes_accepted(self):
+        for mode in ("empty", "full_copy", "subtree_copy"):
+            from src.api.schemas import ExplorerTreeCreateRequest
+            req = ExplorerTreeCreateRequest(name="Test", mode=mode)
+            assert req.mode == mode

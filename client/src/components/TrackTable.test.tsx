@@ -5,6 +5,14 @@ import type { ReactElement } from 'react';
 import { TrackTable } from './TrackTable';
 import type { Track } from '../types';
 
+vi.mock('../hooks/useAudioPlayer', () => ({
+  useAudioPlayer: () => ({
+    track: null, playing: false, loading: false, currentTime: 0, duration: 0,
+    volume: 0.8, error: null, play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+    togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
+  }),
+}));
+
 /* ── virtualizer mock ── */
 
 let mockRange: { startIndex: number; endIndex: number } | null = {
@@ -50,11 +58,9 @@ type ROCallback = (entries: ResizeObserverEntry[]) => void;
 let roInstances: { cb: ROCallback; targets: Element[] }[] = [];
 
 class ResizeObserverMock {
-  private _cb: ROCallback;
   private _targets: Element[] = [];
 
   constructor(cb: ROCallback) {
-    this._cb = cb;
     roInstances.push({ cb, targets: this._targets });
   }
 

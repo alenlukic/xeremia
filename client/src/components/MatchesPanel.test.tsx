@@ -6,6 +6,14 @@ import type { ReactElement } from 'react';
 import { MatchesPanel } from './MatchesPanel';
 import type { TransitionMatch } from '../types';
 
+vi.mock('../hooks/useAudioPlayer', () => ({
+  useAudioPlayer: () => ({
+    track: null, playing: false, loading: false, currentTime: 0, duration: 0,
+    volume: 0.8, error: null, play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+    togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
+  }),
+}));
+
 function renderWithDnd(ui: ReactElement, options?: RenderOptions) {
   return render(<DndContext>{ui}</DndContext>, options);
 }
@@ -45,7 +53,8 @@ const SCORE_HEADERS = [
   'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
 ];
 
-const ALL_HEADERS = ['', '', 'Track', ...SCORE_HEADERS, 'DETAILS'];
+const ALL_HEADERS = ['', '', 'Track', ...SCORE_HEADERS, 'DETAILS', '⋮'];
+const ALL_HEADERS_WITH_SET = ['', '', '', 'Track', ...SCORE_HEADERS, 'DETAILS', '⋮'];
 
 const selectedTrack = {
   id: 1, title: 'On Deck', artist_names: ['A'],
@@ -66,7 +75,7 @@ describe('MatchesPanel', () => {
       expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS);
     });
 
-    it('renders same column headers when onAddToSet is provided', () => {
+    it('renders column headers with add-to-set when onAddToSet is provided', () => {
       renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -76,7 +85,7 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS);
+      expect(headers.map(h => h.textContent)).toEqual(ALL_HEADERS_WITH_SET);
     });
 
     it('includes Track, SCORE, and score sub-columns', () => {
@@ -106,7 +115,8 @@ describe('MatchesPanel', () => {
       const headers = screen.getAllByRole('columnheader');
       const widths = headers.map(h => (h as HTMLElement).style.width);
       expect(widths[0]).toBe('24px');   // drag handle
-      expect(widths[1]).toBe('74px');   // add_to_set
+      expect(widths[1]).toBe('32px');   // play button
+      expect(widths[2]).toBe('484px');  // Track
       expect(widths[3]).toBe('70px');   // SCORE
       expect(widths[4]).toBe('60px');   // Spectral
       expect(widths[5]).toBe('60px');   // Key
@@ -131,7 +141,7 @@ describe('MatchesPanel', () => {
       expect((headers[2] as HTMLElement).style.width).toBe('484px');
     });
 
-    it('add_to_set column is 74px and details column is 70px', () => {
+    it('add_to_set column is 74px and details column is 70px when onAddToSet provided', () => {
       renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -141,11 +151,11 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect((headers[1] as HTMLElement).style.width).toBe('74px');   // add_to_set
-      expect((headers[2] as HTMLElement).style.width).toBe('484px');  // Track
-      expect((headers[9] as HTMLElement).style.width).toBe('73px');   // Energy (MIK)
-      expect((headers[11] as HTMLElement).style.width).toBe('73px');  // Instruments
-      expect((headers[13] as HTMLElement).style.width).toBe('70px');  // DETAILS
+      expect((headers[2] as HTMLElement).style.width).toBe('74px');   // add_to_set
+      expect((headers[3] as HTMLElement).style.width).toBe('484px');  // Track
+      expect((headers[10] as HTMLElement).style.width).toBe('73px');  // Energy (MIK)
+      expect((headers[12] as HTMLElement).style.width).toBe('73px');  // Instruments
+      expect((headers[14] as HTMLElement).style.width).toBe('70px');  // DETAILS
     });
   });
 
@@ -163,7 +173,7 @@ describe('MatchesPanel', () => {
       expect(resizers.length).toBe(SCORE_HEADERS.length + 3); // add_to_set + Track + score columns + details
 
       const headers = document.querySelectorAll('.matches-table thead th');
-      const trackTh = headers[1];
+      const trackTh = headers[2];
       expect(trackTh.querySelector('.col-resizer')).toBeTruthy();
     });
 
@@ -176,7 +186,7 @@ describe('MatchesPanel', () => {
         />
       );
       const draggables = document.querySelectorAll('.th-content[draggable="true"]');
-      expect(draggables.length).toBe(ALL_HEADERS.length - 1);
+      expect(draggables.length).toBe(ALL_HEADERS.length - 3);
     });
   });
 
@@ -428,52 +438,6 @@ describe('MatchesPanel', () => {
     });
   });
 
-  describe('dual add-to-pool/tracklist actions', () => {
-    it('renders dual buttons when onAddToPool and onAddToTracklist are provided', () => {
-      renderWithDnd(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-          onAddToPool={vi.fn()}
-          onAddToTracklist={vi.fn()}
-        />
-      );
-      expect(screen.getByTitle('Add to Pool')).toBeInTheDocument();
-      expect(screen.getByTitle('Add to Tracklist')).toBeInTheDocument();
-    });
-
-    it('calls onAddToPool with candidate_id when clicked', async () => {
-      const onAddToPool = vi.fn();
-      renderWithDnd(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch({ candidate_id: 42 })]}
-          loading={false}
-          onAddToPool={onAddToPool}
-          onAddToTracklist={vi.fn()}
-        />
-      );
-      await userEvent.click(screen.getByTitle('Add to Pool'));
-      expect(onAddToPool).toHaveBeenCalledWith(42);
-    });
-
-    it('calls onAddToTracklist with candidate_id when clicked', async () => {
-      const onAddToTracklist = vi.fn();
-      renderWithDnd(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch({ candidate_id: 42 })]}
-          loading={false}
-          onAddToPool={vi.fn()}
-          onAddToTracklist={onAddToTracklist}
-        />
-      );
-      await userEvent.click(screen.getByTitle('Add to Tracklist'));
-      expect(onAddToTracklist).toHaveBeenCalledWith(42);
-    });
-  });
-
   const COLUMN_CONFIG_KEY = 'dj-tools-matches-column-config';
 
   const CONFIGURABLE_LABELS = [
@@ -541,7 +505,7 @@ describe('MatchesPanel', () => {
           loading={false}
         />
       );
-      await user.click(screen.getByRole('button', { name: /Columns/ }));
+      await user.click(screen.getByRole('button', { name: /columns/i }));
       await user.click(screen.getByLabelText('Spectral'));
 
       const stored = JSON.parse(localStorage.getItem(COLUMN_CONFIG_KEY)!);
@@ -570,7 +534,7 @@ describe('MatchesPanel', () => {
       );
       const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
       expect(headers).toEqual(['', '', 'Track', 'SCORE', 'BPM', 'Key', 'Spectral',
-        'Genre', 'Recency', 'Energy (MIK)', 'Mood', 'Instruments', 'Vocals', 'DETAILS']);
+        'Genre', 'Recency', 'Energy (MIK)', 'Mood', 'Instruments', 'Vocals', 'DETAILS', '⋮']);
     });
 
     it('restores column sizing from localStorage on mount', () => {
@@ -614,7 +578,7 @@ describe('MatchesPanel', () => {
           loading={false}
         />
       );
-      await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+      await userEvent.click(screen.getByRole('button', { name: /columns/i }));
       for (const label of CONFIGURABLE_LABELS) {
         expect(screen.getByLabelText(label)).toBeInTheDocument();
       }
@@ -628,7 +592,7 @@ describe('MatchesPanel', () => {
           loading={false}
         />
       );
-      await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+      await userEvent.click(screen.getByRole('button', { name: /columns/i }));
       expect(screen.queryByLabelText('Track')).not.toBeInTheDocument();
       const checkboxes = document.querySelectorAll('.column-config-popover input[type="checkbox"]');
       expect(checkboxes.length).toBe(SCORE_HEADERS.length);
@@ -645,7 +609,7 @@ describe('MatchesPanel', () => {
       const headersBefore = screen.getAllByRole('columnheader').map(h => h.textContent);
       expect(headersBefore).toContain('Spectral');
 
-      await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+      await userEvent.click(screen.getByRole('button', { name: /columns/i }));
       await userEvent.click(screen.getByLabelText('Spectral'));
 
       const headersAfter = screen.getAllByRole('columnheader').map(h => h.textContent);
@@ -660,7 +624,7 @@ describe('MatchesPanel', () => {
           loading={false}
         />
       );
-      await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+      await userEvent.click(screen.getByRole('button', { name: /columns/i }));
       await userEvent.click(screen.getByLabelText('Spectral'));
       expect(screen.getAllByRole('columnheader').map(h => h.textContent)).not.toContain('Spectral');
 

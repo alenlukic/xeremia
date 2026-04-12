@@ -3,6 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import type { TracklistEntry, SearchSuggestion } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
+import { PlayButton } from './PlayButton';
 
 interface Props {
   tracklist: TracklistEntry[];
@@ -10,7 +11,9 @@ interface Props {
   onMoveToPool: (trackId: number) => void;
   onReorder: (trackId: number, newPosition: number) => void;
   onUpdateNote: (trackId: number, note: string) => void;
+  onToggleStar: (trackId: number, starred: boolean) => void;
   onAddTrack: (trackId: number, title?: string) => void;
+  onClearAll?: () => void;
 }
 
 function NoteInput({ trackId, initialNote, onSave }: {
@@ -47,7 +50,7 @@ function NoteInput({ trackId, initialNote, onSave }: {
   );
 }
 
-export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onAddTrack }: Props) {
+export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, onAddTrack, onClearAll }: Props) {
   const { setNodeRef: setTracklistDropRef, isOver: isTracklistOver } = useDroppable({ id: 'drop-tracklist' });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
@@ -78,6 +81,18 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
     <div ref={setTracklistDropRef} className={`set-tracklist${isTracklistOver ? ' drop-zone--active' : ''}`}>
       <div className="set-tracklist-header">
         <h3 className="set-section-title">Tracklist ({tracklist.length})</h3>
+        {tracklist.length > 0 && onClearAll && (
+          <button
+            className="set-action-btn set-action-btn--danger set-clear-all-btn"
+            onClick={() => {
+              if (window.confirm(`Clear all ${tracklist.length} track${tracklist.length === 1 ? '' : 's'} from Tracklist?`)) {
+                onClearAll();
+              }
+            }}
+          >
+            Clear All
+          </button>
+        )}
         <div className="set-tracklist-search-wrapper">
           <input
             className="set-tracklist-search"
@@ -109,6 +124,8 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
       ) : (
         <table className="set-tracklist-table">
           <colgroup>
+            <col className="set-ws-col-star" />
+            <col className="set-ws-col-play" />
             <col className="set-ws-col-num" />
             <col className="set-ws-col-title" />
             <col className="set-ws-col-key" />
@@ -118,6 +135,8 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
           </colgroup>
           <thead>
             <tr>
+              <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
+              <th className="set-ws-th" style={{ width: 32 }} />
               <th className="set-ws-th">#</th>
               <th className="set-ws-th">Title</th>
               <th className="set-ws-th">Key</th>
@@ -133,6 +152,19 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
                 draggable
                 onDragStart={e => e.dataTransfer.setData('text/plain', String(entry.track_id))}
               >
+                <td className="set-ws-cell-star">
+                  <button
+                    className={`star-toggle${entry.starred ? ' starred' : ''}`}
+                    onClick={() => onToggleStar(entry.track_id, !entry.starred)}
+                    title={entry.starred ? 'Unstar' : 'Star'}
+                    aria-label={entry.starred ? 'Unstar track' : 'Star track'}
+                  >
+                    {entry.starred ? '★' : '☆'}
+                  </button>
+                </td>
+                <td className="play-cell">
+                  <PlayButton trackId={entry.track_id} title={cleanTitle(entry.track, entry.track_id)} />
+                </td>
                 <td className="mono set-ws-cell-num">{i + 1}</td>
                 <td className="set-ws-cell-title">{cleanTitle(entry.track, entry.track_id)}</td>
                 <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>

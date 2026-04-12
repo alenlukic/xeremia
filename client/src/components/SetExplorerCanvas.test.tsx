@@ -5,6 +5,25 @@ import { SetExplorerCanvas } from './SetExplorerCanvas';
 import type { ExplorerNode, ExplorerEdge } from '../types';
 import { edgeColorForColumn } from '../utils/explorer';
 
+vi.mock('../hooks/useAudioPlayer', () => ({
+  useAudioPlayer: () => ({
+    track: null,
+    playing: false,
+    loading: false,
+    currentTime: 0,
+    duration: 0,
+    volume: 0.8,
+    error: null,
+    play: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    togglePlayPause: vi.fn(),
+    seek: vi.fn(),
+    setVolume: vi.fn(),
+    stop: vi.fn(),
+  }),
+}));
+
 vi.mock('../api/http', () => ({
   searchTracks: vi.fn().mockResolvedValue([
     { id: 99, title: 'Search Result', artist_names: [], bpm: 130, key: 'A', camelot_code: '11B' },
@@ -18,6 +37,7 @@ function makeNode(overrides: Partial<ExplorerNode> & { node_id: string; track_id
   return {
     id: 1,
     set_id: 1,
+    tree_id: 1,
     col_index: 0,
     track: { id: overrides.track_id, title: `Track ${overrides.track_id}`, artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
     ...overrides,
@@ -44,9 +64,16 @@ function defaultProps(overrides: {
   };
 }
 
+class ResizeObserverMock {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+
 describe('SetExplorerCanvas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
     localStorage.removeItem('explorer-zoom');
   });
 
@@ -64,7 +91,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -85,13 +112,27 @@ describe('SetExplorerCanvas', () => {
       expect(addBtns[1]).toHaveAttribute('data-level', '1');
     });
 
+    it('level droppable includes an invisible hit zone larger than the visible button', () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+
+      const hitzones = screen.getAllByTestId('level-add-hitzone');
+      expect(hitzones.length).toBeGreaterThan(0);
+      const hz = hitzones[0];
+      const hzW = parseFloat(hz.getAttribute('width')!);
+      const hzH = parseFloat(hz.getAttribute('height')!);
+      expect(hzW).toBeGreaterThan(70);
+      expect(hzH).toBeGreaterThan(28);
+      expect(hz.getAttribute('fill')).toBe('transparent');
+    });
+
     it('opens sibling-add modal when the extra deepest-level +Add Track is clicked', async () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -167,7 +208,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -181,7 +222,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -197,7 +238,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -242,8 +283,8 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 2 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
-        { id: 2, set_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 2, set_id: 1, tree_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
       ];
       const props = defaultProps({ nodes, edges });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -291,7 +332,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -308,7 +349,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -343,7 +384,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -427,7 +468,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -546,7 +587,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -569,7 +610,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -592,7 +633,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -613,7 +654,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -635,7 +676,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -697,7 +738,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 42, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 42, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -718,7 +759,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 7, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 7, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -737,7 +778,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 42, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 42, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -758,7 +799,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 42, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 42, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       render(<SetExplorerCanvas {...props} />);
@@ -778,7 +819,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 42, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 42, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -860,12 +901,13 @@ describe('SetExplorerCanvas', () => {
       await userEvent.click(nodeGroup);
 
       const svg = container.querySelector('.set-explorer-svg')!;
+      const vbBefore = svg.getAttribute('viewBox')!;
       fireEvent.mouseDown(svg, { bubbles: true, clientX: 100, clientY: 100 });
       fireEvent.mouseMove(container.querySelector('.set-explorer-viewport')!, { bubbles: true, clientX: 120, clientY: 120 });
       fireEvent.mouseUp(container.querySelector('.set-explorer-viewport')!);
 
-      const transform = svg.getAttribute('style') ?? (svg as HTMLElement).style.transform;
-      expect(transform).toBeTruthy();
+      const vbAfter = svg.getAttribute('viewBox')!;
+      expect(vbAfter).not.toBe(vbBefore);
     });
   });
 
@@ -877,8 +919,8 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
-        { id: 2, set_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
+        { id: 2, set_id: 1, tree_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -915,7 +957,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
       ];
       const props = defaultProps({ nodes, edges });
       props.fetchEdgeScores = vi.fn().mockResolvedValue({ scores: [0.75] });
@@ -933,9 +975,9 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1, col_index: 2 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
-        { id: 2, set_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
-        { id: 3, set_id: 1, parent_node_id: 'n1', child_node_id: 'n4' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 2, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
+        { id: 3, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n4' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -954,7 +996,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       props.fetchEdgeScores = vi.fn().mockResolvedValue({ scores: [0.85] });
@@ -970,7 +1012,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       props.fetchEdgeScores = vi.fn().mockResolvedValue({ scores: [0.85] });
@@ -989,7 +1031,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       props.fetchEdgeScores = vi.fn().mockResolvedValue({ scores: [0.85] });
@@ -1012,8 +1054,8 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1, col_index: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
-        { id: 2, set_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 2, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -1037,8 +1079,8 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1, col_index: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
-        { id: 2, set_id: 1, parent_node_id: 'n2', child_node_id: 'n4' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
+        { id: 2, set_id: 1, tree_id: 1, parent_node_id: 'n2', child_node_id: 'n4' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -1058,7 +1100,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -1086,11 +1128,11 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 10, node_id: 'n10', track_id: 19, level: 1, col_index: 4 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n6' },
-        { id: 2, set_id: 1, parent_node_id: 'n2', child_node_id: 'n7' },
-        { id: 3, set_id: 1, parent_node_id: 'n3', child_node_id: 'n8' },
-        { id: 4, set_id: 1, parent_node_id: 'n4', child_node_id: 'n9' },
-        { id: 5, set_id: 1, parent_node_id: 'n5', child_node_id: 'n10' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n6' },
+        { id: 2, set_id: 1, tree_id: 1, parent_node_id: 'n2', child_node_id: 'n7' },
+        { id: 3, set_id: 1, tree_id: 1, parent_node_id: 'n3', child_node_id: 'n8' },
+        { id: 4, set_id: 1, tree_id: 1, parent_node_id: 'n4', child_node_id: 'n9' },
+        { id: 5, set_id: 1, tree_id: 1, parent_node_id: 'n5', child_node_id: 'n10' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -1107,7 +1149,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -1129,7 +1171,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1, col_index: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n2', child_node_id: 'n3' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -1150,7 +1192,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
 
@@ -1174,7 +1216,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       props.fetchEdgeScores = vi.fn().mockReturnValue(scorePromise);
@@ -1199,7 +1241,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const props = defaultProps({ nodes, edges });
       props.fetchEdgeScores = vi.fn().mockResolvedValue({ scores: [null] });
@@ -1226,7 +1268,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1, col_index: 1 }),
       ];
       const edges1: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const fetchScores = vi.fn()
         .mockResolvedValueOnce({ scores: [0.85] })
@@ -1241,7 +1283,7 @@ describe('SetExplorerCanvas', () => {
 
       const edges2: ExplorerEdge[] = [
         ...edges1,
-        { id: 2, set_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
+        { id: 2, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n3' },
       ];
       rerender(<SetExplorerCanvas {...{ ...props, edges: edges2 }} />);
 
@@ -1257,7 +1299,7 @@ describe('SetExplorerCanvas', () => {
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
       ];
       const edges: ExplorerEdge[] = [
-        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ];
       const fetchScores = vi.fn().mockResolvedValue({ scores: [0.85] });
       const props = { ...defaultProps({ nodes, edges }), fetchEdgeScores: fetchScores };
@@ -1283,24 +1325,36 @@ describe('SetExplorerCanvas', () => {
       localStorage.setItem('explorer-zoom', '1.5');
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
-      const svg = document.querySelector('.set-explorer-svg') as HTMLElement;
-      expect(svg.style.transform).toContain('scale(1.5)');
+      const svg = document.querySelector('.set-explorer-svg') as SVGSVGElement;
+      expect(svg.style.transform).toBeFalsy();
+      const vb = svg.getAttribute('viewBox')!;
+      const parts = vb.split(' ').map(Number);
+      expect(parts[2]).toBeCloseTo(600 / 1.5, 1);
+      expect(parts[3]).toBeCloseTo(400 / 1.5, 1);
     });
 
     it('falls back to default zoom for invalid stored value', () => {
       localStorage.setItem('explorer-zoom', 'not-a-number');
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
-      const svg = document.querySelector('.set-explorer-svg') as HTMLElement;
-      expect(svg.style.transform).toContain('scale(1)');
+      const svg = document.querySelector('.set-explorer-svg') as SVGSVGElement;
+      expect(svg.style.transform).toBeFalsy();
+      const vb = svg.getAttribute('viewBox')!;
+      const parts = vb.split(' ').map(Number);
+      expect(parts[2]).toBeCloseTo(600, 1);
+      expect(parts[3]).toBeCloseTo(400, 1);
     });
 
     it('falls back to default zoom when value is out of range', () => {
       localStorage.setItem('explorer-zoom', '10');
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
-      const svg = document.querySelector('.set-explorer-svg') as HTMLElement;
-      expect(svg.style.transform).toContain('scale(1)');
+      const svg = document.querySelector('.set-explorer-svg') as SVGSVGElement;
+      expect(svg.style.transform).toBeFalsy();
+      const vb = svg.getAttribute('viewBox')!;
+      const parts = vb.split(' ').map(Number);
+      expect(parts[2]).toBeCloseTo(600, 1);
+      expect(parts[3]).toBeCloseTo(400, 1);
     });
 
     it('persists zoom to localStorage on ctrl+wheel', () => {
@@ -1311,6 +1365,68 @@ describe('SetExplorerCanvas', () => {
       const stored = localStorage.getItem('explorer-zoom');
       expect(stored).not.toBeNull();
       expect(parseFloat(stored!)).toBeCloseTo(1.1, 1);
+    });
+  });
+
+  describe('tree creation: subtree_copy passes sourceNodeId', () => {
+    it('passes selectedNodeId as sourceNodeId when mode is subtree_copy', async () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
+      const onCreateTree = vi.fn().mockResolvedValue({ id: 2, set_id: 1, name: 'Sub' });
+      const trees = [{ id: 1, set_id: 1, name: 'Main' }];
+      render(
+        <SetExplorerCanvas
+          {...defaultProps({ nodes })}
+          trees={trees}
+          activeTreeId={1}
+          onSelectTree={vi.fn()}
+          onCreateTree={onCreateTree}
+        />,
+      );
+
+      // Select a node first
+      const nodeGroup = screen.getByTestId('explorer-node');
+      await userEvent.click(nodeGroup);
+
+      // Open new-tree form
+      await userEvent.click(screen.getByTitle('Create new tree'));
+
+      // Set mode to subtree_copy
+      const modeSelect = screen.getByDisplayValue('Empty');
+      await userEvent.selectOptions(modeSelect, 'subtree_copy');
+
+      // Type a name and submit
+      const nameInput = screen.getByPlaceholderText('Tree name…');
+      await userEvent.type(nameInput, 'SubCopy');
+      await userEvent.click(screen.getByText('Create'));
+
+      expect(onCreateTree).toHaveBeenCalledWith('SubCopy', 'subtree_copy', 1, 'n1');
+    });
+
+    it('does not pass sourceNodeId when mode is full_copy', async () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
+      const onCreateTree = vi.fn().mockResolvedValue({ id: 2, set_id: 1, name: 'Copy' });
+      const trees = [{ id: 1, set_id: 1, name: 'Main' }];
+      render(
+        <SetExplorerCanvas
+          {...defaultProps({ nodes })}
+          trees={trees}
+          activeTreeId={1}
+          onSelectTree={vi.fn()}
+          onCreateTree={onCreateTree}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('explorer-node'));
+      await userEvent.click(screen.getByTitle('Create new tree'));
+
+      const modeSelect = screen.getByDisplayValue('Empty');
+      await userEvent.selectOptions(modeSelect, 'full_copy');
+
+      const nameInput = screen.getByPlaceholderText('Tree name…');
+      await userEvent.type(nameInput, 'FullCopy');
+      await userEvent.click(screen.getByText('Create'));
+
+      expect(onCreateTree).toHaveBeenCalledWith('FullCopy', 'full_copy', 1, undefined);
     });
   });
 });

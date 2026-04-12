@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -196,6 +196,7 @@ class PoolEntryResponse(BaseModel):
     set_id: int
     track_id: int
     insertion_order: int
+    starred: bool = False
     track: Optional[TrackResponse] = None
 
 
@@ -205,6 +206,7 @@ class TracklistEntryResponse(BaseModel):
     track_id: int
     position: int
     note: str = ""
+    starred: bool = False
     track: Optional[TrackResponse] = None
 
 
@@ -212,9 +214,20 @@ class TracklistNoteUpdateRequest(BaseModel):
     note: str = ""
 
 
+class StarToggleRequest(BaseModel):
+    starred: bool
+
+
+class ExplorerTreeResponse(BaseModel):
+    id: int
+    set_id: int
+    name: str
+
+
 class ExplorerNodeResponse(BaseModel):
     id: int
     set_id: int
+    tree_id: int
     node_id: str
     track_id: int
     level: int
@@ -225,6 +238,7 @@ class ExplorerNodeResponse(BaseModel):
 class ExplorerEdgeResponse(BaseModel):
     id: int
     set_id: int
+    tree_id: int
     parent_node_id: str
     child_node_id: str
 
@@ -233,6 +247,7 @@ class HydratedSetResponse(BaseModel):
     set: SetSummary
     pool: List[PoolEntryResponse]
     tracklist: List[TracklistEntryResponse]
+    explorer_trees: List[ExplorerTreeResponse]
     explorer_nodes: List[ExplorerNodeResponse]
     explorer_edges: List[ExplorerEdgeResponse]
 
@@ -258,6 +273,7 @@ class ExplorerAddNodeRequest(BaseModel):
     track_id: int
     parent_node_id: Optional[str] = None
     level: int = 0
+    tree_id: Optional[int] = None
 
 
 class ExplorerAddEdgeRequest(BaseModel):
@@ -293,3 +309,10 @@ class ExplorerEdgeScoreRequest(BaseModel):
 
 class ExplorerEdgeScoreResponse(BaseModel):
     scores: List[Optional[float]]
+
+
+class ExplorerTreeCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+    mode: Literal["empty", "full_copy", "subtree_copy"] = "empty"
+    source_tree_id: Optional[int] = None
+    source_node_id: Optional[str] = None

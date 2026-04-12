@@ -1,12 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { SetSummary, HydratedSet } from '../types';
+import type { ExplorerTree } from '../types';
 import {
   fetchSets, createSet as apiCreateSet, fetchHydratedSet, deleteSet as apiDeleteSet,
-  poolAdd, poolRemove, poolMoveToTracklist,
-  tracklistAdd, tracklistRemove, tracklistReorder, tracklistMoveToPool,
+  poolAdd, poolRemove, poolClear as apiPoolClear, poolMoveToTracklist,
+  tracklistAdd, tracklistRemove, tracklistClear as apiTracklistClear,
+  tracklistReorder, tracklistMoveToPool,
   updateTracklistNote as apiUpdateTracklistNote,
+  togglePoolStar, toggleTracklistStar,
   explorerAddNode, explorerDeleteNode, explorerAddEdge, explorerDeleteEdge,
   explorerSwap, explorerNodeToTracklist, explorerEdgeScores,
+  explorerCreateTree,
 } from '../api/http';
 
 export interface PendingAdd {
@@ -43,6 +47,7 @@ export function useSetBuilder() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingAdd, setPendingAdd] = useState<PendingAdd | null>(null);
+  const [activeTreeId, setActiveTreeId] = useState<number | null>(null);
   const mountedRef = useRef(true);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const poolAddInFlightRef = useRef(new Set<number>());
@@ -83,6 +88,14 @@ export function useSetBuilder() {
       if (mountedRef.current) {
         setActiveSet(data);
         setActiveSetId(setId);
+        if (data.explorer_trees.length > 0) {
+          setActiveTreeId(prev => {
+            if (prev !== null && data.explorer_trees.some(t => t.id === prev)) return prev;
+            return data.explorer_trees[0].id;
+          });
+        } else {
+          setActiveTreeId(null);
+        }
       }
     } catch (err) {
       if (mountedRef.current) {
@@ -215,6 +228,38 @@ export function useSetBuilder() {
     }
   }, [activeSetId, refreshActive]);
 
+  const clearPool = useCallback(async () => {
+    if (activeSetId === null) return;
+    try {
+      await apiPoolClear(activeSetId);
+      if (mountedRef.current) {
+        setActiveSet(prev => {
+          if (!prev) return prev;
+          return { ...prev, pool: [], set: { ...prev.set, pool_count: 0 } };
+        });
+        await refreshSets();
+      }
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not clear pool.'));
+    }
+  }, [activeSetId, refreshSets, setErrorWithAutoClear]);
+
+  const clearTracklist = useCallback(async () => {
+    if (activeSetId === null) return;
+    try {
+      await apiTracklistClear(activeSetId);
+      if (mountedRef.current) {
+        setActiveSet(prev => {
+          if (!prev) return prev;
+          return { ...prev, tracklist: [], set: { ...prev.set, tracklist_count: 0 } };
+        });
+        await refreshSets();
+      }
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not clear tracklist.'));
+    }
+  }, [activeSetId, refreshSets, setErrorWithAutoClear]);
+
   const movePoolToTracklist = useCallback(async (trackId: number) => {
     if (activeSetId === null) return;
     try {
@@ -265,16 +310,55 @@ export function useSetBuilder() {
     }
   }, [activeSetId, activeSet]);
 
+  const togglePoolStarAction = useCallback(async (trackId: number, starred: boolean) => {
+    if (activeSetId === null) return;
+    setActiveSet(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pool: prev.pool.map(e => e.track_id === trackId ? { ...e, starred } : e),
+        tracklist: prev.tracklist.map(e => e.track_id === trackId ? { ...e, starred } : e),
+      };
+    });
+    try {
+      await togglePoolStar(activeSetId, trackId, starred);
+    } catch (err) {
+      await refreshActive();
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not toggle star.'));
+    }
+  }, [activeSetId, refreshActive]);
+
+  const toggleTracklistStarAction = useCallback(async (trackId: number, starred: boolean) => {
+    if (activeSetId === null) return;
+    setActiveSet(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pool: prev.pool.map(e => e.track_id === trackId ? { ...e, starred } : e),
+        tracklist: prev.tracklist.map(e => e.track_id === trackId ? { ...e, starred } : e),
+      };
+    });
+    try {
+      await toggleTracklistStar(activeSetId, trackId, starred);
+    } catch (err) {
+      await refreshActive();
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not toggle star.'));
+    }
+  }, [activeSetId, refreshActive]);
+
   const addExplorerNode = useCallback(async (
     trackId: number, parentNodeId?: string, level: number = 0,
   ) => {
     if (activeSetId === null) return null;
     try {
+      const treeNodes = activeTreeId !== null && activeSet
+        ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId)
+        : activeSet?.explorer_nodes ?? [];
       if (parentNodeId && activeSet) {
-        const parentNode = activeSet.explorer_nodes.find(n => n.node_id === parentNodeId);
+        const parentNode = treeNodes.find(n => n.node_id === parentNodeId);
         if (parentNode) {
           const targetLevel = parentNode.level + 1;
-          const existing = activeSet.explorer_nodes.find(
+          const existing = treeNodes.find(
             n => n.track_id === trackId && n.level === targetLevel,
           );
           if (existing) {
@@ -284,14 +368,14 @@ export function useSetBuilder() {
           }
         }
       }
-      const result = await explorerAddNode(activeSetId, trackId, parentNodeId, level);
+      const result = await explorerAddNode(activeSetId, trackId, parentNodeId, level, activeTreeId ?? undefined);
       await refreshActive();
       return result;
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add node.'));
       return null;
     }
-  }, [activeSetId, activeSet, refreshActive]);
+  }, [activeSetId, activeSet, activeTreeId, refreshActive]);
 
   const deleteExplorerNode = useCallback(async (
     nodeId: string,
@@ -339,7 +423,7 @@ export function useSetBuilder() {
     if (activeSetId === null) return null;
     try {
       const firstParent = inheritParentIds[0];
-      const result = await explorerAddNode(activeSetId, trackId, firstParent, level);
+      const result = await explorerAddNode(activeSetId, trackId, firstParent, level, activeTreeId ?? undefined);
       if (!result) return null;
       for (let i = 1; i < inheritParentIds.length; i++) {
         await explorerAddEdge(activeSetId, inheritParentIds[i], result.node_id);
@@ -350,7 +434,7 @@ export function useSetBuilder() {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add sibling.'));
       return null;
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, activeTreeId, refreshActive]);
 
   const swapExplorerNodes = useCallback(async (nodeAId: string, nodeBId: string) => {
     if (activeSetId === null) return;
@@ -399,6 +483,28 @@ export function useSetBuilder() {
     setError(null);
   }, []);
 
+  const createTree = useCallback(async (
+    name: string,
+    mode: 'empty' | 'full_copy' | 'subtree_copy' = 'empty',
+    sourceTreeId?: number,
+    sourceNodeId?: string,
+  ): Promise<ExplorerTree | null> => {
+    if (activeSetId === null) return null;
+    try {
+      const tree = await explorerCreateTree(activeSetId, name, mode, sourceTreeId, sourceNodeId);
+      await refreshActive();
+      if (mountedRef.current) setActiveTreeId(tree.id);
+      return tree;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not create tree.'));
+      return null;
+    }
+  }, [activeSetId, refreshActive]);
+
+  const selectTree = useCallback((treeId: number) => {
+    setActiveTreeId(treeId);
+  }, []);
+
   return {
     sets,
     activeSetId,
@@ -413,10 +519,14 @@ export function useSetBuilder() {
     addToTracklist,
     removeFromPool,
     removeFromTracklist,
+    clearPool,
+    clearTracklist,
     movePoolToTracklist,
     moveTracklistToPool,
     reorderTracklist,
     updateTracklistNote,
+    togglePoolStar: togglePoolStarAction,
+    toggleTracklistStar: toggleTracklistStarAction,
     addExplorerNode,
     deleteExplorerNode,
     addExplorerEdge,
@@ -430,5 +540,8 @@ export function useSetBuilder() {
     clearPendingAdd,
     clearError,
     refreshActive,
+    activeTreeId,
+    selectTree,
+    createTree,
   };
 }

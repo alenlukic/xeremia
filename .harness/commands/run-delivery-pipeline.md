@@ -11,9 +11,9 @@ Run the repo-local delivery pipeline for a coding task, including adversarial ve
 ## INPUT
 
 Required:
-- either:
+- either or both:
   - `task`: plain-English task / requirements
-  - or `task_file`: path to a development contract or other task artifact
+  - `task_files`: path to either a single development contract or other task artifact; when multiple provided, run them in sequence.
 
 Optional:
 - `parent_run`: source run id when this run is a follow-on
