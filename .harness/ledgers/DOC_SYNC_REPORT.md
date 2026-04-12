@@ -1,62 +1,84 @@
 # Doc Sync Report
 
-Sync boundary: `20260409T091130Z-delivery-development-contract-source-inpu` → `20260410T004356Z-delivery-development-contract-source-inpu`
+## Sync Boundary
+
+- **Previous sync**: `20260410T004356Z-delivery-development-contract-source-inpu` (2026-04-10)
+- **Latest consumed**: `20260412T163104Z-delivery-development-contract-source-inpu` (2026-04-12)
+- **Ledgers consumed**: 30
 
 ## Ledgers Consumed
 
-| Run ID | Mode | Summary |
-|--------|------|---------|
-| `20260409T190051Z-delivery-development-contract-source-inpu` | delivery | Explorer viewport restoration, cleanTitle extraction, note persistence, explicit child-add workflow |
-| `20260409T192223Z-delivery-development-contract-source-inpu` | delivery | Explorer UX polish: orthogonal edge routing, grid layout, per-column edge colors, +TL pill |
-| `20260409T231234Z-delivery-development-contract-source-inpu` | delivery | Explorer canvas fixes (Contract A): cleanTitle hardening, hover opacity, clipped root-node actions |
-| `20260409T231235Z-delivery-development-contract-source-inpu` | delivery | Contract B validation: Tracks tab labeling, Pool/Tracklist layout, note-path closure |
-| `20260410T004351Z-delivery-development-contract-source-inpu` | delivery | Contract 3: Tracklist semantic table markup, dedicated Key/BPM columns, shared colgroup widths |
-| `20260410T004356Z-delivery-development-contract-source-inpu` | delivery | Contract 4: Explorer accordion polish, action sizing/labels/accessibility, CSS token cleanup |
+1. `20260410T034725Z` — Tracklist Note column CSS width
+2. `20260410T034735Z` — Explorer Contract 6: raw titles, sizing, swap semantics, child dedup
+3. `20260410T034738Z` — Explorer Contract 7: interaction model (add, drag-connect, edge delete)
+4. `20260410T050627Z` — Breaker follow-on: Explorer interaction-isolation fixes
+5. `20260410T060143Z` — Spectral score fix: descriptor prerequisite in orchestration
+6. `20260410T091207Z` — Explorer C1 next-level add affordance
+7. `20260410T204841Z` — Explorer edge-routing Y-base fix
+8. `20260411T050526Z` — Explorer canvas performance: score-fetch topology key, memo, per-edge loading
+9. `20260411T064618Z` — Persisted col_index + SetBuilder loading gate fix
+10. `20260411T100912Z` — Single-pane shell Contract 1: activePanel, mounted panels, dock
+11. `20260411T121237Z` — Breaker follow-on: BPM clear filters + DockBar keyboard
+12. `20260411T124625Z` — Phase 2 DnD contract: drag routes, duplicate-add, MAX_COLS
+13. `20260411T182220Z` — UI polish: search bar, selected-track-in-search, layout (blocked)
+14. `20260411T173219Z` — Backend cache: LRU test stabilization, transition-score cache
+15. `20260411T173222Z` — Client shell/DnD contract: Explorer generic drop (blocked)
+16. `20260411T201054Z` — P0 performance: deferred search, clear-search, DragOverlay
+17. `20260411T224600Z` — TrackTable virtualization: scroll sync, sentinel removal (blocked)
+18. `20260411T235027Z` — TrackTable virtualization remediation: ResizeObserver spacer
+19. `20260412T003046Z` — TrackTable regression coverage follow-on
+20. `20260412T032222Z` — UI polish batch: anchor height, controls cleanup
+21. `20260412T050810Z` — DnD drag-preview pointer offset (blocked)
+22. `20260412T053212Z` — DnD drop-path diagnostic follow-on (blocked)
+23. `20260412T063636Z` — Hover-to-open removal + layout fix (blocked)
+24. `20260412T080202Z` — DnD tab drop targets: stretch tabs, restore hover-to-open
+25. `20260412T090637Z` — Explorer DnD: viewBox zoom/pan (blocked)
+26. `20260412T101355Z` — Explorer remaining bugs: coordinate inversion, level-drop targeting
+27. `20260412T111629Z` — Contract 3: Pool/Tracklist bulk clear
+28. `20260412T120144Z` — Contract 4: set-scoped starring
+29. `20260412T130230Z` — Contract 5: audition playback v1
+30. `20260412T163104Z` — Contract 6: multi-tree Explorer
 
-## Files Updated
+## Files Changed
 
-### `docs/CONVENTIONS.md`
-- **Database section**: Added migration verification guidance — when a migration uses raw `engine.execute()`, verify the schema change landed afterward because execution alone does not guarantee commit (evidence: ledger `20260409T190051Z`)
-- **Client section**: Added `Set workspace UI` subsection with 6 conventions:
-  - `cleanTitle()` reuse for user-facing track labels across set workspace surfaces (evidence: ledgers `20260409T190051Z`, `20260409T231234Z`)
-  - Explorer SVG sizing: computed pixel dimensions + explicit `viewBox` over percentage sizing (evidence: ledgers `20260409T190051Z`, `20260409T192223Z`, `20260409T231234Z`)
-  - Explicit visible action controls over hidden gesture targets for core Explorer authoring (evidence: ledgers `20260409T190051Z`, `20260410T004356Z`)
-  - SVG-backed interactive controls need `aria-label`, keyboard activation, and visible labeling (evidence: ledger `20260410T004356Z`)
-  - Semantic CSS tokens and named Explorer palette constants over inline color literals (evidence: ledger `20260410T004356Z`)
-  - Semantic table markup with shared colgroup widths for Pool/Tracklist alignment (evidence: ledger `20260410T004351Z`)
-
-### `docs/WORKFLOWS.md`
-- Added `client/src/utils/` row to the client architecture table, listing `trackTitle.ts` (shared `cleanTitle()`) and `explorer.ts` (layout grid, edge routing, color palette helpers)
-
-### `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md`
-- Updated workflow 2 (Set preparation) to mention per-track notes on tracklist entries for cue/mix reminders
-
-### `.harness/ledgers/INDEX.md`
-- Added 6 new ledger entries for the consumed runs
+| File | Change summary |
+|------|---------------|
+| `docs/CONVENTIONS.md` | Added 7 new convention sections: Explorer viewBox/col_index/interaction-modes/edge-routing/multi-tree, React performance (memo, refs, keyed loading, parent-mount awareness, useDeferredValue), DnD (stretched tabs, hover-to-open, collision strategy, duplicate-add, acceptance evidence), virtualized TrackTable (scroll sync, ResizeObserver, single-owner pagination, test branch coverage), search/filter state coupling, cross-surface feature pattern, feature extraction orchestration prerequisite, testing hygiene (removal coverage, absence assertions) |
+| `docs/WORKFLOWS.md` | Updated application layout diagram from tab-shell to single-pane dock model; added new API endpoints (audio streaming, starring, bulk clear, edge delete, explorer trees); updated Flow 4 (Build a set) with starring, bulk clear, multi-tree explorer, audition playback, DnD from browse; updated client architecture table with `PlayButton`, `PlayerBar`, `DockBar`, `useAudioPlayer` |
+| `docs/ARCHITECTURE.md` | Added `SetExplorerTree` to ORM model listings in domain map, L1 table, and infrastructure table; updated set_workspace and API adapter descriptions for starring, bulk clear, multi-tree, transition-score caching, audio streaming |
+| `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md` | Added starring, bulk clear, and DnD-from-browse to set preparation workflow; added DnD reliability trust requirement |
 
 ## Durable Guidance Captured
 
-### Database (refined — from ledger `20260409T190051Z`)
-- Raw `engine.execute()` migrations need explicit post-run schema verification; execution is not proof of commit
+### Repeated patterns (3+ ledgers)
 
-### Set workspace UI (new — from ledgers `20260409T190051Z`, `20260409T192223Z`, `20260409T231234Z`, `20260410T004351Z`, `20260410T004356Z`)
-- Shared `cleanTitle()` for all user-facing track labels across Pool, Tracklist, Explorer
-- Explorer SVG sizing via computed pixels + `viewBox`
-- Visible controls over hidden gesture targets for core authoring
-- Accessibility wiring for SVG-backed interactive controls
-- Semantic CSS tokens and named palette constants
-- Semantic table markup with shared colgroup widths for Pool/Tracklist
+1. **Explorer viewBox over CSS transform** — CSS transforms on SVG break `getBoundingClientRect()` for `@dnd-kit`; `viewBox`-based camera is the established pattern. (7 ledgers)
+2. **Explorer interaction mode isolation** — Canvas modes must be mutually exclusive; new mode entry clears conflicting state; global keyboard handlers guard editable focus. (5 ledgers)
+3. **DnD acceptance requires state-mutation proof** — DevTools drag success text alone is not sufficient; require DB delta or visible state change. (8 ledgers)
+4. **React.memo requires primitives or stable refs** — Never pass fresh wrapper objects; use callback refs for effects driven by topology keys; prefer keyed loading state over global boolean. (4 ledgers)
+5. **Dirty-worktree diff contamination** — Run-scoped delta is the trustworthy attribution surface; raw repo-wide diff is unreliable. (8 ledgers)
+6. **TrackTable virtualization invariants** — Right-edge maxScrollLeft parity, ResizeObserver-measured spacer width, single-owner pagination, forced virtual-path test coverage. (3 ledgers)
+7. **Search/filter state coupling** — Clear-input must clear both searchText and selectedTrack; filter reset must prove data effect. (3 ledgers)
+8. **Feature extraction orchestration** — Compact descriptors are a hard prerequisite for cosine similarity. (2 ledgers)
+9. **DnD dock affordances** — Stretched tabs + hover-to-open + fixed panel height + pointerWithin collision strategy. (3 ledgers)
 
-## Persona Guidance Changes
+### Structural/feature additions
 
-- `CUSTOMER_PERSONA_SPEC.md` workflow 2 (Set preparation): Added mention of per-track notes on tracklist entries. This reflects a shipped feature (note persistence via `PATCH /api/sets/{id}/tracklist/{track_id}/note`) confirmed across ledgers `20260409T190051Z` and `20260409T231235Z`.
+- `SetExplorerTree` model added for multi-tree explorer support
+- Audio streaming endpoint (`GET /api/tracks/{id}/audio`) and centralized playback architecture
+- Per-entry starring on Pool and Tracklist
+- Surface-specific bulk clear endpoints
+- Single-pane shell layout with dock and always-mounted panels
+- Persisted `col_index` on explorer nodes for stable horizontal layout
+
+## Persona Guidance Changed
+
+- Added DnD reliability as an explicit trust requirement
+- Updated set preparation workflow to reflect starring, bulk clear, and DnD-from-browse capabilities
 
 ## Deferred Items
 
-- **QA live-stack lifecycle gate separation** (from ledger `20260409T231234Z`): "When QA fails on the mandatory live-stack lifecycle gate, record it as a repo-level blocker separately from scoped feature behavior." This is harness-process guidance, not a code convention. Deferred until a second run reinforces it as a pattern worth formalizing in harness docs.
-- **Contract/brief disagreement recording** (from ledger `20260410T004356Z`): "When contract text and the operative brief disagree, record which source won and why." Single-run harness-process learning; deferred until the pattern recurs.
-- **Dirty-worktree regression report caveat** (from ledger `20260409T231234Z`): "In dirty worktrees, treat regression reports on shared files as provisional until the run's diff is isolated." Harness-operational guidance; deferred pending recurrence.
-- **Verify-and-close run recording** (from ledger `20260409T231235Z`): "When a supervisor run validates pre-existing implementation, record the true outcome as verification and closure." Single-run process observation; deferred.
-- **Sticky-header verification depth** (from ledger `20260410T004351Z`): Available dataset didn't create enough rows to exercise sticky behavior. Deferred until a run depends on sticky-header correctness.
-- **Tracklist test hardening** (from ledgers `20260410T004351Z`, `20260410T004356Z`): Colgroup class assertions, column-order lock, BPM absence from title cell, sibling-add modal coverage, edge-score rendering tests. These are follow-on contract items, not doc changes, and the durable registry now tracks this verification scope as `REC-012`.
-- **Build retry for non-behavioral TS issues** (from ledger `20260410T004351Z`): "If build verification fails on a narrow, non-behavioral TypeScript issue after otherwise-correct scoped changes, prefer a targeted retry." Single-run observation; may warrant harness-level guidance if it recurs.
+1. **Dirty-worktree process guidance** — Multiple ledgers call out diff artifact contamination as a recurring problem. This could warrant a dedicated section in `.harness/docs/` about dirty-worktree run hygiene, but the evidence is primarily operational/harness process rather than product documentation. Deferring until a pattern emerges in harness doc sync or a specific contract requests it.
+2. **Audio endpoint security hardening** — Ledger `20260412T163104Z` notes path-traversal hardening is still pending for `GET /api/tracks/{id}/audio`. This is a product code concern, not a doc concern.
+3. **Explorer dead code cleanup** — `validate_swap` and disconnected tests remain from the Contract 6/7 transition. Deferred to a maintenance contract.
+4. **Broader test-branch coverage** — Multiple ledgers note that jsdom tests don't exercise production virtualized/ResizeObserver paths. This is tracked in conventions but the actual test improvements are product code work.

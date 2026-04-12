@@ -810,3 +810,39 @@ class TestExplorerTrees:
             SetExplorerNode.tree_id.is_(None)
         ).count()
         assert null_tree_nodes == 0
+
+
+class TestExplorerExactSlotPlacement:
+    def test_explicit_col_index_places_at_requested_slot(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        node, err = svc.explorer_add_node(s.id, 1, level=0, col_index=3)
+        assert err is None
+        session.commit()
+        assert node.col_index == 3
+
+    def test_occupied_slot_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.explorer_add_node(s.id, 1, level=0, col_index=2)
+        session.commit()
+        node, err = svc.explorer_add_node(s.id, 2, level=0, col_index=2)
+        assert node is None
+        assert "occupied" in err.lower()
+
+    def test_out_of_range_col_index_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        node, err = svc.explorer_add_node(s.id, 1, level=0, col_index=5)
+        assert node is None
+        assert err is not None
+
+    def test_omitted_col_index_uses_first_free(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.explorer_add_node(s.id, 1, level=0, col_index=0)
+        session.commit()
+        node, err = svc.explorer_add_node(s.id, 2, level=0)
+        assert err is None
+        session.commit()
+        assert node.col_index == 1

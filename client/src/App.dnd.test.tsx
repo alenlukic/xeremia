@@ -239,21 +239,6 @@ describe('DnD: handleDragEnd guard paths', () => {
 
     expect(mockSB.addExplorerNode).not.toHaveBeenCalled();
   });
-
-  it('shows warning when dropping on drop-explorer with no active set', async () => {
-    mockSB = makeSetBuilderMock({ activeSetId: null, activeSet: null });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('browse-track-1', browsePayload, 'drop-explorer');
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dnd-warning-toast')).toBeInTheDocument();
-      expect(screen.getByTestId('dnd-warning-toast').textContent).toContain('Select or create a set');
-    });
-
-    expect(mockSB.addExplorerNode).not.toHaveBeenCalled();
-  });
 });
 
 describe('DnD: dock-bar closed-panel drops', () => {
@@ -338,82 +323,97 @@ describe('DnD: open-panel drops', () => {
   });
 });
 
-describe('DnD: Explorer node child drop rejection at MAX_COLS', () => {
-  it('shows warning toast when child level is at MAX_COLS', async () => {
-    const explorerNodes = [
-      { id: 1, set_id: 1, node_id: 'parent1', track_id: 100, level: 0, col_index: 0, track: null },
-      ...Array.from({ length: 5 }, (_, i) => ({
-        id: i + 2, set_id: 1, node_id: `child${i}`, track_id: 200 + i,
-        level: 1, col_index: i, track: null,
-      })),
-    ];
+describe('DnD: Explorer cell-based drops', () => {
+  const matchPayload: DragPayload = { trackId: 1, title: 'Track 1', source: 'matches' };
 
+  it('drop on empty cell calls addExplorerNode with exact slot', async () => {
     mockSB = makeSetBuilderMock({
       activeSetId: 1,
-      activeSet: { pool: [], tracklist: [], explorer_nodes: explorerNodes, explorer_edges: [] },
+      activeSet: {
+        pool: [],
+        tracklist: [],
+        explorer_trees: [],
+        explorer_nodes: [
+          { id: 1, set_id: 1, tree_id: 1, node_id: 'root1', track_id: 100, level: 0, col_index: 0, track: null },
+        ],
+        explorer_edges: [],
+      },
     });
     vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
     await renderApp();
 
-    fireDragEnd('browse-track-1', browsePayload, 'drop-explorer-node-parent1');
+    fireDragEnd('match-track-1', matchPayload, 'drop-explorer-cell-1-2');
+
+    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 1, 2);
+  });
+
+  it('drop on occupied cell shows warning and does not overwrite', async () => {
+    const explorerNodes = [
+      { id: 1, set_id: 1, tree_id: 1, node_id: 'n1', track_id: 100, level: 0, col_index: 0, track: null },
+      { id: 2, set_id: 1, tree_id: 1, node_id: 'n2', track_id: 101, level: 1, col_index: 2, track: null },
+    ];
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        pool: [], tracklist: [], explorer_trees: [],
+        explorer_nodes: explorerNodes,
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-explorer-cell-1-2');
 
     await waitFor(() => {
       expect(screen.getByTestId('dnd-warning-toast')).toBeInTheDocument();
-      expect(screen.getByTestId('dnd-warning-toast').textContent).toContain('Maximum 5');
+      expect(screen.getByTestId('dnd-warning-toast').textContent).toContain('occupied');
     });
 
     expect(mockSB.addExplorerNode).not.toHaveBeenCalled();
   });
 
-  it('allows drop when child level has fewer than MAX_COLS nodes', async () => {
+  it('dock-explorer places at first free slot on deepest level', async () => {
     const explorerNodes = [
-      { id: 1, set_id: 1, node_id: 'parent1', track_id: 100, level: 0, col_index: 0, track: null },
-      ...Array.from({ length: 3 }, (_, i) => ({
-        id: i + 2, set_id: 1, node_id: `child${i}`, track_id: 200 + i,
-        level: 1, col_index: i, track: null,
-      })),
+      { id: 1, set_id: 1, tree_id: 1, node_id: 'root1', track_id: 100, level: 0, col_index: 0, track: null },
+      { id: 2, set_id: 1, tree_id: 1, node_id: 'n2', track_id: 101, level: 0, col_index: 1, track: null },
     ];
-
     mockSB = makeSetBuilderMock({
       activeSetId: 1,
-      activeSet: { pool: [], tracklist: [], explorer_nodes: explorerNodes, explorer_edges: [] },
+      activeSet: {
+        pool: [], tracklist: [], explorer_trees: [],
+        explorer_nodes: explorerNodes,
+        explorer_edges: [],
+      },
     });
     vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
     await renderApp();
 
-    fireDragEnd('browse-track-1', browsePayload, 'drop-explorer-node-parent1');
+    fireDragEnd('browse-track-1', browsePayload, 'dock-explorer');
 
-    expect(screen.queryByTestId('dnd-warning-toast')).not.toBeInTheDocument();
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, 'parent1', 1);
+    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 0, 2);
   });
-});
 
-describe('DnD: Explorer level drop rejection at MAX_COLS', () => {
-  it('shows warning toast when drop-explorer-level target is at MAX_COLS', async () => {
-    const explorerNodes = [
-      { id: 1, set_id: 1, node_id: 'root0', track_id: 100, level: 0, col_index: 0, track: null },
-      ...Array.from({ length: 5 }, (_, i) => ({
-        id: i + 2, set_id: 1, node_id: `lvl1-${i}`, track_id: 200 + i,
-        level: 1, col_index: i, track: null,
-      })),
-    ];
-
+  it('dock-explorer moves to next level when deepest level is full', async () => {
+    const explorerNodes = Array.from({ length: 5 }, (_, i) => ({
+      id: i + 1, set_id: 1, tree_id: 1,
+      node_id: `n${i}`, track_id: 100 + i,
+      level: 0, col_index: i, track: null,
+    }));
     mockSB = makeSetBuilderMock({
       activeSetId: 1,
-      activeSet: { pool: [], tracklist: [], explorer_nodes: explorerNodes, explorer_edges: [] },
+      activeSet: {
+        pool: [], tracklist: [], explorer_trees: [],
+        explorer_nodes: explorerNodes,
+        explorer_edges: [],
+      },
     });
     vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
     await renderApp();
 
-    fireDragEnd('browse-track-1', browsePayload, 'drop-explorer-level-1');
+    fireDragEnd('browse-track-1', browsePayload, 'dock-explorer');
 
-    await waitFor(() => {
-      expect(screen.getByTestId('dnd-warning-toast')).toBeInTheDocument();
-      expect(screen.getByTestId('dnd-warning-toast').textContent).toContain('Maximum 5');
-    });
-
-    expect(mockSB.addExplorerNode).not.toHaveBeenCalled();
-    expect(mockSB.addSiblingNode).not.toHaveBeenCalled();
+    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 1, 0);
   });
 });
 

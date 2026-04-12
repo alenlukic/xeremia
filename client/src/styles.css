@@ -2389,85 +2389,193 @@ body,
   font-size: 12px;
 }
 
-.set-explorer-viewport {
+/* --- Explorer Grid --- */
+.explorer-grid-scroll {
   flex: 1;
-  min-height: 400px;
+  min-height: 350px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow: auto;
   position: relative;
-  width: 100%;
-  min-height: 350px;
-  cursor: grab;
   background: var(--bg);
 }
 
-.set-explorer-viewport:active {
-  cursor: grabbing;
+.explorer-grid-content {
+  position: relative;
 }
 
-.set-explorer-svg {
-  display: block;
+.explorer-levels {
+  position: relative;
+  z-index: 2;
 }
 
-.explorer-node-group {
+.explorer-level {
+  display: flex;
+  align-items: flex-start;
+  height: 224px; /* NODE_H(48) + V_GAP(176) */
+  gap: 0;
+}
+
+.explorer-level-label {
+  width: 32px;
+  flex-shrink: 0;
+  text-align: right;
+  padding-right: 6px;
+  padding-top: 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  user-select: none;
+}
+
+.explorer-level-cells {
+  display: flex;
+  gap: 0;
+  flex: 1;
+}
+
+/* --- Explorer Cell --- */
+.explorer-cell {
+  width: 390px; /* SLOT_W */
+  min-height: 48px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 15px; /* (SLOT_W - NODE_W) / 2 */
+  z-index: 2;
+}
+
+.explorer-cell--empty {
+  justify-content: flex-start;
+  padding-top: 8px;
+}
+
+.explorer-cell--occupied {
   cursor: pointer;
 }
 
-.explorer-node-title {
-  pointer-events: none;
+.explorer-cell--selected .explorer-cell-node {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
 }
 
-.explorer-node-actions {
-  opacity: 0;
+.explorer-cell--swap .explorer-cell-node {
+  outline: 2px dashed #fff;
+  outline-offset: 1px;
+}
+
+.explorer-cell.drop-zone--active {
+  background: var(--accent-dim);
+  border-radius: var(--radius);
+}
+
+.explorer-cell.drop-zone--warning {
+  background: var(--danger-dim);
+  border-radius: var(--radius);
+}
+
+.explorer-cell-add-btn {
+  padding: 6px 16px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.65;
   transition: opacity var(--transition);
 }
 
-.explorer-node-group:hover .explorer-node-actions {
+.explorer-cell-add-btn:hover {
   opacity: 1;
+  background: var(--surface);
 }
 
-.explorer-node-actions-visible {
-  opacity: 0.5;
-  transition: opacity var(--transition);
+/* --- Explorer Cell Node --- */
+.explorer-cell-node {
+  width: 360px; /* NODE_W */
+  min-height: 48px; /* NODE_H */
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  position: relative;
 }
 
-.explorer-node-group:hover .explorer-node-actions-visible {
-  opacity: 1;
+.explorer-cell-title {
+  color: #fff;
+  font-size: 9px;
+  text-align: center;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.35;
+  word-break: break-word;
+  max-width: 100%;
 }
 
-.explorer-action-row {
+.explorer-cell-node.node-wrapped {
+  min-height: 60px;
+}
+
+/* --- Explorer Cell Action Row --- */
+.explorer-cell-action-row {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 4px;
   opacity: 0;
   transform-origin: center bottom;
   transform: scaleY(0);
   transition: opacity 150ms ease, transform 150ms ease;
   pointer-events: none;
+  height: 0;
+  overflow: hidden;
 }
 
-.explorer-action-row--visible {
+.explorer-cell-action-row--visible {
   opacity: 1;
   transform: scaleY(1);
   pointer-events: auto;
+  height: auto;
+  overflow: visible;
 }
 
-.explorer-action-btn {
+.explorer-cell:hover .explorer-cell-action-row {
+  opacity: 1;
+  transform: scaleY(1);
+  pointer-events: auto;
+  height: auto;
+  overflow: visible;
+}
+
+.explorer-cell-action {
+  padding: 2px 6px;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
   opacity: 0.7;
   transition: opacity var(--transition);
 }
 
-.explorer-action-btn:hover,
-.explorer-action-btn:focus {
+.explorer-cell-action:hover {
   opacity: 1;
 }
 
-.explorer-level-add-btn {
-  opacity: 0.65;
-  transition: opacity var(--transition);
+.explorer-cell-action--danger {
+  color: var(--danger);
 }
 
-.explorer-level-add-btn:hover,
-.explorer-level-add-btn:focus {
-  opacity: 1;
+.explorer-cell-action--success {
+  color: var(--success);
 }
 
 .explorer-edge-delete {
@@ -3024,17 +3132,7 @@ body,
   outline-offset: -2px;
 }
 
-.explorer-node-group.drop-zone--warning > rect {
-  stroke: var(--danger);
-  stroke-width: 2;
-  stroke-dasharray: 4 2;
-}
-
-.explorer-node-group.drop-zone--active > rect {
-  stroke: var(--accent);
-  stroke-width: 2;
-  stroke-dasharray: 4 2;
-}
+/* Old SVG node group drop-zone styles removed — now handled by .explorer-cell */
 
 .row-dragging {
   opacity: 0.4;
