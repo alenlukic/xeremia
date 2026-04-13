@@ -9,6 +9,7 @@ export interface CellProps {
   isWarning: boolean;
   isSelected: boolean;
   isSwapSource: boolean;
+  isMoveDragSource: boolean;
   inTracklist: boolean;
   isPlaying: boolean;
   onAdd: () => void;
@@ -23,7 +24,7 @@ export interface CellProps {
 }
 
 export const Cell = memo(function Cell({
-  level, colIndex, node, isWarning, isSelected, isSwapSource, inTracklist, isPlaying,
+  level, colIndex, node, isWarning, isSelected, isSwapSource, isMoveDragSource, inTracklist, isPlaying,
   onAdd, onNodeClick, onNodeMouseDown, onNodeMouseUp,
   onDelete, onSwap, onOpenChildAdd, onAddToTracklist, onPlayTrack,
 }: CellProps) {
@@ -134,8 +135,8 @@ export const Cell = memo(function Cell({
       </div>
 
       <div
-        className={`explorer-cell-node${wrapped ? ' node-wrapped' : ''}`}
-        style={{ backgroundColor: color, opacity: isSwapSource ? 0.5 : 0.85 }}
+        className={`explorer-cell-node${wrapped ? ' node-wrapped' : ''}${isMoveDragSource ? ' explorer-cell-node--move-drag' : ''}`}
+        style={{ backgroundColor: color, opacity: isMoveDragSource ? 0.35 : isSwapSource ? 0.5 : 0.85 }}
         title={fullTitle}
         data-testid="explorer-node"
         data-level={level}

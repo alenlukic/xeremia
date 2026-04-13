@@ -110,6 +110,10 @@ export default function App() {
   const [dndWarning, setDndWarning] = useState<string | null>(null);
   const [dndWarningNodeId, setDndWarningNodeId] = useState<string | null>(null);
 
+  const browseScrollRef = useRef<HTMLDivElement | null>(null);
+  const browseContextRef = useRef<{ scrollTop: number; targetFilterKey: string } | null>(null);
+  const pendingScrollRestoreRef = useRef<{ scrollTop: number; targetFilterKey: string } | null>(null);
+
   const weightsChangedRef = useRef(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastHoverPanelRef = useRef<PanelKey | null>(null);
@@ -228,6 +232,7 @@ export default function App() {
     deleteExplorerEdge,
     addSiblingNode,
     swapExplorerNodes,
+    moveExplorerNode,
     explorerNodeAddToTracklist,
     fetchEdgeScores,
     isPoolAddInFlight,
@@ -264,22 +269,25 @@ export default function App() {
 
   const sortedTracks = useMemo(() => {
     if (browseSorting.length === 0) return filteredTracks;
-    const { id, desc } = browseSorting[0];
-    const sorted = [...filteredTracks].sort((a, b) => {
-      const av = a[id as keyof Track];
-      const bv = b[id as keyof Track];
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      if (id === 'date_added') {
-        const da = new Date(av as string).getTime();
-        const db = new Date(bv as string).getTime();
-        return da - db;
+    return [...filteredTracks].sort((a, b) => {
+      for (const { id, desc } of browseSorting) {
+        const av = a[id as keyof Track];
+        const bv = b[id as keyof Track];
+        if (av == null && bv == null) continue;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        let cmp: number;
+        if (id === 'date_added') {
+          cmp = new Date(av as string).getTime() - new Date(bv as string).getTime();
+        } else if (typeof av === 'number' && typeof bv === 'number') {
+          cmp = av - bv;
+        } else {
+          cmp = String(av).localeCompare(String(bv));
+        }
+        if (cmp !== 0) return desc ? -cmp : cmp;
       }
-      if (typeof av === 'number' && typeof bv === 'number') return av - bv;
-      return String(av).localeCompare(String(bv));
+      return 0;
     });
-    return desc ? sorted.reverse() : sorted;
   }, [filteredTracks, browseSorting]);
 
   const browsePages = useMemo(() => {
@@ -303,6 +311,28 @@ export default function App() {
     const cached = loadedPageCacheRef.current.get(filterCacheKey);
     setLoadedPages(cached ?? 1);
   }, [filterCacheKey]);
+
+  useEffect(() => {
+    if (pendingScrollRestoreRef.current == null) return;
+    if (selectedTrack != null) return;
+    if (browseContextRef.current != null) return;
+
+    const pending = pendingScrollRestoreRef.current;
+    if (pending.targetFilterKey !== filterCacheKey) {
+      pendingScrollRestoreRef.current = null;
+      return;
+    }
+
+    const expectedPages = loadedPageCacheRef.current.get(filterCacheKey);
+    if (expectedPages != null && expectedPages > 1 && loadedPages < expectedPages) return;
+
+    pendingScrollRestoreRef.current = null;
+    requestAnimationFrame(() => {
+      if (browseScrollRef.current) {
+        browseScrollRef.current.scrollTop = pending.scrollTop;
+      }
+    });
+  }, [filterCacheKey, loadedPages, selectedTrack]);
 
   const handleLoadMore = useCallback(() => {
     setLoadedPages(prev => {
@@ -330,9 +360,13 @@ export default function App() {
 
   const handleBrowseSelect = useCallback(
     (track: Track) => {
+      browseContextRef.current = {
+        scrollTop: browseScrollRef.current?.scrollTop ?? 0,
+        targetFilterKey: filterCacheKey,
+      };
       handleSelectTrack(track);
     },
-    [handleSelectTrack],
+    [handleSelectTrack, filterCacheKey],
   );
 
   const handleUseAsSource = useCallback(
@@ -408,6 +442,11 @@ export default function App() {
   const handleClearSelectedTrack = useCallback(() => {
     setDetailMatch(null);
     setTransitionChain([]);
+    const ctx = browseContextRef.current;
+    if (ctx) {
+      pendingScrollRestoreRef.current = { scrollTop: ctx.scrollTop, targetFilterKey: ctx.targetFilterKey };
+      browseContextRef.current = null;
+    }
     clearSelectedTrack();
   }, [clearSelectedTrack]);
 
@@ -622,6 +661,7 @@ export default function App() {
               starredTrackIds={starredTrackIds}
               sorting={browseSorting}
               onSortingChange={setBrowseSorting}
+              scrollContainerRef={browseScrollRef}
             />
           </div>
         </div>
@@ -760,6 +800,7 @@ export default function App() {
                 onAddEdge={addExplorerEdge}
                 onDeleteEdge={deleteExplorerEdge}
                 onSwap={swapExplorerNodes}
+                onMoveNode={moveExplorerNode}
                 onNodeToTracklist={explorerNodeAddToTracklist}
                 onAddSibling={addSiblingNode}
                 tracklistTrackIds={tracklistTrackIds}

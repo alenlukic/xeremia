@@ -294,6 +294,13 @@ class ExplorerDeleteNodeRequest(BaseModel):
     rewire_edges: List[DeleteNodeEdgeRewire] = Field(default_factory=list)
 
 
+class ExplorerMoveNodeRequest(BaseModel):
+    node_id: str
+    target_level: Optional[int] = None
+    target_col_index: Optional[int] = None
+    new_parent_node_id: Optional[str] = None
+
+
 class ExplorerSwapRequest(BaseModel):
     node_a_id: str
     node_b_id: str

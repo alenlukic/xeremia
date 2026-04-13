@@ -3,6 +3,7 @@ import { Level } from './Level';
 import { ExplorerEdgeLayer } from './ExplorerEdgeLayer';
 import type { ExplorerNode, ExplorerEdge } from '../../types';
 import type { ExplorerCellViewModel } from './Level';
+import { useEdgeAutoScroll } from '../../hooks/useEdgeAutoScroll';
 
 const NODE_H = 48;
 const V_GAP = 176;
@@ -22,6 +23,19 @@ export interface ConnectDragState {
   cursorY: number;
 }
 
+export interface MoveDragState {
+  sourceNodeId: string;
+  sourceLevel: number;
+  sourceCol: number;
+  sourceCX: number;
+  sourceCY: number;
+  cursorX: number;
+  cursorY: number;
+  targetLevel: number;
+  targetCol: number;
+  dropType: 'relocate' | 'reparent' | 'invalid';
+}
+
 interface ExplorerGridProps {
   viewModel: ExplorerCellViewModel[][];
   edges: ExplorerEdge[];
@@ -35,6 +49,7 @@ interface ExplorerGridProps {
   tracklistTrackIds: Set<number>;
   playingTrackId: number | null;
   connectDrag: ConnectDragState | null;
+  moveDrag: MoveDragState | null;
   onEdgeClick: (e: React.MouseEvent, edgeId: number) => void;
   onDeleteEdge: (edgeId: number) => void;
   onCellAdd: (level: number, colIndex: number) => void;
@@ -54,13 +69,14 @@ interface ExplorerGridProps {
 export const ExplorerGrid = memo(function ExplorerGrid({
   viewModel, edges, nodes, edgeScores, loadingEdgeKeys,
   selectedEdgeId, selectedNodeId, swapSource, warningNodeId,
-  tracklistTrackIds, playingTrackId, connectDrag,
+  tracklistTrackIds, playingTrackId, connectDrag, moveDrag,
   onEdgeClick, onDeleteEdge,
   onCellAdd, onNodeClick, onNodeMouseDown, onNodeMouseUp,
   onSetDeleteTarget, onSetSwapSource, onOpenChildAdd, onNodeToTracklist, onPlayTrack,
   onGridMouseMove, onGridMouseUp, onBackgroundClick,
 }: ExplorerGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  useEdgeAutoScroll(scrollRef);
 
   const totalHeight = TOP_PAD + viewModel.length * LEVEL_HEIGHT + NODE_H;
 
@@ -129,6 +145,39 @@ export const ExplorerGrid = memo(function ExplorerGrid({
           </svg>
         )}
 
+        {moveDrag && (
+          <svg
+            className="explorer-move-drag-svg"
+            width={GRID_TOTAL_WIDTH}
+            height={totalHeight}
+            style={{ position: 'absolute', top: 0, left: 0, zIndex: 4, pointerEvents: 'none' }}
+          >
+            <line
+              x1={moveDrag.sourceCX}
+              y1={moveDrag.sourceCY}
+              x2={moveDrag.cursorX}
+              y2={moveDrag.cursorY}
+              stroke={moveDrag.dropType === 'invalid' ? 'var(--danger)' : 'var(--success)'}
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              data-testid="move-drag-line"
+            />
+            <rect
+              x={moveDrag.targetCol * SLOT_W + 4}
+              y={TOP_PAD + moveDrag.targetLevel * LEVEL_HEIGHT + 4}
+              width={SLOT_W - 8}
+              height={NODE_H}
+              rx={6}
+              fill="none"
+              stroke={moveDrag.dropType === 'invalid' ? 'var(--danger)' : moveDrag.dropType === 'reparent' ? 'var(--accent)' : 'var(--success)'}
+              strokeWidth={2}
+              strokeDasharray={moveDrag.dropType === 'invalid' ? '4 4' : 'none'}
+              opacity={0.8}
+              data-testid="move-drag-target"
+            />
+          </svg>
+        )}
+
         <div className="explorer-levels" style={{ paddingTop: TOP_PAD, position: 'relative', zIndex: 2 }}>
           {viewModel.map((cells, levelIndex) => (
             <Level
@@ -138,6 +187,7 @@ export const ExplorerGrid = memo(function ExplorerGrid({
               warningNodeId={warningNodeId}
               selectedNodeId={selectedNodeId}
               swapSource={swapSource}
+              moveDragSourceId={moveDrag?.sourceNodeId ?? null}
               tracklistTrackIds={tracklistTrackIds}
               playingTrackId={playingTrackId}
               onCellAdd={onCellAdd}

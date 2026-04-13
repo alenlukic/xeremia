@@ -86,6 +86,34 @@ def validate_add_node(
     return None
 
 
+def validate_move_node(
+    edges: List[Tuple[str, str]],
+    nodes_by_level: Dict[int, int],
+    node_id: str,
+    source_level: int,
+    target_level: int,
+    new_parent_node_id: Optional[str] = None,
+) -> Optional[str]:
+    """Validate constraints for moving a node. Returns error message or None."""
+    if not check_depth(target_level):
+        return f"Explorer exceeds maximum depth of {MAX_DEPTH}"
+
+    level_count = nodes_by_level.get(target_level, 0)
+    if source_level == target_level:
+        pass
+    elif level_count >= MAX_NODES_PER_LEVEL:
+        return f"Explorer exceeds maximum of {MAX_NODES_PER_LEVEL} nodes at level {target_level}"
+
+    if new_parent_node_id is not None:
+        if new_parent_node_id == node_id:
+            return "Cannot reparent a node under itself"
+        filtered_edges = [(p, c) for p, c in edges if c != node_id]
+        if detect_cycle(filtered_edges, new_parent_node_id, node_id):
+            return "Reparenting would create a cycle"
+
+    return None
+
+
 def validate_swap(
     edges: List[Tuple[str, str]],
     node_a: str,

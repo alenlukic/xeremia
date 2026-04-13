@@ -9,7 +9,7 @@ import {
   updateTracklistNote as apiUpdateTracklistNote,
   togglePoolStar, toggleTracklistStar,
   explorerAddNode, explorerDeleteNode, explorerAddEdge, explorerDeleteEdge,
-  explorerSwap, explorerNodeToTracklist, explorerEdgeScores,
+  explorerSwap, explorerMoveNode, explorerNodeToTracklist, explorerEdgeScores,
   explorerCreateTree,
 } from '../api/http';
 
@@ -447,6 +447,21 @@ export function useSetBuilder() {
     }
   }, [activeSetId, refreshActive]);
 
+  const moveExplorerNodeAction = useCallback(async (
+    nodeId: string,
+    targetLevel?: number,
+    targetColIndex?: number,
+    newParentNodeId?: string,
+  ) => {
+    if (activeSetId === null) return;
+    try {
+      await explorerMoveNode(activeSetId, nodeId, targetLevel, targetColIndex, newParentNodeId);
+      await refreshActive();
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not move node.'));
+    }
+  }, [activeSetId, refreshActive]);
+
   const explorerNodeAddToTracklist = useCallback(async (nodeId: string) => {
     if (activeSetId === null) return;
     try {
@@ -534,6 +549,7 @@ export function useSetBuilder() {
     deleteExplorerEdge: deleteExplorerEdgeAction,
     addSiblingNode,
     swapExplorerNodes,
+    moveExplorerNode: moveExplorerNodeAction,
     explorerNodeAddToTracklist,
     fetchEdgeScores,
     isPoolAddInFlight,

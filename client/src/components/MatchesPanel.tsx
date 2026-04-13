@@ -497,6 +497,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                   {hg.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const sorted = header.column.getIsSorted();
+                    const sortIndex = header.column.getSortIndex();
                     const isDetails = header.column.id === 'details';
                     return (
                       <th
@@ -517,6 +518,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                           {flexRender(header.column.columnDef.header, header.getContext())}
                           {sorted && (
                             <span className="sort-indicator">
+                              {sorting.length > 1 && <span className="sort-precedence">{sortIndex + 1}</span>}
                               {sorted === 'asc' ? ' ▲' : ' ▼'}
                             </span>
                           )}

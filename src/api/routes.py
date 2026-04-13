@@ -16,6 +16,7 @@ from src.api.schemas import (
     ExplorerDeleteNodeRequest,
     ExplorerEdgeScoreRequest,
     ExplorerEdgeScoreResponse,
+    ExplorerMoveNodeRequest,
     ExplorerNodeToTracklistRequest,
     ExplorerSwapRequest,
     ExplorerTreeCreateRequest,
@@ -190,7 +191,7 @@ _AUDIO_MEDIA_TYPES = {
 }
 
 
-@router.get("/tracks/{track_id}/audio")
+@router.api_route("/tracks/{track_id}/audio", methods=["GET", "HEAD"])
 def api_track_audio(track_id: int):
     from src.models.track import Track
     from src.config import PROCESSED_MUSIC_DIR
@@ -1234,6 +1235,35 @@ def api_explorer_swap(set_id: int, body: ExplorerSwapRequest):
         session.rollback()
         logger.exception("Explorer swap failed")
         raise HTTPException(status_code=500, detail="Swap failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/explorer/move-node")
+def api_explorer_move_node(set_id: int, body: ExplorerMoveNodeRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        ok, error = svc.explorer_move_node(
+            set_id, body.node_id,
+            target_level=body.target_level,
+            target_col_index=body.target_col_index,
+            new_parent_node_id=body.new_parent_node_id,
+        )
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer move node failed")
+        raise HTTPException(status_code=500, detail="Move node failed")
     finally:
         session.close()
 

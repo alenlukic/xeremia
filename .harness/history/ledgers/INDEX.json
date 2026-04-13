@@ -818,5 +818,19 @@
     "build_status": "PASS",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260413T192953Z-delivery-mixed-delivery-input-bundle",
+    "mode": "delivery",
+    "task_excerpt": "# Mixed Delivery Input Bundle Task\n\n## Run Scope\n- Source bundle: `INPUT_BUNDLE.md`\n- Contract set: `CONTRACT_SET.md`\n- Target surface: `client/` React/TypeScri",
+    "published_at": "2026-04-13T20:57:21.059806+00:00",
+    "path": ".harness/history/ledgers/20260413T192953Z-delivery-mixed-delivery-input-bundle.md",
+    "files_changed": 36,
+    "eval_score": 81,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS_WITH_NOTES",
+    "build_status": "PASS",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "HIGH"
   }
 ]

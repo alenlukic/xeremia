@@ -5,12 +5,25 @@ import type { ReactElement } from 'react';
 import { TrackTable } from './TrackTable';
 import type { Track } from '../types';
 
+let mockAudioPlayerState = {
+  track: null as { id: number; title: string } | null,
+  playing: false,
+  loading: false,
+  currentTime: 0,
+  duration: 0,
+  volume: 0.8,
+  error: null as string | null,
+  play: vi.fn(),
+  pause: vi.fn(),
+  resume: vi.fn(),
+  togglePlayPause: vi.fn(),
+  seek: vi.fn(),
+  setVolume: vi.fn(),
+  stop: vi.fn(),
+};
+
 vi.mock('../hooks/useAudioPlayer', () => ({
-  useAudioPlayer: () => ({
-    track: null, playing: false, loading: false, currentTime: 0, duration: 0,
-    volume: 0.8, error: null, play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
-    togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
-  }),
+  useAudioPlayer: () => mockAudioPlayerState,
 }));
 
 /* ── virtualizer mock ── */
@@ -108,6 +121,11 @@ beforeEach(() => {
   roInstances = [];
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   selectTrack.mockClear();
+  mockAudioPlayerState = {
+    track: null, playing: false, loading: false, currentTime: 0, duration: 0,
+    volume: 0.8, error: null, play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+    togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
+  };
 });
 
 /* ─────────────────────────────────────────────── */
@@ -708,5 +726,338 @@ describe('TrackTable date_added column', () => {
     const indicators = container.querySelectorAll('.sort-indicator');
     const texts = Array.from(indicators).map(el => el.textContent?.trim());
     expect(texts).toContain('▼');
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
+describe('TrackTable playing-row highlight', () => {
+  it('adds playing-row class to the currently playing track row', () => {
+    mockAudioPlayerState.track = { id: 3, title: 'Track 3' };
+    mockAudioPlayerState.playing = true;
+    mockRange = { startIndex: 0, endIndex: 9 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(10)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const rows = container.querySelectorAll('.track-table tbody tr');
+    const playingRows = container.querySelectorAll('.track-table tbody tr.playing-row');
+    expect(playingRows.length).toBe(1);
+    expect(rows.length).toBeGreaterThan(1);
+  });
+
+  it('does not add playing-row when audio is paused', () => {
+    mockAudioPlayerState.track = { id: 3, title: 'Track 3' };
+    mockAudioPlayerState.playing = false;
+    mockRange = { startIndex: 0, endIndex: 9 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(10)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const playingRows = container.querySelectorAll('.track-table tbody tr.playing-row');
+    expect(playingRows.length).toBe(0);
+  });
+
+  it('updates playing-row when playback moves to a different track', () => {
+    mockAudioPlayerState.track = { id: 2, title: 'Track 2' };
+    mockAudioPlayerState.playing = true;
+    mockRange = { startIndex: 0, endIndex: 9 };
+
+    const tracks = makeTracks(10);
+
+    const { container, rerender } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    let playingRows = container.querySelectorAll('.track-table tbody tr.playing-row');
+    expect(playingRows.length).toBe(1);
+
+    mockAudioPlayerState.track = { id: 5, title: 'Track 5' };
+    mockAudioPlayerState.playing = true;
+
+    rerender(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    playingRows = container.querySelectorAll('.track-table tbody tr.playing-row');
+    expect(playingRows.length).toBe(1);
+  });
+
+  it('coexists with row-selected: both classes present on the same row', () => {
+    mockAudioPlayerState.track = { id: 3, title: 'Track 3' };
+    mockAudioPlayerState.playing = true;
+    mockRange = { startIndex: 0, endIndex: 9 };
+
+    const tracks = makeTracks(10);
+    const selectedTrackObj = tracks[2];
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={selectedTrackObj}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const bothRows = container.querySelectorAll('.track-table tbody tr.playing-row.row-selected');
+    expect(bothRows.length).toBe(1);
+  });
+
+  it('clears playing-row when playback stops (track becomes null)', () => {
+    mockAudioPlayerState.track = { id: 2, title: 'Track 2' };
+    mockAudioPlayerState.playing = true;
+    mockRange = { startIndex: 0, endIndex: 9 };
+
+    const tracks = makeTracks(10);
+
+    const { container, rerender } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    expect(container.querySelectorAll('.playing-row').length).toBe(1);
+
+    mockAudioPlayerState.track = null;
+    mockAudioPlayerState.playing = false;
+
+    rerender(
+      wrap(
+        <TrackTable
+          tracks={[...tracks]}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    expect(container.querySelectorAll('.playing-row').length).toBe(0);
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
+describe('TrackTable play-cell click isolation', () => {
+  it('clicking the play-cell does not trigger selectTrack', () => {
+    mockRange = { startIndex: 0, endIndex: 4 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(5)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const playCell = container.querySelector('.track-table tbody tr .play-cell') as HTMLElement;
+    expect(playCell).toBeTruthy();
+    fireEvent.click(playCell);
+
+    expect(selectTrack).not.toHaveBeenCalled();
+  });
+
+  it('clicking outside the play-cell still triggers selectTrack', () => {
+    mockRange = { startIndex: 0, endIndex: 4 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(5)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const row = container.querySelector('.track-table tbody tr') as HTMLElement;
+    expect(row).toBeTruthy();
+    fireEvent.click(row);
+
+    expect(selectTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking the play button itself does not trigger selectTrack', () => {
+    mockRange = { startIndex: 0, endIndex: 4 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(5)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const playBtn = container.querySelector('.track-table tbody tr .play-btn') as HTMLElement;
+    expect(playBtn).toBeTruthy();
+    fireEvent.click(playBtn);
+
+    expect(selectTrack).not.toHaveBeenCalled();
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
+describe('TrackTable multi-sort', () => {
+  function makeSortTracks(): Track[] {
+    return [
+      { id: 1, title: 'Alpha', artist_names: ['A'], bpm: 130, key: 'C', camelot_code: '01A', genre: 'House', label: 'L', energy: 0.8, date_added: null },
+      { id: 2, title: 'Beta', artist_names: ['B'], bpm: 120, key: 'D', camelot_code: '01A', genre: 'Techno', label: 'M', energy: 0.5, date_added: null },
+      { id: 3, title: 'Gamma', artist_names: ['C'], bpm: 120, key: 'E', camelot_code: '02B', genre: 'Trance', label: 'N', energy: 0.3, date_added: null },
+    ];
+  }
+
+  it('shift-click adds a second sort column and shows precedence numbers', () => {
+    const tracks = makeSortTracks();
+    mockRange = { startIndex: 0, endIndex: 2 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const headers = container.querySelectorAll('.track-table thead .th-sortable');
+    const bpmHeader = Array.from(headers).find(h => h.textContent?.includes('BPM'))!;
+    const camelotHeader = Array.from(headers).find(h => h.textContent?.includes('Camelot'))!;
+
+    fireEvent.click(bpmHeader);
+
+    let indicators = container.querySelectorAll('.sort-indicator');
+    expect(indicators.length).toBe(1);
+    expect(indicators[0].textContent?.trim()).toBe('▼');
+    expect(container.querySelectorAll('.sort-precedence').length).toBe(0);
+
+    fireEvent.click(camelotHeader, { shiftKey: true });
+
+    indicators = container.querySelectorAll('.sort-indicator');
+    expect(indicators.length).toBe(2);
+    const precedences = container.querySelectorAll('.sort-precedence');
+    expect(precedences.length).toBe(2);
+    expect(bpmHeader.querySelector('.sort-precedence')!.textContent).toBe('1');
+    expect(camelotHeader.querySelector('.sort-precedence')!.textContent).toBe('2');
+  });
+
+  it('click without shift replaces multi-sort stack with single column', () => {
+    const tracks = makeSortTracks();
+    mockRange = { startIndex: 0, endIndex: 2 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const headers = container.querySelectorAll('.track-table thead .th-sortable');
+    const bpmHeader = Array.from(headers).find(h => h.textContent?.includes('BPM'))!;
+    const camelotHeader = Array.from(headers).find(h => h.textContent?.includes('Camelot'))!;
+    const titleHeader = Array.from(headers).find(h => h.textContent?.includes('Title'))!;
+
+    fireEvent.click(bpmHeader);
+    fireEvent.click(camelotHeader, { shiftKey: true });
+    expect(container.querySelectorAll('.sort-indicator').length).toBe(2);
+
+    fireEvent.click(titleHeader);
+    const indicators = container.querySelectorAll('.sort-indicator');
+    expect(indicators.length).toBe(1);
+    expect(container.querySelectorAll('.sort-precedence').length).toBe(0);
+  });
+
+  it('multi-sort applies the full sort stack to row order', () => {
+    const tracks = makeSortTracks();
+    mockRange = { startIndex: 0, endIndex: 2 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const headers = container.querySelectorAll('.track-table thead .th-sortable');
+    const bpmHeader = Array.from(headers).find(h => h.textContent?.includes('BPM'))!;
+    const titleHeader = Array.from(headers).find(h => h.textContent?.includes('Title'))!;
+
+    fireEvent.click(bpmHeader);
+    fireEvent.click(titleHeader, { shiftKey: true });
+
+    const rows = container.querySelectorAll('.track-table tbody tr');
+    const titles = Array.from(rows).map(r => {
+      const cells = r.querySelectorAll('td');
+      return Array.from(cells).map(c => c.textContent).find(t => t === 'Alpha' || t === 'Beta' || t === 'Gamma');
+    });
+    expect(titles).toEqual(['Alpha', 'Beta', 'Gamma']);
   });
 });

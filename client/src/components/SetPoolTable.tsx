@@ -1,10 +1,16 @@
-import { useState, useCallback } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { useState, useCallback, useMemo } from 'react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { PoolEntry } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
 import type { SearchSuggestion } from '../types';
+import type { DragPayload } from '../dnd';
 import { PlayButton } from './PlayButton';
+
+interface SortDescriptor {
+  id: string;
+  desc: boolean;
+}
 
 interface Props {
   pool: PoolEntry[];
@@ -15,13 +21,79 @@ interface Props {
   onClearAll?: () => void;
 }
 
+function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
+  if (col === 'title') return (a.track?.title ?? '').localeCompare(b.track?.title ?? '');
+  if (col === 'bpm') return (a.track?.bpm ?? 0) - (b.track?.bpm ?? 0);
+  if (col === 'camelot_code') return (a.track?.camelot_code ?? '').localeCompare(b.track?.camelot_code ?? '');
+  return a.insertion_order - b.insertion_order;
+}
+
+function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar }: {
+  entry: PoolEntry;
+  onRemove: (trackId: number) => void;
+  onMoveToTracklist: (trackId: number) => void;
+  onToggleStar: (trackId: number, starred: boolean) => void;
+}) {
+  const title = cleanTitle(entry.track, entry.track_id);
+  const payload: DragPayload = { trackId: entry.track_id, title, source: 'pool' };
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: `pool-track-${entry.track_id}`,
+    data: payload,
+    attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
+  });
+
+  const rowListeners = useMemo(() => {
+    if (!listeners) return {};
+    const { onPointerDown, ...rest } = listeners as Record<string, unknown>;
+    return {
+      ...rest,
+      onPointerDown: (e: React.PointerEvent) => {
+        if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        (onPointerDown as (e: React.PointerEvent) => void)?.(e);
+      },
+    };
+  }, [listeners]);
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      className={isDragging ? 'row-dragging' : undefined}
+      {...rowListeners}
+    >
+      <td className="set-ws-cell-star">
+        <button
+          className={`star-toggle${entry.starred ? ' starred' : ''}`}
+          onClick={() => onToggleStar(entry.track_id, !entry.starred)}
+          title={entry.starred ? 'Unstar' : 'Star'}
+          aria-label={entry.starred ? 'Unstar track' : 'Star track'}
+        >
+          {entry.starred ? '★' : '☆'}
+        </button>
+      </td>
+      <td className="play-cell">
+        <PlayButton trackId={entry.track_id} title={title} />
+      </td>
+      <td className="mono set-ws-cell-num">{entry.insertion_order + 1}</td>
+      <td className="set-ws-cell-title">{title}</td>
+      <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>
+      <td className="mono set-ws-cell-bpm">{entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}</td>
+      <td className="set-ws-cell-actions">
+        <div className="set-ws-actions-group">
+          <button className="set-action-btn" onClick={() => onMoveToTracklist(entry.track_id)} title="Move to tracklist">To Tracklist</button>
+          <button className="set-action-btn set-action-btn--danger" onClick={() => onRemove(entry.track_id)} title="Remove from pool">×</button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onToggleStar, onAddTrack, onClearAll }: Props) {
   const { setNodeRef: setPoolDropRef, isOver: isPoolOver } = useDroppable({ id: 'drop-pool' });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
-  const [sortCol, setSortCol] = useState<string>('insertion_order');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sorting, setSorting] = useState<SortDescriptor[]>([{ id: 'insertion_order', desc: false }]);
 
   const handleSearch = useCallback(async (q: string) => {
     setSearchQuery(q);
@@ -44,32 +116,41 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onToggleStar, 
     setShowSearch(false);
   }, [onAddTrack]);
 
-  const handleSort = useCallback((col: string) => {
-    if (sortCol === col) {
-      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortCol(col);
-      setSortDir('asc');
-    }
-  }, [sortCol]);
+  const handleSort = useCallback((col: string, e: React.MouseEvent) => {
+    setSorting(prev => {
+      const existingIdx = prev.findIndex(s => s.id === col);
+      if (e.shiftKey) {
+        const next = [...prev];
+        if (existingIdx >= 0) {
+          next[existingIdx] = { id: col, desc: !next[existingIdx].desc };
+        } else {
+          next.push({ id: col, desc: false });
+        }
+        return next;
+      }
+      if (existingIdx >= 0 && prev.length === 1) {
+        return [{ id: col, desc: !prev[existingIdx].desc }];
+      }
+      return [{ id: col, desc: false }];
+    });
+  }, []);
 
-  const sorted = [...pool].sort((a, b) => {
-    let cmp = 0;
-    if (sortCol === 'title') {
-      cmp = (a.track?.title ?? '').localeCompare(b.track?.title ?? '');
-    } else if (sortCol === 'bpm') {
-      cmp = (a.track?.bpm ?? 0) - (b.track?.bpm ?? 0);
-    } else if (sortCol === 'camelot_code') {
-      cmp = (a.track?.camelot_code ?? '').localeCompare(b.track?.camelot_code ?? '');
-    } else {
-      cmp = a.insertion_order - b.insertion_order;
+  const sorted = useMemo(() => [...pool].sort((a, b) => {
+    for (const s of sorting) {
+      const cmp = compareByColumn(a, b, s.id);
+      if (cmp !== 0) return s.desc ? -cmp : cmp;
     }
-    return sortDir === 'desc' ? -cmp : cmp;
-  });
+    return 0;
+  }), [pool, sorting]);
 
   const sortIndicator = (col: string) => {
-    if (sortCol !== col) return '';
-    return sortDir === 'asc' ? ' ▲' : ' ▼';
+    const idx = sorting.findIndex(s => s.id === col);
+    if (idx < 0) return null;
+    const arrow = sorting[idx].desc ? ' ▼' : ' ▲';
+    if (sorting.length > 1) {
+      return <span className="sort-indicator"><span className="sort-precedence">{idx + 1}</span>{arrow}</span>;
+    }
+    return <span className="sort-indicator">{arrow}</span>;
   };
 
   return (
@@ -131,16 +212,16 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onToggleStar, 
             <tr>
               <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
               <th className="set-ws-th" style={{ width: 32 }} />
-              <th className="set-ws-th set-ws-th-sortable" onClick={() => handleSort('insertion_order')}>
+              <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('insertion_order', e)}>
                 #{sortIndicator('insertion_order')}
               </th>
-              <th className="set-ws-th set-ws-th-sortable" onClick={() => handleSort('title')}>
+              <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('title', e)}>
                 Title{sortIndicator('title')}
               </th>
-              <th className="set-ws-th set-ws-th-sortable" onClick={() => handleSort('camelot_code')}>
+              <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('camelot_code', e)}>
                 Key{sortIndicator('camelot_code')}
               </th>
-              <th className="set-ws-th set-ws-th-sortable" onClick={() => handleSort('bpm')}>
+              <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('bpm', e)}>
                 BPM{sortIndicator('bpm')}
               </th>
               <th className="set-ws-th set-ws-th-actions">Actions</th>
@@ -148,47 +229,13 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onToggleStar, 
           </thead>
           <tbody>
             {sorted.map((entry) => (
-              <tr
+              <DraggablePoolRow
                 key={entry.id}
-                draggable
-                onDragStart={e => e.dataTransfer.setData('text/plain', String(entry.track_id))}
-              >
-                <td className="set-ws-cell-star">
-                  <button
-                    className={`star-toggle${entry.starred ? ' starred' : ''}`}
-                    onClick={() => onToggleStar(entry.track_id, !entry.starred)}
-                    title={entry.starred ? 'Unstar' : 'Star'}
-                    aria-label={entry.starred ? 'Unstar track' : 'Star track'}
-                  >
-                    {entry.starred ? '★' : '☆'}
-                  </button>
-                </td>
-                <td className="play-cell">
-                  <PlayButton trackId={entry.track_id} title={cleanTitle(entry.track, entry.track_id)} />
-                </td>
-                <td className="mono set-ws-cell-num">{entry.insertion_order + 1}</td>
-                <td className="set-ws-cell-title">{cleanTitle(entry.track, entry.track_id)}</td>
-                <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>
-                <td className="mono set-ws-cell-bpm">{entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}</td>
-                <td className="set-ws-cell-actions">
-                  <div className="set-ws-actions-group">
-                    <button
-                      className="set-action-btn"
-                      onClick={() => onMoveToTracklist(entry.track_id)}
-                      title="Move to tracklist"
-                    >
-                      To Tracklist
-                    </button>
-                    <button
-                      className="set-action-btn set-action-btn--danger"
-                      onClick={() => onRemove(entry.track_id)}
-                      title="Remove from pool"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </td>
-              </tr>
+                entry={entry}
+                onRemove={onRemove}
+                onMoveToTracklist={onMoveToTracklist}
+                onToggleStar={onToggleStar}
+              />
             ))}
           </tbody>
         </table>

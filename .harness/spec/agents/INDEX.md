@@ -6,6 +6,7 @@ Canonical agent definitions, grouped by prefixed role.
 
 - [coord-breaker-orchestrator.md](coord-breaker-orchestrator.md)
 - [coord-delivery-supervisor.md](coord-delivery-supervisor.md)
+- [coord-quick-follow-supervisor.md](coord-quick-follow-supervisor.md)
 
 ## Development (`dev-`)
 

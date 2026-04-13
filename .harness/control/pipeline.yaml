@@ -67,6 +67,12 @@ stages:
     - spec_contract_producer          # Spec Contract Producer
     - spec_ledger_curator             # Spec Ledger Curator
 
+  quick_follow:
+    - coord_quick_follow_supervisor   # Coord Quick Follow Supervisor
+    - dev_delivery_coder              # Dev Delivery Coder
+    - test_delivery_reviewer          # Test Delivery Reviewer
+    - test_delivery_qa                # Test Delivery QA
+
   design_verification:
     - test_design_qa                  # Test Design QA
 

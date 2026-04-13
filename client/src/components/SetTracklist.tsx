@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { TracklistEntry, SearchSuggestion } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
+import type { DragPayload } from '../dnd';
 import { PlayButton } from './PlayButton';
 
 interface Props {
@@ -47,6 +48,80 @@ function NoteInput({ trackId, initialNote, onSave }: {
       onBlur={handleBlur}
       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
     />
+  );
+}
+
+function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar }: {
+  entry: TracklistEntry;
+  index: number;
+  total: number;
+  onRemove: (trackId: number) => void;
+  onMoveToPool: (trackId: number) => void;
+  onReorder: (trackId: number, newPosition: number) => void;
+  onUpdateNote: (trackId: number, note: string) => void;
+  onToggleStar: (trackId: number, starred: boolean) => void;
+}) {
+  const title = cleanTitle(entry.track, entry.track_id);
+  const payload: DragPayload = { trackId: entry.track_id, title, source: 'tracklist' };
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: `tracklist-track-${entry.track_id}`,
+    data: payload,
+    attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
+  });
+
+  const rowListeners = useMemo(() => {
+    if (!listeners) return {};
+    const { onPointerDown, ...rest } = listeners as Record<string, unknown>;
+    return {
+      ...rest,
+      onPointerDown: (e: React.PointerEvent) => {
+        if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        (onPointerDown as (e: React.PointerEvent) => void)?.(e);
+      },
+    };
+  }, [listeners]);
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      className={isDragging ? 'row-dragging' : undefined}
+      {...rowListeners}
+    >
+      <td className="set-ws-cell-star">
+        <button
+          className={`star-toggle${entry.starred ? ' starred' : ''}`}
+          onClick={() => onToggleStar(entry.track_id, !entry.starred)}
+          title={entry.starred ? 'Unstar' : 'Star'}
+          aria-label={entry.starred ? 'Unstar track' : 'Star track'}
+        >
+          {entry.starred ? '★' : '☆'}
+        </button>
+      </td>
+      <td className="play-cell">
+        <PlayButton trackId={entry.track_id} title={title} />
+      </td>
+      <td className="mono set-ws-cell-num">{index + 1}</td>
+      <td className="set-ws-cell-title">{title}</td>
+      <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>
+      <td className="mono set-ws-cell-bpm">{entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}</td>
+      <td className="set-ws-cell-note">
+        <NoteInput
+          key={`note-${entry.track_id}`}
+          trackId={entry.track_id}
+          initialNote={entry.note ?? ''}
+          onSave={onUpdateNote}
+        />
+      </td>
+      <td className="set-ws-cell-actions">
+        <div className="set-ws-actions-group">
+          <button className="set-move-btn" disabled={index === 0} onClick={() => onReorder(entry.track_id, index - 1)} title="Move up">↑</button>
+          <button className="set-move-btn" disabled={index === total - 1} onClick={() => onReorder(entry.track_id, index + 1)} title="Move down">↓</button>
+          <button className="set-action-btn" onClick={() => onMoveToPool(entry.track_id)} title="Move to pool">To Pool</button>
+          <button className="set-action-btn set-action-btn--danger" onClick={() => onRemove(entry.track_id)} title="Delete from tracklist">×</button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -147,71 +222,17 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
           </thead>
           <tbody>
             {tracklist.map((entry, i) => (
-              <tr
+              <DraggableTracklistRow
                 key={entry.id}
-                draggable
-                onDragStart={e => e.dataTransfer.setData('text/plain', String(entry.track_id))}
-              >
-                <td className="set-ws-cell-star">
-                  <button
-                    className={`star-toggle${entry.starred ? ' starred' : ''}`}
-                    onClick={() => onToggleStar(entry.track_id, !entry.starred)}
-                    title={entry.starred ? 'Unstar' : 'Star'}
-                    aria-label={entry.starred ? 'Unstar track' : 'Star track'}
-                  >
-                    {entry.starred ? '★' : '☆'}
-                  </button>
-                </td>
-                <td className="play-cell">
-                  <PlayButton trackId={entry.track_id} title={cleanTitle(entry.track, entry.track_id)} />
-                </td>
-                <td className="mono set-ws-cell-num">{i + 1}</td>
-                <td className="set-ws-cell-title">{cleanTitle(entry.track, entry.track_id)}</td>
-                <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>
-                <td className="mono set-ws-cell-bpm">{entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}</td>
-                <td className="set-ws-cell-note">
-                  <NoteInput
-                    key={`note-${entry.track_id}`}
-                    trackId={entry.track_id}
-                    initialNote={entry.note ?? ''}
-                    onSave={onUpdateNote}
-                  />
-                </td>
-                <td className="set-ws-cell-actions">
-                  <div className="set-ws-actions-group">
-                    <button
-                      className="set-move-btn"
-                      disabled={i === 0}
-                      onClick={() => onReorder(entry.track_id, i - 1)}
-                      title="Move up"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      className="set-move-btn"
-                      disabled={i === tracklist.length - 1}
-                      onClick={() => onReorder(entry.track_id, i + 1)}
-                      title="Move down"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      className="set-action-btn"
-                      onClick={() => onMoveToPool(entry.track_id)}
-                      title="Move to pool"
-                    >
-                      To Pool
-                    </button>
-                    <button
-                      className="set-action-btn set-action-btn--danger"
-                      onClick={() => onRemove(entry.track_id)}
-                      title="Delete from tracklist"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </td>
-              </tr>
+                entry={entry}
+                index={i}
+                total={tracklist.length}
+                onRemove={onRemove}
+                onMoveToPool={onMoveToPool}
+                onReorder={onReorder}
+                onUpdateNote={onUpdateNote}
+                onToggleStar={onToggleStar}
+              />
             ))}
           </tbody>
         </table>

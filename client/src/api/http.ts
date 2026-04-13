@@ -329,6 +329,25 @@ export async function explorerSwap(
   if (!res.ok) throw new Error(`Explorer swap failed: ${res.status}`);
 }
 
+export async function explorerMoveNode(
+  setId: number,
+  nodeId: string,
+  targetLevel?: number,
+  targetColIndex?: number,
+  newParentNodeId?: string,
+): Promise<void> {
+  const payload: Record<string, unknown> = { node_id: nodeId };
+  if (targetLevel !== undefined) payload.target_level = targetLevel;
+  if (targetColIndex !== undefined) payload.target_col_index = targetColIndex;
+  if (newParentNodeId !== undefined) payload.new_parent_node_id = newParentNodeId;
+  const res = await fetch(`/api/sets/${setId}/explorer/move-node`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Explorer move node failed: ${res.status}`);
+}
+
 export async function explorerNodeToTracklist(
   setId: number, nodeId: string,
 ): Promise<void> {
