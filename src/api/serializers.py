@@ -21,6 +21,7 @@ def serialize_track_row(track):
         "genre": track.genre,
         "label": track.label,
         "energy": track.energy,
+        "date_added": track.date_added,
     }
 
 

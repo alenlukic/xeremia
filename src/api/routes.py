@@ -181,10 +181,12 @@ def api_track_traits():
         session.close()
 
 
-_SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".wav"}
+_SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".aiff", ".aif"}
 _AUDIO_MEDIA_TYPES = {
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
 }
 
 
@@ -210,7 +212,7 @@ def api_track_audio(track_id: int):
         if ext not in _SUPPORTED_AUDIO_EXTENSIONS:
             raise HTTPException(
                 status_code=415,
-                detail=f"Unsupported audio format '{ext}'. Only MP3 and WAV are supported.",
+                detail=f"Unsupported audio format '{ext}'. Supported: MP3, WAV, AIFF, AIF.",
             )
 
         file_path = Path(PROCESSED_MUSIC_DIR) / file_name

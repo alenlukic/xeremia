@@ -436,8 +436,36 @@ class TestTrackAudioEndpoint:
             assert resp.status_code == 404
             assert "not found" in resp.json()["detail"].lower()
 
-    def test_415_for_unsupported_format(self, audio_dir):
+    def test_streams_aiff(self, audio_dir):
         file_name = "song.aiff"
+        with open(os.path.join(audio_dir, file_name), "wb") as f:
+            f.write(b"FORM" + b"\x00" * 100)
+
+        mock_session = MagicMock()
+        mock_track = self._mock_track(1, file_name)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_track
+
+        for tc in self._make_client(mock_session, audio_dir):
+            resp = tc.get("/api/tracks/1/audio")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "audio/aiff"
+
+    def test_streams_aif(self, audio_dir):
+        file_name = "song.aif"
+        with open(os.path.join(audio_dir, file_name), "wb") as f:
+            f.write(b"FORM" + b"\x00" * 100)
+
+        mock_session = MagicMock()
+        mock_track = self._mock_track(1, file_name)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_track
+
+        for tc in self._make_client(mock_session, audio_dir):
+            resp = tc.get("/api/tracks/1/audio")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "audio/aiff"
+
+    def test_415_for_unsupported_format(self, audio_dir):
+        file_name = "song.ogg"
         with open(os.path.join(audio_dir, file_name), "wb") as f:
             f.write(b"\x00" * 100)
 
@@ -538,3 +566,93 @@ class TestExplorerTreeCreateModeValidation:
             from src.api.schemas import ExplorerTreeCreateRequest
             req = ExplorerTreeCreateRequest(name="Test", mode=mode)
             assert req.mode == mode
+
+
+# ---------------------------------------------------------------------------
+# date_added serialization coverage
+# ---------------------------------------------------------------------------
+
+
+class TestDateAddedSerialization:
+    """Verify the date_added field flows through serializer, schema, and API."""
+
+    def test_serialize_track_row_includes_date_added(self):
+        from src.api.serializers import serialize_track_row
+
+        track = MagicMock()
+        track.id = 1
+        track.title = "Test"
+        track.bpm = 128.0
+        track.key = "C"
+        track.camelot_code = "01A"
+        track.genre = "House"
+        track.label = "Label"
+        track.energy = 7
+        track.date_added = "2025-06-15T12:00:00"
+
+        result = serialize_track_row(track)
+        assert result["date_added"] == "2025-06-15T12:00:00"
+
+    def test_serialize_track_row_date_added_null(self):
+        from src.api.serializers import serialize_track_row
+
+        track = MagicMock()
+        track.id = 2
+        track.title = "No Date"
+        track.bpm = None
+        track.key = None
+        track.camelot_code = None
+        track.genre = None
+        track.label = None
+        track.energy = None
+        track.date_added = None
+
+        result = serialize_track_row(track)
+        assert result["date_added"] is None
+
+    def test_track_response_schema_accepts_date_added(self):
+        from src.api.schemas import TrackResponse
+
+        resp = TrackResponse(
+            id=1, title="Test", date_added="2025-01-01T00:00:00",
+        )
+        assert resp.date_added == "2025-01-01T00:00:00"
+
+    def test_track_response_schema_date_added_optional(self):
+        from src.api.schemas import TrackResponse
+
+        resp = TrackResponse(id=1, title="Test")
+        assert resp.date_added is None
+
+    def test_tracks_endpoint_returns_date_added(self):
+        track = MagicMock()
+        track.id = 1
+        track.title = "With Date"
+        track.bpm = 130.0
+        track.key = "Am"
+        track.camelot_code = "08A"
+        track.genre = "Techno"
+        track.label = "Drumcode"
+        track.energy = 8
+        track.date_added = "2025-03-20"
+
+        mock_session = MagicMock()
+
+        finder = MagicMock()
+        finder.cosine_cache = None
+        finder.transition_score_cache = None
+        finder._sync_effective_weights = MagicMock()
+
+        with patch("src.api.routes._get_match_finder", return_value=finder), \
+             patch("src.api.routes._get_session", return_value=mock_session), \
+             patch("src.api.routes.get_tracks", return_value=[track]), \
+             patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
+             patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+            from src.api.app import create_app
+            with TestClient(create_app()) as tc:
+                resp = tc.get("/api/tracks")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["date_added"] == "2025-03-20"

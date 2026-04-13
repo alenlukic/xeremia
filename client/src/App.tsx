@@ -21,6 +21,7 @@ import { useWeights } from './hooks/useWeights';
 import { useSetBuilder } from './hooks/useSetBuilder';
 import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 import type { DragPayload } from './dnd';
+import type { SortingState } from '@tanstack/react-table';
 
 const BROWSE_PAGE_SIZE = 250;
 const SNAP_MODIFIERS = [snapCenterToCursor];
@@ -37,6 +38,7 @@ const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'energy', label: 'Energy' },
   { id: 'label', label: 'Label' },
   { id: 'genre', label: 'Genre' },
+  { id: 'date_added', label: 'Date Added' },
 ];
 
 const dndCollisionDetection: CollisionDetection = (args) => {
@@ -258,13 +260,35 @@ export default function App() {
     }));
   }, []);
 
+  const [browseSorting, setBrowseSorting] = useState<SortingState>([]);
+
+  const sortedTracks = useMemo(() => {
+    if (browseSorting.length === 0) return filteredTracks;
+    const { id, desc } = browseSorting[0];
+    const sorted = [...filteredTracks].sort((a, b) => {
+      const av = a[id as keyof Track];
+      const bv = b[id as keyof Track];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (id === 'date_added') {
+        const da = new Date(av as string).getTime();
+        const db = new Date(bv as string).getTime();
+        return da - db;
+      }
+      if (typeof av === 'number' && typeof bv === 'number') return av - bv;
+      return String(av).localeCompare(String(bv));
+    });
+    return desc ? sorted.reverse() : sorted;
+  }, [filteredTracks, browseSorting]);
+
   const browsePages = useMemo(() => {
     const pages: Track[][] = [];
-    for (let i = 0; i < filteredTracks.length; i += BROWSE_PAGE_SIZE) {
-      pages.push(filteredTracks.slice(i, i + BROWSE_PAGE_SIZE));
+    for (let i = 0; i < sortedTracks.length; i += BROWSE_PAGE_SIZE) {
+      pages.push(sortedTracks.slice(i, i + BROWSE_PAGE_SIZE));
     }
     return pages;
-  }, [filteredTracks]);
+  }, [sortedTracks]);
 
   const totalPages = browsePages.length;
 
@@ -596,6 +620,8 @@ export default function App() {
               configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
               onToggleColumn={toggleBrowseColumn}
               starredTrackIds={starredTrackIds}
+              sorting={browseSorting}
+              onSortingChange={setBrowseSorting}
             />
           </div>
         </div>

@@ -40,6 +40,16 @@ export function formatOverallScore(value: number | null | undefined): string {
   return Math.round(value).toString();
 }
 
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function displayGenre(genre: string | null | undefined): string | null {
   if (genre == null) return null;
   const idx = genre.lastIndexOf('---');

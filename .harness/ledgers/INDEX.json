@@ -814,5 +814,19 @@
     "build_status": "UNKNOWN",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "UNKNOWN"
+  },
+  {
+    "run_id": "20260413T044332Z-delivery-two-issues-with-media-player-fun",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Run\n\n- `20260413T044332Z-delivery-two-issues-with-media-player-fun`\n\n## Scope Lock\n\nResolve two media-player issues and add regression coverage for t",
+    "published_at": "2026-04-13T05:13:56.878755+00:00",
+    "path": ".harness/ledgers/20260413T044332Z-delivery-two-issues-with-media-player-fun.md",
+    "files_changed": 13,
+    "eval_score": 82,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "MEDIUM"
   }
 ]

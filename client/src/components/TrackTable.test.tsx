@@ -92,6 +92,7 @@ function makeTracks(n: number): Track[] {
     genre: 'Electronic',
     label: 'Label',
     energy: 0.5,
+    date_added: null,
   }));
 }
 
@@ -575,5 +576,137 @@ describe('TrackTable load-more boundary precision', () => {
     );
 
     expect(onLoadMore).toHaveBeenCalledTimes(2);
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
+describe('TrackTable date_added column', () => {
+  it('renders formatted date in the Date Added column', () => {
+    const tracks: Track[] = [
+      {
+        id: 1, title: 'Dated Track', artist_names: ['A'], bpm: 128,
+        key: 'C', camelot_code: '01A', genre: 'House', label: 'L',
+        energy: 7, date_added: '2025-06-15T12:00:00',
+      },
+    ];
+    mockRange = { startIndex: 0, endIndex: 0 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const cells = container.querySelectorAll('.track-table tbody td');
+    const cellTexts = Array.from(cells).map(c => c.textContent);
+    expect(cellTexts).toContain('2025-06-15');
+  });
+
+  it('renders em-dash for null date_added', () => {
+    const tracks: Track[] = [
+      {
+        id: 1, title: 'No Date', artist_names: ['A'], bpm: 120,
+        key: 'C', camelot_code: '01A', genre: 'House', label: 'L',
+        energy: 5, date_added: null,
+      },
+    ];
+    mockRange = { startIndex: 0, endIndex: 0 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const cells = container.querySelectorAll('.track-table tbody td');
+    const cellTexts = Array.from(cells).map(c => c.textContent);
+    expect(cellTexts).toContain('—');
+  });
+
+  it('sorts rows by date_added ascending via internal sort', () => {
+    const tracks: Track[] = [
+      {
+        id: 1, title: 'New', artist_names: ['A'], bpm: 120,
+        key: 'C', camelot_code: '01A', genre: 'House', label: 'L',
+        energy: 5, date_added: '2025-06-15',
+      },
+      {
+        id: 2, title: 'Old', artist_names: ['B'], bpm: 130,
+        key: 'D', camelot_code: '02A', genre: 'Techno', label: 'M',
+        energy: 8, date_added: '2024-01-01',
+      },
+      {
+        id: 3, title: 'No Date', artist_names: ['C'], bpm: 140,
+        key: 'E', camelot_code: '03A', genre: 'Trance', label: 'N',
+        energy: 6, date_added: null,
+      },
+    ];
+    mockRange = { startIndex: 0, endIndex: 2 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const header = container.querySelector('.track-table thead th:last-of-type .th-content') as HTMLElement;
+    fireEvent.click(header);
+
+    const rows = container.querySelectorAll('.track-table tbody tr');
+    expect(rows.length).toBe(3);
+    const titles = Array.from(rows).map(r => {
+      const cells = r.querySelectorAll('td');
+      return Array.from(cells).map(c => c.textContent);
+    });
+    const titleCol = titles.map(t => t.find(c => c === 'Old' || c === 'New' || c === 'No Date'));
+    expect(titleCol).toEqual(['No Date', 'Old', 'New']);
+  });
+
+  it('shows sort indicator when sorting prop is provided', () => {
+    const tracks: Track[] = [
+      {
+        id: 1, title: 'Track', artist_names: ['A'], bpm: 120,
+        key: 'C', camelot_code: '01A', genre: 'House', label: 'L',
+        energy: 5, date_added: '2025-01-01',
+      },
+    ];
+    mockRange = { startIndex: 0, endIndex: 0 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={tracks}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+          sorting={[{ id: 'date_added', desc: true }]}
+          onSortingChange={vi.fn()}
+        />,
+      ),
+    );
+
+    const indicators = container.querySelectorAll('.sort-indicator');
+    const texts = Array.from(indicators).map(el => el.textContent?.trim());
+    expect(texts).toContain('▼');
   });
 });
