@@ -144,11 +144,9 @@ models/traits/
 
 .test_data/
 
-.harness/runs/
-.harness/state/
-.harness/change_summaries/
-.harness/pr_descriptions/
-.harness/docs/prompts/
+.harness/history/runs/
+.harness/knowledge/state/
+.harness/knowledge/docs/prompts/
 
 # Harness bootstrap artifacts (template-only)
 .agents/

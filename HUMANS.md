@@ -28,10 +28,10 @@ That is the full default loop. Most day-to-day work is steps 1-3.
 ### Starting a run
 
 ```bash
-python3 .harness/bin/pipeline.py start --mode delivery --task "Implement X"
+python3 .harness/control/bin/pipeline.py start --mode delivery --task "Implement X"
 ```
 
-This creates a timestamped run directory under `.harness/runs/` with all artifact stubs. The delivery pipeline command (`/run-delivery-pipeline`) will do this for you automatically.
+This creates a timestamped run directory under `.harness/history/runs/` with all artifact stubs. The delivery pipeline command (`/run-delivery-pipeline`) will do this for you automatically.
 
 ### Available modes
 
@@ -132,7 +132,7 @@ This loop produces artifacts that the Spec Contract Producer can consume directl
 
 **4. Learning loop** -- captures durable signal.
 
-Each meaningful run produces a compact `RUN_LEDGER.md` that can be published into `.harness/ledgers/`. Ledgers capture key decisions, verification learnings, and repo guidance -- not transcripts.
+Each meaningful run produces a compact `RUN_LEDGER.md` that can be published into `.harness/history/ledgers/`. Ledgers capture key decisions, verification learnings, and repo guidance -- not transcripts.
 
 **5. Memory/documentation loop** -- keeps long-term surfaces current.
 
@@ -184,17 +184,17 @@ The Spec Contract Producer converts selected recommendations into DEVDSL-ready c
 
 The harness adopts a "runs + artifacts + searchable metadata" model that mirrors established patterns from experiment tracking (MLflow Tracking) and observability (OpenTelemetry log correlation). Each run produces ephemeral artifacts in its run directory. The most important learnings are distilled into a compact `RUN_LEDGER.md` using a schema with YAML frontmatter (for machine indexing) and markdown sections (for human readability).
 
-Published ledgers live in `.harness/ledgers/` and are indexed via `INDEX.json` / `INDEX.md`. This makes them searchable and provides low-token context for future runs -- agents can read relevant ledger summaries instead of replaying full run histories, following the memory-tiering approach described in MemGPT research (compact durable summaries rather than full context replay).
+Published ledgers live in `.harness/history/ledgers/` and are indexed via `INDEX.json` / `INDEX.md`. This makes them searchable and provides low-token context for future runs -- agents can read relevant ledger summaries instead of replaying full run histories, following the memory-tiering approach described in MemGPT research (compact durable summaries rather than full context replay).
 
 Long-term memory surfaces in the harness:
 
 | Surface | Location | Updated by |
 |---|---|---|
-| Ledger index | `.harness/ledgers/INDEX.json` | `rebuild-ledger-index` runner command |
-| Recommendation registry | `.harness/product-feedback/RECOMMENDATION_REGISTRY.json` | Meta Registry Steward agent |
-| Customer persona spec | `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md` | SME Product Red Team / persona tester |
-| State machine definition | `.harness/state_machine/STATE_MACHINE.yaml` | Manual or restructure pipeline |
-| Schedule definitions | `.harness/schedules/SCHEDULES.yaml` | Manual |
+| Ledger index | `.harness/history/ledgers/INDEX.json` | `rebuild-ledger-index` runner command |
+| Recommendation registry | `.harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.json` | Meta Registry Steward agent |
+| Customer persona spec | `.harness/workspace/product-feedback/CUSTOMER_PERSONA_SPEC.md` | SME Product Red Team / persona tester |
+| State machine definition | `.harness/control/state_machine/STATE_MACHINE.yaml` | Manual or restructure pipeline |
+| Schedule definitions | `.harness/control/schedules/SCHEDULES.yaml` | Manual |
 
 ### Token efficiency
 
@@ -210,13 +210,13 @@ The `context-manifest` runner command writes `CONTEXT_MANIFEST.json` with per-ar
 
 ### State machine
 
-The harness defines run states and transitions declaratively in `.harness/state_machine/STATE_MACHINE.yaml`. This makes run progress inspectable and prevents out-of-order execution without requiring a heavy workflow-engine dependency.
+The harness defines run states and transitions declaratively in `.harness/control/state_machine/STATE_MACHINE.yaml`. This makes run progress inspectable and prevents out-of-order execution without requiring a heavy workflow-engine dependency.
 
 The design borrows the *model* from two converging orchestration approaches: graph-based LLM workflow engines (LangGraph-style explicit state and transitions) and durable workflow engines (Temporal-style deterministic execution with event histories). The harness gets the inspectability benefits without the operational overhead -- the state machine is a YAML file checked into the repo, and the runner can render it as a Mermaid diagram or infer the current state from existing artifacts.
 
 ### Scheduling
 
-The harness supports scheduled/triggered execution via `.harness/schedules/SCHEDULES.yaml`. Jobs are explicitly typed:
+The harness supports scheduled/triggered execution via `.harness/control/schedules/SCHEDULES.yaml`. Jobs are explicitly typed:
 
 | Type | Runs automatically | Human review required | Example |
 |---|---|---|---|
@@ -231,7 +231,7 @@ This split -- deterministic jobs automatically, agent jobs gated behind human re
 
 ### pipeline.yaml
 
-The pipeline configuration lives at `.harness/pipeline.yaml` and controls:
+The pipeline configuration lives at `.harness/control/pipeline.yaml` and controls:
 
 | Section | Purpose |
 |---|---|
@@ -244,7 +244,7 @@ The pipeline configuration lives at `.harness/pipeline.yaml` and controls:
 
 ### Runner commands
 
-The pipeline runner (`python3 .harness/bin/pipeline.py`) supports:
+The pipeline runner (`python3 .harness/control/bin/pipeline.py`) supports:
 
 | Command | Purpose |
 |---|---|
@@ -256,7 +256,7 @@ The pipeline runner (`python3 .harness/bin/pipeline.py`) supports:
 | `bad-state-check --run-dir <dir>` | Write bad-state report from run evidence |
 | `bad-state-scan --active` | Scan all active runs for bad state |
 | `context-manifest --run-dir <dir>` | Write context manifest with token estimates |
-| `publish-ledger --run-dir <dir>` | Publish run ledger to `.harness/ledgers/` |
+| `publish-ledger --run-dir <dir>` | Publish run ledger to `.harness/history/ledgers/` |
 | `rebuild-ledger-index` | Rebuild the ledger index from published ledgers |
 | `registry-render` | Re-render recommendation registry markdown |
 | `recommendation-summary` | Show current registry summary as JSON |
@@ -277,14 +277,14 @@ The pipeline runner (`python3 .harness/bin/pipeline.py`) supports:
 |---|---|
 | `AGENTS.md` | Agent roles, commands, artifacts, and policies (agent-facing) |
 | `HUMANS.md` | This file (human-facing) |
-| `.harness/pipeline.yaml` | Pipeline configuration |
-| `.harness/bin/pipeline.py` | Deterministic runner |
-| `.harness/docs/core-beliefs.md` | Execution contract (DEVDSL-1.1) |
-| `.harness/docs/token-efficiency.md` | Token efficiency principles |
-| `.harness/state_machine/STATE_MACHINE.yaml` | Run state definitions |
-| `.harness/schedules/SCHEDULES.yaml` | Scheduled job definitions |
-| `.harness/product-feedback/CUSTOMER_PERSONA_SPEC.md` | Target customer persona |
-| `.harness/product-feedback/RECOMMENDATION_REGISTRY.json` | Durable recommendation registry |
+| `.harness/control/pipeline.yaml` | Pipeline configuration |
+| `.harness/control/bin/pipeline.py` | Deterministic runner |
+| `.harness/knowledge/docs/core-beliefs.md` | Execution contract (DEVDSL-1.1) |
+| `.harness/knowledge/docs/token-efficiency.md` | Token efficiency principles |
+| `.harness/control/state_machine/STATE_MACHINE.yaml` | Run state definitions |
+| `.harness/control/schedules/SCHEDULES.yaml` | Scheduled job definitions |
+| `.harness/workspace/product-feedback/CUSTOMER_PERSONA_SPEC.md` | Target customer persona |
+| `.harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.json` | Durable recommendation registry |
 
 ---
 
@@ -294,7 +294,7 @@ If you are a new team member cloning an already-bootstrapped repo, or need to re
 
 | IDE | Setup |
 |---|---|
-| Cursor | `bash .harness/bin/setup.sh` |
+| Cursor | `bash .harness/control/bin/setup.sh` |
 | Claude Code | No setup required |
 
 ---

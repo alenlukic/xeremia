@@ -4,12 +4,12 @@ Use the repository agent harness.
 
 Read:
 - @AGENTS.md
-- @.harness/docs/core-beliefs.md
-- @.harness/docs/token-efficiency.md
+- @.harness/knowledge/docs/core-beliefs.md
+- @.harness/knowledge/docs/token-efficiency.md
 
-Use the appropriate command under `.harness/commands/`.
+Use the appropriate command under `.harness/spec/commands/`.
 Initialize a run before substantive work:
-`python3 .harness/bin/pipeline.py start --mode <mode> --task "<task>"`
+`python3 .harness/control/bin/pipeline.py start --mode <mode> --task "<task>"`
 
 Preserve role separation:
 - SME Product Red Team owns customer, market, and product reasoning
@@ -23,5 +23,5 @@ Preserve role separation:
 Do not compress rich agent specs into one-paragraph role stubs.
 The harness expects specialist files to be operational contracts, not labels.
 
-If `.harness/state/` is missing or stale, run:
-`python3 .harness/bin/bootstrap.py scan`
+If `.harness/knowledge/state/` is missing or stale, run:
+`python3 .harness/control/bin/bootstrap.py scan`
