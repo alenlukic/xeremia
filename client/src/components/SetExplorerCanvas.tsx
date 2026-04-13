@@ -16,6 +16,34 @@ const LEVEL_HEIGHT = NODE_H + V_GAP;
 const MAX_LEVELS = 100;
 const DRAG_THRESHOLD = 5;
 
+export interface MoveDragState {
+  sourceNodeId: string;
+  sourceLevel: number;
+  sourceCol: number;
+  sourceCX: number;
+  sourceCY: number;
+  cursorX: number;
+  cursorY: number;
+  targetLevel: number;
+  targetCol: number;
+  dropType: 'relocate' | 'reparent' | 'invalid';
+}
+
+function isDescendant(edges: ExplorerEdge[], ancestorId: string, candidateId: string): boolean {
+  const visited = new Set<string>();
+  const queue = [ancestorId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === candidateId) return true;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    for (const e of edges) {
+      if (e.parent_node_id === current) queue.push(e.child_node_id);
+    }
+  }
+  return false;
+}
+
 interface Props {
   nodes: ExplorerNode[];
   edges: ExplorerEdge[];
@@ -24,6 +52,7 @@ interface Props {
   onAddEdge: (parentNodeId: string, childNodeId: string) => Promise<void>;
   onDeleteEdge: (edgeId: number) => Promise<void>;
   onSwap: (nodeAId: string, nodeBId: string) => void;
+  onMoveNode: (nodeId: string, targetLevel?: number, targetColIndex?: number, newParentNodeId?: string) => void;
   onNodeToTracklist: (nodeId: string) => void;
   onAddSibling: (trackId: number, inheritParentIds: string[], level: number, colIndex?: number) => Promise<unknown>;
   tracklistTrackIds: Set<number>;
@@ -57,7 +86,7 @@ interface ChildAddState {
 }
 
 export const SetExplorerCanvas = memo(function SetExplorerCanvas({
-  nodes, edges, onAddNode, onDeleteNode, onAddEdge, onDeleteEdge, onSwap,
+  nodes, edges, onAddNode, onDeleteNode, onAddEdge, onDeleteEdge, onSwap, onMoveNode,
   onNodeToTracklist, onAddSibling, tracklistTrackIds, fetchEdgeScores, warningNodeId,
   trees, activeTreeId, onSelectTree, onCreateTree,
 }: Props) {
@@ -93,6 +122,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   const [childAdd, setChildAdd] = useState<ChildAddState | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
   const [connectDrag, setConnectDrag] = useState<ConnectDragState | null>(null);
+  const [moveDrag, setMoveDrag] = useState<MoveDragState | null>(null);
 
   const scoreCacheRef = useRef(new Map<string, number | null>());
   const nodesRef = useRef(nodes);
@@ -101,14 +131,17 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   edgesRef.current = edges;
   const connectDragRef = useRef<ConnectDragState | null>(null);
   connectDragRef.current = connectDrag;
+  const moveDragRef = useRef<MoveDragState | null>(null);
+  moveDragRef.current = moveDrag;
   const swapSourceRef = useRef<string | null>(null);
   swapSourceRef.current = swapSource;
   const fetchEdgeScoresRef = useRef(fetchEdgeScores);
   fetchEdgeScoresRef.current = fetchEdgeScores;
   const pendingDragRef = useRef<{
-    sourceNodeId: string; sourceLevel: number;
+    sourceNodeId: string; sourceLevel: number; sourceCol: number;
     sourceCX: number; sourceCY: number;
     startClientX: number; startClientY: number;
+    isMoveDrag: boolean;
   } | null>(null);
 
   const onAddNodeRef = useRef(onAddNode);
@@ -120,6 +153,8 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   const onDeleteEdgeRef = useRef(onDeleteEdge);
   onDeleteEdgeRef.current = onDeleteEdge;
   const onSwapRef = useRef(onSwap);
+  const onMoveNodeRef = useRef(onMoveNode);
+  onMoveNodeRef.current = onMoveNode;
   onSwapRef.current = onSwap;
   const onNodeToTracklistRef = useRef(onNodeToTracklist);
   onNodeToTracklistRef.current = onNodeToTracklist;
@@ -319,14 +354,45 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     pendingDragRef.current = {
       sourceNodeId: nodeId,
       sourceLevel: level,
+      sourceCol: colIndex,
       sourceCX: cx,
       sourceCY: cy,
       startClientX: e.clientX,
       startClientY: e.clientY,
+      isMoveDrag: e.altKey,
     };
   }, []);
 
+  const computeDropType = useCallback((
+    sourceNodeId: string, targetLevel: number, targetCol: number,
+  ): 'relocate' | 'reparent' | 'invalid' => {
+    if (targetLevel < 0 || targetLevel >= MAX_LEVELS || targetCol < 0 || targetCol >= MAX_COLS) {
+      return 'invalid';
+    }
+    const currentNodes = nodesRef.current;
+    const currentEdges = edgesRef.current;
+    const sourceNode = currentNodes.find(n => n.node_id === sourceNodeId);
+    if (!sourceNode) return 'invalid';
+    if (sourceNode.level === targetLevel && sourceNode.col_index === targetCol) return 'invalid';
+
+    const occupant = currentNodes.find(
+      n => n.level === targetLevel && n.col_index === targetCol && n.node_id !== sourceNodeId,
+    );
+
+    if (!occupant) return 'relocate';
+
+    if (isDescendant(currentEdges, sourceNodeId, occupant.node_id)) return 'invalid';
+
+    const childLevel = occupant.level + 1;
+    if (childLevel >= MAX_LEVELS) return 'invalid';
+    const occupiedAtChild = currentNodes.filter(n => n.level === childLevel && n.node_id !== sourceNodeId);
+    if (occupiedAtChild.length >= MAX_COLS) return 'invalid';
+
+    return 'reparent';
+  }, []);
+
   const handleNodeMouseUp = useCallback((nodeId: string, level: number) => {
+    if (moveDragRef.current) return;
     const cd = connectDragRef.current;
     if (!cd) return;
     if (cd.sourceNodeId === nodeId) { setConnectDrag(null); return; }
@@ -343,33 +409,74 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     setConnectDrag(null);
   }, []);
 
-  // --- Grid mouse handlers for connect-drag ---
+  // --- Grid mouse handlers for connect-drag and move-drag ---
   const handleGridMouseMove = useCallback((e: React.MouseEvent, gridX: number, gridY: number) => {
+    const md = moveDragRef.current;
     const cd = connectDragRef.current;
-    if (pendingDragRef.current && !cd) {
+
+    if (pendingDragRef.current && !cd && !md) {
       const pd = pendingDragRef.current;
       const dx = e.clientX - pd.startClientX;
       const dy = e.clientY - pd.startClientY;
       if (Math.abs(dx) + Math.abs(dy) >= DRAG_THRESHOLD) {
-        setConnectDrag({
-          sourceNodeId: pd.sourceNodeId,
-          sourceLevel: pd.sourceLevel,
-          sourceCX: pd.sourceCX,
-          sourceCY: pd.sourceCY,
-          cursorX: pd.sourceCX,
-          cursorY: pd.sourceCY,
-        });
+        if (pd.isMoveDrag) {
+          const tLevel = Math.max(0, Math.min(MAX_LEVELS - 1, Math.floor((gridY - TOP_PAD) / LEVEL_HEIGHT)));
+          const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor(gridX / SLOT_W)));
+          const dropType = computeDropType(pd.sourceNodeId, tLevel, tCol);
+          setMoveDrag({
+            sourceNodeId: pd.sourceNodeId,
+            sourceLevel: pd.sourceLevel,
+            sourceCol: pd.sourceCol,
+            sourceCX: pd.sourceCX,
+            sourceCY: pd.sourceCY,
+            cursorX: gridX,
+            cursorY: gridY,
+            targetLevel: tLevel,
+            targetCol: tCol,
+            dropType,
+          });
+        } else {
+          setConnectDrag({
+            sourceNodeId: pd.sourceNodeId,
+            sourceLevel: pd.sourceLevel,
+            sourceCX: pd.sourceCX,
+            sourceCY: pd.sourceCY,
+            cursorX: pd.sourceCX,
+            cursorY: pd.sourceCY,
+          });
+        }
         pendingDragRef.current = null;
       }
       return;
     }
+    if (md) {
+      const tLevel = Math.max(0, Math.min(MAX_LEVELS - 1, Math.floor((gridY - TOP_PAD) / LEVEL_HEIGHT)));
+      const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor(gridX / SLOT_W)));
+      const dropType = computeDropType(md.sourceNodeId, tLevel, tCol);
+      setMoveDrag(prev => prev ? { ...prev, cursorX: gridX, cursorY: gridY, targetLevel: tLevel, targetCol: tCol, dropType } : prev);
+    }
     if (cd) {
       setConnectDrag(prev => prev ? { ...prev, cursorX: gridX, cursorY: gridY } : prev);
     }
-  }, []);
+  }, [computeDropType]);
 
   const handleGridMouseUp = useCallback(() => {
     pendingDragRef.current = null;
+    const md = moveDragRef.current;
+    if (md) {
+      if (md.dropType === 'relocate') {
+        onMoveNodeRef.current(md.sourceNodeId, md.targetLevel, md.targetCol);
+      } else if (md.dropType === 'reparent') {
+        const targetNode = nodesRef.current.find(
+          n => n.level === md.targetLevel && n.col_index === md.targetCol,
+        );
+        if (targetNode) {
+          onMoveNodeRef.current(md.sourceNodeId, undefined, undefined, targetNode.node_id);
+        }
+      }
+      setMoveDrag(null);
+      return;
+    }
     if (connectDragRef.current) setConnectDrag(null);
   }, []);
 
@@ -563,6 +670,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
         tracklistTrackIds={tracklistTrackIds}
         playingTrackId={playingTrackId}
         connectDrag={connectDrag}
+        moveDrag={moveDrag}
         onEdgeClick={handleEdgeClick}
         onDeleteEdge={handleDeleteEdge}
         onCellAdd={handleCellAdd}

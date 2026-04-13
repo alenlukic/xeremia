@@ -91,7 +91,7 @@ The default system has **six loops**:
 1. **Thought partner loop** (pre-implementation)
    - interactive design / product / technical thought partnering → recommendations → contract producer
 2. **Delivery loop**
-   - supervisor → coder → review → QA → broad review → verification
+   - contract normalization → supervisor (planning + execution DAG) → coder → review → QA → broad review → verification
 3. **Adversarial verification loop**
    - build verifier → bad state monitor → breaker orchestrator → specialist breakers → evaluator/regression
 4. **Stakeholder feedback loop** (post-implementation)
@@ -108,6 +108,7 @@ The default system has **six loops**:
 | Agent | File | Role |
 |---|---|---|
 | Coord Delivery Supervisor | [.harness/spec/agents/coord-delivery-supervisor.md](.harness/spec/agents/coord-delivery-supervisor.md) | Orchestration, scope control, flow management |
+| Coord Quick Follow Supervisor | [.harness/spec/agents/coord-quick-follow-supervisor.md](.harness/spec/agents/coord-quick-follow-supervisor.md) | Fast, narrow fix coordination for targeted post-delivery issues |
 | Coord Breaker Orchestrator | [.harness/spec/agents/coord-breaker-orchestrator.md](.harness/spec/agents/coord-breaker-orchestrator.md) | Runs and consolidates the breaker stack |
 
 ### Specification agents (`spec-`)
@@ -188,6 +189,7 @@ In Claude Code and Codex, load the command file directly as a prompt.
 | Command | File | Slash command |
 |---|---|---|
 | Delivery pipeline | [run-delivery-pipeline.md](.harness/spec/commands/run-delivery-pipeline.md) | `/run-delivery-pipeline` |
+| Quick follow | [run-quick-follow.md](.harness/spec/commands/run-quick-follow.md) | `/run-quick-follow` |
 | Verification stack | [run-verification-stack.md](.harness/spec/commands/run-verification-stack.md) | `/run-verification-stack` |
 | Breaker follow-on | [run-breaker-followup.md](.harness/spec/commands/run-breaker-followup.md) | `/run-breaker-followup` |
 | Product feedback loop | [run-product-feedback-loop.md](.harness/spec/commands/run-product-feedback-loop.md) | `/run-product-feedback-loop` |
@@ -217,8 +219,12 @@ In Claude Code and Codex, load the command file directly as a prompt.
 Run artifacts live under `.harness/history/runs/<run_id>/`.
 
 Core delivery artifacts:
+- `INPUT_BUNDLE.md`
+- `CONTRACT_SET.md`
 - `TASK.md`
 - `PLAN.md`
+- `EXECUTION_DAG.md`
+- `EXECUTION_DAG.json`
 - `RUN_META.json`
 - `PATCH.diff`
 - `TEST_REPORT.json`

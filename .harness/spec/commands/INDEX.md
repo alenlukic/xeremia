@@ -13,6 +13,7 @@ Operator-facing command prompts and workflow entrypoints.
 | Registry sync | [run-meta-registry-sync.md](run-meta-registry-sync.md) |
 | Product feedback loop | [run-product-feedback-loop.md](run-product-feedback-loop.md) |
 | Prompt decomposer | [run-prompt-decomposer.md](run-prompt-decomposer.md) |
+| Quick follow | [run-quick-follow.md](run-quick-follow.md) |
 | Restructure pipeline | [run-restructure-pipeline.md](run-restructure-pipeline.md) |
 | Design perfectionist | [run-sme-design-perfectionist.md](run-sme-design-perfectionist.md) |
 | Design red team | [run-sme-design-red-team.md](run-sme-design-red-team.md) |

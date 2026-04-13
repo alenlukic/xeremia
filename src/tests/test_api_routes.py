@@ -488,6 +488,21 @@ class TestTrackAudioEndpoint:
             assert resp.status_code == 404
             assert "not found" in resp.json()["detail"].lower()
 
+    def test_head_returns_headers_without_body(self, audio_dir):
+        file_name = "song.mp3"
+        with open(os.path.join(audio_dir, file_name), "wb") as f:
+            f.write(b"\xff\xfb\x90\x00" + b"\x00" * 100)
+
+        mock_session = MagicMock()
+        mock_track = self._mock_track(1, file_name)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_track
+
+        for tc in self._make_client(mock_session, audio_dir):
+            resp = tc.head("/api/tracks/1/audio")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "audio/mpeg"
+            assert len(resp.content) == 0
+
 
 # ---------------------------------------------------------------------------
 # POST /api/sets/{set_id}/explorer/trees — mode validation

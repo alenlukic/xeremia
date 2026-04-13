@@ -22,6 +22,7 @@ vi.mock('@dnd-kit/core', () => ({
     setNodeRef: () => {},
     isOver: false,
   }),
+  useDndMonitor: () => {},
   useSensor: () => null,
   useSensors: () => [],
   DragOverlay: ({ children }: { children?: React.ReactNode }) => children || null,
@@ -107,6 +108,8 @@ function makeDragEnd(activeId: string, payload: DragPayload, overId: string | nu
 }
 
 const browsePayload: DragPayload = { trackId: 1, title: 'Track 1', source: 'browse' };
+const tracklistPayload: DragPayload = { trackId: 1, title: 'Track 1', source: 'tracklist' };
+const poolPayload: DragPayload = { trackId: 1, title: 'Track 1', source: 'pool' };
 
 class ResizeObserverMock {
   observe = vi.fn();
@@ -485,5 +488,92 @@ describe('DnD: duplicate Pool drop no-op', () => {
 
     expect(screen.queryByTestId('dnd-warning-toast')).not.toBeInTheDocument();
     expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+  });
+});
+
+describe('DnD: tracklist source drops to explorer', () => {
+  it('tracklist drag to dock-explorer calls addExplorerNode', async () => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        pool: [], tracklist: [], explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    fireDragEnd('tracklist-track-1', tracklistPayload, 'dock-explorer');
+
+    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 0, 0);
+  });
+
+  it('tracklist drag to empty explorer cell calls addExplorerNode with slot', async () => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        pool: [], tracklist: [], explorer_trees: [],
+        explorer_nodes: [
+          { id: 1, set_id: 1, tree_id: 1, node_id: 'root1', track_id: 100, level: 0, col_index: 0, track: null },
+        ],
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    fireDragEnd('tracklist-track-1', tracklistPayload, 'drop-explorer-cell-0-2');
+
+    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 0, 2);
+  });
+});
+
+describe('DnD: pool source drops to explorer', () => {
+  it('pool drag to dock-explorer calls addExplorerNode', async () => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        pool: [], tracklist: [], explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    fireDragEnd('pool-track-1', poolPayload, 'dock-explorer');
+
+    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 0, 0);
+  });
+
+  it('pool drag to empty explorer cell calls addExplorerNode with slot', async () => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        pool: [], tracklist: [], explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    fireDragEnd('pool-track-1', poolPayload, 'drop-explorer-cell-1-3');
+
+    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 1, 3);
+  });
+
+  it('pool drag to dock-set adds to tracklist', async () => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        pool: [], tracklist: [], explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    fireDragEnd('pool-track-1', poolPayload, 'dock-set');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
   });
 });

@@ -17,6 +17,7 @@ import type { Track, SearchSuggestion } from '../types';
 import { formatFloat, formatBpm, formatDate, displayGenre } from '../utils';
 import type { DragPayload } from '../dnd';
 import { PlayButton } from './PlayButton';
+import { useAudioPlayer } from '../hooks/useAudioPlayer';
 
 const col = createColumnHelper<Track>();
 
@@ -119,11 +120,13 @@ interface Props {
   starredTrackIds?: Set<number>;
   sorting?: SortingState;
   onSortingChange?: (sorting: SortingState) => void;
+  scrollContainerRef?: React.MutableRefObject<HTMLDivElement | null>;
 }
 
-function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth, measureRef, virtualIndex, hasColChooser, isStarred }: {
+function DraggableBrowseRow({ row, isSelected, isPlaying, onSelect, virtualTop, totalWidth, measureRef, virtualIndex, hasColChooser, isStarred }: {
   row: Row<Track>;
   isSelected: boolean;
+  isPlaying: boolean;
   onSelect: (track: Track) => void;
   virtualTop?: number;
   totalWidth?: number;
@@ -177,7 +180,7 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
     <tr
       ref={combinedRef}
       data-index={virtualIndex}
-      className={`${isSelected ? 'row-selected' : ''}${isDragging ? ' row-dragging' : ''}`}
+      className={`${isSelected ? 'row-selected' : ''}${isPlaying ? ' playing-row' : ''}${isDragging ? ' row-dragging' : ''}`}
       style={style}
       onClick={() => onSelect(row.original)}
       {...rowListeners}
@@ -187,7 +190,7 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
           ? <span className="star-indicator" title="Starred in active set" aria-label="Starred">★</span>
           : <span className="drag-handle" aria-hidden="true">⠿</span>}
       </td>
-      <td className="play-cell">
+      <td className="play-cell" onClick={(e) => e.stopPropagation()}>
         <PlayButton trackId={row.original.id} title={row.original.title} />
       </td>
       {row.getVisibleCells().map((cell) => (
@@ -200,10 +203,18 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
   );
 }
 
-export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, configurableColumns, onToggleColumn, starredTrackIds, sorting: sortingProp, onSortingChange }: Props) {
+export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, configurableColumns, onToggleColumn, starredTrackIds, sorting: sortingProp, onSortingChange, scrollContainerRef }: Props) {
+  const { track: playingTrack, playing: isAudioPlaying } = useAudioPlayer();
+  const playingTrackId = isAudioPlaying ? playingTrack?.id ?? null : null;
+
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
+
+  const mergedWrapperRef = useCallback((node: HTMLDivElement | null) => {
+    (wrapperRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    if (scrollContainerRef) scrollContainerRef.current = node;
+  }, [scrollContainerRef]);
 
   const [containerWidth, setContainerWidth] = useState(0);
   const [scrollbarGap, setScrollbarGap] = useState(0);
@@ -453,7 +464,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
       )}
       <div
         className="track-table-wrapper"
-        ref={wrapperRef}
+        ref={mergedWrapperRef}
         onScroll={handleWrapperScroll}
       >
         <table
@@ -468,6 +479,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                 {hg.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sorted = header.column.getIsSorted();
+                  const sortIndex = header.column.getSortIndex();
                   return (
                     <th
                       key={header.id}
@@ -486,6 +498,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         {sorted && (
                           <span className="sort-indicator">
+                            {sorting.length > 1 && <span className="sort-precedence">{sortIndex + 1}</span>}
                             {sorted === 'asc' ? ' ▲' : ' ▼'}
                           </span>
                         )}
@@ -556,6 +569,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                     key={row.id}
                     row={row}
                     isSelected={selectedTrack?.id === row.original.id}
+                    isPlaying={playingTrackId === row.original.id}
                     onSelect={selectTrack}
                     virtualTop={virtualRow.start}
                     totalWidth={totalWidth}
@@ -573,6 +587,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                     key={row.id}
                     row={row}
                     isSelected={selectedTrack?.id === row.original.id}
+                    isPlaying={playingTrackId === row.original.id}
                     onSelect={selectTrack}
                     hasColChooser={hasColChooser}
                     isStarred={starredTrackIds?.has(row.original.id)}

@@ -632,4 +632,93 @@ describe('MatchesPanel', () => {
       expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toContain('Spectral');
     });
   });
+
+  describe('multi-sort', () => {
+    function makeMatches(): TransitionMatch[] {
+      return [
+        makeMatch({ candidate_id: 1, title: 'A', overall_score: 80, bpm_score: 0.9 }),
+        makeMatch({ candidate_id: 2, title: 'B', overall_score: 90, bpm_score: 0.7 }),
+        makeMatch({ candidate_id: 3, title: 'C', overall_score: 80, bpm_score: 0.5 }),
+      ];
+    }
+
+    it('shift-click adds to sort stack and shows precedence numbers', async () => {
+      const user = userEvent.setup();
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={makeMatches()}
+          loading={false}
+        />
+      );
+
+      const headers = document.querySelectorAll('.matches-table thead .th-sortable');
+      const scoreHeader = Array.from(headers).find(h => h.textContent?.includes('SCORE'))!;
+      const bpmHeader = Array.from(headers).find(h => h.textContent?.includes('BPM'))!;
+
+      await user.click(scoreHeader);
+      let indicators = document.querySelectorAll('.sort-indicator');
+      expect(indicators.length).toBe(1);
+      expect(document.querySelectorAll('.sort-precedence').length).toBe(0);
+
+      await user.keyboard('{Shift>}');
+      await user.click(bpmHeader);
+      await user.keyboard('{/Shift}');
+
+      indicators = document.querySelectorAll('.sort-indicator');
+      expect(indicators.length).toBe(2);
+      const precedences = document.querySelectorAll('.sort-precedence');
+      expect(precedences.length).toBe(2);
+      expect(precedences[0].textContent).toBe('1');
+      expect(precedences[1].textContent).toBe('2');
+    });
+
+    it('click without shift replaces multi-sort stack', async () => {
+      const user = userEvent.setup();
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={makeMatches()}
+          loading={false}
+        />
+      );
+
+      const headers = document.querySelectorAll('.matches-table thead .th-sortable');
+      const scoreHeader = Array.from(headers).find(h => h.textContent?.includes('SCORE'))!;
+      const bpmHeader = Array.from(headers).find(h => h.textContent?.includes('BPM'))!;
+      const spectralHeader = Array.from(headers).find(h => h.textContent?.includes('Spectral'))!;
+
+      await user.click(scoreHeader);
+      await user.keyboard('{Shift>}');
+      await user.click(bpmHeader);
+      await user.keyboard('{/Shift}');
+      expect(document.querySelectorAll('.sort-indicator').length).toBe(2);
+
+      await user.click(spectralHeader);
+      expect(document.querySelectorAll('.sort-indicator').length).toBe(1);
+      expect(document.querySelectorAll('.sort-precedence').length).toBe(0);
+    });
+
+    it('single-column sort still works without shift', async () => {
+      const user = userEvent.setup();
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={makeMatches()}
+          loading={false}
+        />
+      );
+
+      const headers = document.querySelectorAll('.matches-table thead .th-sortable');
+      const scoreHeader = Array.from(headers).find(h => h.textContent?.includes('SCORE'))!;
+
+      await user.click(scoreHeader);
+      let indicator = document.querySelector('.sort-indicator');
+      expect(indicator?.textContent?.trim()).toBe('▼');
+
+      await user.click(scoreHeader);
+      indicator = document.querySelector('.sort-indicator');
+      expect(indicator?.textContent?.trim()).toBe('▲');
+    });
+  });
 });

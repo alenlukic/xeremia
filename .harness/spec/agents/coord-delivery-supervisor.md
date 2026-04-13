@@ -18,9 +18,8 @@ Your job is to coordinate specialized agents, maintain scope discipline, and dri
 ## INPUT
 
 Required:
-- coding task or development contract
-- requirements
-- acceptance criteria, if provided
+- a normalized contract set (`CONTRACT_SET.md`) containing one or more development contracts
+- the run directory path with `INPUT_BUNDLE.md` already written
 
 Context sources:
 - repository contents
@@ -30,28 +29,31 @@ Context sources:
 ## SCOPE
 
 Coordinate this workflow only:
-1. intake / planning
-2. coding
-3. review
-4. coding revisions
-5. repeated review loop as needed
-6. diff-aware second planning pass
-7. QA validation
-8. verification stack
-9. breaker follow-on handling when needed
-10. run ledger distillation + publish
-11. bounded remediation loop for non-breaker failures
-12. final summary
+1. orchestration planning (from normalized contract set)
+2. execution DAG creation
+3. coding (per DAG node)
+4. review
+5. coding revisions
+6. repeated review loop as needed
+7. diff-aware second planning pass
+8. QA validation
+9. verification stack
+10. breaker follow-on handling when needed
+11. run ledger distillation + publish
+12. bounded remediation loop for non-breaker failures
+13. final summary
 
 Keep working context narrow.
 Do not expand task scope without explicit justification.
 
 ## DO
 
-1. Intake
-- if the input is already a development contract (has DEVDSL header, explicit scope/acceptance/DO sections), use it directly
-- otherwise, delegate to `Spec Contract Producer` to normalize the input into a development contract before proceeding
-- derive `TASK.md` and `PLAN.md` from the contract — extract scope, requirements, acceptance criteria, and plan steps; do not independently distill requirements or invent plan structure beyond what the contract specifies
+1. Orchestration planning
+- the contract set has already been normalized before you are invoked — do not re-normalize or re-derive contracts
+- analyze the contract set for inter-contract dependencies, ordering constraints, and parallelism opportunities
+- derive `TASK.md` and `PLAN.md` from the contract set — extract scope, requirements, acceptance criteria, and plan steps; do not independently distill requirements or invent plan structure beyond what the contracts specify
+- write `EXECUTION_DAG.md` (human-readable) and `EXECUTION_DAG.json` (machine-readable) identifying parallel waves — groups of nodes with no mutual data dependencies
+- the default is to execute each parallel wave concurrently; sequential execution within a wave is the fallback only when the host cannot dispatch parallel agents
 
 2. Coordinate implementation
 - use `Dev Delivery Coder` for implementation
@@ -115,6 +117,8 @@ Stop when one of the following is true:
 Write or update these files under the active run directory:
 - `TASK.md`
 - `PLAN.md`
+- `EXECUTION_DAG.md`
+- `EXECUTION_DAG.json`
 - `REVIEW_NOTES.md`
 - `QA_REPORT.md`
 - `BREAKER_REPORT.md`
@@ -135,7 +139,8 @@ Require the pipeline / specialized agents to maintain:
 ## VALIDATION
 
 Before declaring completion, verify:
-- intake produced or consumed a development contract before planning began
+- planning was derived from a normalized contract set
+- execution DAG was produced with parallel waves identified
 - scope remained narrow
 - review and QA were both invoked
 - breaker and ledger curation were both invoked

@@ -14,7 +14,7 @@ from src.models.set_tracklist_entry import SetTracklistEntry
 from src.models.set_explorer_tree import SetExplorerTree
 from src.models.set_explorer_node import SetExplorerNode
 from src.models.set_explorer_edge import SetExplorerEdge
-from src.set_workspace.explorer_rules import validate_add_node
+from src.set_workspace.explorer_rules import validate_add_node, validate_move_node
 
 logger = logging.getLogger(__name__)
 
@@ -715,6 +715,81 @@ class SetWorkspaceService:
             return False, "Node not found"
 
         node_a.track_id, node_b.track_id = node_b.track_id, node_a.track_id
+        self.session.flush()
+        return True, None
+
+    def explorer_move_node(
+        self,
+        set_id: int,
+        node_id: str,
+        target_level: Optional[int] = None,
+        target_col_index: Optional[int] = None,
+        new_parent_node_id: Optional[str] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        node = (
+            self.session.query(SetExplorerNode)
+            .filter_by(set_id=set_id, node_id=node_id)
+            .first()
+        )
+        if node is None:
+            return False, "Node not found"
+
+        tree_id = node.tree_id
+        nodes, edges, edge_tuples, nodes_by_level = self._get_explorer_state(set_id, tree_id)
+
+        if new_parent_node_id is not None:
+            parent_node = next((n for n in nodes if n.node_id == new_parent_node_id), None)
+            if parent_node is None:
+                return False, "Parent node not found"
+
+            new_level = parent_node.level + 1
+            error = validate_move_node(
+                edge_tuples, nodes_by_level, node_id,
+                node.level, new_level, new_parent_node_id,
+            )
+            if error:
+                return False, error
+
+            occupied = {n.col_index for n in nodes if n.level == new_level and n.node_id != node_id}
+            free_col = next((i for i in range(5) if i not in occupied), None)
+            if free_col is None:
+                return False, f"No free slot at level {new_level}"
+
+            self.session.query(SetExplorerEdge).filter_by(
+                set_id=set_id, child_node_id=node_id,
+            ).delete()
+
+            new_edge = SetExplorerEdge(
+                set_id=set_id, tree_id=tree_id,
+                parent_node_id=new_parent_node_id,
+                child_node_id=node_id,
+            )
+            self.session.add(new_edge)
+            node.level = new_level
+            node.col_index = free_col
+        else:
+            if target_level is None or target_col_index is None:
+                return False, "target_level and target_col_index are required for relocation"
+            if target_col_index < 0 or target_col_index > 4:
+                return False, f"col_index must be 0–4, got {target_col_index}"
+
+            error = validate_move_node(
+                edge_tuples, nodes_by_level, node_id,
+                node.level, target_level,
+            )
+            if error:
+                return False, error
+
+            occupant = next(
+                (n for n in nodes if n.level == target_level and n.col_index == target_col_index and n.node_id != node_id),
+                None,
+            )
+            if occupant is not None:
+                return False, f"Slot ({target_level}, {target_col_index}) is already occupied"
+
+            node.level = target_level
+            node.col_index = target_col_index
+
         self.session.flush()
         return True, None
 

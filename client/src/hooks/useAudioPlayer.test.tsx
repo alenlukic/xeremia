@@ -1,6 +1,56 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import { AudioPlayerProvider, useAudioPlayer, _validationCache } from './useAudioPlayer';
+import { AudioPlayerProvider, useAudioPlayer, _validationCache, normalizeMime, browserCanPlay, aiffToWav, parseAiffHeader, buildWavHeader, canUseStreamingMse, streamAiffAsWav, type AiffMetadata } from './useAudioPlayer';
+
+/**
+ * Build a minimal valid AIFF binary with the given parameters.
+ * Contains FORM header, COMM chunk, and SSND chunk.
+ * When pcmSamples is provided, it should be big-endian 16-bit sample values.
+ */
+function buildAiffBuffer(
+  channels: number, frames: number, bitsPerSample: number, sampleRate: number,
+  pcmSamples?: number[],
+): ArrayBuffer {
+  const bytesPerSample = bitsPerSample / 8;
+  const ssndDataSize = frames * channels * bytesPerSample;
+  const ssndChunkSize = 8 + ssndDataSize;
+  const totalSize = 4 + (8 + 18) + (8 + ssndChunkSize);
+  const buf = new ArrayBuffer(12 + (8 + 18) + (8 + ssndChunkSize));
+  const v = new DataView(buf);
+  const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+
+  writeStr(0, 'FORM');
+  v.setUint32(4, totalSize, false);
+  writeStr(8, 'AIFF');
+
+  writeStr(12, 'COMM');
+  v.setUint32(16, 18, false);
+  v.setInt16(20, channels, false);
+  v.setUint32(22, frames, false);
+  v.setInt16(26, bitsPerSample, false);
+  const exp = 16383 + Math.floor(Math.log2(sampleRate));
+  const mant = Math.round((sampleRate / Math.pow(2, Math.floor(Math.log2(sampleRate)))) * 0x80000000);
+  v.setUint16(28, exp, false);
+  v.setUint32(30, mant, false);
+  v.setUint32(34, 0, false);
+
+  const ssndOff = 38;
+  writeStr(ssndOff, 'SSND');
+  v.setUint32(ssndOff + 4, ssndChunkSize, false);
+  v.setUint32(ssndOff + 8, 0, false);
+  v.setUint32(ssndOff + 12, 0, false);
+
+  if (pcmSamples) {
+    const dataStart = ssndOff + 16;
+    for (let i = 0; i < pcmSamples.length && i < frames * channels; i++) {
+      if (bitsPerSample === 16) {
+        v.setInt16(dataStart + i * 2, pcmSamples[i], false);
+      }
+    }
+  }
+
+  return buf;
+}
 
 let mockPlay: ReturnType<typeof vi.fn>;
 let mockPause: ReturnType<typeof vi.fn>;
@@ -27,6 +77,8 @@ beforeEach(() => {
     removeAttribute: vi.fn((attr: string) => {
       if (attr === 'src') { srcValue = ''; hasSrc = false; }
     }),
+    load: vi.fn(),
+    canPlayType: vi.fn().mockReturnValue('probably'),
   };
 
   Object.defineProperty(mockAudioElement, 'src', {
@@ -41,7 +93,7 @@ beforeEach(() => {
   });
   vi.spyOn(window, 'fetch').mockResolvedValue({
     ok: true,
-    json: () => Promise.resolve({}),
+    headers: new Headers({ 'content-type': 'audio/mpeg' }),
   } as Response);
   _validationCache.clear();
 });
@@ -85,12 +137,12 @@ describe('AudioPlayerProvider', () => {
     expect(screen.getByTestId('playing').textContent).toBe('false');
   });
 
-  it('validates audio endpoint then streams on play()', async () => {
+  it('validates audio endpoint with HEAD then streams on play()', async () => {
     renderWithProvider();
     await act(async () => {
       fireEvent.click(screen.getByTestId('play-btn'));
     });
-    expect(window.fetch).toHaveBeenCalledWith('/api/tracks/1/audio');
+    expect(window.fetch).toHaveBeenCalledWith('/api/tracks/1/audio', { method: 'HEAD' });
     expect(mockAudioElement.src).toBe('/api/tracks/1/audio');
     expect(mockPlay).toHaveBeenCalled();
     expect(screen.getByTestId('track-title').textContent).toBe('Test Track');
@@ -165,15 +217,113 @@ describe('AudioPlayerProvider', () => {
     vi.spyOn(window, 'fetch').mockResolvedValue({
       ok: false,
       status: 404,
-      json: () => Promise.resolve({ detail: 'Audio file not found' }),
     } as unknown as Response);
 
     renderWithProvider();
     await act(async () => {
       fireEvent.click(screen.getByTestId('play-btn'));
     });
-    expect(screen.getByTestId('error').textContent).toBe('Audio file not found');
+    expect(screen.getByTestId('error').textContent).toBe('Track audio not found');
     expect(screen.getByTestId('playing').textContent).toBe('false');
+    expect(screen.getByTestId('loading').textContent).toBe('false');
+  });
+
+  it('shows format error for 415 status', async () => {
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 415,
+    } as unknown as Response);
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('error').textContent).toBe('Audio format not supported by server');
+    expect(screen.getByTestId('loading').textContent).toBe('false');
+  });
+
+  it('transcodes AIFF to WAV client-side when canPlayType rejects', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+
+    const aiffBuf = buildAiffBuffer(2, 100, 16, 44100);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:transcoded-wav');
+
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      if ((opts as RequestInit | undefined)?.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ 'content-type': 'audio/aiff' }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(aiffBuf),
+      } as unknown as Response);
+    });
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(mockAudioElement.src).toBe('blob:transcoded-wav');
+    expect(screen.getByTestId('error').textContent).toBe('none');
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+    expect(mockPlay).toHaveBeenCalled();
+  });
+
+  it('rejects truly unknown format when canPlayType returns empty', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'audio/x-unknown-codec' }),
+    } as Response);
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('error').textContent).toBe('Audio format not supported by this browser');
+    expect(screen.getByTestId('loading').textContent).toBe('false');
+    expect(mockPlay).not.toHaveBeenCalled();
+  });
+
+  it('maps audio element error code to app-level message', async () => {
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+
+    const errorHandler = (mockAudioElement.addEventListener as ReturnType<typeof vi.fn>)
+      .mock.calls.find(([event]: [string]) => event === 'error')?.[1] as (() => void) | undefined;
+
+    if (errorHandler) {
+      mockAudioElement.error = { code: 4, message: 'Failed to load because no supported source was found.' };
+      await act(async () => { errorHandler(); });
+    }
+
+    expect(screen.getByTestId('error').textContent).toBe('Audio format not supported');
+  });
+
+  it('maps play() NotSupportedError to app-level message', async () => {
+    mockPlay.mockRejectedValueOnce(new DOMException('The element has no supported sources.', 'NotSupportedError'));
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('error').textContent).toBe('Audio format not supported');
+    expect(screen.getByTestId('loading').textContent).toBe('false');
+    expect(screen.getByTestId('playing').textContent).toBe('false');
+  });
+
+  it('calls load() to reset audio element before new source', async () => {
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(mockAudioElement.load).toHaveBeenCalled();
   });
 });
 
@@ -224,14 +374,14 @@ describe('Track switching cancellation safety', () => {
 
     // Resolve track B first — it should update state
     await act(async () => {
-      resolveTrackB({ ok: true, json: () => Promise.resolve({}) } as Response);
+      resolveTrackB({ ok: true, headers: new Headers({ 'content-type': 'audio/mpeg' }) } as Response);
     });
     expect(screen.getByTestId('track-title').textContent).toBe('Second Track');
     expect(mockAudioElement.src).toBe('/api/tracks/2/audio');
 
     // Now resolve track A late — it must NOT overwrite track B
     await act(async () => {
-      resolveTrackA({ ok: true, json: () => Promise.resolve({}) } as Response);
+      resolveTrackA({ ok: true, headers: new Headers({ 'content-type': 'audio/mpeg' }) } as Response);
     });
     expect(screen.getByTestId('track-title').textContent).toBe('Second Track');
     expect(mockAudioElement.src).toBe('/api/tracks/2/audio');
@@ -245,7 +395,7 @@ describe('Track switching cancellation safety', () => {
       if (urlStr.includes('/1/')) {
         return new Promise<Response>(r => { resolveTrackA = r; });
       }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response);
+      return Promise.resolve({ ok: true, headers: new Headers({ 'content-type': 'audio/mpeg' }) } as Response);
     });
 
     renderWithProvider();
@@ -266,7 +416,6 @@ describe('Track switching cancellation safety', () => {
       resolveTrackA({
         ok: false,
         status: 500,
-        json: () => Promise.resolve({ detail: 'Server error' }),
       } as unknown as Response);
     });
     expect(screen.getByTestId('error').textContent).toBe('none');
@@ -295,7 +444,7 @@ describe('Track switching cancellation safety', () => {
 
     // Stale resolve — must not resurrect track state
     await act(async () => {
-      resolveTrackA({ ok: true, json: () => Promise.resolve({}) } as Response);
+      resolveTrackA({ ok: true, headers: new Headers({ 'content-type': 'audio/mpeg' }) } as Response);
     });
     expect(screen.getByTestId('track-title').textContent).toBe('none');
     expect(screen.getByTestId('playing').textContent).toBe('false');
@@ -354,7 +503,6 @@ describe('Validation LRU cache', () => {
     vi.spyOn(window, 'fetch').mockResolvedValue({
       ok: false,
       status: 404,
-      json: () => Promise.resolve({ detail: 'Not found' }),
     } as unknown as Response);
 
     renderWithProvider();
@@ -364,7 +512,7 @@ describe('Validation LRU cache', () => {
     });
 
     expect(_validationCache.size).toBe(0);
-    expect(screen.getByTestId('error').textContent).toBe('Not found');
+    expect(screen.getByTestId('error').textContent).toBe('Track audio not found');
   });
 
   it('evicts oldest entry when cache exceeds 20 tracks', () => {
@@ -437,8 +585,745 @@ describe('Validation LRU cache', () => {
 
     // Stale B resolve must not resurrect state
     await act(async () => {
-      resolveTrackB({ ok: true, json: () => Promise.resolve({}) } as Response);
+      resolveTrackB({ ok: true, headers: new Headers({ 'content-type': 'audio/mpeg' }) } as Response);
     });
     expect(screen.getByTestId('track-title').textContent).toBe('none');
+  });
+});
+
+describe('MIME normalization helpers', () => {
+  it('normalizeMime strips parameters and lowercases', () => {
+    expect(normalizeMime('audio/mpeg')).toBe('audio/mpeg');
+    expect(normalizeMime('audio/MPEG')).toBe('audio/mpeg');
+    expect(normalizeMime('audio/mpeg; charset=utf-8')).toBe('audio/mpeg');
+    expect(normalizeMime('  Audio/WAV ; boundary=something ')).toBe('audio/wav');
+  });
+
+  it('browserCanPlay checks normalized type', () => {
+    const el = mockAudioElement as unknown as HTMLAudioElement;
+    (el.canPlayType as ReturnType<typeof vi.fn>).mockImplementation((mime: string) =>
+      mime === 'audio/mpeg' ? 'probably' : '',
+    );
+    expect(browserCanPlay(el, 'audio/mpeg')).toBe(true);
+    expect(browserCanPlay(el, 'audio/mpeg; charset=utf-8')).toBe(true);
+    expect(browserCanPlay(el, 'Audio/MPEG')).toBe(true);
+  });
+
+  it('browserCanPlay tries AIFF alias audio/x-aiff', () => {
+    const el = mockAudioElement as unknown as HTMLAudioElement;
+    (el.canPlayType as ReturnType<typeof vi.fn>).mockImplementation((mime: string) =>
+      mime === 'audio/x-aiff' ? 'maybe' : '',
+    );
+    expect(browserCanPlay(el, 'audio/aiff')).toBe(true);
+    expect(browserCanPlay(el, 'audio/aif')).toBe(true);
+  });
+
+  it('browserCanPlay returns false when no variant is supported', () => {
+    const el = mockAudioElement as unknown as HTMLAudioElement;
+    (el.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+    expect(browserCanPlay(el, 'audio/flac')).toBe(false);
+    expect(browserCanPlay(el, 'audio/aiff')).toBe(false);
+  });
+});
+
+describe('Content-Type normalization in playback', () => {
+  it('plays track when Content-Type has parameters', async () => {
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'audio/mpeg; charset=utf-8' }),
+    } as Response);
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('error').textContent).toBe('none');
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+    expect(mockPlay).toHaveBeenCalled();
+  });
+
+  it('plays AIFF track via client-side transcode when browser only supports wav', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockImplementation(
+      (mime: string) => (mime === 'audio/wav' ? 'probably' : ''),
+    );
+
+    const aiffBuf = buildAiffBuffer(2, 44100, 16, 44100);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:wav-from-aiff');
+
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      if ((opts as RequestInit | undefined)?.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ 'content-type': 'audio/aiff' }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(aiffBuf),
+      } as unknown as Response);
+    });
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('error').textContent).toBe('none');
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+    expect(mockAudioElement.src).toBe('blob:wav-from-aiff');
+  });
+
+  it('plays AIFF track when browser supports x-aiff alias', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockImplementation(
+      (mime: string) => (mime === 'audio/x-aiff' ? 'maybe' : mime === 'audio/mpeg' ? 'probably' : ''),
+    );
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'audio/aiff' }),
+    } as Response);
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('error').textContent).toBe('none');
+    expect(mockPlay).toHaveBeenCalled();
+  });
+
+  it('rejects genuinely unsupported non-server-known format', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'audio/x-unknown-codec' }),
+    } as Response);
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('error').textContent).toBe('Audio format not supported by this browser');
+    expect(mockPlay).not.toHaveBeenCalled();
+  });
+
+  it('caches transcoded blob URL for replay without re-fetching', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockImplementation(
+      (mime: string) => (mime === 'audio/wav' ? 'probably' : ''),
+    );
+
+    const aiffBuf = buildAiffBuffer(1, 100, 16, 44100);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:transcoded-wav');
+
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      if ((opts as RequestInit | undefined)?.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ 'content-type': 'audio/aiff' }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(aiffBuf),
+      } as unknown as Response);
+    });
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+    expect(mockAudioElement.src).toBe('blob:transcoded-wav');
+    expect(window.fetch).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('stop-btn'));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(mockAudioElement.src).toBe('blob:transcoded-wav');
+    expect(window.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * Flexible builder for AIFF/AIFC buffers with arbitrary chunk sequences.
+ */
+function buildCustomAiff(
+  aiffType: 'AIFF' | 'AIFC',
+  chunks: Array<{ id: string; data: Uint8Array }>,
+): ArrayBuffer {
+  let chunksSize = 0;
+  for (const c of chunks) {
+    chunksSize += 8 + c.data.length + (c.data.length % 2);
+  }
+  const totalSize = 4 + chunksSize;
+  const buf = new ArrayBuffer(12 + chunksSize);
+  const v = new DataView(buf);
+  const ws = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i));
+  };
+
+  ws(0, 'FORM');
+  v.setUint32(4, totalSize, false);
+  ws(8, aiffType);
+
+  let off = 12;
+  for (const c of chunks) {
+    ws(off, c.id);
+    v.setUint32(off + 4, c.data.length, false);
+    new Uint8Array(buf, off + 8, c.data.length).set(c.data);
+    off += 8 + c.data.length + (c.data.length % 2);
+  }
+
+  return buf;
+}
+
+function makeCommChunkData(ch: number, frames: number, bits: number, rate: number): Uint8Array {
+  const buf = new ArrayBuffer(18);
+  const v = new DataView(buf);
+  v.setInt16(0, ch, false);
+  v.setUint32(2, frames, false);
+  v.setInt16(6, bits, false);
+  const exp = 16383 + Math.floor(Math.log2(rate));
+  const mant = Math.round((rate / Math.pow(2, Math.floor(Math.log2(rate)))) * 0x80000000);
+  v.setUint16(8, exp, false);
+  v.setUint32(10, mant, false);
+  v.setUint32(14, 0, false);
+  return new Uint8Array(buf);
+}
+
+function makeAifcCommChunkData(
+  ch: number, frames: number, bits: number, rate: number, compType: string,
+): Uint8Array {
+  const buf = new ArrayBuffer(24);
+  const v = new DataView(buf);
+  v.setInt16(0, ch, false);
+  v.setUint32(2, frames, false);
+  v.setInt16(6, bits, false);
+  const exp = 16383 + Math.floor(Math.log2(rate));
+  const mant = Math.round((rate / Math.pow(2, Math.floor(Math.log2(rate)))) * 0x80000000);
+  v.setUint16(8, exp, false);
+  v.setUint32(10, mant, false);
+  v.setUint32(14, 0, false);
+  for (let i = 0; i < 4; i++) v.setUint8(18 + i, compType.charCodeAt(i));
+  v.setUint8(22, 1);
+  v.setUint8(23, 0);
+  return new Uint8Array(buf);
+}
+
+function makeSsndChunkData(frames: number, channels: number, bytesPerSample: number): Uint8Array {
+  const pcmSize = frames * channels * bytesPerSample;
+  return new Uint8Array(8 + pcmSize);
+}
+
+describe('parseAiffHeader', () => {
+  it('returns null for truncated FORM header', () => {
+    const buf = new ArrayBuffer(8);
+    const v = new DataView(buf);
+    const ws = (off: number, s: string) => {
+      for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i));
+    };
+    ws(0, 'FORM');
+    expect(parseAiffHeader(buf)).toBeNull();
+  });
+
+  it('throws on invalid FORM identifier', () => {
+    const buf = new ArrayBuffer(12);
+    expect(() => parseAiffHeader(buf)).toThrow('Not a valid AIFF file');
+  });
+
+  it('returns null when COMM chunk is missing', () => {
+    const buf = buildCustomAiff('AIFF', [
+      { id: 'SSND', data: makeSsndChunkData(10, 1, 2) },
+    ]);
+    expect(parseAiffHeader(buf)).toBeNull();
+  });
+
+  it('returns null when SSND chunk is missing', () => {
+    const buf = buildCustomAiff('AIFF', [
+      { id: 'COMM', data: makeCommChunkData(1, 10, 16, 44100) },
+    ]);
+    expect(parseAiffHeader(buf)).toBeNull();
+  });
+
+  it('parses COMM after SSND (reversed chunk order)', () => {
+    const buf = buildCustomAiff('AIFF', [
+      { id: 'SSND', data: makeSsndChunkData(10, 2, 2) },
+      { id: 'COMM', data: makeCommChunkData(2, 10, 16, 44100) },
+    ]);
+    const meta = parseAiffHeader(buf);
+    expect(meta).not.toBeNull();
+    expect(meta!.channels).toBe(2);
+    expect(meta!.frames).toBe(10);
+    expect(meta!.bitsPerSample).toBe(16);
+    expect(meta!.sampleRate).toBe(44100);
+  });
+
+  it('handles odd-length chunk with padding byte', () => {
+    const oddData = new Uint8Array(5);
+    const buf = buildCustomAiff('AIFF', [
+      { id: 'COMM', data: makeCommChunkData(1, 10, 16, 44100) },
+      { id: 'MARK', data: oddData },
+      { id: 'SSND', data: makeSsndChunkData(10, 1, 2) },
+    ]);
+    const meta = parseAiffHeader(buf);
+    expect(meta).not.toBeNull();
+    expect(meta!.channels).toBe(1);
+    expect(meta!.frames).toBe(10);
+  });
+
+  it('throws on AIFC compressed format', () => {
+    const buf = buildCustomAiff('AIFC', [
+      { id: 'COMM', data: makeAifcCommChunkData(2, 100, 16, 44100, 'ima4') },
+      { id: 'SSND', data: makeSsndChunkData(100, 2, 2) },
+    ]);
+    expect(() => parseAiffHeader(buf)).toThrow('Unsupported AIFF-C compression: ima4');
+  });
+
+  it('accepts AIFC with NONE compression', () => {
+    const buf = buildCustomAiff('AIFC', [
+      { id: 'COMM', data: makeAifcCommChunkData(2, 100, 16, 44100, 'NONE') },
+      { id: 'SSND', data: makeSsndChunkData(100, 2, 2) },
+    ]);
+    const meta = parseAiffHeader(buf);
+    expect(meta).not.toBeNull();
+    expect(meta!.channels).toBe(2);
+  });
+
+  it('reports correct ssndDataOffset and ssndDataSize', () => {
+    const buf = buildAiffBuffer(2, 100, 16, 44100);
+    const meta = parseAiffHeader(buf);
+    expect(meta).not.toBeNull();
+    expect(meta!.ssndDataOffset).toBeGreaterThan(0);
+    expect(meta!.ssndDataSize).toBe(100 * 2 * 2);
+  });
+
+  it('returns null for completely empty buffer', () => {
+    expect(parseAiffHeader(new ArrayBuffer(0))).toBeNull();
+  });
+});
+
+describe('aiffToWav', () => {
+  it('produces a valid WAV blob from a mono 16-bit AIFF', () => {
+    const buf = buildAiffBuffer(1, 10, 16, 44100);
+    const blob = aiffToWav(buf);
+    expect(blob.type).toBe('audio/wav');
+    expect(blob.size).toBe(44 + 10 * 1 * 2);
+  });
+
+  it('produces a valid WAV blob from a stereo 16-bit AIFF', () => {
+    const buf = buildAiffBuffer(2, 100, 16, 48000);
+    const blob = aiffToWav(buf);
+    expect(blob.type).toBe('audio/wav');
+    expect(blob.size).toBe(44 + 100 * 2 * 2);
+  });
+
+  it('handles 24-bit AIFF by truncating to 16-bit WAV', () => {
+    const buf = buildAiffBuffer(2, 50, 24, 44100);
+    const blob = aiffToWav(buf);
+    expect(blob.type).toBe('audio/wav');
+    expect(blob.size).toBe(44 + 50 * 2 * 2);
+  });
+
+  it('handles 32-bit AIFF by truncating to 16-bit WAV', () => {
+    const buf = buildAiffBuffer(1, 10, 32, 44100);
+    const blob = aiffToWav(buf);
+    expect(blob.type).toBe('audio/wav');
+    expect(blob.size).toBe(44 + 10 * 1 * 2);
+  });
+
+  it('correctly endian-swaps non-zero 16-bit PCM samples', async () => {
+    const samples = [0x0102, -0x0304, 0x7F00, -0x7FFF];
+    const buf = buildAiffBuffer(1, 4, 16, 44100, samples);
+    const blob = aiffToWav(buf);
+    const wavBuf = await blob.arrayBuffer();
+    const wavView = new DataView(wavBuf);
+    expect(wavView.getInt16(44, true)).toBe(0x0102);
+    expect(wavView.getInt16(46, true)).toBe(-0x0304);
+    expect(wavView.getInt16(48, true)).toBe(0x7F00);
+    expect(wavView.getInt16(50, true)).toBe(-0x7FFF);
+  });
+
+  it('throws on non-AIFF data', () => {
+    const buf = new ArrayBuffer(100);
+    expect(() => aiffToWav(buf)).toThrow('Not a valid AIFF file');
+  });
+
+  it('throws descriptive error when SSND data exceeds buffer bounds', () => {
+    const buf = buildCustomAiff('AIFF', [
+      { id: 'COMM', data: makeCommChunkData(2, 1000, 16, 44100) },
+      { id: 'SSND', data: makeSsndChunkData(10, 2, 2) },
+    ]);
+    expect(() => aiffToWav(buf)).toThrow(/AIFF file truncated/);
+  });
+
+  it('throws on missing COMM or SSND', () => {
+    const commOnly = buildCustomAiff('AIFF', [
+      { id: 'COMM', data: makeCommChunkData(1, 10, 16, 44100) },
+    ]);
+    expect(() => aiffToWav(commOnly)).toThrow('missing COMM or SSND');
+  });
+
+  it('works with COMM after SSND', () => {
+    const buf = buildCustomAiff('AIFF', [
+      { id: 'SSND', data: makeSsndChunkData(10, 1, 2) },
+      { id: 'COMM', data: makeCommChunkData(1, 10, 16, 44100) },
+    ]);
+    const blob = aiffToWav(buf);
+    expect(blob.type).toBe('audio/wav');
+    expect(blob.size).toBe(44 + 10 * 1 * 2);
+  });
+});
+
+describe('buildWavHeader', () => {
+  it('produces a 44-byte WAV header', () => {
+    const meta: AiffMetadata = {
+      channels: 2, frames: 100, bitsPerSample: 16,
+      sampleRate: 44100, ssndDataOffset: 0, ssndDataSize: 400,
+    };
+    const header = buildWavHeader(meta);
+    expect(header.byteLength).toBe(44);
+
+    const v = new DataView(header);
+    const td = new TextDecoder('ascii');
+    expect(td.decode(new Uint8Array(header, 0, 4))).toBe('RIFF');
+    expect(td.decode(new Uint8Array(header, 8, 4))).toBe('WAVE');
+    expect(v.getUint16(22, true)).toBe(2);
+    expect(v.getUint32(24, true)).toBe(44100);
+    expect(v.getUint16(34, true)).toBe(16);
+  });
+
+  it('throws on Uint32 overflow from crafted metadata', () => {
+    const meta: AiffMetadata = {
+      channels: 2, frames: 0x80000000, bitsPerSample: 16,
+      sampleRate: 44100, ssndDataOffset: 0, ssndDataSize: 400,
+    };
+    expect(() => buildWavHeader(meta)).toThrow('too large for WAV');
+  });
+});
+
+describe('canUseStreamingMse', () => {
+  it('returns false when MediaSource is not defined', () => {
+    expect(canUseStreamingMse()).toBe(false);
+  });
+
+  it('returns true when MediaSource supports audio/wav', () => {
+    (globalThis as Record<string, unknown>).MediaSource = {
+      isTypeSupported: (mime: string) => mime.startsWith('audio/wav'),
+    };
+    try {
+      expect(canUseStreamingMse()).toBe(true);
+    } finally {
+      delete (globalThis as Record<string, unknown>).MediaSource;
+    }
+  });
+
+  it('returns false when MediaSource rejects audio/wav', () => {
+    (globalThis as Record<string, unknown>).MediaSource = {
+      isTypeSupported: () => false,
+    };
+    try {
+      expect(canUseStreamingMse()).toBe(false);
+    } finally {
+      delete (globalThis as Record<string, unknown>).MediaSource;
+    }
+  });
+});
+
+describe('Streaming AIFF via MSE', () => {
+  class MockSourceBuffer extends EventTarget {
+    updating = false;
+    appendBuffer(_data: ArrayBuffer | Uint8Array) {
+      this.updating = true;
+      queueMicrotask(() => {
+        this.updating = false;
+        this.dispatchEvent(new Event('updateend'));
+      });
+    }
+  }
+
+  class MockMediaSource extends EventTarget {
+    readyState = 'closed';
+    addSourceBuffer(_mime: string) { return new MockSourceBuffer(); }
+    endOfStream(_r?: string) { this.readyState = 'ended'; }
+    static isTypeSupported(m: string) { return m.startsWith('audio/wav'); }
+    constructor() {
+      super();
+      queueMicrotask(() => {
+        (this as { readyState: string }).readyState = 'open';
+        this.dispatchEvent(new Event('sourceopen'));
+      });
+    }
+  }
+
+  beforeEach(() => {
+    (globalThis as Record<string, unknown>).MediaSource = MockMediaSource;
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-ms');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).MediaSource;
+  });
+
+  it('uses streaming path when MSE is available', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+
+    const aiffBuf = buildAiffBuffer(2, 100, 16, 44100);
+    const data = new Uint8Array(aiffBuf);
+
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      if ((opts as RequestInit | undefined)?.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ 'content-type': 'audio/aiff' }),
+        } as Response);
+      }
+      let pos = 0;
+      return Promise.resolve({
+        ok: true,
+        body: new ReadableStream({
+          pull(controller) {
+            if (pos >= data.length) { controller.close(); return; }
+            const end = Math.min(pos + 512, data.length);
+            controller.enqueue(new Uint8Array(data.subarray(pos, end)));
+            pos = end;
+          },
+        }),
+      } as unknown as Response);
+    });
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+    expect(screen.getByTestId('error').textContent).toBe('none');
+  });
+
+  it('falls back to full download when MSE is unavailable', async () => {
+    delete (globalThis as Record<string, unknown>).MediaSource;
+
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+
+    const aiffBuf = buildAiffBuffer(2, 100, 16, 44100);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fallback-wav');
+
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      if ((opts as RequestInit | undefined)?.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ 'content-type': 'audio/aiff' }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(aiffBuf),
+      } as unknown as Response);
+    });
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+
+    expect(mockAudioElement.src).toBe('blob:fallback-wav');
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+  });
+
+  it('seek-ahead while streaming does not crash', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+
+    const aiffBuf = buildAiffBuffer(2, 100, 16, 44100);
+    const data = new Uint8Array(aiffBuf);
+
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      if ((opts as RequestInit | undefined)?.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ 'content-type': 'audio/aiff' }),
+        } as Response);
+      }
+      let pos = 0;
+      return Promise.resolve({
+        ok: true,
+        body: new ReadableStream({
+          pull(controller) {
+            if (pos >= data.length) { controller.close(); return; }
+            const end = Math.min(pos + 512, data.length);
+            controller.enqueue(new Uint8Array(data.subarray(pos, end)));
+            pos = end;
+          },
+        }),
+      } as unknown as Response);
+    });
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+
+    await act(async () => {
+      const player = screen.getByTestId('play-btn');
+      mockAudioElement.currentTime = 999;
+    });
+
+    expect(screen.getByTestId('error').textContent).toBe('none');
+  });
+
+  it('cancellation stops streaming without crash', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+
+    const aiffBuf = buildAiffBuffer(2, 100, 16, 44100);
+    const data = new Uint8Array(aiffBuf);
+
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      if ((opts as RequestInit | undefined)?.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ 'content-type': 'audio/aiff' }),
+        } as Response);
+      }
+      let pos = 0;
+      return Promise.resolve({
+        ok: true,
+        body: new ReadableStream({
+          pull(controller) {
+            if (pos >= data.length) { controller.close(); return; }
+            const end = Math.min(pos + 512, data.length);
+            controller.enqueue(new Uint8Array(data.subarray(pos, end)));
+            pos = end;
+          },
+        }),
+      } as unknown as Response);
+    });
+
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('stop-btn'));
+    });
+
+    expect(screen.getByTestId('track-title').textContent).toBe('none');
+    expect(screen.getByTestId('playing').textContent).toBe('false');
+    expect(screen.getByTestId('error').textContent).toBe('none');
+  });
+});
+
+describe('streamAiffAsWav direct', () => {
+  it('throws when fetch returns non-ok status', async () => {
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 500,
+    } as Response);
+
+    const el = mockAudioElement as unknown as HTMLAudioElement;
+    await expect(streamAiffAsWav('/audio', el, () => false)).rejects.toThrow('Audio unavailable (500)');
+  });
+
+  it('throws when response has no body', async () => {
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: true,
+      body: null,
+    } as unknown as Response);
+
+    const el = mockAudioElement as unknown as HTMLAudioElement;
+    await expect(streamAiffAsWav('/audio', el, () => false)).rejects.toThrow('Streaming not supported');
+  });
+
+  it('returns immediately when cancelled during header parse', async () => {
+    const readerCancel = vi.fn();
+
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: () => Promise.resolve({ done: false, value: new Uint8Array(4) }),
+          cancel: readerCancel,
+        }),
+      },
+    } as unknown as Response);
+
+    const el = mockAudioElement as unknown as HTMLAudioElement;
+    await streamAiffAsWav('/audio', el, () => true);
+    expect(readerCancel).toHaveBeenCalled();
+  });
+
+  it('throws descriptive error when stream ends before header complete', async () => {
+    vi.spyOn(window, 'fetch').mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: vi.fn()
+            .mockResolvedValueOnce({ done: false, value: new Uint8Array([0x46, 0x4f, 0x52, 0x4d]) })
+            .mockResolvedValueOnce({ done: true }),
+          cancel: vi.fn(),
+        }),
+      },
+    } as unknown as Response);
+
+    const el = mockAudioElement as unknown as HTMLAudioElement;
+    await expect(streamAiffAsWav('/audio', el, () => false))
+      .rejects.toThrow('AIFF file truncated: stream ended before header complete');
+  });
+});
+
+describe('Streaming MSE fallback to full download', () => {
+  it('falls back to full-download when streaming throws', async () => {
+    (mockAudioElement.canPlayType as ReturnType<typeof vi.fn>).mockReturnValue('');
+
+    const aiffBuf = buildAiffBuffer(2, 100, 16, 44100);
+
+    let fetchCount = 0;
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      if ((opts as RequestInit | undefined)?.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ 'content-type': 'audio/aiff' }),
+        } as Response);
+      }
+      fetchCount++;
+      if (fetchCount === 1) {
+        return Promise.resolve({
+          ok: true,
+          body: {
+            getReader: () => ({
+              read: () => Promise.reject(new Error('network failure')),
+              cancel: vi.fn(),
+            }),
+          },
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(aiffBuf),
+      } as unknown as Response);
+    });
+
+    (globalThis as Record<string, unknown>).MediaSource = class extends EventTarget {
+      readyState = 'open';
+      addSourceBuffer() { return new EventTarget(); }
+      endOfStream() {}
+      static isTypeSupported(m: string) { return m.startsWith('audio/wav'); }
+    };
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fallback');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+    try {
+      renderWithProvider();
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('play-btn'));
+      });
+
+      expect(mockAudioElement.src).toBe('blob:fallback');
+      expect(screen.getByTestId('playing').textContent).toBe('true');
+    } finally {
+      delete (globalThis as Record<string, unknown>).MediaSource;
+    }
   });
 });

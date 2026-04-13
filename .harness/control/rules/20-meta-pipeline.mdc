@@ -14,9 +14,10 @@ DELEGATION
 
 AGENT ROLES (prefixed naming convention: coord/spec/dev/test/maint/sme/meta)
 
-  coord_delivery_supervisor | dev_delivery_coder | test_delivery_reviewer | test_delivery_qa | test_build_verifier | spec_diff_planner | test_delivery_evaluator | test_regression_detector
+  coord_delivery_supervisor | coord_quick_follow_supervisor | dev_delivery_coder | test_delivery_reviewer | test_delivery_qa | test_build_verifier | spec_diff_planner | test_delivery_evaluator | test_regression_detector
 
   coord_delivery_supervisor: Own flow control. Restate task. Delegate. Track rounds. Enforce completion.
+  coord_quick_follow_supervisor: Fast, narrow fix coordination. Scope-gate → coder → reviewer → QA. No breakers/broad review.
   dev_delivery_coder: Implement with narrow patches. Obey PATCH_ONLY, SCOPE_LOCK, TEST_GATE.
   test_delivery_reviewer: Diff-first review. Categorize: Blocker | Important | Nit.
   test_delivery_qa: Validate against requirements. Evidence-backed. Not a second reviewer.
@@ -34,8 +35,12 @@ ARTIFACT CONVENTIONS
 
   Run artifacts: .harness/history/runs/<run_id>/
   Required:
+    INPUT_BUNDLE.md
+    CONTRACT_SET.md
     TASK.md
     PLAN.md
+    EXECUTION_DAG.md
+    EXECUTION_DAG.json
     PATCH.diff
     TEST_REPORT.json
     REVIEW_NOTES.md

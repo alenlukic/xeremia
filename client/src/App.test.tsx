@@ -357,6 +357,151 @@ describe('Browse infinite scroll', () => {
   });
 });
 
+describe('Browse context restore on search clear', () => {
+  function getScrollWrapper(): HTMLDivElement {
+    return document.querySelector('.track-table-wrapper') as HTMLDivElement;
+  }
+
+  it('captures scroll position before browse selection and restores it on clear', async () => {
+    await renderApp();
+
+    const wrapper = getScrollWrapper();
+    expect(wrapper).toBeTruthy();
+
+    Object.defineProperty(wrapper, 'scrollTop', { value: 480, writable: true, configurable: true });
+
+    const row = screen.getByText('Track 100').closest('tr')!;
+    await act(async () => { row.click(); });
+
+    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
+    expect(searchInput.value).toBe('Track 100');
+
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: '' } });
+    });
+
+    await waitFor(() => {
+      expect(searchInput.value).toBe('');
+    });
+
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    });
+
+    expect(wrapper.scrollTop).toBe(480);
+  });
+
+  it('restores scroll after loadedPages are recovered from cache', async () => {
+    await renderApp();
+
+    await act(async () => { triggerLoadMore(); });
+    expect(getRowCount()).toBe(500);
+
+    const wrapper = getScrollWrapper();
+    Object.defineProperty(wrapper, 'scrollTop', { value: 1200, writable: true, configurable: true });
+
+    const row = screen.getByText('Track 300').closest('tr')!;
+    await act(async () => { row.click(); });
+
+    await waitFor(() => {
+      expect(getRowCount()).toBeLessThanOrEqual(250);
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: '' } });
+    });
+
+    await waitFor(() => {
+      expect(getRowCount()).toBe(500);
+    }, { timeout: 10000 });
+
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    });
+
+    expect(wrapper.scrollTop).toBe(1200);
+  }, 20000);
+
+  it('does not restore scroll when track was selected via non-browse path', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.searchTracks).mockResolvedValue([
+      { id: 1, title: 'Track 1', artist_names: ['Artist 1'], bpm: 120, camelot_code: '01A' },
+    ]);
+
+    await renderApp();
+
+    const wrapper = getScrollWrapper();
+    Object.defineProperty(wrapper, 'scrollTop', { value: 300, writable: true, configurable: true });
+
+    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: 'Track 1' } });
+    });
+
+    await waitFor(() => {
+      const dropdown = document.querySelector('.search-dropdown');
+      expect(dropdown).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      const item = document.querySelector('.search-item')!;
+      fireEvent.mouseDown(item);
+    });
+
+    expect(searchInput.value).toBe('Track 1');
+
+    wrapper.scrollTop = 0;
+
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: '' } });
+    });
+
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    });
+
+    expect(wrapper.scrollTop).toBe(0);
+  });
+
+  it('clears stale browse context when a new browse selection occurs', async () => {
+    await renderApp();
+
+    const wrapper = getScrollWrapper();
+    Object.defineProperty(wrapper, 'scrollTop', { value: 200, writable: true, configurable: true });
+
+    const row1 = screen.getByText('Track 50').closest('tr')!;
+    await act(async () => { row1.click(); });
+
+    wrapper.scrollTop = 0;
+
+    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: '' } });
+    });
+
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    });
+
+    expect(wrapper.scrollTop).toBe(200);
+
+    wrapper.scrollTop = 600;
+    const row2 = screen.getByText('Track 150').closest('tr')!;
+    await act(async () => { row2.click(); });
+
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: '' } });
+    });
+
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    });
+
+    expect(wrapper.scrollTop).toBe(600);
+  });
+});
+
 describe('Error state handling', () => {
   it('shows match fetch failure instead of empty-bucket message', async () => {
     const httpMod = await import('./api/http');

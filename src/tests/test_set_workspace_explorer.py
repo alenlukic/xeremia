@@ -6,6 +6,7 @@ from src.set_workspace.explorer_rules import (
     check_depth,
     check_total_nodes,
     validate_add_node,
+    validate_move_node,
     validate_swap,
     MAX_NODES_PER_LEVEL,
     MAX_DEPTH,
@@ -90,6 +91,47 @@ class TestValidateAddNode:
         result = validate_add_node(edges, {}, 0, "a", "b", 1)
         assert result is not None
         assert "cycle" in result.lower()
+
+
+class TestValidateMoveNode:
+    def test_valid_relocate(self):
+        result = validate_move_node([], {}, "n1", 0, 2)
+        assert result is None
+
+    def test_exceeds_depth(self):
+        result = validate_move_node([], {}, "n1", 0, MAX_DEPTH)
+        assert result is not None
+        assert "depth" in result.lower()
+
+    def test_exceeds_level_width(self):
+        result = validate_move_node([], {3: MAX_NODES_PER_LEVEL}, "n1", 0, 3)
+        assert result is not None
+        assert "level" in result.lower()
+
+    def test_same_level_does_not_check_width(self):
+        result = validate_move_node([], {3: MAX_NODES_PER_LEVEL}, "n1", 3, 3)
+        assert result is None
+
+    def test_reparent_self_rejected(self):
+        result = validate_move_node([], {}, "n1", 0, 1, new_parent_node_id="n1")
+        assert result is not None
+        assert "itself" in result.lower()
+
+    def test_reparent_cycle_rejected(self):
+        edges = [("n1", "n2"), ("n2", "n3")]
+        result = validate_move_node(edges, {}, "n1", 0, 4, new_parent_node_id="n3")
+        assert result is not None
+        assert "cycle" in result.lower()
+
+    def test_reparent_no_cycle_when_old_parent_edge_filtered(self):
+        edges = [("n1", "n2")]
+        result = validate_move_node(edges, {}, "n2", 1, 0, new_parent_node_id="n1")
+        assert result is None
+
+    def test_valid_reparent(self):
+        edges = [("n1", "n2"), ("n3", "n4")]
+        result = validate_move_node(edges, {}, "n2", 1, 4, new_parent_node_id="n3")
+        assert result is None
 
 
 class TestValidateSwap:

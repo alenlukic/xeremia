@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { DndContext } from '@dnd-kit/core';
 import { SetTracklist } from './SetTracklist';
 import type { TracklistEntry } from '../types';
 
@@ -20,6 +21,7 @@ function makeEntry(overrides: Partial<TracklistEntry> & { id: number; track_id: 
     set_id: 1,
     position: 0,
     note: '',
+    starred: false,
     track: {
       id: overrides.track_id,
       title: `Track ${overrides.track_id}`,
@@ -39,14 +41,17 @@ const noop = () => {};
 
 function renderTracklist(entries: TracklistEntry[]) {
   return render(
-    <SetTracklist
-      tracklist={entries}
-      onRemove={noop}
-      onMoveToPool={noop}
-      onReorder={noop}
-      onUpdateNote={noop}
-      onAddTrack={noop}
-    />,
+    <DndContext>
+      <SetTracklist
+        tracklist={entries}
+        onRemove={noop}
+        onMoveToPool={noop}
+        onReorder={noop}
+        onUpdateNote={noop}
+        onToggleStar={noop}
+        onAddTrack={noop}
+      />
+    </DndContext>,
   );
 }
 

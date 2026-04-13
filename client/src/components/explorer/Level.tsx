@@ -14,6 +14,7 @@ export interface LevelProps {
   warningNodeId: string | null;
   selectedNodeId: string | null;
   swapSource: string | null;
+  moveDragSourceId: string | null;
   tracklistTrackIds: Set<number>;
   playingTrackId: number | null;
   onCellAdd: (level: number, colIndex: number) => void;
@@ -28,7 +29,7 @@ export interface LevelProps {
 }
 
 export const Level = memo(function Level({
-  level, cells, warningNodeId, selectedNodeId, swapSource,
+  level, cells, warningNodeId, selectedNodeId, swapSource, moveDragSourceId,
   tracklistTrackIds, playingTrackId,
   onCellAdd, onNodeClick, onNodeMouseDown, onNodeMouseUp,
   onSetDeleteTarget, onSetSwapSource, onOpenChildAdd, onNodeToTracklist, onPlayTrack,
@@ -46,6 +47,7 @@ export const Level = memo(function Level({
             isWarning={cell.node ? warningNodeId === cell.node.node_id : false}
             isSelected={cell.node ? selectedNodeId === cell.node.node_id : false}
             isSwapSource={cell.node ? swapSource === cell.node.node_id : false}
+            isMoveDragSource={cell.node ? moveDragSourceId === cell.node.node_id : false}
             inTracklist={cell.node ? tracklistTrackIds.has(cell.node.track_id) : false}
             isPlaying={cell.node ? playingTrackId === cell.node.track_id : false}
             onAdd={() => onCellAdd(cell.level, cell.colIndex)}

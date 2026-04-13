@@ -159,7 +159,7 @@ recommendation_ids: []
 """
 
 
-def create_run(task: str, mode: str) -> pathlib.Path:
+def create_run(task: str, mode: str, *, parent_run: str | None = None, source_artifact: str | None = None) -> pathlib.Path:
     timestamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     run_id = f'{timestamp}-{mode}-{slugify(task)[:32]}'
     run_dir = RUNS_DIR / run_id
@@ -168,12 +168,24 @@ def create_run(task: str, mode: str) -> pathlib.Path:
     write_text(run_dir / 'PLAN.md', '# Plan\n\n## Goals\n- \n\n## Acceptance criteria\n- \n\n## Non-goals\n- \n')
     write_text(run_dir / 'PATCH.diff', '')
     write_json(run_dir / 'DIFF_STATS.json', {'files_changed': 0, 'files': [], 'added': 0, 'deleted': 0, 'per_file': []})
+    meta: dict[str, Any] = {'run_id': run_id, 'mode': mode, 'task': task, 'created_at': now_iso(), 'follow_ons': []}
+    if parent_run:
+        meta['parent_run'] = parent_run
+    if source_artifact:
+        meta['source_artifact'] = source_artifact
+
+    if mode == 'quick-follow':
+        write_json(run_dir / 'RUN_META.json', meta)
+        write_text(run_dir / 'REVIEW_NOTES.md', '# Review Notes\n\n## Verdict\nCHANGES_REQUESTED\n')
+        write_text(run_dir / 'QA_REPORT.md', '# QA Report\n\n## Verdict\nFAIL\n')
+        return run_dir
+
     write_json(run_dir / 'TEST_REPORT.json', {'commands': [], 'last_intent': None, 'applicable': True})
     write_json(run_dir / 'POLICY_REPORT.json', {'ok': True, 'violations': []})
     write_json(run_dir / 'EVAL_REPORT.json', {'score': 0, 'verdict': 'UNKNOWN'})
     write_json(run_dir / 'REGRESSION_REPORT.json', {'regressions_found': False, 'severity': 'UNKNOWN', 'areas': []})
     write_json(run_dir / 'RETRY_LOG.jsonl', [])
-    write_json(run_dir / 'RUN_META.json', {'run_id': run_id, 'mode': mode, 'task': task, 'created_at': now_iso(), 'follow_ons': []})
+    write_json(run_dir / 'RUN_META.json', meta)
     write_text(run_dir / 'REVIEW_NOTES.md', '# Review Notes\n\n## Verdict\nCHANGES_REQUESTED\n')
     write_text(run_dir / 'QA_REPORT.md', '# QA Report\n\n## Verdict\nFAIL\n')
     write_text(run_dir / 'BUILD_VERIFICATION.md', '# Build Verification\n\n## Status\nPENDING\n')
@@ -759,7 +771,7 @@ def schedule_run(job_id: str) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description='Repo-local agentic harness helper')
     sub = parser.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('start'); p.add_argument('--mode', choices=['delivery', 'maintenance', 'restructure', 'product_feedback'], default='delivery'); p.add_argument('--task', required=False); p.add_argument('--task-file', required=False)
+    p = sub.add_parser('start'); p.add_argument('--mode', choices=['delivery', 'maintenance', 'restructure', 'product_feedback', 'quick-follow'], default='delivery'); p.add_argument('--task', required=False); p.add_argument('--task-file', required=False); p.add_argument('--parent-run', required=False); p.add_argument('--source-artifact', required=False)
     p = sub.add_parser('run'); p.add_argument('--run-dir', required=True); p.add_argument('--intent', choices=['format', 'lint', 'test', 'build', 'db'], required=True)
     p = sub.add_parser('diff'); p.add_argument('--run-dir', required=True)
     p = sub.add_parser('validate'); p.add_argument('--run-dir', required=True)
@@ -794,7 +806,7 @@ def main() -> int:
                 print(f'Task file not found: {args.task_file}', file=sys.stderr); return 1
         if not task:
             print('Either --task or --task-file is required', file=sys.stderr); return 1
-        print(str(create_run(task, args.mode))); return 0
+        print(str(create_run(task, args.mode, parent_run=getattr(args, 'parent_run', None), source_artifact=getattr(args, 'source_artifact', None)))); return 0
     if args.command == 'rebuild-ledger-index':
         print(json.dumps(rebuild_ledger_index(), indent=2)); return 0
     if args.command == 'registry-render':
