@@ -595,9 +595,9 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
       {siblingAdd && (
         <div className="explorer-delete-overlay" onClick={() => setSiblingAdd(null)}>
           <div className="explorer-delete-modal" onClick={e => e.stopPropagation()} data-testid="sibling-add-modal">
-            <h3>Add Track to Level {siblingAdd.targetLevel}, Column {siblingAdd.targetColIndex}</h3>
+            <h3>Add Track — Row {siblingAdd.targetLevel + 1}</h3>
             <p className="text-muted">
-              Add a track at level {siblingAdd.targetLevel}
+              Add a track at row {siblingAdd.targetLevel + 1}
             </p>
 
             {siblingAdd.parentIds.length > 0 && (

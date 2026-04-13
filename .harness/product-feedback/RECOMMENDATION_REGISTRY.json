@@ -1,76 +1,99 @@
 {
-  "schema_version": 1,
-  "updated_at": "2026-04-11T08:44:15Z",
-  "next_id": 13,
+  "schema_version": 2,
+  "updated_at": "2026-04-13T00:06:41Z",
+  "next_id": 20,
   "items": [
     {
       "id": "REC-001",
       "title": "Establish the design token migration foundation",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "Technical SME"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
         "20260409T025541Z-product_feedback-design-system-overhaul-proposal-",
-        "20260410T003620Z-product_feedback-design-perfectionist-review-of-s"
+        "20260410T003620Z-product_feedback-design-perfectionist-review-of-s",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P1",
       "type": "design_system",
       "phase": "0",
-      "status": "open",
+      "status": "promote",
       "promotion_readiness": "ready_now",
       "blocking": [],
-      "summary": "Replace the thin root token set with the overhaul's canonical token foundation, preserve legacy aliases during migration, and eliminate remaining hardcoded spacing, radius, and status-color values so later UI work lands on named primitives instead of ad hoc styling.",
+      "summary": "Replace the thin root token set with the overhaul's canonical token foundation, preserve legacy aliases during migration, and eliminate undefined or one-off styling tokens so later UI work lands on named primitives instead of ad hoc CSS values.",
       "acceptance_criteria": [
         "The stylesheet adopts the overhaul token foundation with legacy aliases so existing references continue to resolve during migration.",
-        "Panel-spacing, radius, and status-color hardcodes called out in the reviews are replaced with named tokens including `--panel-inner` and `--radius-sm`.",
-        "Numeric display styles use tabular figures via the shared mono treatment so later surface work inherits stable data alignment."
+        "Undefined or orphaned token usage called out in reviews is removed, including the `--muted` and `--surface-alt` fallthroughs.",
+        "Semantic color tokens include warning-state coverage and numeric display styles keep the shared tabular mono treatment."
       ],
-      "evidence_count": 3,
+      "evidence_count": 5,
+      "recurrence_count": 5,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": [
         "D017",
         "D018",
-        "R06"
+        "R06",
+        "DP-02",
+        "DP-03",
+        "DP-14"
       ]
     },
     {
       "id": "REC-002",
       "title": "Ship control primitives and minimum target sizing",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "SME Design Red Team"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
         "20260409T025541Z-product_feedback-design-system-overhaul-proposal-",
         "20260409T184735Z-product_feedback-design-red-team-explorer-ux-fixe",
-        "20260410T003620Z-product_feedback-design-perfectionist-review-of-s"
+        "20260410T003620Z-product_feedback-design-perfectionist-review-of-s",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P1",
       "type": "controls",
       "phase": "1",
-      "status": "open",
+      "status": "promote",
       "promotion_readiness": "ready_now",
       "blocking": [
         "REC-001"
       ],
-      "summary": "Define the shared button, input, chip, badge, focus, and label primitives from the overhaul and enforce a 28px minimum action target so dense controls read as intentional, reliable, and consistent across the app.",
+      "summary": "Define the shared button, input, chip, badge, focus, icon, and label primitives from the overhaul and enforce a 28px minimum action target so dense controls read as intentional, accessible, and consistent across the app.",
       "acceptance_criteria": [
-        "Shared button, input, chip, badge, focus-ring, and label primitives exist and are used by existing dense controls instead of one-off local styling.",
+        "Shared button, input, chip, badge, focus-ring, icon, and label primitives exist and are used by existing dense controls instead of one-off local styling.",
         "No interactive action button renders below the 28px minimum target size defined by the design system.",
-        "Section labels and field labels use distinct hierarchy treatments so the UI no longer collapses headings and metadata into the same visual role."
+        "Interactive and status icons use a consistent SVG treatment rather than emoji or OS-rendered glyphs, and key utility controls remain clearly labeled."
       ],
-      "evidence_count": 4,
+      "evidence_count": 6,
+      "recurrence_count": 6,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": [
         "D006",
         "F-004",
         "R02",
         "R03",
-        "R04"
+        "R04",
+        "DP-04"
       ]
     },
     {
       "id": "REC-003",
       "title": "Align top-level navigation and flat-surface visual hierarchy",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "SME Design Red Team"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
-        "20260409T025541Z-product_feedback-design-system-overhaul-proposal-"
+        "20260409T025541Z-product_feedback-design-system-overhaul-proposal-",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P2",
       "type": "design_system",
@@ -80,13 +103,15 @@
       "blocking": [
         "REC-001"
       ],
-      "summary": "Bring the shell into the overhaul's intended hierarchy by reordering the primary tabs around the creative workflow and removing the glass-morphism mismatch from the weight controls so top-level navigation and surfaces feel like one coherent professional tool.",
+      "summary": "Bring the shell into the overhaul's intended hierarchy by reordering the primary tabs around the creative workflow and removing the visual mismatch from utility surfaces so top-level navigation reads as one coherent professional tool.",
       "acceptance_criteria": [
         "The top-level tab order is `Matches | Browse | Set | Admin`, with Admin visually de-emphasized as a utility surface.",
         "Weight gauge groups use the same flat surface and border model as the rest of the application rather than a glass treatment.",
-        "The resulting shell reads as one consistent visual system, not a mix of flat panels and separate depth metaphors."
+        "Utility controls in the shell are discoverable and visually consistent with the rest of the app instead of reading like detached icon affordances."
       ],
-      "evidence_count": 2,
+      "evidence_count": 3,
+      "recurrence_count": 3,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": [
         "D009",
         "D012"
@@ -96,6 +121,9 @@
       "id": "REC-004",
       "title": "Restructure WeightControls and SearchPanel around the primary entry flow",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
         "20260409T025541Z-product_feedback-design-system-overhaul-proposal-"
@@ -110,13 +138,15 @@
         "REC-002",
         "REC-003"
       ],
-      "summary": "Apply the overhaul's surface-level shell refinement by making WeightControls collapsible, moving Normalize/Reset into that surface, and simplifying SearchPanel so search becomes the first prominent action and weight-state copy is contextual instead of cryptic.",
+      "summary": "Apply the overhaul's surface-level shell refinement by making WeightControls collapsible, moving Normalize and Reset into that surface, and simplifying SearchPanel so search becomes the first prominent action and weight-state copy is contextual instead of cryptic.",
       "acceptance_criteria": [
         "WeightControls supports a persisted collapsed summary strip and no longer dominates the top of the viewport by default.",
         "Normalize and Reset live with the weight controls, not in the search row, and the displayed sum clearly communicates total context toward 100.",
         "When weights are collapsed, the search input is the first prominent interactive element in the shell."
       ],
       "evidence_count": 2,
+      "recurrence_count": 2,
+      "last_seen": "2026-04-11T08:44:15Z",
       "related_findings": [
         "D002",
         "D003",
@@ -127,11 +157,16 @@
       "id": "REC-005",
       "title": "Refine Matches table persistence and navigation clarity",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "SME Design Red Team"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
         "20260409T025541Z-product_feedback-design-system-overhaul-proposal-",
         "20260408T214806Z-delivery-development-contract-source-inpu",
-        "20260409T062402Z-delivery-column-config-size-order-toggled"
+        "20260409T062402Z-delivery-column-config-size-order-toggled",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P1",
       "type": "workflow",
@@ -143,26 +178,34 @@
         "REC-002",
         "REC-003"
       ],
-      "summary": "Bring the Matches surface in line with the overhaul by persisting table preferences, separating chain navigation semantics from generic back affordances, and making sort-versus-drag behavior predictable in dense table headers.",
+      "summary": "Bring the Matches surface in line with the overhaul by persisting table preferences, separating chain navigation semantics from generic back affordances, and keeping deep chain navigation readable without collapsing the visible results area.",
       "acceptance_criteria": [
         "Matches column visibility and order persist across track changes and reloads in the same way Browse preferences already do.",
         "Chain navigation communicates destination distinctly from the MatchDetail back action so the two paths are no longer visually interchangeable.",
-        "Sortable headers rest in a sort-first state and only present a drag affordance during active reorder interaction."
+        "The transition chain stays readable in long sessions without wrapping into a multi-line block that steals meaningful space from the matches list."
       ],
-      "evidence_count": 4,
+      "evidence_count": 6,
+      "recurrence_count": 6,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": [
         "D008",
         "D013",
-        "D014"
+        "D014",
+        "DP-10"
       ]
     },
     {
       "id": "REC-006",
       "title": "Add the shared motion and loading-state layer",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "SME Design Red Team"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
-        "20260409T025541Z-product_feedback-design-system-overhaul-proposal-"
+        "20260409T025541Z-product_feedback-design-system-overhaul-proposal-",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P1",
       "type": "motion",
@@ -173,26 +216,34 @@
         "REC-004",
         "REC-005"
       ],
-      "summary": "Introduce the overhaul's shared motion contract so popovers, breadcrumb transitions, and search loading states communicate change without layout instability or roughness, while preserving the product's speed-first character.",
+      "summary": "Introduce the overhaul's shared motion and search-feedback contract so popovers, breadcrumbs, and search states communicate change without layout instability, silent emptiness, or roughness.",
       "acceptance_criteria": [
-        "Popover and dropdown surfaces use a shared enter/exit motion pattern instead of appearing abruptly.",
+        "Popover and dropdown surfaces use a shared enter and exit motion pattern instead of appearing abruptly.",
         "The transition breadcrumb no longer causes vertical layout shift when it appears or disappears.",
-        "Search communicates in-flight work during the debounce and fetch window with an explicit loading state."
+        "Search communicates both in-flight work and terminal empty results with explicit, visually distinct states."
       ],
-      "evidence_count": 2,
+      "evidence_count": 4,
+      "recurrence_count": 4,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": [
         "D004",
         "D010",
-        "D016"
+        "D016",
+        "DP-05"
       ]
     },
     {
       "id": "REC-007",
       "title": "Make source-track pivots explicit in the Matches workflow",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "SME Design Red Team"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
-        "20260409T025541Z-product_feedback-design-system-overhaul-proposal-"
+        "20260409T025541Z-product_feedback-design-system-overhaul-proposal-",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P0",
       "type": "workflow",
@@ -210,7 +261,9 @@
         "Each row exposes an explicit, labeled source-pivot action distinct from title inspection or detail access.",
         "Existing chain behavior is preserved once the user intentionally chooses the source-pivot action."
       ],
-      "evidence_count": 2,
+      "evidence_count": 3,
+      "recurrence_count": 3,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": [
         "D001"
       ]
@@ -219,10 +272,15 @@
       "id": "REC-008",
       "title": "Redesign DJ filtering workflows for key and BPM",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "SME Design Red Team"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
         "20260409T025541Z-product_feedback-design-system-overhaul-proposal-",
-        "20260408T214807Z-delivery-development-contract-source-inpu"
+        "20260408T214807Z-delivery-development-contract-source-inpu",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P1",
       "type": "workflow",
@@ -234,26 +292,34 @@
         "REC-005",
         "REC-006"
       ],
-      "summary": "Refactor the DJ-specific filter controls so harmonic key selection matches the Camelot mental model and BPM filtering behaves as one coherent control instead of two silently competing inputs.",
+      "summary": "Refactor the DJ-specific filter controls so harmonic key selection matches the Camelot mental model and BPM filtering behaves as one clearly grouped control instead of silently competing exact and range inputs.",
       "acceptance_criteria": [
         "The Camelot picker is laid out in an ordered structure that makes harmonic adjacency obvious at a glance.",
-        "BPM filtering is represented as a single coherent control area rather than separate exact and range groups that clear one another implicitly.",
-        "Multi-select and clearing behavior remain explicit and understandable for repeated prep workflows."
+        "BPM filtering is represented as a single coherent control area or explicit mode switch instead of separate exact and range groups that clear one another implicitly.",
+        "Multi-select, clearing behavior, and mode changes remain explicit and understandable for repeated prep workflows."
       ],
-      "evidence_count": 3,
+      "evidence_count": 5,
+      "recurrence_count": 5,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": [
         "D005",
-        "D007"
+        "D007",
+        "DP-07"
       ]
     },
     {
       "id": "REC-009",
       "title": "Reduce Set Builder first-track friction",
       "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "SME Design Red Team"
+      ],
       "source_runs": [
         "20260409T012055Z-product_feedback-design-perfectionist-review-of-c",
         "20260409T025541Z-product_feedback-design-system-overhaul-proposal-",
-        "20260409T091130Z-delivery-development-contract-source-inpu"
+        "20260409T091130Z-delivery-development-contract-source-inpu",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P2",
       "type": "workflow",
@@ -265,13 +331,15 @@
         "REC-005",
         "REC-006"
       ],
-      "summary": "Remove front-loaded setup friction from Set Builder so users can start building a set immediately, navigate back to track-selection surfaces quickly, and add their first track without a naming ceremony.",
+      "summary": "Remove front-loaded setup friction from Set Builder so users can start building a set immediately, see the pool clearly on first use, and move from empty states into track-selection workflows without redoing their first action.",
       "acceptance_criteria": [
         "A first set can be created or assumed without forcing a naming step before the user adds a track.",
-        "The empty state links users directly back to track-selection workflows instead of only describing the next step.",
-        "The first-track path is short enough to support iterative set building during active prep sessions."
+        "Set-workspace empty states include direct next-step actions instead of passive explanatory copy only.",
+        "The first-use pool and first-track path are discoverable enough to support iterative set building during active prep sessions."
       ],
-      "evidence_count": 3,
+      "evidence_count": 4,
+      "recurrence_count": 4,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": [
         "D015"
       ]
@@ -280,28 +348,38 @@
       "id": "REC-010",
       "title": "Harden set workspace trust boundaries before broader rollout",
       "source": "Delivery Ledgers",
-      "source_runs": [
-        "20260409T091130Z-delivery-development-contract-source-inpu"
+      "sources": [
+        "Delivery Ledgers",
+        "Technical SME"
       ],
-      "priority": "P1",
+      "source_runs": [
+        "20260409T091130Z-delivery-development-contract-source-inpu",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
+      ],
+      "priority": "P0",
       "type": "security",
       "phase": "follow_on",
       "status": "promoted",
       "promotion_readiness": "promoted",
       "blocking": [],
-      "summary": "Close the set-workspace trust-boundary gaps called out in the recent full-stack delivery by tightening wildcard CORS exposure and bounding edge-score request size before the persisted workspace is treated as fully hardened.",
+      "summary": "Close the set-workspace trust-boundary gaps called out in delivery and reaffirmed by technical review by tightening wildcard CORS exposure and bounding pair-score request size before the persisted workspace is treated as fully hardened.",
       "acceptance_criteria": [
-        "Wildcard CORS behavior for set-workspace routes is narrowed so unsafe methods are not broadly exposed under permissive origins.",
-        "Edge-score requests enforce server-side size or bounds limits so oversized payloads cannot reach the scoring path unchecked.",
+        "Wildcard CORS behavior for set-workspace routes is narrowed to an explicit allowlist instead of broad permissive origins.",
+        "Explorer edge-score and transition-score requests enforce server-side pair-count limits in schema validation so oversized payloads fail fast.",
         "Verification proves the hardened CORS and request-boundary behavior so the documented security regression is actually closed."
       ],
-      "evidence_count": 1,
+      "evidence_count": 3,
+      "recurrence_count": 3,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": []
     },
     {
       "id": "REC-011",
       "title": "Strengthen explorer interaction proof for the set workspace",
       "source": "Delivery Ledgers",
+      "sources": [
+        "Delivery Ledgers"
+      ],
       "source_runs": [
         "20260409T091130Z-delivery-development-contract-source-inpu",
         "20260409T231234Z-delivery-development-contract-source-inpu",
@@ -317,34 +395,246 @@
       "summary": "Finish the remaining high-risk explorer confidence work so the set workspace has regression proof for cleaned titles, modal labeling, swap and delete completion, sibling-add behavior, child-level arithmetic, edge-score rendering, and live DOM-identity stability instead of relying on partial UI-open tests or unit coverage alone.",
       "acceptance_criteria": [
         "Explorer tests complete the swap flow, delete confirmation flow, and nonzero child-level arithmetic instead of only checking intermediate UI state.",
-        "Sibling-add modal coverage exercises parent selection, search, selection routing, close/reset behavior, and the same cleaned-title presentation path used by the canvas.",
+        "Sibling-add modal coverage exercises parent selection, search, selection routing, close and reset behavior, and the same cleaned-title presentation path used by the canvas.",
         "Edge-score rendering is covered end to end, including fetch inputs, non-null labels, and the `-` fallback for null scores.",
-        "Live Chrome DevTools DOM verification confirms explorer nodes preserve DOM identity across add/delete flows instead of remounting the whole canvas."
+        "Live Chrome DevTools DOM verification confirms explorer nodes preserve DOM identity across add and delete flows instead of remounting the whole canvas."
       ],
       "evidence_count": 4,
+      "recurrence_count": 4,
+      "last_seen": "2026-04-11T08:44:15Z",
       "related_findings": []
     },
     {
       "id": "REC-012",
       "title": "Harden Tracks workspace regression proof for notes, toasts, and table contracts",
       "source": "Delivery Breakers",
+      "sources": [
+        "Delivery Breakers",
+        "Technical SME"
+      ],
       "source_runs": [
         "20260409T231235Z-delivery-development-contract-source-inpu",
-        "20260410T004351Z-delivery-development-contract-source-inpu"
+        "20260410T004351Z-delivery-development-contract-source-inpu",
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
       ],
       "priority": "P2",
       "type": "verification",
       "phase": "follow_on",
+      "status": "promote",
+      "promotion_readiness": "ready_now",
+      "blocking": [],
+      "summary": "Close the remaining false-confidence gaps in the Tracks and set-workspace hooks by testing hook-owned toast and error behavior, note-save edge cases, pool accordion state transitions, dedup guards, and the Tracklist table contract with the same depth now used for shipped UI.",
+      "acceptance_criteria": [
+        "Hook-level coverage proves toast auto-dismiss timing, `friendlyError()` mappings, and pool-add deduplication instead of only asserting prop-injected error strings.",
+        "Tracklist note tests cover unchanged blur no-op, Enter-driven save and blur, retry-safe save behavior, and oversize-note validation so note edits cannot silently regress.",
+        "Tracks workspace tests cover collapsed-pool absence, expand and collapse round-trip, keyboard-accessible accordion controls, and full Tracklist table assertions for column order, colgroup classes, shared header classes, and title-cell metadata separation."
+      ],
+      "evidence_count": 3,
+      "recurrence_count": 3,
+      "last_seen": "2026-04-13T00:06:41Z",
+      "related_findings": []
+    },
+    {
+      "id": "REC-013",
+      "title": "Restore explorer legibility and user-facing copy",
+      "source": "SME Design Perfectionist",
+      "sources": [
+        "SME Design Perfectionist",
+        "SME Design Red Team"
+      ],
+      "source_runs": [
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
+      ],
+      "priority": "P0",
+      "type": "explorer",
+      "phase": "4",
+      "status": "promote",
+      "promotion_readiness": "ready_now",
+      "blocking": [],
+      "summary": "Make the Explorer readable and domain-native by raising node title text to a usable size, removing implementation-language copy from add-track flows, and keeping Explorer typography on the established UI scale.",
+      "acceptance_criteria": [
+        "Explorer node titles render at 11px or larger without losing the existing two-line clamp behavior.",
+        "The sibling-add modal avoids zero-indexed 'Level' and 'Column' implementation language and instead uses DJ-meaningful position copy.",
+        "Explorer tab and related text styles use the same documented type scale as the rest of the application."
+      ],
+      "evidence_count": 2,
+      "recurrence_count": 2,
+      "last_seen": "2026-04-13T00:06:41Z",
+      "related_findings": [
+        "DP-01",
+        "DP-15"
+      ]
+    },
+    {
+      "id": "REC-014",
+      "title": "Standardize destructive confirmations in the set workspace",
+      "source": "SME Design Red Team",
+      "sources": [
+        "SME Design Red Team",
+        "SME Design Perfectionist"
+      ],
+      "source_runs": [
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
+      ],
+      "priority": "P1",
+      "type": "workflow",
+      "phase": "4",
+      "status": "promote",
+      "promotion_readiness": "ready_now",
+      "blocking": [],
+      "summary": "Protect high-investment set editing by adding explicit, in-app destructive confirmations for set deletion and replacing the current mix of missing confirmation and browser-native `window.confirm()` prompts with one shared dialog pattern.",
+      "acceptance_criteria": [
+        "Deleting a set requires an in-app confirmation dialog that names the set and summarizes the content that will be lost.",
+        "Pool and tracklist 'Clear All' actions use the same in-app confirmation component instead of `window.confirm()`.",
+        "No destructive set-workspace action executes without an explicit user confirmation step."
+      ],
+      "evidence_count": 2,
+      "recurrence_count": 2,
+      "last_seen": "2026-04-13T00:06:41Z",
+      "related_findings": [
+        "DP-06"
+      ]
+    },
+    {
+      "id": "REC-015",
+      "title": "Improve search result feedback and scanability",
+      "source": "SME Design Red Team",
+      "sources": [
+        "SME Design Red Team",
+        "SME Design Perfectionist"
+      ],
+      "source_runs": [
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
+      ],
+      "priority": "P1",
+      "type": "search",
+      "phase": "3",
+      "status": "promote",
+      "promotion_readiness": "ready_now",
+      "blocking": [
+        "REC-006"
+      ],
+      "summary": "Make search feedback trustworthy by keeping empty-result states visible, surfacing artist identity as first-class result metadata, and standardizing the search dropdown's terminal states instead of silently disappearing.",
+      "acceptance_criteria": [
+        "A zero-result query keeps the dropdown open with a non-interactive 'No results' message distinct from the loading state.",
+        "Search suggestions make artist identity visually prominent enough for artist-led scanning.",
+        "Search dropdown state handling is shared consistently enough that loading, empty, and populated states do not drift across similar search surfaces."
+      ],
+      "evidence_count": 2,
+      "recurrence_count": 2,
+      "last_seen": "2026-04-13T00:06:41Z",
+      "related_findings": [
+        "DP-05"
+      ]
+    },
+    {
+      "id": "REC-016",
+      "title": "Strengthen tracklist editing with direct manipulation and transition scoring",
+      "source": "SME Design Red Team",
+      "sources": [
+        "SME Design Red Team"
+      ],
+      "source_runs": [
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
+      ],
+      "priority": "P1",
+      "type": "workflow",
+      "phase": "4",
       "status": "open",
       "promotion_readiness": "ready_now",
       "blocking": [],
-      "summary": "Close the remaining false-confidence gaps in the Tracks workspace by testing the hook-owned toast/error behavior, note-save edge cases, pool accordion state transitions, and the Tracklist table contract with the same depth now used for the shipped UI.",
+      "summary": "Bring the set tracklist closer to the product's core promise by supporting drag-to-reorder as the primary ordering interaction and exposing adjacent transition quality directly in the ordered list.",
       "acceptance_criteria": [
-        "Hook-level coverage proves the about-4-second toast auto-dismiss timer and `friendlyError()` mappings instead of only asserting prop-injected error strings.",
-        "Tracklist note tests cover unchanged blur no-op, Enter-driven save/blur, retry-safe save behavior, and oversize-note validation so note edits cannot silently regress.",
-        "Tracks workspace tests cover collapsed-pool absence, expand/collapse round-trip, keyboard-accessible accordion controls, and full Tracklist table assertions for column order, colgroup classes, shared header classes, and title-cell metadata separation."
+        "Tracklist rows can be reordered directly with drag and drop while preserving an accessible secondary reorder path.",
+        "Dropping a reordered track persists through the existing reorder API instead of only changing local presentation.",
+        "Adjacent track pairs display transition quality feedback, including a distinct weak-transition and unscored state."
       ],
-      "evidence_count": 2,
+      "evidence_count": 1,
+      "recurrence_count": 1,
+      "last_seen": "2026-04-13T00:06:41Z",
+      "related_findings": []
+    },
+    {
+      "id": "REC-017",
+      "title": "Modularize API routes and restore backend structural guardrails",
+      "source": "Technical SME",
+      "sources": [
+        "Technical SME"
+      ],
+      "source_runs": [
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
+      ],
+      "priority": "P1",
+      "type": "architecture",
+      "phase": "follow_on",
+      "status": "open",
+      "promotion_readiness": "ready_now",
+      "blocking": [],
+      "summary": "Reduce backend delivery friction by splitting the API route monolith into domain routers, moving session ownership into framework-managed dependencies, and re-establishing structure tests for the newer set-workspace subsystem.",
+      "acceptance_criteria": [
+        "The backend API surface is split into domain-scoped routers instead of a single monolithic `routes.py` file.",
+        "Route handlers receive database sessions from a shared FastAPI dependency rather than repeating manual open and close boilerplate.",
+        "Structural tests include `set_workspace` so future cross-layer drift is caught automatically."
+      ],
+      "evidence_count": 1,
+      "recurrence_count": 1,
+      "last_seen": "2026-04-13T00:06:41Z",
+      "related_findings": []
+    },
+    {
+      "id": "REC-018",
+      "title": "Refactor transition-matching runtime state ownership",
+      "source": "Technical SME",
+      "sources": [
+        "Technical SME"
+      ],
+      "source_runs": [
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
+      ],
+      "priority": "P1",
+      "type": "architecture",
+      "phase": "follow_on",
+      "status": "open",
+      "promotion_readiness": "needs_more_evidence",
+      "blocking": [
+        "REC-017"
+      ],
+      "summary": "Eliminate backend correctness risk from globally shared matcher state by removing class-level mutable scoring context, retiring the long-lived singleton lifecycle, and converging on direct SQLAlchemy session ownership instead of wrapper indirection.",
+      "acceptance_criteria": [
+        "Transition-matching state is instance-scoped or explicitly injected rather than stored on shared class attributes.",
+        "Matcher lifecycle is managed through app startup and dependencies instead of a forever-live module-global singleton.",
+        "Code no longer relies on `session.session` or the custom wrapper to reach the underlying SQLAlchemy session."
+      ],
+      "evidence_count": 1,
+      "recurrence_count": 1,
+      "last_seen": "2026-04-13T00:06:41Z",
+      "related_findings": []
+    },
+    {
+      "id": "REC-019",
+      "title": "Harden client and API boundary handling",
+      "source": "Technical SME",
+      "sources": [
+        "Technical SME"
+      ],
+      "source_runs": [
+        "20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d"
+      ],
+      "priority": "P2",
+      "type": "reliability",
+      "phase": "follow_on",
+      "status": "open",
+      "promotion_readiness": "ready_now",
+      "blocking": [],
+      "summary": "Improve failure containment and contract handling at the product boundary by adding a client error boundary, centralizing HTTP error extraction, and tightening request validation before bad inputs reach deeper service logic.",
+      "acceptance_criteria": [
+        "The app shell is wrapped in an error boundary that shows a recoverable fallback instead of a white screen.",
+        "Client API calls use a shared fetch wrapper that extracts server `detail` consistently and reduces duplicated error handling.",
+        "Core set-workspace request schemas reject empty names, oversized notes, negative IDs, and out-of-range coordinates before service code executes."
+      ],
+      "evidence_count": 1,
+      "recurrence_count": 1,
+      "last_seen": "2026-04-13T00:06:41Z",
       "related_findings": []
     }
   ]

@@ -17,6 +17,7 @@
   --danger-border-strong: rgba(229, 57, 53, 0.4);
   --success: #43a047;
   --info: #1e88e5;
+  --warning: #f0ad4e;
   --radius: 6px;
   --transition: 120ms ease;
   --content-gutter: 32px;
@@ -1321,7 +1322,7 @@ body,
 }
 
 .weight-save-status__warning {
-  color: #f0ad4e;
+  color: var(--warning);
 }
 
 .weight-gauge-label[data-tooltip]:hover::after {
@@ -2205,7 +2206,7 @@ body,
   font-size: 16px;
   line-height: 1;
   padding: 2px;
-  color: var(--muted);
+  color: var(--text-muted);
   transition: color 0.15s;
 }
 
@@ -2311,7 +2312,7 @@ body,
   align-items: center;
   gap: 2px;
   padding: 4px 8px;
-  background: var(--surface-alt, #1a1a2e);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   flex-shrink: 0;
@@ -2319,7 +2320,7 @@ body,
 
 .explorer-tree-tab {
   padding: 4px 12px;
-  font-size: 0.8rem;
+  font-size: 12px;
   background: transparent;
   color: var(--text-secondary, #aaa);
   border: 1px solid transparent;
@@ -2342,7 +2343,7 @@ body,
 }
 
 .explorer-tree-tab--add {
-  font-size: 1rem;
+  font-size: 14px;
   padding: 2px 10px;
   font-weight: 700;
 }
@@ -2360,7 +2361,7 @@ body,
 
 .explorer-tree-name-input {
   padding: 3px 6px;
-  font-size: 0.8rem;
+  font-size: 12px;
   width: 120px;
   border: 1px solid var(--border);
   border-radius: 3px;
@@ -2370,7 +2371,7 @@ body,
 
 .explorer-tree-mode-select {
   padding: 3px 4px;
-  font-size: 0.75rem;
+  font-size: 12px;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--surface);
@@ -2507,7 +2508,7 @@ body,
 
 .explorer-cell-title {
   color: #fff;
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
   overflow: hidden;
   display: -webkit-box;

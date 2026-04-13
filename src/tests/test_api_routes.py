@@ -466,6 +466,61 @@ class TestTrackAudioEndpoint:
 # ---------------------------------------------------------------------------
 
 
+class TestCorsAndSchemaValidation:
+    """CORS allowlist behavior and pair-payload size limit validation."""
+
+    def test_allowed_origin_receives_cors_header(self):
+        with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)):
+            from src.api.app import create_app
+            with TestClient(create_app()) as tc:
+                resp = tc.get("/api/weights", headers={"Origin": "http://localhost:5173"})
+        assert resp.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+    def test_disallowed_origin_no_cors_header(self):
+        with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)):
+            from src.api.app import create_app
+            with TestClient(create_app()) as tc:
+                resp = tc.get("/api/weights", headers={"Origin": "http://evil.example.com"})
+        assert resp.headers.get("access-control-allow-origin") != "http://evil.example.com"
+
+    def test_env_override_replaces_defaults(self):
+        os.environ["CORS_ALLOWED_ORIGINS"] = "http://myapp.com"
+        try:
+            with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)):
+                from src.api.app import create_app
+                with TestClient(create_app()) as tc:
+                    allowed = tc.get("/api/weights", headers={"Origin": "http://myapp.com"})
+                    denied = tc.get("/api/weights", headers={"Origin": "http://localhost:5173"})
+            assert allowed.headers.get("access-control-allow-origin") == "http://myapp.com"
+            assert denied.headers.get("access-control-allow-origin") != "http://localhost:5173"
+        finally:
+            del os.environ["CORS_ALLOWED_ORIGINS"]
+
+    def test_transition_score_rejects_over_100_pairs(self, client):
+        pairs = [[i, i + 1] for i in range(101)]
+        resp = client.post("/api/sets/transition-scores", json={"pairs": pairs})
+        assert resp.status_code == 422
+        body = resp.json()
+        assert any("pairs" in str(e).lower() for e in body.get("detail", []))
+
+    def test_explorer_edge_score_rejects_over_100_pairs(self, client):
+        pairs = [[i, i + 1] for i in range(101)]
+        resp = client.post("/api/sets/1/explorer/edge-scores", json={"pairs": pairs})
+        assert resp.status_code == 422
+        body = resp.json()
+        assert any("pairs" in str(e).lower() for e in body.get("detail", []))
+
+    def test_transition_score_accepts_100_pairs(self, client):
+        pairs = [[i, i + 1] for i in range(100)]
+        resp = client.post("/api/sets/transition-scores", json={"pairs": pairs})
+        assert resp.status_code != 422
+
+    def test_explorer_edge_score_accepts_100_pairs(self, client):
+        pairs = [[i, i + 1] for i in range(100)]
+        resp = client.post("/api/sets/1/explorer/edge-scores", json={"pairs": pairs})
+        assert resp.status_code != 422
+
+
 class TestExplorerTreeCreateModeValidation:
     def test_invalid_mode_returns_422(self):
         with patch("src.api.routes._get_session") as mock_get_session:

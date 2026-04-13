@@ -15,6 +15,10 @@ Optional:
 - `candidate_run_dir`: delivery run whose candidate build should be exercised
 - `mode`: `incremental` or `full` (default `incremental`)
 - `auto_start_delivery`: `true` or `false` (default `false`)
+- `skip-product`: `true` or `false` (default `false`); skips steps 1 and 5 below if `true`
+- `skip-customer`: `true` or `false` (default `false`); skips step 4 below if `true`
+- `skip-design`: `true` or `false` (default `false`); skips steps 2 and 3 below if `true`
+- `skip-technical`: `true` or `false` (default `false`); skips step 6 below if `true`
 
 ## DO
 

@@ -151,6 +151,7 @@ class WeightUpdateRequest(BaseModel):
 class TransitionScoreRequest(BaseModel):
     pairs: List[List[int]] = Field(
         ...,
+        max_length=100,
         description="List of [source_id, candidate_id] pairs",
     )
 
@@ -304,6 +305,7 @@ class ExplorerNodeToTracklistRequest(BaseModel):
 class ExplorerEdgeScoreRequest(BaseModel):
     pairs: List[List[int]] = Field(
         ...,
+        max_length=100,
         description="List of [parent_track_id, child_track_id] pairs",
     )
 
