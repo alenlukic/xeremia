@@ -14,7 +14,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useDraggable } from '@dnd-kit/core';
 import type { Track, SearchSuggestion } from '../types';
-import { formatFloat, formatBpm, displayGenre } from '../utils';
+import { formatFloat, formatBpm, formatDate, displayGenre } from '../utils';
 import type { DragPayload } from '../dnd';
 import { PlayButton } from './PlayButton';
 
@@ -22,7 +22,7 @@ const col = createColumnHelper<Track>();
 
 const FIXED_PX = 90;
 const FIXED_COUNT = 4;
-const FLEX_MINS = [280, 100, 100];
+const FLEX_MINS = [280, 100, 100, 110];
 const TOTAL_FLEX = FLEX_MINS.reduce((a, b) => a + b, 0);
 const TOTAL_FIXED = FIXED_COUNT * FIXED_PX;
 const DRAG_HANDLE_WIDTH = 24;
@@ -40,7 +40,7 @@ function computeColWidths(container: number): number[] {
 
 const COLUMN_IDS = [
   'camelot_code', 'key', 'bpm', 'energy',
-  'title', 'label', 'genre',
+  'title', 'label', 'genre', 'date_added',
 ];
 
 const dataColumns = [
@@ -84,6 +84,17 @@ const dataColumns = [
     minSize: 50,
     cell: (info) => displayGenre(info.getValue()),
   }),
+  col.accessor('date_added', {
+    header: 'Date Added',
+    size: FLEX_MINS[3],
+    minSize: 80,
+    cell: (info) => <span className="mono">{formatDate(info.getValue())}</span>,
+    sortingFn: (a, b) => {
+      const da = a.original.date_added ? new Date(a.original.date_added).getTime() : 0;
+      const db = b.original.date_added ? new Date(b.original.date_added).getTime() : 0;
+      return da - db;
+    },
+  }),
 ];
 
 const COL_CHOOSER_WIDTH = 28;
@@ -106,6 +117,8 @@ interface Props {
   configurableColumns?: ColumnConfig[];
   onToggleColumn?: (id: string) => void;
   starredTrackIds?: Set<number>;
+  sorting?: SortingState;
+  onSortingChange?: (sorting: SortingState) => void;
 }
 
 function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth, measureRef, virtualIndex, hasColChooser, isStarred }: {
@@ -187,7 +200,7 @@ function DraggableBrowseRow({ row, isSelected, onSelect, virtualTop, totalWidth,
   );
 }
 
-export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, configurableColumns, onToggleColumn, starredTrackIds }: Props) {
+export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTrack, selectTrack, hasMore, onLoadMore, error, columnVisibility, onAddToSet, configurableColumns, onToggleColumn, starredTrackIds, sorting: sortingProp, onSortingChange }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const topScrollRef = useRef<HTMLDivElement>(null);
@@ -199,7 +212,14 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([
     ...COLUMN_IDS.slice(0, 4), 'add_to_set', ...COLUMN_IDS.slice(4),
   ]);
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
+  const sorting = sortingProp ?? internalSorting;
+  const setSorting = useCallback((updater: SortingState | ((prev: SortingState) => SortingState)) => {
+    const next = typeof updater === 'function' ? updater(sorting) : updater;
+    if (onSortingChange) onSortingChange(next);
+    else setInternalSorting(next);
+  }, [sorting, onSortingChange]);
+  const isExternalSort = !!onSortingChange;
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
   const [colConfigOpen, setColConfigOpen] = useState(false);
   const colConfigRef = useRef<HTMLTableCellElement>(null);
@@ -295,16 +315,19 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
 
   const fullColumnOrder = columnOrder;
 
+  const sortedRowModel = useMemo(() => isExternalSort ? undefined : getSortedRowModel(), [isExternalSort]);
+
   const table = useReactTable({
     data: tracks,
     columns: allColumns,
     state: { columnSizing: effectiveSizing, columnOrder: fullColumnOrder, columnVisibility: columnVisibility ?? {}, sorting },
+    manualSorting: isExternalSort,
     columnResizeMode: 'onChange',
     onColumnSizingChange: handleColumnSizingChange,
     onColumnOrderChange: setColumnOrder,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    ...(sortedRowModel ? { getSortedRowModel: sortedRowModel } : {}),
   });
 
   const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH + (hasColChooser ? COL_CHOOSER_WIDTH : 0);

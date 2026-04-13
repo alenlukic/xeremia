@@ -10,17 +10,30 @@ let origCreateElement: typeof document.createElement;
 beforeEach(() => {
   mockPlay = vi.fn().mockResolvedValue(undefined);
   mockPause = vi.fn();
+
+  let srcValue = '';
+  let hasSrc = false;
+
   mockAudioElement = {
     play: mockPlay,
     pause: mockPause,
     volume: 0.8,
     currentTime: 0,
     duration: 0,
-    src: '',
     error: null,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
+    getAttribute: vi.fn((attr: string) => (attr === 'src' && hasSrc) ? srcValue : null),
+    removeAttribute: vi.fn((attr: string) => {
+      if (attr === 'src') { srcValue = ''; hasSrc = false; }
+    }),
   };
+
+  Object.defineProperty(mockAudioElement, 'src', {
+    get: () => srcValue,
+    set: (v: string) => { srcValue = v; hasSrc = true; },
+    configurable: true,
+  });
   origCreateElement = document.createElement.bind(document);
   vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
     if (tag === 'audio') return mockAudioElement as unknown as HTMLElement;
@@ -114,6 +127,29 @@ describe('AudioPlayerProvider', () => {
     });
     expect(screen.getByTestId('track-title').textContent).toBe('none');
     expect(screen.getByTestId('playing').textContent).toBe('false');
+  });
+
+  it('stop does not surface empty-src media error', async () => {
+    renderWithProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'));
+    });
+    expect(screen.getByTestId('playing').textContent).toBe('true');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('stop-btn'));
+    });
+
+    const errorHandler = (mockAudioElement.addEventListener as ReturnType<typeof vi.fn>)
+      .mock.calls.find(([event]: [string]) => event === 'error')?.[1] as (() => void) | undefined;
+
+    if (errorHandler) {
+      mockAudioElement.error = { message: 'MEDIA_ELEMENT_ERROR: Empty src attribute' };
+      await act(async () => { errorHandler(); });
+    }
+
+    expect(screen.getByTestId('error').textContent).toBe('none');
+    expect(screen.getByTestId('track-title').textContent).toBe('none');
   });
 
   it('sets volume', async () => {

@@ -4,6 +4,7 @@ import {
   formatBpm,
   formatScore,
   formatOverallScore,
+  formatDate,
   displayGenre,
   dragSensitivity,
   DRAG_SENSITIVITY_BASE,
@@ -146,6 +147,36 @@ describe('dragSensitivity', () => {
 
   it('clamps weights above 100 to the max-resistance value', () => {
     expect(dragSensitivity(150)).toBeCloseTo(sensAtOldMax, 10);
+  });
+});
+
+describe('formatDate', () => {
+  it('returns em-dash for null', () => {
+    expect(formatDate(null)).toBe('—');
+  });
+
+  it('returns em-dash for undefined', () => {
+    expect(formatDate(undefined)).toBe('—');
+  });
+
+  it('returns em-dash for empty string', () => {
+    expect(formatDate('')).toBe('—');
+  });
+
+  it('returns em-dash for invalid date', () => {
+    expect(formatDate('not-a-date')).toBe('—');
+  });
+
+  it('formats ISO date string to YYYY-MM-DD', () => {
+    expect(formatDate('2025-06-15T12:00:00')).toBe('2025-06-15');
+  });
+
+  it('formats date-only string with time component', () => {
+    expect(formatDate('2025-01-15T10:00:00')).toBe('2025-01-15');
+  });
+
+  it('zero-pads month and day', () => {
+    expect(formatDate('2025-03-05T10:00:00')).toBe('2025-03-05');
   });
 });
 

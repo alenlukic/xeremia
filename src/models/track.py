@@ -41,6 +41,8 @@ class Track(Base):
 
     comment = Column("comment", String(1024))
 
+    date_added = Column("date_added", String(64))
+
     def get_id_title_identifier(self):
         return "%d %s" % (self.id, self.title)
 

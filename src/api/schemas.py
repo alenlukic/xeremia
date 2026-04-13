@@ -13,6 +13,7 @@ class TrackResponse(BaseModel):
     genre: Optional[str] = None
     label: Optional[str] = None
     energy: Optional[int] = None
+    date_added: Optional[str] = None
 
 
 class SearchSuggestion(BaseModel):

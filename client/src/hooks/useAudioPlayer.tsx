@@ -114,6 +114,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const onDurationChange = () => setState(s => ({ ...s, duration: el.duration || 0 }));
     const onEnded = () => setState(s => ({ ...s, playing: false }));
     const onError = () => {
+      if (!el.getAttribute('src')) return;
       const msg = el.error?.message || 'Playback error';
       setState(s => ({ ...s, playing: false, loading: false, error: msg }));
     };
@@ -129,7 +130,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       el.removeEventListener('ended', onEnded);
       el.removeEventListener('error', onError);
       el.pause();
-      el.src = '';
+      el.removeAttribute('src');
     };
   }, []);
 
@@ -141,7 +142,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const url = `/api/tracks/${trackId}/audio`;
 
     el.pause();
-    el.src = '';
+    el.removeAttribute('src');
 
     setState(s => ({
       ...s,
@@ -247,7 +248,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const el = audioRef.current;
     if (el) {
       el.pause();
-      el.src = '';
+      el.removeAttribute('src');
     }
     setState(s => ({
       ...s,
