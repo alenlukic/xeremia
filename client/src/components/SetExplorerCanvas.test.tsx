@@ -863,6 +863,35 @@ describe('SetExplorerCanvas', () => {
     });
   });
 
+  describe('sibling-add modal copy', () => {
+    it('uses user-facing row language instead of Level/Column', async () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0, col_index: 0 })];
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+
+      const addBtns = screen.getAllByTestId('cell-add-btn');
+      await userEvent.click(addBtns[0]);
+
+      const modal = screen.getByTestId('sibling-add-modal');
+      const heading = modal.querySelector('h3')!;
+      expect(heading.textContent).toContain('Row');
+      expect(heading.textContent).not.toContain('Level');
+      expect(heading.textContent).not.toContain('Column');
+    });
+
+    it('displays 1-based row number (level 0 → Row 1)', async () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0, col_index: 1 })];
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+
+      const addBtns = screen.getAllByTestId('cell-add-btn');
+      await userEvent.click(addBtns[0]);
+
+      const modal = screen.getByTestId('sibling-add-modal');
+      const heading = modal.querySelector('h3')!;
+      expect(heading.textContent).toContain('Row 1');
+      expect(heading.textContent).not.toContain('Row 0');
+    });
+  });
+
   describe('tree creation: subtree_copy passes sourceNodeId', () => {
     it('passes selectedNodeId as sourceNodeId when mode is subtree_copy', async () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
