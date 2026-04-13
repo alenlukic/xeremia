@@ -1,0 +1,73 @@
+# Findings / Deferrals Registry Schema
+# Version: 1.0
+# Items answer: what is it | why not fixed now | when should it surface again | what resolves it
+
+item:
+  required:
+    - id        # DEF-YYYY-NNNN
+    - title
+    - kind
+    - status
+    - severity
+    - summary
+  optional:
+    - scope             # modules: [], paths: [], pipelines: []
+    - why_deferred
+    - follow_up         # recommended_pipeline, trigger, resolution_criteria: []
+    - origin            # type, run_id, agent, source_artifact
+    - evidence          # list of artifact refs
+    - impacts           # score_categories: [], decisions_affected: []
+    - history           # list of {run_id, at}
+  tracked_automatically:
+    - first_seen_at
+    - last_seen_at
+    - occurrences
+
+kinds:
+  - known_gap
+  - deferred_improvement
+  - accepted_risk
+  - follow_up_task
+  - repeated_regression
+  - architecture_debt
+  - process_gap
+  - score_anomaly
+
+statuses:
+  - open        # active, unresolved
+  - planned     # scheduled for an upcoming run
+  - blocked     # cannot resolve without external dependency
+  - accepted    # risk accepted, no action planned
+  - resolved    # confirmed fixed
+  - wontfix     # explicitly decided not to address
+
+severities:
+  - low
+  - medium
+  - high
+  - critical
+
+creation_paths:
+  agent:
+    - emit DEFERRED_ITEMS.json with deferred_items list during eval/review
+    - run: python3 .harness/control/bin/pipeline.py merge-findings --run-dir <run_dir>
+  human:
+    - tell agent to record; agent emits DEFERRED_ITEMS.json then merges
+    - or write directly to open-items.yaml
+
+dedupe_rules:
+  match_when: same kind AND title word overlap >= 60%
+  on_match: increment occurrences, update last_seen_at, append history entry
+  on_no_match: create new item, assign next DEF-YYYY-NNNN id
+
+event_log:
+  path: findings/events/YYYY-MM.jsonl
+  fields: [timestamp, action, item_id, run_id, title]
+  actions: [created, updated, resolved, accepted]
+
+consumption:
+  - planning: read open items for touched modules to calibrate scope/strictness
+  - broad_review: distinguish fresh regressions from known deferred issues
+  - eval: factor repeated occurrences or worsened known gaps into scoring
+  - maintenance: rank open items into prioritized backlog
+  - routing: high-severity items can trigger escalated review requirements

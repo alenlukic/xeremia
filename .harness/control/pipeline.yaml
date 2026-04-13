@@ -1,0 +1,166 @@
+version: 4
+
+repo:
+  type: python
+  default_branch: main
+
+execution:
+  mode: host
+  run_root: .harness/history/runs
+  use_git_root: true
+
+read_only_commands:
+  - "git status --short"
+  - "git diff --stat"
+  - "git diff"
+  - "git diff --name-only"
+  - "git ls-files"
+  - "pwd"
+  - "ls"
+  - "find"
+  - "cat"
+
+commands:
+  format:
+    - "ruff format src/"
+
+  lint:
+    - "ruff check src/"
+
+  test:
+    - "python -m pytest src/tests/ -v"
+
+  build:
+    - "python -m pytest src/tests/ -v && ruff check src/"
+
+  db:
+    - "true  # configure if needed for local state validation"
+
+stages:
+  delivery:
+    - coord_delivery_supervisor       # Coord Delivery Supervisor
+    - dev_delivery_coder              # Dev Delivery Coder
+    - test_delivery_reviewer          # Test Delivery Reviewer
+    - spec_diff_planner               # Spec Diff Planner
+    - test_delivery_qa                # Test Delivery QA
+    - test_delivery_broad_reviewer    # Test Delivery Broad Reviewer
+    - test_build_verifier             # Test Build Verifier
+    - meta_bad_state_monitor          # Meta Bad State Monitor
+    - coord_breaker_orchestrator      # Coord Breaker Orchestrator
+    - test_delivery_evaluator         # Test Delivery Evaluator
+    - test_regression_detector        # Test Regression Detector
+    - spec_ledger_curator             # Spec Ledger Curator
+
+  thought_partner:
+    - sme_design_thought_partner      # SME Design Thought Partner
+    - sme_product_thought_partner     # SME Product Thought Partner
+    - sme_technical_thought_partner   # SME Technical Thought Partner
+    - spec_contract_producer          # Spec Contract Producer
+
+  product_feedback:
+    - sme_design_red_team             # SME Design Red Team
+    - sme_design_perfectionist        # SME Design Perfectionist
+    - test_customer_persona           # Test Customer Persona
+    - sme_product_red_team            # SME Product Red Team
+    - sme_technical_red_team          # SME Technical Red Team
+    - meta_registry_steward           # Meta Registry Steward
+    - spec_contract_producer          # Spec Contract Producer
+    - spec_ledger_curator             # Spec Ledger Curator
+
+  design_verification:
+    - test_design_qa                  # Test Design QA
+
+  memory:
+    - meta_ledger_doc_steward         # Meta Ledger Doc Steward
+    - meta_memory_sync_steward        # Meta Memory Sync Steward
+
+gates:
+  require_tests: true
+  require_build: true
+  require_policy_report: true
+  require_eval_report: true
+  require_breaker_report: true
+  require_run_ledger: true
+  require_no_high_regressions: true
+  eval_threshold: 80
+  eval_conditional_threshold: 70
+  grade_gate: "B-"
+  max_review_rounds: 4
+  max_retry_rounds: 2
+  patch_only: true
+  stop_on_test_failure: false
+  customer_persona_requires_qa_pass: true
+  customer_persona_requires_build_pass: true
+  customer_persona_requires_no_breaker_blockers: true
+  breaker_findings_spawn_follow_on_run: true
+
+retry:
+  enabled: true
+  trigger_on:
+    - qa_fail
+    - design_qa_fail
+    - build_fail
+    - eval_below_threshold
+    - high_regression
+    - policy_violation
+    - bad_state_warning
+  strategy: targeted
+  require_second_pass_plan: true
+  note: breaker findings should normally create a new follow-on delivery run, not same-run patch churn
+
+artifacts:
+  required:
+    - "TASK.md"
+    - "PLAN.md"
+    - "RUN_META.json"
+    - "PATCH.diff"
+    - "TEST_REPORT.json"
+    - "POLICY_REPORT.json"
+    - "EVAL_REPORT.json"
+    - "RUN_LEDGER.md"
+  optional:
+    - "REVIEW_NOTES.md"
+    - "QA_REPORT.md"
+    - "BUILD_VERIFICATION.md"
+    - "BAD_STATE_REPORT.md"
+    - "BAD_STATE_REPORT.json"
+    - "BREAKER_SPEC_REPORT.md"
+    - "BREAKER_TEST_REPORT.md"
+    - "BREAKER_SECURITY_REPORT.md"
+    - "BREAKER_REPORT.md"
+    - "REGRESSION_REPORT.json"
+    - "IMPLEMENTATION_NOTES.md"
+    - "MAINTENANCE_REPORT.md"
+    - "SECOND_PASS_PLAN.md"
+    - "RETRY_TASK.md"
+    - "RETRY_LOG.jsonl"
+    - "DEFERRED_ITEMS.json"
+    - "ADVERSARIAL_TEST_PLAN.md"
+    - "DESIGN_PERFECTIONIST_REVIEW.md"
+    - "DESIGN_QA_REPORT.md"
+    - "CONTEXT_MANIFEST.json"
+    - "DESIGN_RECOMMENDATIONS.md"
+    - "CUSTOMER_PERSONA_FEEDBACK.md"
+    - "PRODUCT_SME_RECOMMENDATIONS.md"
+    - "TECHNICAL_SME_RECOMMENDATIONS.md"
+    - "RECOMMENDATION_REGISTRY_SYNC.md"
+    - "DEVELOPMENT_CONTRACT.md"
+    - "BREAKER_FOLLOW_ON_CONTRACT.md"
+    - "FOLLOW_ON_RUN.json"
+    - "MEMORY_SYNC_REPORT.md"
+    - "DESIGN_THOUGHT_PARTNER_RECOMMENDATIONS.md"
+    - "PRODUCT_THOUGHT_PARTNER_RECOMMENDATIONS.md"
+    - "TECHNICAL_THOUGHT_PARTNER_RECOMMENDATIONS.md"
+
+policies:
+  forbid_paths:
+    - ".env"
+    - ".git/"
+    - "secrets/"
+    - "config/"
+    - ".venv/"
+    - "data/"
+  max_files_changed: 50
+  max_diff_lines: 5000
+  forbid_full_file_rewrites: true
+  soft_context_token_cap: 24000
