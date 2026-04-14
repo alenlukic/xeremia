@@ -7,6 +7,7 @@ repo:
 execution:
   mode: host
   run_root: .harness/history/runs
+  archive_root: .harness/history/runs/archive
   use_git_root: true
 
 read_only_commands:
@@ -79,6 +80,16 @@ stages:
   memory:
     - meta_ledger_doc_steward         # Meta Ledger Doc Steward
     - meta_memory_sync_steward        # Meta Memory Sync Steward
+
+  ingest:
+    - meta_context_ingest_classifier  # Meta Context Ingest Classifier
+    - meta_context_router             # Meta Context Router
+    - spec_delta_producer             # Spec Delta Producer
+
+  housekeeping:
+    - meta_ledger_doc_steward         # Meta Ledger Doc Steward
+    - meta_memory_sync_steward        # Meta Memory Sync Steward
+    - meta_bad_state_monitor          # Meta Bad State Monitor
 
 gates:
   require_tests: true

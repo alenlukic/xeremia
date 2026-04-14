@@ -55,7 +55,7 @@ The description must clearly separate:
 
 2. Initialize output
 - default:
-  `.harness/pr_descriptions/${CURRENT_BRANCH}_PR_DESCRIPTION.md`
+  `.harness/history/pr_descriptions/${CURRENT_BRANCH}_PR_DESCRIPTION.md`
 
 3. Incorporate user notes
 - if `notes` were provided, use them as additional context throughout analysis
@@ -213,7 +213,7 @@ Before completion, verify:
 ## OUTPUT
 
 Produce:
-- `.harness/pr_descriptions/${CURRENT_BRANCH}_PR_DESCRIPTION.md` unless overridden
+- `.harness/history/pr_descriptions/${CURRENT_BRANCH}_PR_DESCRIPTION.md` unless overridden
 - concise completion summary including:
   - current branch
   - base branch

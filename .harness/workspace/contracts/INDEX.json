@@ -3,6 +3,46 @@
   "description": "Outstanding contract index for durable development contracts",
   "contracts": [
     {
+      "id": "2026-04-14-harness-migration-phase-1-additive-files",
+      "path": ".harness/workspace/contracts/2026-04-14/DEVELOPMENT_CONTRACT_1_harness-migration-additive-files.md",
+      "title": "Harness Migration Phase 1: Additive Files",
+      "status": "implemented",
+      "intent": "maintenance",
+      "driver": "infrastructure-driven",
+      "date": "2026-04-14",
+      "summary": "Copy 27 in-scope template-only files, append 21 missing .gitignore patterns, and defer MANIFEST.yaml to Phase 4. Additive only, no existing files modified."
+    },
+    {
+      "id": "2026-04-14-harness-migration-phase-2-wiring-indexes",
+      "path": ".harness/workspace/contracts/2026-04-14/DEVELOPMENT_CONTRACT_2_harness-migration-wiring-indexes.md",
+      "title": "Harness Migration Phase 2: Wiring and Indexes",
+      "status": "implemented",
+      "intent": "maintenance",
+      "driver": "infrastructure-driven",
+      "date": "2026-04-14",
+      "summary": "Wire 5 new agents and 6 new commands into AGENTS.md, agent/command INDEX.md files, and pipeline.yaml ingest/housekeeping stages."
+    },
+    {
+      "id": "2026-04-14-harness-migration-phase-3-agent-cherry-picks",
+      "path": ".harness/workspace/contracts/2026-04-14/DEVELOPMENT_CONTRACT_3_harness-migration-agent-cherry-picks.md",
+      "title": "Harness Migration Phase 3: Agent Spec Cherry-Picks",
+      "status": "implemented",
+      "intent": "maintenance",
+      "driver": "infrastructure-driven",
+      "date": "2026-04-14",
+      "summary": "Cherry-pick lane activation policy, NON-GOALS guardrails, and other template v7 agent-spec improvements while preserving dj-tools customizations."
+    },
+    {
+      "id": "2026-04-14-harness-migration-phase-4-schema-pipeline-reconciliation",
+      "path": ".harness/workspace/contracts/2026-04-14/DEVELOPMENT_CONTRACT_4_harness-migration-schema-pipeline-reconciliation.md",
+      "title": "Harness Migration Phase 4: Schema and Pipeline Reconciliation",
+      "status": "implemented",
+      "intent": "maintenance",
+      "driver": "infrastructure-driven",
+      "date": "2026-04-14",
+      "summary": "Migrate MANIFEST.yaml to template versioning schema, reconcile pipeline.py with template improvements, and optionally adopt active/archive run layout. Highest risk phase."
+    },
+    {
       "id": "2026-04-12-top-workspace-layout-and-table-polish",
       "path": ".harness/workspace/contracts/2026-04-12/DEVELOPMENT_CONTRACT_1.md",
       "title": "Top Workspace Layout And Table Polish",

@@ -46,10 +46,16 @@ Coordinate this workflow only:
 Keep working context narrow.
 Do not expand task scope without explicit justification.
 
+## NON-GOALS
+
+- Do not translate raw prose tasks into implementation plans yourself.
+- Do not begin planning/execution while any prose or non-contract task input remains unnormalized.
+- Do not treat a mixed bag of inputs as implementation-ready until the contract set is complete.
+
 ## DO
 
 1. Orchestration planning
-- the contract set has already been normalized before you are invoked — do not re-normalize or re-derive contracts
+- confirm the contract set is complete and normalized — if any prose task or ambiguous source remains in `INPUT_BUNDLE.md` without a corresponding contract, route it back to `Spec Contract Producer` before proceeding
 - analyze the contract set for inter-contract dependencies, ordering constraints, and parallelism opportunities
 - derive `TASK.md` and `PLAN.md` from the contract set — extract scope, requirements, acceptance criteria, and plan steps; do not independently distill requirements or invent plan structure beyond what the contracts specify
 - write `EXECUTION_DAG.md` (human-readable) and `EXECUTION_DAG.json` (machine-readable) identifying parallel waves — groups of nodes with no mutual data dependencies
@@ -78,6 +84,8 @@ Do not expand task scope without explicit justification.
 - use `Coord Breaker Orchestrator`
 - use `Test Delivery Evaluator`
 - use `Test Regression Detector`
+
+**PARALLEL EXECUTION HINT**: `test_build_verifier`, `test_delivery_evaluator`, and `test_regression_detector` are independent of each other and should be dispatched concurrently when the host supports parallel agent execution. `meta_bad_state_monitor` is also independent of these three stages. The breaker orchestrator is independent of the evaluator/regression/build group but must complete before breaker follow-on handling.
 
 7. Handle breaker findings as first-class work
 - if the breaker raises actionable `BLOCKER` or `IMPORTANT` findings:
@@ -140,6 +148,7 @@ Require the pipeline / specialized agents to maintain:
 
 Before declaring completion, verify:
 - planning was derived from a normalized contract set
+- the contract set was complete and normalized before implementation started
 - execution DAG was produced with parallel waves identified
 - scope remained narrow
 - review and QA were both invoked
@@ -155,6 +164,8 @@ Before declaring completion, verify:
 
 Return a final delivery summary with:
 - final verdict
+- contracts executed
+- execution DAG summary
 - changed files
 - tests run
 - eval score / threshold
@@ -176,4 +187,5 @@ Complete only if:
 - required artifacts were produced
 - final verdict is grounded in review + QA + verification evidence
 - breaker findings were elevated into first-class follow-on work by default
+- no planning or implementation began before the contract set and execution DAG existed
 - stop condition is explicit

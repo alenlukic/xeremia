@@ -24,8 +24,14 @@ Operator-facing command prompts and workflow entrypoints.
 | Technical red team | [run-sme-technical-red-team.md](run-sme-technical-red-team.md) |
 | Technical thought partner | [run-sme-technical-thought-partner.md](run-sme-technical-thought-partner.md) |
 | Change summarizer | [run-spec-change-summarizer.md](run-spec-change-summarizer.md) |
+| Context ingest | [run-context-ingest.md](run-context-ingest.md) |
 | Contract producer | [run-spec-contract-producer.md](run-spec-contract-producer.md) |
+| Ecosystem housekeeping | [run-ecosystem-housekeeping.md](run-ecosystem-housekeeping.md) |
+| Full doc/memory sync | [run-meta-doc-sync-all.md](run-meta-doc-sync-all.md) |
+| Harness engineer | [run-sme-harness-engineer.md](run-sme-harness-engineer.md) |
+| Harness migrator | [run-sme-harness-migrator.md](run-sme-harness-migrator.md) |
 | PR description | [run-spec-pr-description.md](run-spec-pr-description.md) |
+| Subagent spec advisor | [run-sme-subagent-spec-advisor.md](run-sme-subagent-spec-advisor.md) |
 | Customer persona | [run-test-customer-persona.md](run-test-customer-persona.md) |
 | Design QA | [run-test-design-qa.md](run-test-design-qa.md) |
 | Verification stack | [run-verification-stack.md](run-verification-stack.md) |

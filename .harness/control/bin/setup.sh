@@ -8,6 +8,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$REPO_ROOT"
 
+HELPERS="$(dirname "$0")/bootstrap-helpers.sh"
+if [[ -f "$HELPERS" ]]; then
+  source "$HELPERS"
+fi
+
 mkdir -p .cursor
 
 ln -sfn ../.harness/spec/agents .cursor/agents

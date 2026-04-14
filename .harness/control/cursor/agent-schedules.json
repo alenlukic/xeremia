@@ -1,0 +1,25 @@
+{
+  "schedules": [
+    {
+      "id": "a1b2c3d4-mem0-sync-4e5f-8a9b-harness000001",
+      "name": "Harness Memory Sync",
+      "enabled": true,
+      "cron": "0 2 * * *",
+      "targetType": "prompt",
+      "promptTemplate": "Execute the run-meta-memory-sync command per `.harness/spec/commands/run-meta-memory-sync.md` following the DEVDSL contract. Write output to `.harness/workspace/inbox/SCHEDULED_RESULTS.md`.",
+      "executionMode": "ide",
+      "outputConfig": {
+        "type": "none"
+      },
+      "constraints": {
+        "maxRuntime": 15,
+        "maxFilesChanged": 10
+      },
+      "metadata": {
+        "createdAt": "2026-04-13T17:09:06.000Z",
+        "updatedAt": "2026-04-13T17:09:06.000Z"
+      }
+    }
+  ],
+  "version": "1.0"
+}

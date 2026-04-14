@@ -30,6 +30,7 @@ Primary sources:
 - `.harness/workspace/product-feedback/CUSTOMER_PERSONA_SPEC.md`
 - `.harness/knowledge/docs/index.md`
 - `.harness/history/ledgers/DOC_SYNC_REPORT.md` when present
+- `.harness/knowledge/memory/MEMORY_SYNC_REPORT.md` when present (prior sync state)
 
 ## SCOPE
 
@@ -59,7 +60,7 @@ Do not:
 
 ## OUTPUT
 
-Write `MEMORY_SYNC_REPORT.md` using exactly this structure:
+Write `.harness/knowledge/memory/MEMORY_SYNC_REPORT.md` using exactly this structure:
 
 # Memory Sync Report
 

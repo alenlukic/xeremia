@@ -186,6 +186,7 @@ def create_run(task: str, mode: str, *, parent_run: str | None = None, source_ar
     write_json(run_dir / 'REGRESSION_REPORT.json', {'regressions_found': False, 'severity': 'UNKNOWN', 'areas': []})
     write_json(run_dir / 'RETRY_LOG.jsonl', [])
     write_json(run_dir / 'RUN_META.json', meta)
+    write_json(run_dir / 'STAGE_HISTORY.jsonl', [])
     write_text(run_dir / 'REVIEW_NOTES.md', '# Review Notes\n\n## Verdict\nCHANGES_REQUESTED\n')
     write_text(run_dir / 'QA_REPORT.md', '# QA Report\n\n## Verdict\nFAIL\n')
     write_text(run_dir / 'BUILD_VERIFICATION.md', '# Build Verification\n\n## Status\nPENDING\n')
@@ -197,6 +198,8 @@ def create_run(task: str, mode: str, *, parent_run: str | None = None, source_ar
     write_text(run_dir / 'BAD_STATE_REPORT.md', '# Bad State Report\n\n- pending\n')
     write_text(run_dir / 'RUN_LEDGER.md', ledger_template(task, mode))
     write_json(run_dir / 'CONTEXT_MANIFEST.json', {'estimated_tokens': 0, 'items': []})
+    write_json(run_dir / 'STAGE_RESULT.json', {'stage': 'initialized', 'status': 'ok', 'summary': 'Run initialized', 'recorded_at': now_iso()})
+    write_text(run_dir / 'RUN_SUMMARY.md', '# Run Summary\n\n- pending\n')
     if mode == 'product_feedback':
         for name in [
             'DESIGN_RECOMMENDATIONS.md', 'CUSTOMER_PERSONA_FEEDBACK.md', 'PRODUCT_SME_RECOMMENDATIONS.md',
@@ -619,9 +622,31 @@ def mark_recommendation(rec_id: str, status: str, note: str | None) -> dict[str,
     return found
 
 
+def record_stage_result(run_dir: pathlib.Path, stage: str, agent: str, status: str, summary: str, *, issues: list[str] | None = None, artifacts: list[str] | None = None) -> dict[str, Any]:
+    result = {
+        'stage': stage,
+        'agent': agent,
+        'status': status,
+        'summary': summary,
+        'issues': issues or [],
+        'artifacts_written': artifacts or [],
+        'recorded_at': now_iso(),
+    }
+    history = read_json(run_dir / 'STAGE_HISTORY.jsonl', [])
+    history.append(result)
+    write_json(run_dir / 'STAGE_HISTORY.jsonl', history)
+    write_json(run_dir / 'STAGE_RESULT.json', result)
+    meta = read_json(run_dir / 'RUN_META.json', {})
+    meta['current_stage'] = stage
+    meta['updated_at'] = now_iso()
+    write_json(run_dir / 'RUN_META.json', meta)
+    return result
+
+
 def record_follow_on(from_run: pathlib.Path, to_run: pathlib.Path, reason: str) -> dict[str, Any]:
     meta = read_json(from_run / 'RUN_META.json', {})
     meta.setdefault('follow_ons', []).append({'to_run': to_run.name, 'reason': reason, 'recorded_at': now_iso()})
+    meta.setdefault('children', []).append(to_run.name)
     write_json(from_run / 'RUN_META.json', meta)
     return meta
 
@@ -737,7 +762,15 @@ def bad_state_scan(active: bool = False) -> dict[str, Any]:
     if RUNS_DIR.exists():
         for run_dir in sorted(RUNS_DIR.iterdir()):
             if run_dir.is_dir():
-                reports.append({'run': run_dir.name, **bad_state_check(run_dir, config)})
+                try:
+                    reports.append({'run': run_dir.name, **bad_state_check(run_dir, config)})
+                except (json.JSONDecodeError, ValueError, KeyError, OSError) as exc:
+                    reports.append({
+                        'run': run_dir.name,
+                        'status': 'ERROR',
+                        'signals': [f'malformed_artifact:{type(exc).__name__}:{exc}'],
+                        'checked_at': now_iso(),
+                    })
     return {'active': active, 'reports': reports}
 
 
@@ -785,7 +818,8 @@ def main() -> int:
     sub.add_parser('registry-render')
     sub.add_parser('recommendation-summary')
     p = sub.add_parser('mark-recommendation'); p.add_argument('--id', required=True); p.add_argument('--status', required=True); p.add_argument('--note')
-    p = sub.add_parser('record-follow-on'); p.add_argument('--from-run', required=True); p.add_argument('--to-run', required=True); p.add_argument('--reason', required=True)
+    p = sub.add_parser('record-follow-on'); p.add_argument('--from-run'); p.add_argument('--to-run'); p.add_argument('--reason', required=True); p.add_argument('--run-dir'); p.add_argument('--new-run-dir'); p.add_argument('--source-artifact')
+    p = sub.add_parser('record-stage'); p.add_argument('--run-dir', required=True); p.add_argument('--stage', required=True); p.add_argument('--agent', required=True); p.add_argument('--status', required=True); p.add_argument('--summary', required=True)
     p = sub.add_parser('contract-add'); p.add_argument('--name', required=True); p.add_argument('--path', required=True); p.add_argument('--description', required=True); p.add_argument('--status', default='outstanding')
     p = sub.add_parser('contract-update'); p.add_argument('--name', required=True); p.add_argument('--status', required=True, choices=['outstanding', 'in_progress', 'implemented', 'superseded', 'cancelled'])
     sub.add_parser('rebuild-contract-index')
@@ -855,7 +889,16 @@ def main() -> int:
     if args.command == 'publish-ledger':
         print(json.dumps(publish_ledger(run_dir), indent=2)); return 0
     if args.command == 'record-follow-on':
-        print(json.dumps(record_follow_on(resolve_run_dir(args.from_run), resolve_run_dir(args.to_run), args.reason), indent=2)); return 0
+        from_run = args.from_run or getattr(args, 'run_dir', None)
+        to_run = args.to_run or getattr(args, 'new_run_dir', None)
+        if not from_run or not to_run:
+            print('record-follow-on requires --from-run/--to-run or --run-dir/--new-run-dir', file=sys.stderr); return 1
+        print(json.dumps(record_follow_on(resolve_run_dir(from_run), resolve_run_dir(to_run), args.reason), indent=2)); return 0
+    if args.command == 'record-stage':
+        stage_run_dir = resolve_run_dir(args.run_dir)
+        if not stage_run_dir.exists():
+            print(f'Run directory does not exist: {args.run_dir}', file=sys.stderr); return 1
+        print(json.dumps(record_stage_result(stage_run_dir, args.stage, args.agent, args.status, args.summary), indent=2)); return 0
     if args.command == 'contract-add':
         print(json.dumps(contract_index_add(args.name, args.path, args.description, args.status), indent=2)); return 0
     if args.command == 'contract-update':

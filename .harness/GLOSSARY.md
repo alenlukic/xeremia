@@ -38,7 +38,7 @@ Canonical reference: `.harness/knowledge/memory/README.md:1`
 
 ## ledger
 
-A compact, durable record of a completed run's most important decisions, learnings, and outcomes.
+A compact, durable record of a completed run’s most important decisions, learnings, and outcomes.
 
 Canonical reference: `.harness/history/ledgers/README.md:1`
 
@@ -50,7 +50,7 @@ Canonical reference: `.harness/spec/agents/INDEX.md:1`
 
 ## work index
 
-The categorized registry of outstanding work and follow-on items.
+The categorized registry of outstanding work and follow-on items. The machine field is `type`, but the human-facing concept is a categorized work queue.
 
 Canonical reference: `.harness/workspace/work/README.md:1`
 

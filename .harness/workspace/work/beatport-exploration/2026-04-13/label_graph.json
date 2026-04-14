@@ -1,0 +1,438 @@
+{
+  "schema_version": 1,
+  "task": "Beatport dark low-BPM exploration",
+  "created_at_utc": "2026-04-13T20:59:57Z",
+  "deadline_utc": "2026-04-13T21:59:57Z",
+  "focus": {
+    "bpm_priority": [95, 108],
+    "seed_labels": [
+      "JOOF Aura",
+      "Bedrock Records",
+      "Bonzai Progressive",
+      "Balkan Connection",
+      "Microcosmos Records"
+    ]
+  },
+  "visited": {
+    "labels": [
+      "JOOF Aura",
+      "Verche artist page",
+      "Stripped Recordings",
+      "Particles",
+      "Visceral",
+      "Bedrock Records",
+      "Bonzai Progressive",
+      "Microcosmos Records",
+      "Balkan Connection",
+      "Balkan Connection South America",
+      "Minddigger artist page",
+      "AstroPilot Music",
+      "Tech Units",
+      "Six Dead Bulgarians artist page",
+      "Invisible Inks artist page",
+      "Mystic Sound Records",
+      "Tibetania Records",
+      "Art Vault",
+      "LW Recordings",
+      "Unfinished Monkey Records"
+    ],
+    "artists": [
+      "Verche",
+      "Minddigger",
+      "Six Dead Bulgarians",
+      "Invisible Inks",
+      "Dreaming Cooper",
+      "Akariel",
+      "Chronos",
+      "Vantitan",
+      "Dream Essence"
+    ],
+    "tracks": [
+      "Amaryllis for V (Reprise For V)",
+      "There's a Storm Coming",
+      "Fantasia",
+      "Her Eyes",
+      "Ephemeral",
+      "Meet You At Terminal 4",
+      "Kinetic Flow",
+      "Dischord",
+      "Thauma",
+      "Night Vision",
+      "Soldier's Daughter",
+      "Dream Engine",
+      "Blurry Horizon",
+      "Nuage d'Encens",
+      "Secret Space",
+      "The Earth Below",
+      "Secret of the Logos",
+      "Midnight",
+      "Wide Spectrum"
+    ],
+    "pages": [
+      "https://www.beatport.com/label/joof-aura/53901/tracks?page=1&per_page=150",
+      "https://www.beatport.com/artist/verche/131372",
+      "https://www.beatport.com/label/stripped-recordings/1197/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/particles/8494/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/visceral/30985/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/bedrock-records/63/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/bonzai-progressive/81/tracks?page=1&per_page=150",
+      "https://www.beatport.com/track/ephemeral/17111519",
+      "https://www.beatport.com/label/microcosmos-records/18830/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/balkan-connection/3561/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/balkan-connection-south-america/12679/tracks?page=1&per_page=150",
+      "https://www.beatport.com/track/night-vision/24279703",
+      "https://www.beatport.com/artist/minddigger/761943",
+      "https://www.beatport.com/label/astropilot-music/59182/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/tech-units/76472/tracks?page=1&per_page=150",
+      "https://www.beatport.com/track/soldiers-daughter/23228840",
+      "https://www.beatport.com/search?q=Six%20Dead%20Bulgarians",
+      "https://www.beatport.com/search?q=Invisible%20Inks",
+      "https://www.beatport.com/artist/six-dead-bulgarians/958167",
+      "https://www.beatport.com/artist/invisible-inks/562143",
+      "https://www.beatport.com/label/mystic-sound-records/40468/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/tibetania-records/91479/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/art-vault/67840/tracks?page=1&per_page=150",
+      "https://www.beatport.com/track/dream-engine/23247373",
+      "https://www.beatport.com/track/nuage-dencens/22458330",
+      "https://www.beatport.com/label/lw-recordings/7839/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/unfinished-monkey-records/93460/tracks?page=1&per_page=150",
+      "https://www.beatport.com/track/secret-of-the-logos/28262386",
+      "https://www.beatport.com/track/midnight/17004854",
+      "https://www.beatport.com/search?q=Dreaming%20Cooper",
+      "https://www.beatport.com/search?q=Chronos",
+      "https://www.beatport.com/search?q=Akariel"
+    ]
+  },
+  "labels": {
+    "JOOF Aura": {
+      "beatport_id": 53901,
+      "source": "seed_label",
+      "notes": [
+        "Strong stylistic fit overall, but only one obvious 95-108 BPM candidate on the first 150-track page."
+      ]
+    },
+    "Stripped Recordings": {
+      "beatport_id": 1197,
+      "source": "neighbor_from_artist_overlap"
+    },
+    "Particles": {
+      "beatport_id": 8494,
+      "source": "neighbor_from_artist_overlap"
+    },
+    "Visceral": {
+      "beatport_id": 30985,
+      "source": "neighbor_from_artist_overlap"
+    },
+    "Mioli Music": {
+      "beatport_id": 16676,
+      "source": "neighbor_from_artist_overlap"
+    },
+    "System Recordings": {
+      "beatport_id": 482,
+      "source": "neighbor_from_artist_overlap"
+    },
+    "Bedrock Records": {
+      "beatport_id": 63,
+      "source": "seed_label",
+      "notes": [
+        "Good aesthetic reference point, but no usable 95-108 BPM tracks surfaced on the first 150-track page."
+      ]
+    },
+    "Bonzai Progressive": {
+      "beatport_id": 81,
+      "source": "seed_label",
+      "notes": [
+        "Useful taste anchor, but no usable 95-108 BPM tracks surfaced on the first 150-track page."
+      ]
+    },
+    "Microcosmos Records": {
+      "beatport_id": 18830,
+      "source": "seed_label",
+      "notes": [
+        "Productive in the 95-108 BPM band, but requires curation because the catalog ranges from shadowy psychill to brighter cosmic material."
+      ]
+    },
+    "Balkan Connection": {
+      "beatport_id": 3561,
+      "source": "seed_label",
+      "notes": [
+        "No usable 95-108 BPM tracks surfaced on the first 150-track page."
+      ]
+    },
+    "Balkan Connection South America": {
+      "beatport_id": 12679,
+      "source": "neighbor_from_search",
+      "notes": [
+        "No usable 95-108 BPM tracks surfaced on the first 150-track page."
+      ]
+    },
+    "AstroPilot Music": {
+      "beatport_id": 59182,
+      "source": "neighbor_from_artist_overlap",
+      "notes": [
+        "Strong low-BPM atmospheric output, but most of the page leans ambient rather than underworld-club seductive."
+      ]
+    },
+    "Tech Units": {
+      "beatport_id": 76472,
+      "source": "neighbor_from_artist_overlap"
+    },
+    "Art Vault": {
+      "beatport_id": 67840,
+      "source": "neighbor_from_artist_overlap",
+      "notes": [
+        "No usable 95-108 BPM tracks surfaced on the first 150-track page."
+      ]
+    },
+    "LW Recordings": {
+      "beatport_id": 7839,
+      "source": "neighbor_from_artist_overlap",
+      "notes": [
+        "First 150-track page only surfaced two in-range cuts and neither looked like a strong luxurious-shadowy fit; low priority branch."
+      ]
+    },
+    "Mudra Music": {
+      "beatport_id": 54081,
+      "source": "neighbor_from_artist_overlap"
+    },
+    "Mystic Sound Records": {
+      "beatport_id": 40468,
+      "source": "neighbor_from_artist_overlap",
+      "notes": [
+        "Strong third-pass branch with a dense 95-108 BPM pocket and several darker minor-key electronica cuts."
+      ]
+    },
+    "trndmsk": {
+      "beatport_id": 44699,
+      "source": "neighbor_from_artist_overlap"
+    },
+    "Tibetania Records": {
+      "beatport_id": 91479,
+      "source": "neighbor_from_artist_overlap",
+      "notes": [
+        "Does produce low-BPM material, but the overall tone leans more organic/ritual/uplifting than shadowy-seductive."
+      ]
+    },
+    "Unfinished Monkey Records": {
+      "beatport_id": 93460,
+      "source": "neighbor_from_artist_overlap",
+      "notes": [
+        "Selective yes: a real dark low-BPM neighbor, but noisier than Mystic with significant bass-house, dubstep, and breakbeat spillover on the first 150-track page."
+      ]
+    }
+  },
+  "edges": [
+    {
+      "from": "JOOF Aura",
+      "to": "Stripped Recordings",
+      "weight": 1,
+      "shared_artists": ["Verche"]
+    },
+    {
+      "from": "JOOF Aura",
+      "to": "Particles",
+      "weight": 1,
+      "shared_artists": ["Verche"]
+    },
+    {
+      "from": "JOOF Aura",
+      "to": "Visceral",
+      "weight": 1,
+      "shared_artists": ["Verche"]
+    },
+    {
+      "from": "JOOF Aura",
+      "to": "Mioli Music",
+      "weight": 1,
+      "shared_artists": ["Verche"]
+    },
+    {
+      "from": "JOOF Aura",
+      "to": "System Recordings",
+      "weight": 1,
+      "shared_artists": ["Verche"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "AstroPilot Music",
+      "weight": 1,
+      "shared_artists": ["Minddigger"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "Tech Units",
+      "weight": 1,
+      "shared_artists": ["Minddigger"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "Art Vault",
+      "weight": 1,
+      "shared_artists": ["Invisible Inks"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "LW Recordings",
+      "weight": 1,
+      "shared_artists": ["Invisible Inks"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "Mudra Music",
+      "weight": 1,
+      "shared_artists": ["Invisible Inks"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "Mystic Sound Records",
+      "weight": 1,
+      "shared_artists": ["Invisible Inks"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "trndmsk",
+      "weight": 1,
+      "shared_artists": ["Six Dead Bulgarians"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "Tibetania Records",
+      "weight": 1,
+      "shared_artists": ["Six Dead Bulgarians"]
+    },
+    {
+      "from": "Microcosmos Records",
+      "to": "Unfinished Monkey Records",
+      "weight": 1,
+      "shared_artists": ["Six Dead Bulgarians"]
+    }
+  ],
+  "candidate_tracks": [
+    {
+      "title": "Kinetic Flow",
+      "artist": "Xspance, Noom (UK)",
+      "label": "Stripped Recordings",
+      "bpm": 105,
+      "key": "C Minor",
+      "status": "added_to_cart",
+      "reason": "Low-BPM progressive house with minor-key pull and a restrained, sleek profile."
+    },
+    {
+      "title": "Dischord",
+      "artist": "Dark Strands",
+      "label": "Stripped Recordings",
+      "bpm": 105,
+      "key": "C Minor",
+      "status": "added_to_cart",
+      "reason": "Downtempo but still dark and controlled; strongest direct fit from the Stripped low-BPM pocket."
+    },
+    {
+      "title": "Thauma",
+      "artist": "Davide Ferrario",
+      "label": "Particles",
+      "bpm": 96,
+      "key": "C Minor",
+      "status": "added_to_cart",
+      "reason": "Minor-key, slow, atmospheric electronica that stays on the shadowy side."
+    },
+    {
+      "title": "Night Vision",
+      "artist": "Invisible Inks, Minddigger",
+      "label": "Microcosmos Records",
+      "bpm": 103,
+      "key": "Gb Minor",
+      "status": "added_to_cart",
+      "reason": "Psychill/electronica crossover with the strongest dark-space mood among the Microcosmos candidates."
+    },
+    {
+      "title": "Soldier's Daughter",
+      "artist": "Six Dead Bulgarians",
+      "label": "Microcosmos Records",
+      "bpm": 96,
+      "key": "A Minor",
+      "status": "added_to_cart",
+      "reason": "Ritualistic downtempo/electronica character and minor-key pacing fit the brief better than the brighter Microcosmos cuts."
+    },
+    {
+      "title": "Dream Engine",
+      "artist": "Emog",
+      "label": "Mystic Sound Records",
+      "bpm": 100,
+      "key": "Gb Minor",
+      "status": "added_to_cart",
+      "reason": "External references described the release as melancholic, cinematic, and sensual psydub; strong dark-refined fit."
+    },
+    {
+      "title": "Blurry Horizon",
+      "artist": "Strange Substance",
+      "label": "Mystic Sound Records",
+      "bpm": 103,
+      "key": "Eb Minor",
+      "status": "added_to_cart",
+      "reason": "Minor-key slow-burn electronica/psydub lane with the right shadowy weight for this brief."
+    },
+    {
+      "title": "Nuage d'Encens",
+      "artist": "Akariel",
+      "label": "Mystic Sound Records",
+      "bpm": 96,
+      "key": "C Minor",
+      "status": "excluded_previously_purchased",
+      "reason": "Beatport raised a previously purchased warning; excluded."
+    },
+    {
+      "title": "Secret Space",
+      "artist": "Perpetual Loop",
+      "label": "Mystic Sound Records",
+      "bpm": 95,
+      "key": "E Minor",
+      "status": "excluded_previously_purchased",
+      "reason": "Beatport raised a previously purchased warning; excluded."
+    },
+    {
+      "title": "Secret of the Logos",
+      "artist": "Dream Essence",
+      "label": "Unfinished Monkey Records",
+      "bpm": 107,
+      "key": "B Minor",
+      "status": "added_to_cart",
+      "reason": "Strongest downtempo-leaning low-BPM cut on the UMR page; dark enough to justify keeping this neighbor active."
+    },
+    {
+      "title": "Midnight",
+      "artist": "Vantitan",
+      "label": "Unfinished Monkey Records",
+      "bpm": 98,
+      "key": "E Minor",
+      "status": "added_to_cart",
+      "reason": "Shadowy minor-key cut from the darker tribal-bass side of UMR; one of the few recommendation-resistant fits on that branch."
+    },
+    {
+      "title": "Wide Spectrum",
+      "artist": "Dreaming Cooper",
+      "label": "Mystic Sound Records",
+      "bpm": 95,
+      "key": "C# Minor",
+      "status": "added_to_cart",
+      "reason": "Restrained, cinematic Mystic cut with a low-BPM minor-key profile that matches the sleek underworld brief."
+    }
+  ],
+  "notes": [
+    "JOOF Aura yielded 5 stylistically strong cart adds in the 115-120 BPM zone from the prior pass.",
+    "This pass is prioritizing lower BPM discoveries first, so neighboring labels are now higher priority than deeper JOOF Aura mining.",
+    "Fresh snapshot confirmation showed the following low-BPM additions in cart: Kinetic Flow, Dischord, Thauma, Night Vision, Soldier's Daughter.",
+    "Beatport's 'People Also Bought' / 'Recommendations' on Night Vision drifted into broad electronica and was less useful than artist-overlap graph expansion.",
+    "Cart count reached 15 by the end of this pass.",
+    "Third pass extended beyond the initial one-hour target and treated that window as a floor rather than a stop.",
+    "People Also Bought / Recommendations on Soldier's Daughter also drifted toward generic electronica, reinforcing that artist-overlap graphing is the stronger discovery tactic here.",
+    "Third-pass clean adds from Mystic Sound Records: Dream Engine, Blurry Horizon.",
+    "Third-pass Beatport duplicate protection excluded Nuage d'Encens and Secret Space as previously purchased.",
+    "Cart count reached 17 during the third pass.",
+    "Clock-time continuation restarted at 2026-04-13T22:04:41Z and is being treated as a true wall-clock floor for active exploration.",
+    "Unfinished Monkey Records produced two strong adds (Secret of the Logos, Midnight) and should remain an active but selective neighbor.",
+    "LW Recordings appears to be a weak overlap branch for this brief and should stay deprioritized.",
+    "People Also Bought on Midnight drifted into bass-heavy UK-bass / dubstep territory and was materially less useful than artist-led or label-graph exploration.",
+    "Dreaming Cooper inside Mystic Sound Records surfaced Wide Spectrum as another strong fit.",
+    "Cart count reached 20 during the clock-time continuation."
+  ]
+}
