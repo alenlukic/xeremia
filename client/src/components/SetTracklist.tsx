@@ -63,11 +63,21 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
 }) {
   const title = cleanTitle(entry.track, entry.track_id);
   const payload: DragPayload = { trackId: entry.track_id, title, source: 'tracklist' };
-  const { listeners, setNodeRef, isDragging } = useDraggable({
+  const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `tracklist-track-${entry.track_id}`,
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
   });
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `drop-tracklist-row-${index}`,
+    data: { index, trackId: entry.track_id },
+  });
+
+  const mergedRef = useCallback((node: HTMLTableRowElement | null) => {
+    setDragRef(node);
+    setDropRef(node);
+  }, [setDragRef, setDropRef]);
 
   const rowListeners = useMemo(() => {
     if (!listeners) return {};
@@ -76,16 +86,22 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
       ...rest,
       onPointerDown: (e: React.PointerEvent) => {
         if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        e.stopPropagation();
         (onPointerDown as (e: React.PointerEvent) => void)?.(e);
       },
     };
   }, [listeners]);
 
+  const className = [
+    isDragging && 'row-dragging',
+    isOver && !isDragging && 'row-drop-target',
+  ].filter(Boolean).join(' ') || undefined;
+
   return (
     <tr
-      ref={setNodeRef}
+      ref={mergedRef}
       style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
-      className={isDragging ? 'row-dragging' : undefined}
+      className={className}
       {...rowListeners}
     >
       <td className="set-ws-cell-star">

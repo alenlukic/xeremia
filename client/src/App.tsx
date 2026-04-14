@@ -9,6 +9,7 @@ import { MatchDetail } from './components/MatchDetail';
 import { WeightControls } from './components/WeightControls';
 import { AdminDashboard } from './components/AdminDashboard';
 import { SetBuilder } from './components/SetBuilder';
+import { SetWorkspacePanel } from './components/SetWorkspacePanel';
 import { SetExplorerCanvas } from './components/SetExplorerCanvas';
 import { DockBar, type PanelKey } from './components/DockBar';
 import { PlayerBar } from './components/PlayerBar';
@@ -29,6 +30,7 @@ const SNAP_MODIFIERS = [snapCenterToCursor];
 const COL_VIS_STORAGE_KEY = 'dj-tools-browse-col-visibility';
 const PANEL_SPLIT_PREFIX = 'dj-tools-panel-split-';
 const POOL_EXPANDED_KEY = 'dj-tools-pool-expanded';
+const EXPLORER_SET_ACCORDION_KEY = 'dj-tools-explorer-set-open';
 const DEFAULT_PANEL_HEIGHT = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.51) : 350;
 
 const BROWSE_CONFIGURABLE_COLUMNS = [
@@ -48,6 +50,18 @@ const dndCollisionDetection: CollisionDetection = (args) => {
     if (hasCell) {
       const filtered = pointer.filter(c => String(c.id).startsWith('drop-explorer-cell-'));
       if (filtered.length > 0) return filtered;
+    }
+    const activeData = args.active.data.current as DragPayload | undefined;
+    if (activeData?.source === 'tracklist') {
+      const rows = pointer.filter(c => String(c.id).startsWith('drop-tracklist-row-'));
+      if (rows.length > 0) return rows;
+      // Pointer is between rows (e.g. dragging upward) — use rect intersection
+      // to find the nearest row instead of letting the parent container highlight.
+      const rect = rectIntersection(args);
+      const rectRows = rect.filter(c => String(c.id).startsWith('drop-tracklist-row-'));
+      if (rectRows.length > 0) return rectRows;
+      // Outside tracklist entirely — let non-container targets through
+      return pointer.filter(c => String(c.id) !== 'drop-tracklist');
     }
     return pointer;
   }
@@ -92,6 +106,14 @@ function loadPoolExpanded(): boolean {
   }
 }
 
+function loadExplorerSetOpen(): boolean {
+  try {
+    return localStorage.getItem(EXPLORER_SET_ACCORDION_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const { allTracks, traitMap, loading: collectionLoading, tracksError, traitsError } = useCollectionCache();
 
@@ -106,9 +128,9 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showWeights, setShowWeights] = useState(false);
   const [poolExpanded, setPoolExpanded] = useState(loadPoolExpanded);
+  const [explorerSetOpen, setExplorerSetOpen] = useState(loadExplorerSetOpen);
   const [dragItem, setDragItem] = useState<DragPayload | null>(null);
   const [dndWarning, setDndWarning] = useState<string | null>(null);
-  const [dndWarningNodeId, setDndWarningNodeId] = useState<string | null>(null);
 
   const browseScrollRef = useRef<HTMLDivElement | null>(null);
   const browseContextRef = useRef<{ scrollTop: number; targetFilterKey: string } | null>(null);
@@ -131,6 +153,14 @@ export default function App() {
   const handlePoolExpandedChange = useCallback((expanded: boolean) => {
     setPoolExpanded(expanded);
     try { localStorage.setItem(POOL_EXPANDED_KEY, String(expanded)); } catch {}
+  }, []);
+
+  const handleExplorerSetToggle = useCallback(() => {
+    setExplorerSetOpen(prev => {
+      const next = !prev;
+      try { localStorage.setItem(EXPLORER_SET_ACCORDION_KEY, String(next)); } catch { /* storage unavailable */ }
+      return next;
+    });
   }, []);
 
   const {
@@ -243,6 +273,20 @@ export default function App() {
     selectTree,
     createTree,
   } = useSetBuilder();
+
+  const showExplorerSetTab = activePanel === 'explorer' && activeSet !== null;
+  const showExplorerTopWorkspace = showExplorerSetTab && explorerSetOpen;
+
+  const hadActiveSetRef = useRef(false);
+  useEffect(() => {
+    if (activeSet) {
+      hadActiveSetRef.current = true;
+    } else if (hadActiveSetRef.current && explorerSetOpen) {
+      hadActiveSetRef.current = false;
+      setExplorerSetOpen(false);
+      try { localStorage.setItem(EXPLORER_SET_ACCORDION_KEY, 'false'); } catch { /* storage unavailable */ }
+    }
+  }, [activeSet, explorerSetOpen]);
 
   const starredTrackIds = useMemo(() => {
     if (!activeSet) return new Set<number>();
@@ -525,6 +569,21 @@ export default function App() {
     const targetId = String(over.id);
     const sb = setBuilderRef.current;
 
+    if (payload.source === 'tracklist' && targetId.startsWith('drop-tracklist-row-')) {
+      const newPosition = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
+      if (!isNaN(newPosition) && sb.activeSet) {
+        const currentIndex = sb.activeSet.tracklist.findIndex(e => e.track_id === payload.trackId);
+        if (currentIndex !== -1 && currentIndex !== newPosition) {
+          reorderTracklist(payload.trackId, newPosition);
+        }
+      }
+      return;
+    }
+
+    if (payload.source === 'tracklist' && targetId === 'drop-tracklist') {
+      return;
+    }
+
     if (targetId === 'dock-matches') {
       const track = allTracks.find(t => t.id === payload.trackId);
       if (track) {
@@ -583,15 +642,13 @@ export default function App() {
           : sb.activeSet.explorer_nodes;
         const occupant = treeNodes.find(n => n.level === level && n.col_index === colIndex);
         if (occupant) {
-          setDndWarning('Cell is already occupied');
-          setDndWarningNodeId(occupant.node_id);
-          setTimeout(() => { setDndWarning(null); setDndWarningNodeId(null); }, 2000);
+          sb.addExplorerNode(payload.trackId, occupant.node_id, level + 1);
         } else {
           sb.addExplorerNode(payload.trackId, undefined, level, colIndex);
         }
       }
     }
-  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, poolExpanded, handlePoolExpandedChange]);
+  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, poolExpanded, handlePoolExpandedChange, reorderTracklist]);
 
   return (
     <AudioPlayerProvider>
@@ -600,7 +657,7 @@ export default function App() {
         {/* ─── Top Anchor Zone ─── */}
         <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: '28vh' }}>
           {/* ─── Unified search + filter row ─── */}
-          <div className="controls-strip">
+          <div className="controls-strip" style={showExplorerTopWorkspace ? { display: 'none' } : undefined}>
             <SearchPanel
               selectedTrack={selectedTrack}
               selectTrack={handleSelectTrack}
@@ -619,6 +676,24 @@ export default function App() {
               setBpmMax={setBpmMax}
               onClearFilters={handleClearFilters}
             />
+            <div className="controls-strip-actions">
+              <button
+                className={`search-weights-btn${showWeights ? ' search-weights-btn--active' : ''}`}
+                onClick={() => setShowWeights(prev => !prev)}
+                title="Weights"
+                aria-label="Toggle weights"
+              >
+                ⚖
+              </button>
+              <button
+                className={`dock-admin-btn${showAdmin ? ' dock-admin-btn--active' : ''}`}
+                onClick={() => setShowAdmin(prev => !prev)}
+                title="Admin Dashboard"
+                aria-label="Admin Dashboard"
+              >
+                ⚙
+              </button>
+            </div>
           </div>
 
           {traitsError && (
@@ -627,42 +702,62 @@ export default function App() {
             </p>
           )}
 
-          <div className="gutter-actions">
-            <button
-              className={`search-weights-btn${showWeights ? ' search-weights-btn--active' : ''}`}
-              onClick={() => setShowWeights(prev => !prev)}
-              title="Weights"
-              aria-label="Toggle weights"
-            >
-              ⚖
-            </button>
-            <button
-              className={`dock-admin-btn${showAdmin ? ' dock-admin-btn--active' : ''}`}
-              onClick={() => setShowAdmin(prev => !prev)}
-              title="Admin Dashboard"
-              aria-label="Admin Dashboard"
-            >
-              ⚙
-            </button>
-          </div>
+          <div className="browse-zone-body">
+            <div className={`table-panel${showExplorerTopWorkspace ? ' table-panel--offscreen' : showExplorerSetTab ? ' table-panel--tab-adjacent' : ''}`}>
+              <TrackTable
+                tracks={visibleTracks}
+                loading={collectionLoading}
+                selectedTrack={selectedTrack}
+                selectTrack={handleBrowseSelect}
+                hasMore={hasMorePages}
+                onLoadMore={handleLoadMore}
+                error={tracksError}
+                columnVisibility={browseColumnVisibility}
+                configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
+                onToggleColumn={toggleBrowseColumn}
+                starredTrackIds={starredTrackIds}
+                sorting={browseSorting}
+                onSortingChange={setBrowseSorting}
+                scrollContainerRef={browseScrollRef}
+              />
+            </div>
 
-          <div className="table-panel">
-            <TrackTable
-              tracks={visibleTracks}
-              loading={collectionLoading}
-              selectedTrack={selectedTrack}
-              selectTrack={handleBrowseSelect}
-              hasMore={hasMorePages}
-              onLoadMore={handleLoadMore}
-              error={tracksError}
-              columnVisibility={browseColumnVisibility}
-              configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
-              onToggleColumn={toggleBrowseColumn}
-              starredTrackIds={starredTrackIds}
-              sorting={browseSorting}
-              onSortingChange={setBrowseSorting}
-              scrollContainerRef={browseScrollRef}
-            />
+            {showExplorerTopWorkspace && activeSet && (
+              <div className="explorer-top-workspace">
+                <SetWorkspacePanel
+                  activeSet={activeSet}
+                  removeFromPool={removeFromPool}
+                  clearPool={clearPool}
+                  movePoolToTracklist={movePoolToTracklist}
+                  addToPool={sbAddToPool}
+                  removeFromTracklist={removeFromTracklist}
+                  clearTracklist={clearTracklist}
+                  moveTracklistToPool={moveTracklistToPool}
+                  reorderTracklist={reorderTracklist}
+                  updateTracklistNote={updateTracklistNote}
+                  togglePoolStar={togglePoolStar}
+                  toggleTracklistStar={toggleTracklistStar}
+                  addToTracklist={sbAddToTracklist}
+                  poolExpanded={poolExpanded}
+                  onPoolExpandedChange={handlePoolExpandedChange}
+                />
+              </div>
+            )}
+
+            {showExplorerSetTab && (
+              <button
+                className={`explorer-set-tab${showExplorerTopWorkspace ? ' explorer-set-tab--active' : ''}`}
+                onClick={handleExplorerSetToggle}
+                aria-label={explorerSetOpen ? 'Collapse set workspace' : 'Expand set workspace'}
+                title={explorerSetOpen ? 'Collapse set workspace' : 'Expand set workspace'}
+                data-testid="explorer-set-tab"
+              >
+                <span className="explorer-set-chevron" aria-hidden="true">
+                  {explorerSetOpen ? '›' : '‹'}
+                </span>
+                <span className="explorer-set-label">Set</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -805,7 +900,7 @@ export default function App() {
                 onAddSibling={addSiblingNode}
                 tracklistTrackIds={tracklistTrackIds}
                 fetchEdgeScores={fetchEdgeScores}
-                warningNodeId={dndWarningNodeId}
+                warningNodeId={null}
                 trees={activeSet.explorer_trees}
                 activeTreeId={activeTreeId}
                 onSelectTree={selectTree}

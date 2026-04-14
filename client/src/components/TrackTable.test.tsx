@@ -953,6 +953,113 @@ describe('TrackTable play-cell click isolation', () => {
 
 /* ─────────────────────────────────────────────── */
 
+describe('TrackTable 50px play dead zone', () => {
+  it('suppresses row selection when click is within 50px of play-cell center', () => {
+    mockRange = { startIndex: 0, endIndex: 4 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(5)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const playCell = container.querySelector('.track-table tbody tr .play-cell') as HTMLElement;
+    expect(playCell).toBeTruthy();
+
+    const cellLeft = 24;
+    const cellWidth = 32;
+    vi.spyOn(playCell, 'getBoundingClientRect').mockReturnValue({
+      left: cellLeft, top: 0, width: cellWidth, height: 40,
+      right: cellLeft + cellWidth, bottom: 40, x: cellLeft, y: 0,
+      toJSON() { return {}; },
+    });
+
+    const centerX = cellLeft + cellWidth / 2;
+    const row = playCell.closest('tr')!;
+
+    fireEvent.click(row, { clientX: centerX + 45 });
+    expect(selectTrack).not.toHaveBeenCalled();
+
+    fireEvent.click(row, { clientX: centerX - 45 });
+    expect(selectTrack).not.toHaveBeenCalled();
+  });
+
+  it('allows row selection when click is beyond 50px from play-cell center', () => {
+    mockRange = { startIndex: 0, endIndex: 4 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(5)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const playCell = container.querySelector('.track-table tbody tr .play-cell') as HTMLElement;
+    expect(playCell).toBeTruthy();
+
+    const cellLeft = 24;
+    const cellWidth = 32;
+    vi.spyOn(playCell, 'getBoundingClientRect').mockReturnValue({
+      left: cellLeft, top: 0, width: cellWidth, height: 40,
+      right: cellLeft + cellWidth, bottom: 40, x: cellLeft, y: 0,
+      toJSON() { return {}; },
+    });
+
+    const centerX = cellLeft + cellWidth / 2;
+    const row = playCell.closest('tr')!;
+
+    fireEvent.click(row, { clientX: centerX + 55 });
+    expect(selectTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses drag initiation when pointerDown is within the dead zone', () => {
+    mockRange = { startIndex: 0, endIndex: 4 };
+
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(5)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+    );
+
+    const playCell = container.querySelector('.track-table tbody tr .play-cell') as HTMLElement;
+    expect(playCell).toBeTruthy();
+
+    const cellLeft = 24;
+    const cellWidth = 32;
+    vi.spyOn(playCell, 'getBoundingClientRect').mockReturnValue({
+      left: cellLeft, top: 0, width: cellWidth, height: 40,
+      right: cellLeft + cellWidth, bottom: 40, x: cellLeft, y: 0,
+      toJSON() { return {}; },
+    });
+
+    const centerX = cellLeft + cellWidth / 2;
+    const row = playCell.closest('tr')!;
+
+    fireEvent.pointerDown(row, { clientX: centerX + 30, pointerId: 1 });
+
+    expect(row.classList.contains('row-dragging')).toBe(false);
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
 describe('TrackTable multi-sort', () => {
   function makeSortTracks(): Track[] {
     return [

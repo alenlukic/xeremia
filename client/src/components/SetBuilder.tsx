@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import type { SetSummary, HydratedSet } from '../types';
 import type { PendingAdd } from '../hooks/useSetBuilder';
 import { exportSetM3u8 } from '../api/http';
-import { SetPoolTable } from './SetPoolTable';
-import { SetTracklist } from './SetTracklist';
+import { SetWorkspacePanel } from './SetWorkspacePanel';
 
 interface Props {
   sets: SetSummary[];
@@ -94,15 +93,6 @@ export const SetBuilder = memo(function SetBuilder({
       /* export failure is non-critical */
     }
   }, [activeSet]);
-
-  const handlePoolAddTrack = useCallback((trackId: number, title?: string) => {
-    addToPool(trackId, title);
-    if (!poolExpanded) onPoolExpandedChange?.(true);
-  }, [addToPool, poolExpanded, onPoolExpandedChange]);
-
-  const handleTracklistAddTrack = useCallback((trackId: number, title?: string) => {
-    addToTracklist(trackId, title);
-  }, [addToTracklist]);
 
   if (sets.length === 0 && !showNewInput && !pendingAdd) {
     return (
@@ -208,52 +198,23 @@ export const SetBuilder = memo(function SetBuilder({
       )}
 
       {activeSet && (
-        <div className="set-workspace-split">
-          <SetTracklist
-            tracklist={activeSet.tracklist}
-            onRemove={removeFromTracklist}
-            onClearAll={clearTracklist}
-            onMoveToPool={moveTracklistToPool}
-            onReorder={reorderTracklist}
-            onUpdateNote={updateTracklistNote}
-            onToggleStar={toggleTracklistStar}
-            onAddTrack={handleTracklistAddTrack}
-          />
-          <div className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}>
-            {poolExpanded && (
-              <button
-                className="set-pool-collapse-handle"
-                onClick={() => onPoolExpandedChange?.(false)}
-                aria-label="Collapse pool"
-                title="Collapse pool"
-              >
-                ‹
-              </button>
-            )}
-            {!poolExpanded ? (
-              <button
-                className="set-pool-expand-tab"
-                onClick={() => onPoolExpandedChange?.(true)}
-                aria-label="Expand pool"
-                title="Expand pool"
-              >
-                <span className="set-pool-expand-chevron" aria-hidden="true">›</span>
-                <span className="set-pool-expand-label">Pool ({activeSet.pool.length})</span>
-              </button>
-            ) : (
-              <div className="set-pool-accordion-content">
-                <SetPoolTable
-                  pool={activeSet.pool}
-                  onRemove={removeFromPool}
-                  onClearAll={clearPool}
-                  onMoveToTracklist={movePoolToTracklist}
-                  onToggleStar={togglePoolStar}
-                  onAddTrack={handlePoolAddTrack}
-                />
-              </div>
-            )}
-          </div>
-        </div>
+        <SetWorkspacePanel
+          activeSet={activeSet}
+          removeFromPool={removeFromPool}
+          clearPool={clearPool}
+          movePoolToTracklist={movePoolToTracklist}
+          addToPool={addToPool}
+          removeFromTracklist={removeFromTracklist}
+          clearTracklist={clearTracklist}
+          moveTracklistToPool={moveTracklistToPool}
+          reorderTracklist={reorderTracklist}
+          updateTracklistNote={updateTracklistNote}
+          togglePoolStar={togglePoolStar}
+          toggleTracklistStar={toggleTracklistStar}
+          addToTracklist={addToTracklist}
+          poolExpanded={poolExpanded}
+          onPoolExpandedChange={(expanded) => onPoolExpandedChange?.(expanded)}
+        />
       )}
     </div>
   );

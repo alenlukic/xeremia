@@ -350,7 +350,7 @@ describe('DnD: Explorer cell-based drops', () => {
     expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 1, 2);
   });
 
-  it('drop on occupied cell shows warning and does not overwrite', async () => {
+  it('drop on occupied cell adds track as child of the occupant', async () => {
     const explorerNodes = [
       { id: 1, set_id: 1, tree_id: 1, node_id: 'n1', track_id: 100, level: 0, col_index: 0, track: null },
       { id: 2, set_id: 1, tree_id: 1, node_id: 'n2', track_id: 101, level: 1, col_index: 2, track: null },
@@ -368,12 +368,7 @@ describe('DnD: Explorer cell-based drops', () => {
 
     fireDragEnd('browse-track-1', browsePayload, 'drop-explorer-cell-1-2');
 
-    await waitFor(() => {
-      expect(screen.getByTestId('dnd-warning-toast')).toBeInTheDocument();
-      expect(screen.getByTestId('dnd-warning-toast').textContent).toContain('occupied');
-    });
-
-    expect(mockSB.addExplorerNode).not.toHaveBeenCalled();
+    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, 'n2', 2);
   });
 
   it('dock-explorer places at first free slot on deepest level', async () => {
