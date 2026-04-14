@@ -2559,29 +2559,20 @@ body,
   gap: 4px;
   justify-content: center;
   margin-bottom: 4px;
+  min-height: 22px;
   opacity: 0;
-  transform-origin: center bottom;
-  transform: scaleY(0);
-  transition: opacity 150ms ease, transform 150ms ease;
+  transition: opacity 150ms ease;
   pointer-events: none;
-  height: 0;
-  overflow: hidden;
 }
 
 .explorer-cell-action-row--visible {
   opacity: 1;
-  transform: scaleY(1);
   pointer-events: auto;
-  height: auto;
-  overflow: visible;
 }
 
 .explorer-cell:hover .explorer-cell-action-row {
   opacity: 1;
-  transform: scaleY(1);
   pointer-events: auto;
-  height: auto;
-  overflow: visible;
 }
 
 .explorer-cell-action {
@@ -2858,16 +2849,111 @@ body,
   position: relative;
 }
 
-/* === Gutter Action Stack === */
-.gutter-actions {
+/* === Browse Zone Body (table + explorer-top accordion) === */
+.browse-zone-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.table-panel--offscreen {
   position: absolute;
-  right: var(--content-gutter);
-  top: 50%;
-  transform: translateY(-50%);
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.table-panel--tab-adjacent {
+  margin-right: 0;
+  border-right: none;
+}
+
+/* --- Explorer-top workspace (shown when accordion expanded) --- */
+.explorer-top-workspace {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  margin: 0 0 0 var(--content-gutter);
+  border-left: 1px solid var(--border);
+  animation: explorer-ws-fadein 220ms ease;
+}
+
+@keyframes explorer-ws-fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.explorer-top-workspace > .set-workspace-split {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* --- Explorer Set accordion tab (right edge) --- */
+.explorer-set-tab {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: none;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--font-body);
+  padding: 12px 0;
+  margin-right: var(--content-gutter);
+  transition: color var(--transition), background var(--transition);
+}
+
+.explorer-set-tab:hover,
+.explorer-set-tab:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.explorer-set-tab--active {
+  color: var(--accent);
+  background: var(--surface-active);
+}
+
+.explorer-set-tab--active:hover,
+.explorer-set-tab--active:focus-visible {
+  color: var(--accent);
+}
+
+.explorer-set-chevron {
+  writing-mode: horizontal-tb;
+  font-size: 16px;
+  display: block;
+  text-align: center;
+  margin-bottom: 6px;
+  line-height: 1;
+  transition: transform 220ms ease;
+}
+
+.explorer-set-label {
+  white-space: nowrap;
+}
+
+/* === Controls-strip action buttons (Weights / Admin) === */
+.controls-strip-actions {
+  display: flex;
+  align-items: center;
   gap: 4px;
-  z-index: 3;
+  flex-shrink: 0;
+  padding-right: var(--content-gutter);
 }
 
 /* === Dock Bar === */
@@ -2942,7 +3028,6 @@ body,
 }
 
 .dock-admin-btn {
-  margin-left: auto;
   padding: 4px 10px;
   background: none;
   border: 1px solid var(--border);
@@ -3167,6 +3252,11 @@ body,
 
 .row-dragging {
   opacity: 0.4;
+}
+
+.row-drop-target {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 -2px 0 var(--accent, #6cf);
 }
 
 .dnd-warning-toast {

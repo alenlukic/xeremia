@@ -1339,6 +1339,197 @@ describe('Shell state model', () => {
   });
 });
 
+describe('Explorer Set Accordion', () => {
+  const ACCORDION_KEY = 'dj-tools-explorer-set-open';
+
+  async function renderWithActiveSet(preRender?: () => void) {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 2, tracklist_count: 1 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 2, tracklist_count: 1 },
+      pool: [
+        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Track 1', bpm: 120, camelot_code: '01A', energy: 0.5 } },
+        { id: 11, track_id: 2, insertion_order: 1, starred: true, track: { id: 2, title: 'Track 2', bpm: 128, camelot_code: '02A', energy: 0.6 } },
+      ],
+      tracklist: [
+        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track 3', bpm: 125, camelot_code: '01B', energy: 0.55 } },
+      ],
+      explorer_trees: [], explorer_nodes: [], explorer_edges: [],
+    });
+
+    if (preRender) preRender();
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    await act(async () => {
+      screen.getByRole('tab', { name: /Set/ }).click();
+    });
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: '1' } });
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
+    });
+
+    return httpMod;
+  }
+
+  it('does not show accordion tab when not on Explorer panel', async () => {
+    await renderWithActiveSet();
+
+    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
+  });
+
+  it('does not show accordion tab on Explorer without an active set', async () => {
+    await act(async () => { render(<App />); });
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
+  });
+
+  it('shows accordion tab on Explorer when an active set exists', async () => {
+    await renderWithActiveSet();
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('explorer-set-tab')).toBeInTheDocument();
+    });
+  });
+
+  it('expanding accordion shows workspace and keeps browse table in DOM', async () => {
+    await renderWithActiveSet();
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('explorer-set-tab')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByTestId('explorer-set-tab').click();
+    });
+
+    const tablePanel = document.querySelector('.table-panel');
+    expect(tablePanel).toBeInTheDocument();
+    expect(tablePanel!.classList.contains('table-panel--offscreen')).toBe(true);
+
+    expect(document.querySelector('.explorer-top-workspace')).toBeInTheDocument();
+  });
+
+  it('persists accordion state to localStorage', async () => {
+    await renderWithActiveSet();
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('explorer-set-tab')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByTestId('explorer-set-tab').click();
+    });
+
+    expect(localStorage.getItem(ACCORDION_KEY)).toBe('true');
+
+    await act(async () => {
+      screen.getByTestId('explorer-set-tab').click();
+    });
+
+    expect(localStorage.getItem(ACCORDION_KEY)).toBe('false');
+  });
+
+  it('restores accordion state from localStorage when returning to Explorer', async () => {
+    await renderWithActiveSet(() => {
+      localStorage.setItem(ACCORDION_KEY, 'true');
+    });
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.explorer-top-workspace')).toBeInTheDocument();
+    });
+  });
+
+  it('hides accordion tab and workspace when switching away from Explorer', async () => {
+    await renderWithActiveSet(() => {
+      localStorage.setItem(ACCORDION_KEY, 'true');
+    });
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.explorer-top-workspace')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Matches' }).click();
+    });
+
+    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
+    expect(document.querySelector('.explorer-top-workspace')).not.toBeInTheDocument();
+    expect(localStorage.getItem(ACCORDION_KEY)).toBe('true');
+  });
+
+  it('collapses accordion when active set is deleted', async () => {
+    const httpMod = await renderWithActiveSet(() => {
+      localStorage.setItem(ACCORDION_KEY, 'true');
+    });
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.explorer-top-workspace')).toBeInTheDocument();
+    });
+
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([]);
+    vi.mocked(httpMod.fetchHydratedSet).mockRejectedValue(new Error('not found'));
+
+    await act(async () => {
+      screen.getByRole('tab', { name: /Set/ }).click();
+    });
+
+    const deleteBtn = document.querySelector('.set-delete-btn') as HTMLElement | null;
+    if (deleteBtn) {
+      await act(async () => { deleteBtn.click(); });
+      await act(async () => {});
+    }
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    expect(document.querySelector('.explorer-top-workspace')).not.toBeInTheDocument();
+    expect(localStorage.getItem(ACCORDION_KEY)).toBe('false');
+  });
+});
+
 describe('DragOverlay snapCenterToCursor modifier guard', () => {
   const appSrc = readFileSync(
     resolve(dirname(fileURLToPath(import.meta.url)), 'App.tsx'),

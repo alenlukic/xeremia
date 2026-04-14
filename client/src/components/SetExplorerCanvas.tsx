@@ -111,9 +111,6 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   }, [newTreeName, newTreeMode, activeTreeId, selectedNodeId, onCreateTree]);
 
   const { track: playingTrack, playing: isAudioPlaying, togglePlayPause } = useAudioPlayer();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
-  const [showSearch, setShowSearch] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ExplorerNode | null>(null);
   const [edgeScores, setEdgeScores] = useState<Map<string, number | null>>(new Map());
   const [loadingEdgeKeys, setLoadingEdgeKeys] = useState<Set<string>>(new Set());
@@ -131,6 +128,9 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   edgesRef.current = edges;
   const connectDragRef = useRef<ConnectDragState | null>(null);
   connectDragRef.current = connectDrag;
+  const activeConnectSourceRef = useRef<{
+    sourceNodeId: string; sourceLevel: number; sourceCX: number; sourceCY: number;
+  } | null>(null);
   const moveDragRef = useRef<MoveDragState | null>(null);
   moveDragRef.current = moveDrag;
   const swapSourceRef = useRef<string | null>(null);
@@ -303,28 +303,6 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     return () => window.removeEventListener('keydown', handleEscape);
   }, []);
 
-  // --- Search ---
-  const handleSearchAdd = useCallback(async (q: string) => {
-    setSearchQuery(q);
-    if (!q.trim()) {
-      setSearchResults([]);
-      setShowSearch(false);
-      return;
-    }
-    try {
-      const results = await searchTracks(q);
-      setSearchResults(results);
-      setShowSearch(results.length > 0);
-    } catch { /* ignore */ }
-  }, []);
-
-  const handleSearchSelect = useCallback((s: SearchSuggestion) => {
-    stableOnAddNode(s.id);
-    setSearchQuery('');
-    setSearchResults([]);
-    setShowSearch(false);
-  }, [stableOnAddNode]);
-
   // --- Node interactions ---
   const handleBackgroundClick = useCallback(() => {
     setSelectedNodeId(null);
@@ -351,6 +329,12 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     e.stopPropagation();
     const cx = colIndex * SLOT_W + SLOT_W / 2;
     const cy = TOP_PAD + level * LEVEL_HEIGHT + NODE_H / 2;
+    const nodeEl = target.closest('.explorer-cell-node');
+    const rect = nodeEl?.getBoundingClientRect();
+    const isMoveDrag = rect && rect.height > 0
+      ? (e.clientY - rect.top) < rect.height * (2 / 3)
+      : false;
+
     pendingDragRef.current = {
       sourceNodeId: nodeId,
       sourceLevel: level,
@@ -359,7 +343,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
       sourceCY: cy,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      isMoveDrag: e.altKey,
+      isMoveDrag,
     };
   }, []);
 
@@ -391,21 +375,43 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     return 'reparent';
   }, []);
 
+  const isOverValidConnectTarget = useCallback((
+    gridX: number, gridY: number, sourceNodeId: string, sourceLevel: number,
+  ): boolean => {
+    const tLevel = Math.max(0, Math.min(MAX_LEVELS - 1, Math.floor((gridY - TOP_PAD) / LEVEL_HEIGHT)));
+    if (Math.abs(sourceLevel - tLevel) !== 1) return false;
+    const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor(gridX / SLOT_W)));
+    const target = nodesRef.current.find(n => n.level === tLevel && n.col_index === tCol);
+    if (!target || target.node_id === sourceNodeId) return false;
+    const parentId = sourceNodeId;
+    const childId = target.node_id;
+    return !edgesRef.current.some(
+      e => (e.parent_node_id === parentId && e.child_node_id === childId) ||
+           (e.parent_node_id === childId && e.child_node_id === parentId),
+    );
+  }, []);
+
   const handleNodeMouseUp = useCallback((nodeId: string, level: number) => {
     if (moveDragRef.current) return;
-    const cd = connectDragRef.current;
-    if (!cd) return;
-    if (cd.sourceNodeId === nodeId) { setConnectDrag(null); return; }
-    const srcLevel = cd.sourceLevel;
+    const acs = activeConnectSourceRef.current;
+    if (!acs) return;
+    if (acs.sourceNodeId === nodeId) {
+      activeConnectSourceRef.current = null;
+      setConnectDrag(null);
+      return;
+    }
+    const srcLevel = acs.sourceLevel;
     const tgtLevel = level;
     if (Math.abs(srcLevel - tgtLevel) === 1) {
-      const parentId = srcLevel < tgtLevel ? cd.sourceNodeId : nodeId;
-      const childId = srcLevel < tgtLevel ? nodeId : cd.sourceNodeId;
+      const parentId = acs.sourceNodeId;
+      const childId = nodeId;
       const alreadyConnected = edgesRef.current.some(
-        e => e.parent_node_id === parentId && e.child_node_id === childId,
+        e => (e.parent_node_id === parentId && e.child_node_id === childId) ||
+             (e.parent_node_id === childId && e.child_node_id === parentId),
       );
       if (!alreadyConnected) onAddEdgeRef.current(parentId, childId);
     }
+    activeConnectSourceRef.current = null;
     setConnectDrag(null);
   }, []);
 
@@ -436,14 +442,22 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
             dropType,
           });
         } else {
-          setConnectDrag({
+          activeConnectSourceRef.current = {
             sourceNodeId: pd.sourceNodeId,
             sourceLevel: pd.sourceLevel,
             sourceCX: pd.sourceCX,
             sourceCY: pd.sourceCY,
-            cursorX: pd.sourceCX,
-            cursorY: pd.sourceCY,
-          });
+          };
+          if (isOverValidConnectTarget(gridX, gridY, pd.sourceNodeId, pd.sourceLevel)) {
+            setConnectDrag({
+              sourceNodeId: pd.sourceNodeId,
+              sourceLevel: pd.sourceLevel,
+              sourceCX: pd.sourceCX,
+              sourceCY: pd.sourceCY,
+              cursorX: gridX,
+              cursorY: gridY,
+            });
+          }
         }
         pendingDragRef.current = null;
       }
@@ -454,11 +468,24 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
       const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor(gridX / SLOT_W)));
       const dropType = computeDropType(md.sourceNodeId, tLevel, tCol);
       setMoveDrag(prev => prev ? { ...prev, cursorX: gridX, cursorY: gridY, targetLevel: tLevel, targetCol: tCol, dropType } : prev);
+      return;
     }
-    if (cd) {
-      setConnectDrag(prev => prev ? { ...prev, cursorX: gridX, cursorY: gridY } : prev);
+    const acs = activeConnectSourceRef.current;
+    if (acs) {
+      if (isOverValidConnectTarget(gridX, gridY, acs.sourceNodeId, acs.sourceLevel)) {
+        setConnectDrag({
+          sourceNodeId: acs.sourceNodeId,
+          sourceLevel: acs.sourceLevel,
+          sourceCX: acs.sourceCX,
+          sourceCY: acs.sourceCY,
+          cursorX: gridX,
+          cursorY: gridY,
+        });
+      } else if (connectDragRef.current) {
+        setConnectDrag(null);
+      }
     }
-  }, [computeDropType]);
+  }, [computeDropType, isOverValidConnectTarget]);
 
   const handleGridMouseUp = useCallback(() => {
     pendingDragRef.current = null;
@@ -477,6 +504,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
       setMoveDrag(null);
       return;
     }
+    activeConnectSourceRef.current = null;
     if (connectDragRef.current) setConnectDrag(null);
   }, []);
 
@@ -627,35 +655,11 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
         </div>
       )}
 
-      <div className="set-explorer-controls">
-        <div className="set-explorer-search-wrapper">
-          <input
-            className="set-explorer-search"
-            placeholder="Search to add root node…"
-            value={searchQuery}
-            onChange={e => handleSearchAdd(e.target.value)}
-          />
-          {showSearch && (
-            <ul className="set-explorer-search-dropdown">
-              {searchResults.map(s => (
-                <li
-                  key={s.id}
-                  className="set-explorer-search-item"
-                  onMouseDown={() => handleSearchSelect(s)}
-                >
-                  <span>{s.title}</span>
-                  <span className="text-muted">
-                    {s.camelot_code && <span className="mono"> {s.camelot_code}</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {swapSource && (
+      {swapSource && (
+        <div className="set-explorer-controls">
           <span className="set-explorer-swap-hint">Click another node to swap</span>
-        )}
-      </div>
+        </div>
+      )}
 
       <ExplorerGrid
         viewModel={viewModel}
@@ -782,6 +786,14 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
                     onClick={() => handleChildSelect(m)}
                     data-testid="child-match-item"
                   >
+                    <button
+                      className="play-btn"
+                      onClick={e => { e.stopPropagation(); handlePlayTrack(m.candidate_id, m.title); }}
+                      aria-label={playingTrackId === m.candidate_id ? 'Pause' : 'Play'}
+                      data-testid="child-match-play-btn"
+                    >
+                      {playingTrackId === m.candidate_id ? '⏸' : '▶'}
+                    </button>
                     <span>{m.title}</span>
                     <span className="text-muted mono">{formatOverallScore(m.overall_score)}</span>
                   </li>

@@ -123,6 +123,16 @@ interface Props {
   scrollContainerRef?: React.MutableRefObject<HTMLDivElement | null>;
 }
 
+const PLAY_DEAD_ZONE_PX = 50;
+
+function isInPlayDeadZone(clientX: number, playCellEl: HTMLElement | null): boolean {
+  if (!playCellEl) return false;
+  const rect = playCellEl.getBoundingClientRect();
+  if (rect.width === 0) return false;
+  const centerX = rect.left + rect.width / 2;
+  return Math.abs(clientX - centerX) <= PLAY_DEAD_ZONE_PX;
+}
+
 function DraggableBrowseRow({ row, isSelected, isPlaying, onSelect, virtualTop, totalWidth, measureRef, virtualIndex, hasColChooser, isStarred }: {
   row: Row<Track>;
   isSelected: boolean;
@@ -146,6 +156,8 @@ function DraggableBrowseRow({ row, isSelected, isPlaying, onSelect, virtualTop, 
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
   });
 
+  const playCellRef = useRef<HTMLTableCellElement>(null);
+
   const combinedRef = useCallback((node: HTMLElement | null) => {
     setNodeRef(node);
     measureRef?.(node);
@@ -158,6 +170,7 @@ function DraggableBrowseRow({ row, isSelected, isPlaying, onSelect, virtualTop, 
       ...rest,
       onPointerDown: (e: React.PointerEvent) => {
         if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        if (isInPlayDeadZone(e.clientX, playCellRef.current)) return;
         (onPointerDown as (e: React.PointerEvent) => void)?.(e);
       },
     };
@@ -182,7 +195,10 @@ function DraggableBrowseRow({ row, isSelected, isPlaying, onSelect, virtualTop, 
       data-index={virtualIndex}
       className={`${isSelected ? 'row-selected' : ''}${isPlaying ? ' playing-row' : ''}${isDragging ? ' row-dragging' : ''}`}
       style={style}
-      onClick={() => onSelect(row.original)}
+      onClick={(e) => {
+        if (isInPlayDeadZone(e.clientX, playCellRef.current)) return;
+        onSelect(row.original);
+      }}
       {...rowListeners}
     >
       <td className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }}>
@@ -190,7 +206,7 @@ function DraggableBrowseRow({ row, isSelected, isPlaying, onSelect, virtualTop, 
           ? <span className="star-indicator" title="Starred in active set" aria-label="Starred">★</span>
           : <span className="drag-handle" aria-hidden="true">⠿</span>}
       </td>
-      <td className="play-cell" onClick={(e) => e.stopPropagation()}>
+      <td className="play-cell" ref={playCellRef} onClick={(e) => e.stopPropagation()}>
         <PlayButton trackId={row.original.id} title={row.original.title} />
       </td>
       {row.getVisibleCells().map((cell) => (

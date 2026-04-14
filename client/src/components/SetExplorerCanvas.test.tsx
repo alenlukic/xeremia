@@ -80,6 +80,10 @@ describe('SetExplorerCanvas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+    vi.spyOn(window.Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 0, left: 0, width: 390, height: 48, right: 390, bottom: 48, x: 0, y: 0,
+      toJSON() { return {}; },
+    } as DOMRect);
   });
 
   describe('grid structure', () => {
@@ -235,8 +239,8 @@ describe('SetExplorerCanvas', () => {
   describe('adjacent-level drag-connect gating', () => {
     function simulateDrag(container: HTMLElement, source: Element, target: Element) {
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
-      fireEvent.mouseDown(source, { bubbles: true, clientX: 0, clientY: 0 });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
+      fireEvent.mouseDown(source, { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 60 });
       fireEvent.mouseUp(target, { bubbles: true });
     }
 
@@ -288,10 +292,10 @@ describe('SetExplorerCanvas', () => {
       expect(props.onAddEdge).not.toHaveBeenCalled();
     });
 
-    it('renders dashed preview line during connect-drag', () => {
+    it('renders dashed preview line during connect-drag over valid target', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
       ];
       const props = defaultProps({ nodes });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -299,8 +303,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 0 });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 280 });
 
       expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
     });
@@ -322,7 +326,24 @@ describe('SetExplorerCanvas', () => {
       expect(props.onAddEdge).not.toHaveBeenCalled();
     });
 
-    it('treats the lower-level node as parent regardless of drag direction', async () => {
+    it('does not call onAddEdge when reverse-direction edge already exists', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
+      ];
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ];
+      const props = defaultProps({ nodes, edges });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateDrag(container, nodeEls[1], nodeEls[0]);
+
+      expect(props.onAddEdge).not.toHaveBeenCalled();
+    });
+
+    it('treats the drag source as parent regardless of level position', async () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -333,7 +354,7 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       simulateDrag(container, nodeEls[1], nodeEls[0]);
 
-      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+      expect(props.onAddEdge).toHaveBeenCalledWith('n2', 'n1');
     });
   });
 
@@ -437,6 +458,25 @@ describe('SetExplorerCanvas', () => {
       await userEvent.click(matchItem);
 
       expect(props.onAddNode).toHaveBeenCalledWith(42, 'n1', 1, undefined);
+    });
+
+    it('renders playback button for each match in child picker', async () => {
+      const { fetchMatches } = await import('../api/http');
+      (fetchMatches as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { candidate_id: 42, title: 'Match A', overall_score: 0.9, bucket: 'same_key', camelot_score: 1, bpm_score: 0.95, energy_score: 0.85, similarity_score: 0.75, freshness_score: 1, genre_similarity_score: 0.7, mood_continuity_score: 0.6, vocal_clash_score: 1, instrument_similarity_score: 0.5 },
+        { candidate_id: 43, title: 'Match B', overall_score: 0.8, bucket: 'same_key', camelot_score: 1, bpm_score: 0.9, energy_score: 0.8, similarity_score: 0.7, freshness_score: 1, genre_similarity_score: 0.6, mood_continuity_score: 0.5, vocal_clash_score: 1, instrument_similarity_score: 0.4 },
+      ]);
+
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+
+      await userEvent.click(screen.getByTestId('explorer-node'));
+      const childBtns = screen.getAllByTestId('child-add-btn');
+      await userEvent.click(childBtns[0]);
+
+      const playBtns = await screen.findAllByTestId('child-match-play-btn');
+      expect(playBtns.length).toBe(2);
+      expect(playBtns[0]).toHaveAttribute('aria-label', 'Play');
     });
   });
 
@@ -622,8 +662,8 @@ describe('SetExplorerCanvas', () => {
   describe('cross-mode interaction isolation', () => {
     it('node click during connect-drag does not trigger swap', async () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
       ];
       const props = defaultProps({ nodes });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -631,8 +671,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 0 });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 280 });
       expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
 
       expect(props.onSwap).not.toHaveBeenCalled();
@@ -695,6 +735,11 @@ describe('SetExplorerCanvas', () => {
       await userEvent.click(addBtns[0]);
       expect(screen.getByTestId('sibling-add-modal')).toBeInTheDocument();
     });
+
+    it('does not render "Search to add root node" prompt', () => {
+      render(<SetExplorerCanvas {...defaultProps()} />);
+      expect(screen.queryByPlaceholderText('Search to add root node…')).toBeNull();
+    });
   });
 
   describe('keyboard edge deletion', () => {
@@ -732,7 +777,9 @@ describe('SetExplorerCanvas', () => {
       const hitbox = screen.getByTestId('explorer-edge-hitbox');
       await userEvent.click(hitbox);
 
-      const input = document.querySelector('.set-explorer-search') as HTMLInputElement;
+      const addBtns = screen.getAllByTestId('cell-add-btn');
+      await userEvent.click(addBtns[0]);
+      const input = screen.getByTestId('sibling-search-input');
       fireEvent.keyDown(input, { key: 'Delete', bubbles: true });
 
       expect(props.onDeleteEdge).not.toHaveBeenCalled();
@@ -742,8 +789,8 @@ describe('SetExplorerCanvas', () => {
   describe('connect-drag off-node cancel', () => {
     it('cancels drag silently when mouseUp is on grid (not on a node)', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
       ];
       const props = defaultProps({ nodes });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -751,8 +798,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 0 });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 280 });
       expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
 
       fireEvent.mouseUp(gridScroll);
@@ -929,15 +976,15 @@ describe('SetExplorerCanvas', () => {
     });
   });
 
-  describe('node move-drag (Alt+drag)', () => {
+  describe('node move-drag (top-zone drag)', () => {
     function simulateMoveDrag(container: HTMLElement, source: Element, targetClientX: number, targetClientY: number) {
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
-      fireEvent.mouseDown(source, { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: targetClientX, clientY: targetClientY, altKey: true });
+      fireEvent.mouseDown(source, { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: targetClientX, clientY: targetClientY });
       fireEvent.mouseUp(gridScroll, { bubbles: true });
     }
 
-    it('renders move-drag preview line during Alt+drag', () => {
+    it('renders move-drag preview line during top-zone drag', () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
       ];
@@ -947,14 +994,14 @@ describe('SetExplorerCanvas', () => {
       const nodeEl = screen.getAllByTestId('explorer-node')[0];
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20, altKey: true });
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
 
       expect(screen.getByTestId('move-drag-line')).toBeInTheDocument();
       expect(screen.getByTestId('move-drag-target')).toBeInTheDocument();
     });
 
-    it('does NOT render connect-drag line during Alt+drag', () => {
+    it('does NOT render connect-drag line during top-zone drag', () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
       ];
@@ -964,14 +1011,14 @@ describe('SetExplorerCanvas', () => {
       const nodeEl = screen.getAllByTestId('explorer-node')[0];
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20, altKey: true });
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
 
       expect(screen.queryByTestId('connect-drag-line')).toBeNull();
       expect(screen.getByTestId('move-drag-line')).toBeInTheDocument();
     });
 
-    it('calls onMoveNode with target position when Alt+dragging to empty cell', () => {
+    it('calls onMoveNode with target position when top-zone drag to empty cell', () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
       ];
@@ -981,14 +1028,14 @@ describe('SetExplorerCanvas', () => {
       const nodeEl = screen.getAllByTestId('explorer-node')[0];
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 500, clientY: 50, altKey: true });
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 500, clientY: 50 });
       fireEvent.mouseUp(gridScroll, { bubbles: true });
 
       expect(props.onMoveNode).toHaveBeenCalledWith('n1', 0, 1);
     });
 
-    it('calls onMoveNode with new_parent when Alt+dragging onto another node', () => {
+    it('calls onMoveNode with new_parent when top-zone drag onto another node', () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
@@ -999,8 +1046,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 590, clientY: 50, altKey: true });
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 590, clientY: 50 });
       fireEvent.mouseUp(gridScroll, { bubbles: true });
 
       expect(props.onMoveNode).toHaveBeenCalledWith('n1', undefined, undefined, 'n2');
@@ -1016,8 +1063,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEl = screen.getAllByTestId('explorer-node')[0];
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 50, altKey: true });
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 50 });
       fireEvent.mouseUp(gridScroll, { bubbles: true });
 
       expect(props.onMoveNode).not.toHaveBeenCalled();
@@ -1037,8 +1084,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 260, altKey: true });
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 260 });
       fireEvent.mouseUp(gridScroll, { bubbles: true });
 
       expect(props.onMoveNode).not.toHaveBeenCalled();
@@ -1054,8 +1101,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEl = screen.getAllByTestId('explorer-node')[0];
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20, altKey: true });
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
       expect(screen.getByTestId('move-drag-line')).toBeInTheDocument();
 
       fireEvent.mouseUp(gridScroll, { bubbles: true });
@@ -1063,10 +1110,10 @@ describe('SetExplorerCanvas', () => {
       expect(screen.queryByTestId('move-drag-line')).toBeNull();
     });
 
-    it('regular drag (no Alt) still produces connect-drag line', () => {
+    it('bottom-zone drag produces connect-drag line when over valid target', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
-        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
       ];
       const props = defaultProps({ nodes });
       const { container } = render(<SetExplorerCanvas {...props} />);
@@ -1074,8 +1121,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 0 });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 280 });
 
       expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
       expect(screen.queryByTestId('move-drag-line')).toBeNull();
@@ -1091,13 +1138,153 @@ describe('SetExplorerCanvas', () => {
       const nodeEl = screen.getAllByTestId('explorer-node')[0];
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 0, altKey: true });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20, altKey: true });
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 10 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 20 });
       fireEvent.mouseUp(gridScroll, { bubbles: true });
 
       await userEvent.click(nodeEl);
       const actionRow = screen.getByTestId('explorer-action-row');
       expect(actionRow.classList.contains('explorer-cell-action-row--visible')).toBe(true);
+    });
+  });
+
+  describe('drag hit-zone boundary', () => {
+    it('drag at exactly 2/3 boundary starts connect-drag (bottom zone)', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 32 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 280 });
+
+      expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
+      expect(screen.queryByTestId('move-drag-line')).toBeNull();
+    });
+
+    it('drag just above 2/3 boundary starts move-drag (top zone)', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEl = screen.getAllByTestId('explorer-node')[0];
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 31 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 51 });
+
+      expect(screen.getByTestId('move-drag-line')).toBeInTheDocument();
+      expect(screen.queryByTestId('connect-drag-line')).toBeNull();
+    });
+  });
+
+  describe('phantom connect-drag suppression', () => {
+    it('does not render connect-drag-line when bottom-zone drag is over empty grid space', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEl = screen.getAllByTestId('explorer-node')[0];
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 60 });
+
+      expect(screen.queryByTestId('connect-drag-line')).toBeNull();
+      expect(screen.queryByTestId('move-drag-line')).toBeNull();
+    });
+
+    it('shows preview only when hovering a valid adjacent-level node, hides when leaving', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 60 });
+      expect(screen.queryByTestId('connect-drag-line')).toBeNull();
+
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 280 });
+      expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
+
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 1200, clientY: 280 });
+      expect(screen.queryByTestId('connect-drag-line')).toBeNull();
+    });
+
+    it('still creates edge on drop even when preview was not visible at drag start', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const edges: ExplorerEdge[] = [];
+      const props = defaultProps({ nodes, edges });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 60 });
+      expect(screen.queryByTestId('connect-drag-line')).toBeNull();
+
+      fireEvent.mouseUp(nodeEls[1], { bubbles: true });
+
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+    });
+
+    it('suppresses preview when dragging in reverse direction over already-connected node', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ];
+      const props = defaultProps({ nodes, edges });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEls[1], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 50 });
+
+      expect(screen.queryByTestId('connect-drag-line')).toBeNull();
+    });
+
+    it('suppresses preview when dragging over a node with an existing edge', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ];
+      const props = defaultProps({ nodes, edges });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 280 });
+
+      expect(screen.queryByTestId('connect-drag-line')).toBeNull();
     });
   });
 });
