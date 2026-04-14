@@ -1,38 +1,31 @@
-# Harness Template Manifest
-# Version: 4.0
-#
-# Used by `run-harness-bootstrap` (agent command) to drive project customization
-# after an IDE-specific bootstrap script has been run.
+name: dj-tools
+version: 7
+min_supported_version: 5
+changelog: HARNESS_CHANGELOG.md
+changelog_json: HARNESS_CHANGELOG.json
+summary: dj-tools harness with runtime bootstrap bundles, host model-compatibility routing, and contract-first delivery DAG orchestration.
 
-scripts:
-  cursor:
-    path: .harness/control/bin/setup.sh
-    does:
-      - creates .cursor/ symlinks via .harness/control/bin/setup.sh
+bootstrap:
+  cursor: bin/bootstrap-cursor.sh
+  claude: bin/bootstrap-claude.sh
+  codex: bin/bootstrap-codex.sh
 
-configure:
-  - dest: .harness/control/pipeline.yaml
-    notes: >
-      Replace the placeholder commands with your project's actual commands
-      for format, lint, test, build, and any product-run scripts the red-team
-      or persona workflows will need.
+scheduler_installers:
+  cron: bin/install-cron-housekeeping.sh
+  systemd: bin/install-systemd-housekeeping.sh
+  launchd: bin/install-launchd-housekeeping.sh
 
-runtime:
+critical_paths:
+  - .harness/INDEX.md
+  - .harness/GLOSSARY.md
+  - .harness/control/pipeline.yaml
+  - .harness/control/runtime/
+  - .harness/spec/agents/
+  - .harness/spec/commands/
+  - .harness/intake/
+  - .harness/workspace/inbox/
+  - .harness/workspace/contracts/
+  - .harness/workspace/work/
+  - .harness/knowledge/memory/
+  - .harness/history/ledgers/
   - .harness/history/runs/
-  - .harness/history/pr_descriptions/
-  - .harness/knowledge/state/
-  - .cursor/
-
-knowledge:
-  - .harness/history/ledgers/INDEX.json
-  - .harness/history/ledgers/INDEX.md
-  - .harness/history/ledgers/DOC_SYNC_STATE.json
-  - .harness/history/ledgers/*.md
-  - .harness/workspace/contracts/INDEX.json
-  - .harness/workspace/contracts/INDEX.md
-  - .harness/workspace/contracts/README.md
-  - .harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.json
-  - .harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.md
-  - .harness/workspace/product-feedback/README.md
-  - .harness/workspace/product-feedback/CUSTOMER_PERSONA_SPEC.md
-  - .harness/knowledge/docs/index.md

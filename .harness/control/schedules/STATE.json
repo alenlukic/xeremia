@@ -1,1 +1,7 @@
-{"last_run_by_job": {}}
+{
+  "last_run_by_job": {
+    "bad-state-scan": "2026-04-14T02:59:36.723876+00:00",
+    "rebuild-ledger-index": "2026-04-14T02:59:36.401767+00:00",
+    "registry-render": "2026-04-14T02:59:36.507213+00:00"
+  }
+}

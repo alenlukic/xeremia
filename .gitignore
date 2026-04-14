@@ -159,3 +159,26 @@ client/node_modules/
 *.tsbuildinfo
 
 processing/
+
+# === Harness template v7 patterns (auto-appended by migration) ===
+*.pyc
+.venv/
+.env.*
+secrets/
+.idea/
+Thumbs.db
+.harness/control/runtime/RUN_INDEX.json
+.harness/control/runtime/ACTIVE_RUNS.json
+.harness/control/runtime/QUEUE.json
+.harness/control/runtime/EVENTS.jsonl
+.harness/control/runtime/BOOT_STATE.json
+.harness/control/runtime/WATCHDOG_STATE.json
+.harness/control/runtime/INGEST_HISTORY.jsonl
+.harness/control/runtime/INGEST_QUEUE.json
+.harness/control/runtime/ENVIRONMENT.json
+.harness/control/runtime/MODEL_ROUTING.json
+.harness/control/runtime/SETTINGS.json
+.harness/control/schedules/SCHEDULE_HISTORY.jsonl
+.harness/control/schedules/STATE.json
+.harness/intake/ROUTING_EVENTS.jsonl
+.harness/history/pr_descriptions/

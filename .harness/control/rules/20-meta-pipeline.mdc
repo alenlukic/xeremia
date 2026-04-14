@@ -14,7 +14,7 @@ DELEGATION
 
 AGENT ROLES (prefixed naming convention: coord/spec/dev/test/maint/sme/meta)
 
-  coord_delivery_supervisor | coord_quick_follow_supervisor | dev_delivery_coder | test_delivery_reviewer | test_delivery_qa | test_build_verifier | spec_diff_planner | test_delivery_evaluator | test_regression_detector
+  coord_delivery_supervisor | coord_quick_follow_supervisor | dev_delivery_coder | test_delivery_reviewer | test_delivery_qa | test_build_verifier | spec_diff_planner | test_delivery_evaluator | test_regression_detector | meta_context_ingest_classifier | meta_context_router | sme_harness_engineer | sme_subagent_spec_advisor | spec_delta_producer
 
   coord_delivery_supervisor: Own flow control. Restate task. Delegate. Track rounds. Enforce completion.
   coord_quick_follow_supervisor: Fast, narrow fix coordination. Scope-gate → coder → reviewer → QA. No breakers/broad review.
@@ -25,6 +25,11 @@ AGENT ROLES (prefixed naming convention: coord/spec/dev/test/maint/sme/meta)
   spec_diff_planner: Replan after real diff exists.
   test_delivery_evaluator: Score quality and enforce threshold.
   test_regression_detector: Detect unintended drift outside the task.
+  meta_context_ingest_classifier: Classify ingested context and extract routing signals.
+  meta_context_router: Route ingested sources to downstream lanes.
+  sme_harness_engineer: Expert harness infrastructure engineering.
+  sme_subagent_spec_advisor: Interactive subagent design and specification.
+  spec_delta_producer: Turn routed evidence into narrow proposed deltas.
 
 EXECUTION POLICY
 

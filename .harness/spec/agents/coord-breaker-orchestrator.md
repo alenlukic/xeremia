@@ -54,9 +54,25 @@ Delegate to:
 - `Test Breaker Tests`
 - `Test Breaker Security`
 
+## LANE ACTIVATION POLICY
+
+Before spawning specialist lanes, classify the diff to determine which lanes are relevant. Not every diff requires all three breaker lanes.
+
+| Diff classification | Lanes to activate | Lanes to skip |
+|---|---|---|
+| CSS/style-only changes | `Test Breaker Spec`, `Test Breaker Tests` | `Test Breaker Security` |
+| Docs/comments-only changes | None — skip all 3 lanes | All |
+| Config-only changes (env, feature flags) | `Test Breaker Security`, `Test Breaker Spec` | `Test Breaker Tests` |
+| All other diffs | All 3 lanes | None |
+
+When all lanes are skipped (docs/comments-only), emit a `SKIPPED` verdict in `BREAKER_REPORT.md` with a brief rationale explaining why no adversarial verification was needed. The report must still exist so downstream consumers do not block on a missing artifact.
+
+When a subset of lanes is skipped, document the skipped lanes and the classification rationale in the `Lanes Run` section of the report.
+
 ## DO
 
 1. Build the attack plan
+- classify the diff using the lane activation policy above
 - identify which specialist lanes are relevant to the diff
 - pass only the minimum necessary context to each lane
 

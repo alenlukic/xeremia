@@ -62,3 +62,6 @@
 - `20260412T191001Z-delivery-re-imagine-explorer-as-a-100x5-g` — delivery
 - `20260413T000641Z-product_feedback-dj-tools-product-feedback-loop-d` — product_feedback
 - `20260413T044332Z-delivery-two-issues-with-media-player-fun` — delivery
+- `20260413T080212Z-delivery-devdsl-1-mode-strict-flags-no_ea` — delivery
+- `20260413T192953Z-delivery-mixed-delivery-input-bundle` — delivery
+- `20260414T004307Z-delivery-mixed-delivery-input-bundle` — delivery

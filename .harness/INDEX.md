@@ -22,3 +22,7 @@ Book-style index of canonical harness concepts, commands, and navigation points.
 | recommendation registry | `.harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.md:1` | |
 | latest inbox | `.harness/workspace/inbox/LATEST.md:1` | |
 | open items | `.harness/workspace/inbox/OPEN_ITEMS.md:1` | |
+| harness changelog | `HARNESS_CHANGELOG.md:1` | Template version history |
+| harness changelog (json) | `HARNESS_CHANGELOG.json:1` | Machine-readable changelog |
+| migrations | `MIGRATIONS.md:1` | Migration status and deferrals |
+| harness control flow | `.harness/knowledge/docs/HARNESS_CONTROL_FLOW.md:1` | Control flow documentation |

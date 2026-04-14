@@ -119,6 +119,7 @@ The default system has **six loops**:
 | Spec Ledger Curator | [.harness/spec/agents/spec-ledger-curator.md](.harness/spec/agents/spec-ledger-curator.md) | Distill key decisions, failures, and reusable learnings |
 | Spec PR Description | [.harness/spec/agents/spec-pr-description.md](.harness/spec/agents/spec-pr-description.md) | Branch PR descriptions |
 | Spec Change Summarizer | [.harness/spec/agents/spec-change-summarizer.md](.harness/spec/agents/spec-change-summarizer.md) | Merge-commit summaries |
+| Spec Delta Producer | [.harness/spec/agents/spec-delta-producer.md](.harness/spec/agents/spec-delta-producer.md) | Turn routed evidence into narrow proposed deltas |
 | Spec Diff Planner | [.harness/spec/agents/spec-diff-planner.md](.harness/spec/agents/spec-diff-planner.md) | Second-pass planning from real diff + failures |
 
 ### Development agents (`dev-`)
@@ -154,7 +155,10 @@ The default system has **six loops**:
 | SME Design Red Team | [.harness/spec/agents/sme-design-red-team.md](.harness/spec/agents/sme-design-red-team.md) | UI/UX and workflow critique with acceptance-ready recommendations |
 | SME Design Perfectionist | [.harness/spec/agents/sme-design-perfectionist.md](.harness/spec/agents/sme-design-perfectionist.md) | Craft-focused design critic with real-world references |
 | SME Design Thought Partner | [.harness/spec/agents/sme-design-thought-partner.md](.harness/spec/agents/sme-design-thought-partner.md) | Interactive pre-implementation design ideation and refinement |
+| SME Harness Engineer | [.harness/spec/agents/sme-harness-engineer.md](.harness/spec/agents/sme-harness-engineer.md) | Expert harness infrastructure engineering |
+| SME Harness Migrator | [.harness/spec/agents/sme-harness-migrator.md](.harness/spec/agents/sme-harness-migrator.md) | Template-to-downstream harness migration |
 | SME Product Thought Partner | [.harness/spec/agents/sme-product-thought-partner.md](.harness/spec/agents/sme-product-thought-partner.md) | Interactive pre-implementation product strategy and scoping |
+| SME Subagent Spec Advisor | [.harness/spec/agents/sme-subagent-spec-advisor.md](.harness/spec/agents/sme-subagent-spec-advisor.md) | Interactive subagent design and specification |
 | SME Technical Thought Partner | [.harness/spec/agents/sme-technical-thought-partner.md](.harness/spec/agents/sme-technical-thought-partner.md) | Interactive pre-implementation architecture and approach exploration |
 
 ### Maintenance agents (`maint-`)
@@ -170,6 +174,8 @@ The default system has **six loops**:
 | Agent | File | Role |
 |---|---|---|
 | Meta Bad State Monitor | [.harness/spec/agents/meta-bad-state-monitor.md](.harness/spec/agents/meta-bad-state-monitor.md) | Detect loops, scope blowups, artifact mismatch, token/context pressure |
+| Meta Context Ingest Classifier | [.harness/spec/agents/meta-context-ingest-classifier.md](.harness/spec/agents/meta-context-ingest-classifier.md) | Classify ingested context and extract routing signals |
+| Meta Context Router | [.harness/spec/agents/meta-context-router.md](.harness/spec/agents/meta-context-router.md) | Route ingested sources to downstream lanes |
 | Meta Ledger Doc Steward | [.harness/spec/agents/meta-ledger-doc-steward.md](.harness/spec/agents/meta-ledger-doc-steward.md) | Update docs/structure/persona guidance from published ledgers |
 | Meta Memory Sync Steward | [.harness/spec/agents/meta-memory-sync-steward.md](.harness/spec/agents/meta-memory-sync-steward.md) | Align ledgers, persona guidance, registry summaries, and memory indexes |
 | Meta Registry Steward | [.harness/spec/agents/meta-registry-steward.md](.harness/spec/agents/meta-registry-steward.md) | Consolidates repeated stakeholder findings into durable registry |
@@ -198,6 +204,7 @@ In Claude Code and Codex, load the command file directly as a prompt.
 | Contract producer | [run-spec-contract-producer.md](.harness/spec/commands/run-spec-contract-producer.md) | `/run-spec-contract-producer` |
 | PR description | [run-spec-pr-description.md](.harness/spec/commands/run-spec-pr-description.md) | `/run-spec-pr-description` |
 | Change summarizer | [run-spec-change-summarizer.md](.harness/spec/commands/run-spec-change-summarizer.md) | `/run-spec-change-summarizer` |
+| Context ingest | [run-context-ingest.md](.harness/spec/commands/run-context-ingest.md) | `/run-context-ingest` |
 | Prompt decomposer | [run-prompt-decomposer.md](.harness/spec/commands/run-prompt-decomposer.md) | `/run-prompt-decomposer` |
 | Design QA | [run-test-design-qa.md](.harness/spec/commands/run-test-design-qa.md) | `/run-test-design-qa` |
 | Customer persona | [run-test-customer-persona.md](.harness/spec/commands/run-test-customer-persona.md) | `/run-test-customer-persona` |
@@ -206,12 +213,17 @@ In Claude Code and Codex, load the command file directly as a prompt.
 | Design red team | [run-sme-design-red-team.md](.harness/spec/commands/run-sme-design-red-team.md) | `/run-sme-design-red-team` |
 | Design perfectionist | [run-sme-design-perfectionist.md](.harness/spec/commands/run-sme-design-perfectionist.md) | `/run-sme-design-perfectionist` |
 | Research | [run-sme-research.md](.harness/spec/commands/run-sme-research.md) | `/run-sme-research` |
+| Harness engineer | [run-sme-harness-engineer.md](.harness/spec/commands/run-sme-harness-engineer.md) | `/run-sme-harness-engineer` |
+| Harness migrator | [run-sme-harness-migrator.md](.harness/spec/commands/run-sme-harness-migrator.md) | `/run-sme-harness-migrator` |
+| Subagent spec advisor | [run-sme-subagent-spec-advisor.md](.harness/spec/commands/run-sme-subagent-spec-advisor.md) | `/run-sme-subagent-spec-advisor` |
 | Design thought partner | [run-sme-design-thought-partner.md](.harness/spec/commands/run-sme-design-thought-partner.md) | `/run-sme-design-thought-partner` |
 | Product thought partner | [run-sme-product-thought-partner.md](.harness/spec/commands/run-sme-product-thought-partner.md) | `/run-sme-product-thought-partner` |
 | Technical thought partner | [run-sme-technical-thought-partner.md](.harness/spec/commands/run-sme-technical-thought-partner.md) | `/run-sme-technical-thought-partner` |
 | Registry sync | [run-meta-registry-sync.md](.harness/spec/commands/run-meta-registry-sync.md) | `/run-meta-registry-sync` |
 | Ledger doc sync | [run-meta-ledger-doc-sync.md](.harness/spec/commands/run-meta-ledger-doc-sync.md) | `/run-meta-ledger-doc-sync` |
 | Memory sync | [run-meta-memory-sync.md](.harness/spec/commands/run-meta-memory-sync.md) | `/run-meta-memory-sync` |
+| Full doc/memory sync | [run-meta-doc-sync-all.md](.harness/spec/commands/run-meta-doc-sync-all.md) | `/run-meta-doc-sync-all` |
+| Ecosystem housekeeping | [run-ecosystem-housekeeping.md](.harness/spec/commands/run-ecosystem-housekeeping.md) | `/run-ecosystem-housekeeping` |
 | Harness bootstrap | [run-harness-bootstrap.md](.harness/spec/commands/run-harness-bootstrap.md) | `/run-harness-bootstrap` |
 
 ## Run Artifacts

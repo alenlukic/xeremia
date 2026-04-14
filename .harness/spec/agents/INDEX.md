@@ -22,6 +22,8 @@ Canonical agent definitions, grouped by prefixed role.
 ## Meta / Governance (`meta-`)
 
 - [meta-bad-state-monitor.md](meta-bad-state-monitor.md)
+- [meta-context-ingest-classifier.md](meta-context-ingest-classifier.md)
+- [meta-context-router.md](meta-context-router.md)
 - [meta-ledger-doc-steward.md](meta-ledger-doc-steward.md)
 - [meta-memory-sync-steward.md](meta-memory-sync-steward.md)
 - [meta-registry-steward.md](meta-registry-steward.md)
@@ -35,9 +37,12 @@ Canonical agent definitions, grouped by prefixed role.
 - [sme-design-perfectionist.md](sme-design-perfectionist.md)
 - [sme-design-red-team.md](sme-design-red-team.md)
 - [sme-design-thought-partner.md](sme-design-thought-partner.md)
+- [sme-harness-engineer.md](sme-harness-engineer.md)
+- [sme-harness-migrator.md](sme-harness-migrator.md)
 - [sme-product-red-team.md](sme-product-red-team.md)
 - [sme-product-thought-partner.md](sme-product-thought-partner.md)
 - [sme-research-analyst.md](sme-research-analyst.md)
+- [sme-subagent-spec-advisor.md](sme-subagent-spec-advisor.md)
 - [sme-technical-red-team.md](sme-technical-red-team.md)
 - [sme-technical-thought-partner.md](sme-technical-thought-partner.md)
 
@@ -45,6 +50,7 @@ Canonical agent definitions, grouped by prefixed role.
 
 - [spec-change-summarizer.md](spec-change-summarizer.md)
 - [spec-contract-producer.md](spec-contract-producer.md)
+- [spec-delta-producer.md](spec-delta-producer.md)
 - [spec-diff-planner.md](spec-diff-planner.md)
 - [spec-ledger-curator.md](spec-ledger-curator.md)
 - [spec-pr-description.md](spec-pr-description.md)
