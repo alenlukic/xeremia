@@ -30,7 +30,6 @@ const SNAP_MODIFIERS = [snapCenterToCursor];
 const COL_VIS_STORAGE_KEY = 'dj-tools-browse-col-visibility';
 const PANEL_SPLIT_PREFIX = 'dj-tools-panel-split-';
 const POOL_EXPANDED_KEY = 'dj-tools-pool-expanded';
-const EXPLORER_SET_ACCORDION_KEY = 'dj-tools-explorer-set-open';
 const DEFAULT_PANEL_HEIGHT = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.51) : 350;
 
 const BROWSE_CONFIGURABLE_COLUMNS = [
@@ -106,14 +105,6 @@ function loadPoolExpanded(): boolean {
   }
 }
 
-function loadExplorerSetOpen(): boolean {
-  try {
-    return localStorage.getItem(EXPLORER_SET_ACCORDION_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
-
 export default function App() {
   const { allTracks, traitMap, loading: collectionLoading, tracksError, traitsError } = useCollectionCache();
 
@@ -128,7 +119,6 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showWeights, setShowWeights] = useState(false);
   const [poolExpanded, setPoolExpanded] = useState(loadPoolExpanded);
-  const [explorerSetOpen, setExplorerSetOpen] = useState(loadExplorerSetOpen);
   const [dragItem, setDragItem] = useState<DragPayload | null>(null);
   const [dndWarning, setDndWarning] = useState<string | null>(null);
 
@@ -155,14 +145,6 @@ export default function App() {
     try { localStorage.setItem(POOL_EXPANDED_KEY, String(expanded)); } catch {}
   }, []);
 
-  const handleExplorerSetToggle = useCallback(() => {
-    setExplorerSetOpen(prev => {
-      const next = !prev;
-      try { localStorage.setItem(EXPLORER_SET_ACCORDION_KEY, String(next)); } catch { /* storage unavailable */ }
-      return next;
-    });
-  }, []);
-
   const {
     stats: cacheStats,
     loading: cacheLoading,
@@ -185,7 +167,6 @@ export default function App() {
     filteredTracks,
     filterCacheKey,
     setCamelotCodes,
-    setBpm,
     setBpmMin,
     setBpmMax,
   } = useTrackFilters(allTracks, effectiveSearchText);
@@ -273,20 +254,6 @@ export default function App() {
     selectTree,
     createTree,
   } = useSetBuilder();
-
-  const showExplorerSetTab = activePanel === 'explorer' && activeSet !== null;
-  const showExplorerTopWorkspace = showExplorerSetTab && explorerSetOpen;
-
-  const hadActiveSetRef = useRef(false);
-  useEffect(() => {
-    if (activeSet) {
-      hadActiveSetRef.current = true;
-    } else if (hadActiveSetRef.current && explorerSetOpen) {
-      hadActiveSetRef.current = false;
-      setExplorerSetOpen(false);
-      try { localStorage.setItem(EXPLORER_SET_ACCORDION_KEY, 'false'); } catch { /* storage unavailable */ }
-    }
-  }, [activeSet, explorerSetOpen]);
 
   const starredTrackIds = useMemo(() => {
     if (!activeSet) return new Set<number>();
@@ -475,13 +442,12 @@ export default function App() {
 
   const handleClearFilters = useCallback(() => {
     setCamelotCodes([]);
-    setBpm(undefined);
     setBpmMin(undefined);
     setBpmMax(undefined);
     if (!selectedTrack) {
       setSearchText('');
     }
-  }, [setCamelotCodes, setBpm, setBpmMin, setBpmMax, selectedTrack]);
+  }, [setCamelotCodes, setBpmMin, setBpmMax, selectedTrack]);
 
   const handleClearSelectedTrack = useCallback(() => {
     setDetailMatch(null);
@@ -508,6 +474,7 @@ export default function App() {
   }, [activeSet]);
 
   const panelIsOpen = activePanel !== null;
+  const isSetMode = activePanel === 'explorer' && activeSet !== null;
 
   // --- DnD ---
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -654,112 +621,76 @@ export default function App() {
     <AudioPlayerProvider>
     <DndContext sensors={sensors} collisionDetection={dndCollisionDetection} measuring={measuringConfig} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
       <div className="app-shell-v2">
-        {/* ─── Top Anchor Zone ─── */}
-        <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: '28vh' }}>
-          {/* ─── Unified search + filter row ─── */}
-          <div className="controls-strip" style={showExplorerTopWorkspace ? { display: 'none' } : undefined}>
-            <SearchPanel
-              selectedTrack={selectedTrack}
-              selectTrack={handleSelectTrack}
-              onSearchTextChange={setSearchText}
-              onClearSelectedTrack={handleClearSelectedTrack}
-              searchText={searchText}
-            />
-            <FilterBar
-              camelotCodes={filters.camelotCodes}
-              bpm={filters.bpm}
-              bpmMin={filters.bpmMin}
-              bpmMax={filters.bpmMax}
-              setCamelotCodes={setCamelotCodes}
-              setBpm={setBpm}
-              setBpmMin={setBpmMin}
-              setBpmMax={setBpmMax}
-              onClearFilters={handleClearFilters}
-            />
-            <div className="controls-strip-actions">
-              <button
-                className={`search-weights-btn${showWeights ? ' search-weights-btn--active' : ''}`}
-                onClick={() => setShowWeights(prev => !prev)}
-                title="Weights"
-                aria-label="Toggle weights"
-              >
-                ⚖
-              </button>
-              <button
-                className={`dock-admin-btn${showAdmin ? ' dock-admin-btn--active' : ''}`}
-                onClick={() => setShowAdmin(prev => !prev)}
-                title="Admin Dashboard"
-                aria-label="Admin Dashboard"
-              >
-                ⚙
-              </button>
-            </div>
-          </div>
-
-          {traitsError && (
-            <p className="table-status table-status--error" style={{ margin: '0 var(--content-gutter)' }}>
-              Failed to load track traits — {traitsError}
-            </p>
-          )}
-
-          <div className="browse-zone-body">
-            <div className={`table-panel${showExplorerTopWorkspace ? ' table-panel--offscreen' : showExplorerSetTab ? ' table-panel--tab-adjacent' : ''}`}>
-              <TrackTable
-                tracks={visibleTracks}
-                loading={collectionLoading}
+        {/* ─── Top Anchor Zone (hidden in Set Mode) ─── */}
+        {!isSetMode && (
+          <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: '28vh' }}>
+            {/* ─── Unified search + filter row ─── */}
+            <div className="controls-strip">
+              <SearchPanel
                 selectedTrack={selectedTrack}
-                selectTrack={handleBrowseSelect}
-                hasMore={hasMorePages}
-                onLoadMore={handleLoadMore}
-                error={tracksError}
-                columnVisibility={browseColumnVisibility}
-                configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
-                onToggleColumn={toggleBrowseColumn}
-                starredTrackIds={starredTrackIds}
-                sorting={browseSorting}
-                onSortingChange={setBrowseSorting}
-                scrollContainerRef={browseScrollRef}
+                selectTrack={handleSelectTrack}
+                onSearchTextChange={setSearchText}
+                onClearSelectedTrack={handleClearSelectedTrack}
+                searchText={searchText}
               />
+              <FilterBar
+                camelotCodes={filters.camelotCodes}
+                bpmMin={filters.bpmMin}
+                bpmMax={filters.bpmMax}
+                setCamelotCodes={setCamelotCodes}
+                setBpmMin={setBpmMin}
+                setBpmMax={setBpmMax}
+                onClearFilters={handleClearFilters}
+              />
+              <div className="controls-strip-actions">
+                <button
+                  className={`search-weights-btn${showWeights ? ' search-weights-btn--active' : ''}`}
+                  onClick={() => setShowWeights(prev => !prev)}
+                  title="Weights"
+                  aria-label="Toggle weights"
+                >
+                  ⚖
+                </button>
+                <button
+                  className={`dock-admin-btn${showAdmin ? ' dock-admin-btn--active' : ''}`}
+                  onClick={() => setShowAdmin(prev => !prev)}
+                  title="Admin Dashboard"
+                  aria-label="Admin Dashboard"
+                >
+                  ⚙
+                </button>
+              </div>
             </div>
 
-            {showExplorerTopWorkspace && activeSet && (
-              <div className="explorer-top-workspace">
-                <SetWorkspacePanel
-                  activeSet={activeSet}
-                  removeFromPool={removeFromPool}
-                  clearPool={clearPool}
-                  movePoolToTracklist={movePoolToTracklist}
-                  addToPool={sbAddToPool}
-                  removeFromTracklist={removeFromTracklist}
-                  clearTracklist={clearTracklist}
-                  moveTracklistToPool={moveTracklistToPool}
-                  reorderTracklist={reorderTracklist}
-                  updateTracklistNote={updateTracklistNote}
-                  togglePoolStar={togglePoolStar}
-                  toggleTracklistStar={toggleTracklistStar}
-                  addToTracklist={sbAddToTracklist}
-                  poolExpanded={poolExpanded}
-                  onPoolExpandedChange={handlePoolExpandedChange}
+            {traitsError && (
+              <p className="table-status table-status--error" style={{ margin: '0 var(--content-gutter)' }}>
+                Failed to load track traits — {traitsError}
+              </p>
+            )}
+
+            <div className="browse-zone-body">
+              <div className="table-panel">
+                <TrackTable
+                  tracks={visibleTracks}
+                  loading={collectionLoading}
+                  selectedTrack={selectedTrack}
+                  selectTrack={handleBrowseSelect}
+                  hasMore={hasMorePages}
+                  onLoadMore={handleLoadMore}
+                  error={tracksError}
+                  columnVisibility={browseColumnVisibility}
+                  configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
+                  onToggleColumn={toggleBrowseColumn}
+                  starredTrackIds={starredTrackIds}
+                  sorting={browseSorting}
+                  onSortingChange={setBrowseSorting}
+                  scrollContainerRef={browseScrollRef}
                 />
               </div>
-            )}
 
-            {showExplorerSetTab && (
-              <button
-                className={`explorer-set-tab${showExplorerTopWorkspace ? ' explorer-set-tab--active' : ''}`}
-                onClick={handleExplorerSetToggle}
-                aria-label={explorerSetOpen ? 'Collapse set workspace' : 'Expand set workspace'}
-                title={explorerSetOpen ? 'Collapse set workspace' : 'Expand set workspace'}
-                data-testid="explorer-set-tab"
-              >
-                <span className="explorer-set-chevron" aria-hidden="true">
-                  {explorerSetOpen ? '›' : '‹'}
-                </span>
-                <span className="explorer-set-label">Set</span>
-              </button>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ─── Dock Bar ─── */}
         <DockBar
@@ -775,7 +706,7 @@ export default function App() {
         {/* ─── Panel Zone (always visible, idle when no panel active) ─── */}
         <div
           className="panel-zone"
-          style={{ height: panelHeight }}
+          style={isSetMode ? { flex: 1, minHeight: 0 } : { height: panelHeight }}
         >
           {/* Matches panel */}
           <div
@@ -790,9 +721,12 @@ export default function App() {
                 <button
                   className="chain-back-btn"
                   onClick={handleChainBack}
-                  title="Go back to previous source"
+                  title={`Back to ${transitionChain[transitionChain.length - 1].track.title}`}
                 >
-                  ← Back
+                  ← {(() => {
+                    const t = transitionChain[transitionChain.length - 1].track.title;
+                    return t.length > 25 ? t.slice(0, 25) + '…' : t;
+                  })()}
                 </button>
                 {transitionChain.map((entry, i) => (
                   <span key={`chain-${entry.track.id}-${i}`} className="chain-step">
@@ -883,29 +817,52 @@ export default function App() {
             style={{ display: activePanel === 'explorer' ? 'flex' : 'none' }}
           >
             {activeSet ? (
-              <SetExplorerCanvas
-                nodes={activeTreeId != null
-                  ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId)
-                  : activeSet.explorer_nodes}
-                edges={activeTreeId != null
-                  ? activeSet.explorer_edges.filter(e => e.tree_id === activeTreeId)
-                  : activeSet.explorer_edges}
-                onAddNode={addExplorerNode}
-                onDeleteNode={deleteExplorerNode}
-                onAddEdge={addExplorerEdge}
-                onDeleteEdge={deleteExplorerEdge}
-                onSwap={swapExplorerNodes}
-                onMoveNode={moveExplorerNode}
-                onNodeToTracklist={explorerNodeAddToTracklist}
-                onAddSibling={addSiblingNode}
-                tracklistTrackIds={tracklistTrackIds}
-                fetchEdgeScores={fetchEdgeScores}
-                warningNodeId={null}
-                trees={activeSet.explorer_trees}
-                activeTreeId={activeTreeId}
-                onSelectTree={selectTree}
-                onCreateTree={createTree}
-              />
+              <div className="set-mode-columns">
+                <div className="set-mode-left">
+                  <SetWorkspacePanel
+                    activeSet={activeSet}
+                    removeFromPool={removeFromPool}
+                    clearPool={clearPool}
+                    movePoolToTracklist={movePoolToTracklist}
+                    addToPool={sbAddToPool}
+                    removeFromTracklist={removeFromTracklist}
+                    clearTracklist={clearTracklist}
+                    moveTracklistToPool={moveTracklistToPool}
+                    reorderTracklist={reorderTracklist}
+                    updateTracklistNote={updateTracklistNote}
+                    togglePoolStar={togglePoolStar}
+                    toggleTracklistStar={toggleTracklistStar}
+                    addToTracklist={sbAddToTracklist}
+                    poolExpanded={true}
+                    onPoolExpandedChange={handlePoolExpandedChange}
+                  />
+                </div>
+                <div className="set-mode-right">
+                  <SetExplorerCanvas
+                    nodes={activeTreeId != null
+                      ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId)
+                      : activeSet.explorer_nodes}
+                    edges={activeTreeId != null
+                      ? activeSet.explorer_edges.filter(e => e.tree_id === activeTreeId)
+                      : activeSet.explorer_edges}
+                    onAddNode={addExplorerNode}
+                    onDeleteNode={deleteExplorerNode}
+                    onAddEdge={addExplorerEdge}
+                    onDeleteEdge={deleteExplorerEdge}
+                    onSwap={swapExplorerNodes}
+                    onMoveNode={moveExplorerNode}
+                    onNodeToTracklist={explorerNodeAddToTracklist}
+                    onAddSibling={addSiblingNode}
+                    tracklistTrackIds={tracklistTrackIds}
+                    fetchEdgeScores={fetchEdgeScores}
+                    warningNodeId={null}
+                    trees={activeSet.explorer_trees}
+                    activeTreeId={activeTreeId}
+                    onSelectTree={selectTree}
+                    onCreateTree={createTree}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="set-builder">
                 <div className="set-empty">
@@ -979,7 +936,7 @@ export default function App() {
                   disabled={isSumValid}
                   onClick={normalizeWeights}
                 >
-                  Normalize Weights{!isSumValid && ` (${parseFloat(rawSum.toFixed(1))})`}
+                  {`Normalize (Σ ${parseFloat(rawSum.toFixed(1))})`}
                 </button>
               </div>
             </div>

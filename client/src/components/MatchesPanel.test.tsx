@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, type RenderOptions } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, type RenderOptions } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DndContext } from '@dnd-kit/core';
 import type { ReactElement } from 'react';
@@ -25,6 +25,7 @@ class ResizeObserverMock {
 }
 
 beforeEach(() => {
+  cleanup();
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   localStorage.removeItem('dj-tools-matches-column-config');
 });
@@ -294,7 +295,7 @@ describe('MatchesPanel', () => {
   });
 
   describe('match detail affordance', () => {
-    it('renders a visible clickable track title for each match row', () => {
+    it('renders non-interactive track title text for each match row', () => {
       renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -302,10 +303,11 @@ describe('MatchesPanel', () => {
           loading={false}
         />
       );
-      const links = document.querySelectorAll('.match-track-link');
-      expect(links.length).toBe(2);
-      expect(links[0].textContent).toBe('Deep Blue');
-      expect(links[1].textContent).toBe('Red Sky');
+      const titles = document.querySelectorAll('.match-track-title');
+      expect(titles.length).toBe(2);
+      expect(titles[0].textContent).toBe('Deep Blue');
+      expect(titles[1].textContent).toBe('Red Sky');
+      expect(titles[0].tagName).toBe('SPAN');
     });
 
     it('calls onViewDetail when detail icon button is clicked', async () => {
@@ -325,7 +327,7 @@ describe('MatchesPanel', () => {
       expect(onViewDetail).toHaveBeenCalledWith(match);
     });
 
-    it('has hover title and focus-accessible aria-label on each track link', () => {
+    it('has hover title and focus-accessible aria-label on each detail button', () => {
       renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
@@ -338,38 +340,37 @@ describe('MatchesPanel', () => {
       expect(btns[0].getAttribute('aria-label')).toBe('View match detail for Deep Blue');
     });
 
-    it('track title click calls onUseAsSource, not onViewDetail', async () => {
-      const onViewDetail = vi.fn();
+    it('clicking track title text does NOT call onUseAsSource', () => {
       const onUseAsSource = vi.fn();
       renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ candidate_id: 7, title: 'Deep Blue' })]}
           loading={false}
-          onViewDetail={onViewDetail}
           onUseAsSource={onUseAsSource}
         />
       );
-      await userEvent.click(screen.getByText('Deep Blue'));
-      expect(onUseAsSource).toHaveBeenCalledWith(7);
-      expect(onViewDetail).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByText('Deep Blue'));
+      expect(onUseAsSource).not.toHaveBeenCalled();
     });
   });
 
   describe('use as source action', () => {
-    it('track title acts as use-as-source trigger for each row', () => {
+    it('renders a distinct Use as source button for each row when onUseAsSource is provided', () => {
       renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch(), makeMatch({ candidate_id: 2 })]}
           loading={false}
+          onUseAsSource={vi.fn()}
         />
       );
-      const links = screen.getAllByTitle('Use as source track');
-      expect(links.length).toBe(2);
+      const btns = document.querySelectorAll('.match-use-source-btn');
+      expect(btns.length).toBe(2);
+      expect(btns[0].textContent).toBe('Source');
     });
 
-    it('calls onUseAsSource with candidate_id when track title clicked', async () => {
+    it('calls onUseAsSource with candidate_id when Source button clicked', async () => {
       const onUseAsSource = vi.fn();
       renderWithDnd(
         <MatchesPanel
@@ -383,18 +384,28 @@ describe('MatchesPanel', () => {
       expect(onUseAsSource).toHaveBeenCalledWith(42);
     });
 
-    it('does not render a Use as source button in the actions column', () => {
+    it('does not render Use as source button when onUseAsSource is not provided', () => {
       renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
           loading={false}
-          onAddToSet={vi.fn()}
         />
       );
-      const actionsCells = document.querySelectorAll('.match-actions-cell');
-      expect(actionsCells.length).toBe(1);
-      expect(actionsCells[0].textContent).not.toContain('Use as source');
+      expect(document.querySelectorAll('.match-use-source-btn').length).toBe(0);
+    });
+
+    it('Source button has accessible aria-label', () => {
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch({ title: 'Deep Blue' })]}
+          loading={false}
+          onUseAsSource={vi.fn()}
+        />
+      );
+      const btn = document.querySelector('.match-use-source-btn');
+      expect(btn?.getAttribute('aria-label')).toBe('Use Deep Blue as source');
     });
   });
 
