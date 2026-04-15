@@ -37,10 +37,24 @@ export function edgeColorForColumn(columnIndex: number): string {
   return EDGE_COLORS[columnIndex % EDGE_COLORS.length];
 }
 
-export const NODE_H_DEFAULT = 48;
-export const NODE_H_WRAPPED = 60;
+export const NODE_H_DEFAULT = 27;
+export const NODE_H_WRAPPED = 34;
 const WRAP_CHAR_THRESHOLD = 40;
 
 export function nodeHeight(title: string): number {
   return title.length > WRAP_CHAR_THRESHOLD ? NODE_H_WRAPPED : NODE_H_DEFAULT;
+}
+
+const METADATA_PREFIX_RE = /^\[[^\]]*\]\s*/;
+const TITLE_TRUNCATE = 24;
+
+export function cleanTitle(raw: string): string {
+  const stripped = raw.replace(METADATA_PREFIX_RE, '');
+  return stripped.length > TITLE_TRUNCATE
+    ? stripped.slice(0, TITLE_TRUNCATE) + '…'
+    : stripped;
+}
+
+export function nodeHeightForTrack(rawTitle: string): number {
+  return nodeHeight(cleanTitle(rawTitle));
 }

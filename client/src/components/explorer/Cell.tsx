@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import type { ExplorerNode } from '../../types';
-import { nodeColorForLevel, nodeHeight, NODE_H_DEFAULT } from '../../utils/explorer';
+import { nodeColorForLevel, nodeHeight, NODE_H_DEFAULT, cleanTitle } from '../../utils/explorer';
 export interface CellProps {
   level: number;
   colIndex: number;
@@ -73,8 +73,9 @@ export const Cell = memo(function Cell({
   }
 
   const fullTitle = node.track?.title ?? String(node.track_id);
+  const displayTitle = cleanTitle(fullTitle);
   const color = nodeColorForLevel(level);
-  const wrapped = nodeHeight(fullTitle) > NODE_H_DEFAULT;
+  const wrapped = nodeHeight(displayTitle) > NODE_H_DEFAULT;
 
   return (
     <div
@@ -117,13 +118,6 @@ export const Cell = memo(function Cell({
           onMouseDown={e => e.stopPropagation()}
           aria-label="Swap track IDs"
         >↕</button>
-        <button
-          className="explorer-cell-action"
-          onClick={e => { e.stopPropagation(); onOpenChildAdd(node.node_id); }}
-          onMouseDown={e => e.stopPropagation()}
-          aria-label="Add child node"
-          data-testid="child-add-btn"
-        >+Child</button>
         {!inTracklist && (
           <button
             className="explorer-cell-action explorer-cell-action--success"
@@ -133,6 +127,13 @@ export const Cell = memo(function Cell({
           >→TL</button>
         )}
       </div>
+      <button
+        className="explorer-cell-child-cue"
+        onClick={e => { e.stopPropagation(); onOpenChildAdd(node.node_id); }}
+        onMouseDown={e => e.stopPropagation()}
+        aria-label="Add child node"
+        data-testid="child-add-btn"
+      >+</button>
 
       <div
         className={`explorer-cell-node${wrapped ? ' node-wrapped' : ''}${isMoveDragSource ? ' explorer-cell-node--move-drag' : ''}`}
@@ -142,7 +143,7 @@ export const Cell = memo(function Cell({
         data-level={level}
         data-col-index={colIndex}
       >
-        <span className="explorer-cell-title">{fullTitle}</span>
+        <span className="explorer-cell-title">{displayTitle}</span>
       </div>
     </div>
   );

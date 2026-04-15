@@ -360,7 +360,8 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
         findings.append("policy_violations_present")
 
     if qa_verdict not in {"PASS", "APPROVE", "UNKNOWN"}:
-        score -= 15
+        if not gates.get("require_ui_dom_verification"):
+            score -= 15
         findings.append(f"qa_not_pass:{qa_verdict}")
 
     if build_status not in {"PASS", "SUCCESS", "UNKNOWN"}:
@@ -420,7 +421,12 @@ def evaluate(run_dir: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
     hard_block = {"test_failures_present", "critical_regression_risk", "policy_violations_present"}
     if require_no_high:
         hard_block.add("high_regression_risk")
-    has_hard_block = any(item in hard_block or item.startswith("breaker_blockers_present:") for item in findings)
+    has_hard_block = any(
+        item in hard_block
+        or item.startswith("breaker_blockers_present:")
+        or (gates.get("require_ui_dom_verification") and item.startswith("qa_not_pass:"))
+        for item in findings
+    )
     has_floor_fail = any("below_40" in b for b in floor_breaches)
     verdict = "PASS" if score >= threshold and not has_hard_block and not has_floor_fail else "FAIL"
     if verdict == "FAIL" and not has_hard_block and not has_floor_fail and score >= conditional_threshold:

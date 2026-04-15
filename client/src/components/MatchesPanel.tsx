@@ -289,13 +289,17 @@ export const MatchesPanel = memo(function MatchesPanel({
         minSize: 100,
         cell: (info) => (
           <div className="match-track-cell">
-            <button
-              className="match-track-link"
-              onClick={() => onUseAsSource?.(info.row.original.candidate_id)}
-              title="Use as source track"
-            >
-              {info.getValue()}
-            </button>
+            <span className="match-track-title">{info.getValue()}</span>
+            {onUseAsSource && (
+              <button
+                className="match-use-source-btn"
+                onClick={() => onUseAsSource(info.row.original.candidate_id)}
+                title="Use as source track"
+                aria-label={`Use ${info.row.original.title} as source`}
+              >
+                Source
+              </button>
+            )}
           </div>
         ),
       }),

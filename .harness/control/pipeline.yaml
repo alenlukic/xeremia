@@ -110,6 +110,7 @@ gates:
   customer_persona_requires_build_pass: true
   customer_persona_requires_no_breaker_blockers: true
   breaker_findings_spawn_follow_on_run: true
+  require_ui_dom_verification: true
 
 retry:
   enabled: true

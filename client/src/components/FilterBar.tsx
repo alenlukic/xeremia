@@ -10,11 +10,9 @@ const RANGE_DEBOUNCE_MS = 300;
 
 interface Props {
   camelotCodes: string[];
-  bpm: number | undefined;
   bpmMin: number | undefined;
   bpmMax: number | undefined;
   setCamelotCodes: (codes: string[]) => void;
-  setBpm: (bpm: number | undefined) => void;
   setBpmMin: (min: number | undefined) => void;
   setBpmMax: (max: number | undefined) => void;
   onClearFilters?: () => void;
@@ -22,11 +20,9 @@ interface Props {
 
 export function FilterBar({
   camelotCodes,
-  bpm,
   bpmMin,
   bpmMax,
   setCamelotCodes,
-  setBpm,
   setBpmMin,
   setBpmMax,
   onClearFilters,
@@ -34,8 +30,6 @@ export function FilterBar({
   const [camelotOpen, setCamelotOpen] = useState(false);
   const camelotRef = useRef<HTMLDivElement>(null);
 
-  const [bpmText, setBpmText] = useState(bpm != null ? String(bpm) : '');
-  const bpmTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [minText, setMinText] = useState(bpmMin != null ? String(bpmMin) : '');
   const [maxText, setMaxText] = useState(bpmMax != null ? String(bpmMax) : '');
   const minTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -43,7 +37,6 @@ export function FilterBar({
 
   useEffect(() => {
     return () => {
-      clearTimeout(bpmTimer.current);
       clearTimeout(minTimer.current);
       clearTimeout(maxTimer.current);
     };
@@ -69,10 +62,6 @@ export function FilterBar({
   }, [camelotOpen]);
 
   useEffect(() => {
-    setBpmText(bpm != null ? String(bpm) : '');
-  }, [bpm]);
-
-  useEffect(() => {
     setMinText(bpmMin != null ? String(bpmMin) : '');
   }, [bpmMin]);
 
@@ -93,34 +82,9 @@ export function FilterBar({
     return Number.isNaN(n) ? undefined : n;
   }
 
-  function handleBpmChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const text = e.target.value;
-    setBpmText(text);
-    if (text && (minText || maxText)) {
-      clearTimeout(minTimer.current);
-      clearTimeout(maxTimer.current);
-      setMinText('');
-      setMaxText('');
-      setBpmMin(undefined);
-      setBpmMax(undefined);
-    }
-    clearTimeout(bpmTimer.current);
-    bpmTimer.current = setTimeout(() => setBpm(parseNum(text)), RANGE_DEBOUNCE_MS);
-  }
-
-  function handleBpmBlur() {
-    clearTimeout(bpmTimer.current);
-    setBpm(parseNum(bpmText));
-  }
-
   function handleMinChange(e: React.ChangeEvent<HTMLInputElement>) {
     const text = e.target.value;
     setMinText(text);
-    if (text && bpmText) {
-      clearTimeout(bpmTimer.current);
-      setBpmText('');
-      setBpm(undefined);
-    }
     clearTimeout(minTimer.current);
     minTimer.current = setTimeout(() => setBpmMin(parseNum(text)), RANGE_DEBOUNCE_MS);
   }
@@ -128,11 +92,6 @@ export function FilterBar({
   function handleMaxChange(e: React.ChangeEvent<HTMLInputElement>) {
     const text = e.target.value;
     setMaxText(text);
-    if (text && bpmText) {
-      clearTimeout(bpmTimer.current);
-      setBpmText('');
-      setBpm(undefined);
-    }
     clearTimeout(maxTimer.current);
     maxTimer.current = setTimeout(() => setBpmMax(parseNum(text)), RANGE_DEBOUNCE_MS);
   }
@@ -183,27 +142,11 @@ export function FilterBar({
       </div>
 
       <div className="filter-group">
-        <div className="filter-input-row">
-          <input
-            type="number"
-            className="filter-input mono"
-            placeholder="BPM"
-            value={bpmText}
-            onChange={handleBpmChange}
-            onBlur={handleBpmBlur}
-          />
-          {bpmText && (
-            <button className="clear-btn" onClick={() => { clearTimeout(bpmTimer.current); setBpmText(''); setBpm(undefined); }} tabIndex={-1}>×</button>
-          )}
-        </div>
-      </div>
-
-      <div className="filter-group">
         <div className="filter-range">
           <input
             type="number"
             className="filter-input mono"
-            placeholder="Min"
+            placeholder="BPM Min"
             value={minText}
             onChange={handleMinChange}
             onBlur={handleMinBlur}
@@ -212,7 +155,7 @@ export function FilterBar({
           <input
             type="number"
             className="filter-input mono"
-            placeholder="Max"
+            placeholder="BPM Max"
             value={maxText}
             onChange={handleMaxChange}
             onBlur={handleMaxBlur}
@@ -242,7 +185,6 @@ export function FilterBar({
           onClick={onClearFilters}
           disabled={
             camelotCodes.length === 0 &&
-            bpm == null &&
             bpmMin == null &&
             bpmMax == null
           }

@@ -273,7 +273,7 @@ describe('Browse infinite scroll', () => {
     });
     expect(getRowCount()).toBe(500);
 
-    const bpmInput = screen.getByPlaceholderText('BPM');
+    const bpmInput = screen.getByPlaceholderText('BPM Min');
     await userEvent.type(bpmInput, '120');
 
     await waitFor(() => {
@@ -608,12 +608,12 @@ describe('Error state handling', () => {
   });
 });
 
-describe('BPM exclusivity', () => {
-  it('typing exact BPM clears active BPM range fields', async () => {
+describe('BPM unified filter', () => {
+  it('min and max inputs coexist without cross-clearing', async () => {
     await renderApp();
 
-    const minInput = screen.getByPlaceholderText('Min');
-    const maxInput = screen.getByPlaceholderText('Max');
+    const minInput = screen.getByPlaceholderText('BPM Min');
+    const maxInput = screen.getByPlaceholderText('BPM Max');
 
     await userEvent.type(minInput, '100');
     await act(async () => { minInput.blur(); });
@@ -622,42 +622,21 @@ describe('BPM exclusivity', () => {
 
     expect(minInput).toHaveValue(100);
     expect(maxInput).toHaveValue(140);
-
-    const exactInput = screen.getByPlaceholderText('BPM');
-    await userEvent.type(exactInput, '120');
-
-    await waitFor(() => {
-      expect(minInput).toHaveValue(null);
-      expect(maxInput).toHaveValue(null);
-    });
   });
 
-  it('typing BPM range clears active exact BPM', async () => {
+  it('equal min and max expresses exact matching', async () => {
     await renderApp();
 
-    const exactInput = screen.getByPlaceholderText('BPM');
-    await userEvent.type(exactInput, '120');
-    expect(exactInput).toHaveValue(120);
+    const minInput = screen.getByPlaceholderText('BPM Min');
+    const maxInput = screen.getByPlaceholderText('BPM Max');
 
-    const minInput = screen.getByPlaceholderText('Min');
-    await userEvent.type(minInput, '100');
+    await userEvent.type(minInput, '128');
+    await act(async () => { minInput.blur(); });
+    await userEvent.type(maxInput, '128');
+    await act(async () => { maxInput.blur(); });
 
-    await waitFor(() => {
-      expect(exactInput).toHaveValue(null);
-    });
-  });
-
-  it('clearing exact BPM does not affect range fields', async () => {
-    await renderApp();
-
-    const exactInput = screen.getByPlaceholderText('BPM');
-    await userEvent.type(exactInput, '120');
-    expect(exactInput).toHaveValue(120);
-
-    await userEvent.clear(exactInput);
-    expect(exactInput).toHaveValue(null);
-    expect(screen.getByPlaceholderText('Min')).toHaveValue(null);
-    expect(screen.getByPlaceholderText('Max')).toHaveValue(null);
+    expect(minInput).toHaveValue(128);
+    expect(maxInput).toHaveValue(128);
   });
 });
 
@@ -1061,25 +1040,25 @@ describe('DockBar keyboard navigation', () => {
   });
 });
 
-describe('Clear Filters with exact BPM', () => {
+describe('Clear Filters with BPM', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('Clear Filters resets exact BPM alongside other filters', async () => {
+  it('Clear Filters resets BPM min/max alongside other filters', async () => {
     const user = userEvent.setup();
     await renderApp();
 
-    const exactInput = screen.getByPlaceholderText('BPM');
-    await user.type(exactInput, '128');
-    await act(async () => { exactInput.blur(); });
-    expect(exactInput).toHaveValue(128);
+    const minInput = screen.getByPlaceholderText('BPM Min');
+    await user.type(minInput, '128');
+    await act(async () => { minInput.blur(); });
+    expect(minInput).toHaveValue(128);
 
     const clearBtn = screen.getByRole('button', { name: 'Clear Filters' });
     await act(async () => { clearBtn.click(); });
 
     await waitFor(() => {
-      expect(exactInput).toHaveValue(null);
+      expect(minInput).toHaveValue(null);
     });
   });
 });
@@ -1339,10 +1318,8 @@ describe('Shell state model', () => {
   });
 });
 
-describe('Explorer Set Accordion', () => {
-  const ACCORDION_KEY = 'dj-tools-explorer-set-open';
-
-  async function renderWithActiveSet(preRender?: () => void) {
+describe('Set Mode DockBar hiding', () => {
+  async function renderWithActiveSet() {
     const httpMod = await import('./api/http');
     vi.mocked(httpMod.fetchSets).mockResolvedValue([
       { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 2, tracklist_count: 1 },
@@ -1359,7 +1336,91 @@ describe('Explorer Set Accordion', () => {
       explorer_trees: [], explorer_nodes: [], explorer_edges: [],
     });
 
-    if (preRender) preRender();
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    await act(async () => {
+      screen.getByRole('tab', { name: /Set/ }).click();
+    });
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: '1' } });
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
+    });
+  }
+
+  it('keeps DockBar visible in Set Mode so user can switch back', async () => {
+    await renderWithActiveSet();
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('tab', { name: 'Matches' })).toBeInTheDocument();
+    });
+  });
+
+  it('does not render old accordion tab or workspace in Set Mode', async () => {
+    await renderWithActiveSet();
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.set-mode-columns')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
+    expect(document.querySelector('.explorer-top-workspace')).not.toBeInTheDocument();
+  });
+
+  it('hides the search/browse panel in Set Mode and restores it outside Set Mode', async () => {
+    await renderWithActiveSet();
+
+    expect(document.querySelector('.top-anchor')).toBeInTheDocument();
+    expect(document.querySelector('.controls-strip')).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.set-mode-columns')).toBeInTheDocument();
+    });
+
+    expect(document.querySelector('.top-anchor')).not.toBeInTheDocument();
+    expect(document.querySelector('.controls-strip')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Search tracks…')).not.toBeInTheDocument();
+  });
+});
+
+describe('Set Mode two-column layout', () => {
+  async function renderWithActiveSetOnExplorer() {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Layout Set', created_at: '', updated_at: '', pool_count: 1, tracklist_count: 1 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Layout Set', created_at: '', updated_at: '', pool_count: 1, tracklist_count: 1 },
+      pool: [
+        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Pool Track', bpm: 120, camelot_code: '01A', energy: 0.5 } },
+      ],
+      tracklist: [
+        { id: 20, track_id: 2, position: 0, starred: false, note: '', track: { id: 2, title: 'TL Track', bpm: 128, camelot_code: '02A', energy: 0.6 } },
+      ],
+      explorer_trees: [], explorer_nodes: [], explorer_edges: [],
+    });
 
     await act(async () => { render(<App />); });
     await act(async () => {});
@@ -1382,151 +1443,48 @@ describe('Explorer Set Accordion', () => {
       expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
     });
 
-    return httpMod;
+    await act(async () => {
+      screen.getByRole('tab', { name: 'Explorer' }).click();
+    });
   }
 
-  it('does not show accordion tab when not on Explorer panel', async () => {
-    await renderWithActiveSet();
+  it('renders two-column layout in explorer panel when set is active', async () => {
+    await renderWithActiveSetOnExplorer();
 
-    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
+    const columns = document.querySelector('.set-mode-columns');
+    expect(columns).toBeInTheDocument();
+
+    const left = columns!.querySelector('.set-mode-left');
+    const right = columns!.querySelector('.set-mode-right');
+    expect(left).toBeInTheDocument();
+    expect(right).toBeInTheDocument();
   });
 
-  it('does not show accordion tab on Explorer without an active set', async () => {
-    await act(async () => { render(<App />); });
+  it('left column contains workspace panel (tracklist + pool)', async () => {
+    await renderWithActiveSetOnExplorer();
 
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
+    const left = document.querySelector('.set-mode-left');
+    expect(left).toBeInTheDocument();
+    expect(left!.querySelector('.set-workspace-split')).toBeInTheDocument();
   });
 
-  it('shows accordion tab on Explorer when an active set exists', async () => {
-    await renderWithActiveSet();
+  it('right column contains explorer canvas', async () => {
+    await renderWithActiveSetOnExplorer();
 
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('explorer-set-tab')).toBeInTheDocument();
-    });
+    const right = document.querySelector('.set-mode-right');
+    expect(right).toBeInTheDocument();
+    expect(right!.querySelector('.set-explorer')).toBeInTheDocument();
   });
 
-  it('expanding accordion shows workspace and keeps browse table in DOM', async () => {
-    await renderWithActiveSet();
+  it('renders exactly one Tracklist and one Pool within the explorer panel (no duplicate top row)', async () => {
+    await renderWithActiveSetOnExplorer();
 
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('explorer-set-tab')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      screen.getByTestId('explorer-set-tab').click();
-    });
-
-    const tablePanel = document.querySelector('.table-panel');
-    expect(tablePanel).toBeInTheDocument();
-    expect(tablePanel!.classList.contains('table-panel--offscreen')).toBe(true);
-
-    expect(document.querySelector('.explorer-top-workspace')).toBeInTheDocument();
-  });
-
-  it('persists accordion state to localStorage', async () => {
-    await renderWithActiveSet();
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('explorer-set-tab')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      screen.getByTestId('explorer-set-tab').click();
-    });
-
-    expect(localStorage.getItem(ACCORDION_KEY)).toBe('true');
-
-    await act(async () => {
-      screen.getByTestId('explorer-set-tab').click();
-    });
-
-    expect(localStorage.getItem(ACCORDION_KEY)).toBe('false');
-  });
-
-  it('restores accordion state from localStorage when returning to Explorer', async () => {
-    await renderWithActiveSet(() => {
-      localStorage.setItem(ACCORDION_KEY, 'true');
-    });
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.explorer-top-workspace')).toBeInTheDocument();
-    });
-  });
-
-  it('hides accordion tab and workspace when switching away from Explorer', async () => {
-    await renderWithActiveSet(() => {
-      localStorage.setItem(ACCORDION_KEY, 'true');
-    });
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.explorer-top-workspace')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Matches' }).click();
-    });
-
-    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
-    expect(document.querySelector('.explorer-top-workspace')).not.toBeInTheDocument();
-    expect(localStorage.getItem(ACCORDION_KEY)).toBe('true');
-  });
-
-  it('collapses accordion when active set is deleted', async () => {
-    const httpMod = await renderWithActiveSet(() => {
-      localStorage.setItem(ACCORDION_KEY, 'true');
-    });
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.explorer-top-workspace')).toBeInTheDocument();
-    });
-
-    vi.mocked(httpMod.fetchSets).mockResolvedValue([]);
-    vi.mocked(httpMod.fetchHydratedSet).mockRejectedValue(new Error('not found'));
-
-    await act(async () => {
-      screen.getByRole('tab', { name: /Set/ }).click();
-    });
-
-    const deleteBtn = document.querySelector('.set-delete-btn') as HTMLElement | null;
-    if (deleteBtn) {
-      await act(async () => { deleteBtn.click(); });
-      await act(async () => {});
-    }
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
+    const explorerPanel = document.getElementById('panel-explorer')!;
+    expect(explorerPanel.querySelectorAll('.set-tracklist')).toHaveLength(1);
+    expect(explorerPanel.querySelectorAll('.set-pool-accordion')).toHaveLength(1);
 
     expect(document.querySelector('.explorer-top-workspace')).not.toBeInTheDocument();
-    expect(localStorage.getItem(ACCORDION_KEY)).toBe('false');
+    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
   });
 });
 

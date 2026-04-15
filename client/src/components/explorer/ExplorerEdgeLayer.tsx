@@ -1,32 +1,25 @@
 import { memo, useMemo } from 'react';
 import type { ExplorerEdge, ExplorerNode } from '../../types';
-import { edgeColorForColumn, nodeHeight, NODE_H_DEFAULT } from '../../utils/explorer';
+import { edgeColorForColumn, nodeHeightForTrack, NODE_H_DEFAULT } from '../../utils/explorer';
 import { formatOverallScore } from '../../utils';
 
-const NODE_W = 360;
-const V_GAP = 176;
-const SLOT_W = 390;
+const NODE_W = 203;
+const V_GAP = 132;
+const SLOT_W = 292;
 const EDGE_SLOTS = 5;
-const EDGE_PAD = 40;
-const SLOT_STEP = 10;
-const BUCKET_GAP = 8;
 const LANE_STUB = 10;
 const LANE_S = 6;
 const TOP_PAD = 32;
+const LABEL_W = 32;
+const CELL_NODE_OFFSET_Y = 43;
 const LEVEL_HEIGHT = NODE_H_DEFAULT + V_GAP;
 
-function nodeSlotX(nodeX: number, laneIndex: number): number {
-  const bucket = Math.floor(laneIndex / EDGE_SLOTS);
-  const slot = laneIndex % EDGE_SLOTS;
-  return nodeX + EDGE_PAD + bucket * (EDGE_SLOTS * SLOT_STEP + BUCKET_GAP) + slot * SLOT_STEP;
-}
-
 function calcNodeX(colIndex: number): number {
-  return colIndex * SLOT_W + (SLOT_W - NODE_W) / 2;
+  return LABEL_W + colIndex * SLOT_W + (SLOT_W - NODE_W) / 2;
 }
 
 function calcNodeY(level: number): number {
-  return TOP_PAD + level * LEVEL_HEIGHT;
+  return TOP_PAD + level * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y;
 }
 
 interface Props {
@@ -71,11 +64,11 @@ export const ExplorerEdgeLayer = memo(function ExplorerEdgeLayer({
         const childColIdx = child.col_index % EDGE_SLOTS;
         const laneIndex = parentColIdx * EDGE_SLOTS + childColIdx;
 
-        const parentTitle = parent.track?.title ?? String(parent.track_id);
-        const parentBottom = py + nodeHeight(parentTitle);
+        const parentH = nodeHeightForTrack(parent.track?.title ?? '');
+        const parentBottom = py + parentH;
         const childTop = cy;
-        const startX = nodeSlotX(px, laneIndex);
-        const endX = nodeSlotX(cx, laneIndex);
+        const startX = px + NODE_W / 2;
+        const endX = cx + NODE_W / 2;
         const laneY = parentBottom + LANE_STUB + laneIndex * LANE_S;
         const pathD = `M ${startX} ${parentBottom} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${childTop}`;
 

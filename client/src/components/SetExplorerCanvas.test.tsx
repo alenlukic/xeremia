@@ -81,7 +81,7 @@ describe('SetExplorerCanvas', () => {
     vi.clearAllMocks();
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
     vi.spyOn(window.Element.prototype, 'getBoundingClientRect').mockReturnValue({
-      top: 0, left: 0, width: 390, height: 48, right: 390, bottom: 48, x: 0, y: 0,
+      top: 0, left: 0, width: 292, height: 36, right: 292, bottom: 36, x: 0, y: 0,
       toJSON() { return {}; },
     } as DOMRect);
   });
@@ -384,13 +384,14 @@ describe('SetExplorerCanvas', () => {
   });
 
   describe('node title display', () => {
-    it('displays raw track title without stripping', () => {
+    it('strips metadata prefix from track title display', () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
       nodes[0].track = { id: 10, title: '[8A - Aminor - 128] My Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null };
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
 
       const titleEl = document.querySelector('.explorer-cell-title');
-      expect(titleEl?.textContent).toContain('[8A');
+      expect(titleEl?.textContent).not.toContain('[8A');
+      expect(titleEl?.textContent).toContain('My Track');
     });
 
     it('node uses title attribute for full text', () => {
@@ -1160,7 +1161,7 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 32 });
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 24 });
       fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 280 });
 
       expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
@@ -1177,8 +1178,8 @@ describe('SetExplorerCanvas', () => {
       const nodeEl = screen.getAllByTestId('explorer-node')[0];
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
 
-      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 31 });
-      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 51 });
+      fireEvent.mouseDown(nodeEl, { bubbles: true, clientX: 0, clientY: 23 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 43 });
 
       expect(screen.getByTestId('move-drag-line')).toBeInTheDocument();
       expect(screen.queryByTestId('connect-drag-line')).toBeNull();

@@ -1,0 +1,19 @@
+name: Harness Housekeeping
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+
+jobs:
+  housekeeping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: Run harness housekeeping
+        run: bash bin/run-harness-housekeeping.sh

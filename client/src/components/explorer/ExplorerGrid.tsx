@@ -5,14 +5,16 @@ import type { ExplorerNode, ExplorerEdge } from '../../types';
 import type { ExplorerCellViewModel } from './Level';
 import { useEdgeAutoScroll } from '../../hooks/useEdgeAutoScroll';
 
-const NODE_H = 48;
-const V_GAP = 176;
-const SLOT_W = 390;
+const NODE_H = 27;
+const V_GAP = 132;
+const SLOT_W = 292;
 const MAX_COLS = 5;
 const TOP_PAD = 32;
+const LABEL_W = 32;
+const CELL_NODE_OFFSET_Y = 43;
 const LEVEL_HEIGHT = NODE_H + V_GAP;
 
-export const GRID_TOTAL_WIDTH = MAX_COLS * SLOT_W;
+export const GRID_TOTAL_WIDTH = LABEL_W + MAX_COLS * SLOT_W;
 
 export interface ConnectDragState {
   sourceNodeId: string;
@@ -163,8 +165,8 @@ export const ExplorerGrid = memo(function ExplorerGrid({
               data-testid="move-drag-line"
             />
             <rect
-              x={moveDrag.targetCol * SLOT_W + 4}
-              y={TOP_PAD + moveDrag.targetLevel * LEVEL_HEIGHT + 4}
+              x={LABEL_W + moveDrag.targetCol * SLOT_W + 4}
+              y={TOP_PAD + moveDrag.targetLevel * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y + 4}
               width={SLOT_W - 8}
               height={NODE_H}
               rx={6}

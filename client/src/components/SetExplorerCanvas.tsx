@@ -8,10 +8,12 @@ import { formatOverallScore } from '../utils';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { MAX_COLS } from '../dnd';
 
-const NODE_H = 48;
-const V_GAP = 176;
-const SLOT_W = 390;
+const NODE_H = 27;
+const V_GAP = 132;
+const SLOT_W = 292;
 const TOP_PAD = 32;
+const LABEL_W = 32;
+const CELL_NODE_OFFSET_Y = 43;
 const LEVEL_HEIGHT = NODE_H + V_GAP;
 const MAX_LEVELS = 100;
 const DRAG_THRESHOLD = 5;
@@ -327,8 +329,8 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     const target = e.target as Element;
     if (target.closest('.explorer-cell-action-row')) return;
     e.stopPropagation();
-    const cx = colIndex * SLOT_W + SLOT_W / 2;
-    const cy = TOP_PAD + level * LEVEL_HEIGHT + NODE_H / 2;
+    const cx = LABEL_W + colIndex * SLOT_W + SLOT_W / 2;
+    const cy = TOP_PAD + level * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y + NODE_H / 2;
     const nodeEl = target.closest('.explorer-cell-node');
     const rect = nodeEl?.getBoundingClientRect();
     const isMoveDrag = rect && rect.height > 0
@@ -380,7 +382,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   ): boolean => {
     const tLevel = Math.max(0, Math.min(MAX_LEVELS - 1, Math.floor((gridY - TOP_PAD) / LEVEL_HEIGHT)));
     if (Math.abs(sourceLevel - tLevel) !== 1) return false;
-    const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor(gridX / SLOT_W)));
+    const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor((gridX - LABEL_W) / SLOT_W)));
     const target = nodesRef.current.find(n => n.level === tLevel && n.col_index === tCol);
     if (!target || target.node_id === sourceNodeId) return false;
     const parentId = sourceNodeId;
@@ -427,7 +429,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
       if (Math.abs(dx) + Math.abs(dy) >= DRAG_THRESHOLD) {
         if (pd.isMoveDrag) {
           const tLevel = Math.max(0, Math.min(MAX_LEVELS - 1, Math.floor((gridY - TOP_PAD) / LEVEL_HEIGHT)));
-          const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor(gridX / SLOT_W)));
+          const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor((gridX - LABEL_W) / SLOT_W)));
           const dropType = computeDropType(pd.sourceNodeId, tLevel, tCol);
           setMoveDrag({
             sourceNodeId: pd.sourceNodeId,
@@ -465,7 +467,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     }
     if (md) {
       const tLevel = Math.max(0, Math.min(MAX_LEVELS - 1, Math.floor((gridY - TOP_PAD) / LEVEL_HEIGHT)));
-      const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor(gridX / SLOT_W)));
+      const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor((gridX - LABEL_W) / SLOT_W)));
       const dropType = computeDropType(md.sourceNodeId, tLevel, tCol);
       setMoveDrag(prev => prev ? { ...prev, cursorX: gridX, cursorY: gridY, targetLevel: tLevel, targetCol: tCol, dropType } : prev);
       return;
