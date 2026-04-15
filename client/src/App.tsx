@@ -253,6 +253,14 @@ export default function App() {
     activeTreeId,
     selectTree,
     createTree,
+    renameTree,
+    deleteTree,
+    createSubgroup,
+    renameSubgroup,
+    deleteSubgroup,
+    reorderSubgroups,
+    addSubgroupMember,
+    removeSubgroupMember,
   } = useSetBuilder();
 
   const starredTrackIds = useMemo(() => {
@@ -803,8 +811,15 @@ export default function App() {
               resolvePendingAdd={resolvePendingAdd}
               clearPendingAdd={clearPendingAdd}
               clearError={clearError}
+              createSubgroup={createSubgroup}
+              renameSubgroup={renameSubgroup}
+              deleteSubgroup={deleteSubgroup}
+              reorderSubgroups={reorderSubgroups}
+              addSubgroupMember={addSubgroupMember}
+              removeSubgroupMember={removeSubgroupMember}
               poolExpanded={poolExpanded}
               onPoolExpandedChange={handlePoolExpandedChange}
+              dndDisabled={activePanel !== 'set'}
             />
           </div>
 
@@ -833,8 +848,15 @@ export default function App() {
                     togglePoolStar={togglePoolStar}
                     toggleTracklistStar={toggleTracklistStar}
                     addToTracklist={sbAddToTracklist}
+                    createSubgroup={createSubgroup}
+                    renameSubgroup={renameSubgroup}
+                    deleteSubgroup={deleteSubgroup}
+                    reorderSubgroups={reorderSubgroups}
+                    addSubgroupMember={addSubgroupMember}
+                    removeSubgroupMember={removeSubgroupMember}
                     poolExpanded={true}
                     onPoolExpandedChange={handlePoolExpandedChange}
+                    dndDisabled={activePanel !== 'explorer'}
                   />
                 </div>
                 <div className="set-mode-right">
@@ -860,6 +882,8 @@ export default function App() {
                     activeTreeId={activeTreeId}
                     onSelectTree={selectTree}
                     onCreateTree={createTree}
+                    onRenameTree={renameTree}
+                    onDeleteTree={deleteTree}
                   />
                 </div>
               </div>

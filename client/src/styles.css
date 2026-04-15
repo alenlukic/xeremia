@@ -2089,7 +2089,10 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .set-pool-header, .set-tracklist-header {
@@ -2149,6 +2152,13 @@ body,
   background: var(--surface-hover);
 }
 
+/* --- Set workspace table scroll shell --- */
+.set-table-scroll-shell {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
 /* --- Set workspace shared table primitives --- */
 .set-pool-table,
 .set-tracklist-table {
@@ -2156,6 +2166,14 @@ body,
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 12px;
+}
+
+.set-tracklist-table {
+  min-width: 780px;
+}
+
+.set-pool-table {
+  min-width: 500px;
 }
 
 .set-ws-col-star { width: 28px; }
@@ -2846,7 +2864,10 @@ body,
 .set-pool-accordion-content {
   flex: 1;
   min-width: 0;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* --- Tracklist fills remaining space --- */
@@ -2926,7 +2947,6 @@ body,
 .set-mode-left .set-workspace-split > .set-tracklist {
   flex: 1 1 0;
   min-height: 0;
-  overflow: auto;
 }
 
 .set-mode-left .set-pool-accordion {
@@ -3497,4 +3517,140 @@ body,
 
 .set-ws-col-play {
   width: 32px;
+}
+
+/* === Pool Subgroup Styles === */
+
+.subgroup-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  min-height: 32px;
+}
+
+.subgroup-filter-btn {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  white-space: nowrap;
+}
+.subgroup-filter-btn:hover {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+.subgroup-filter-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.subgroup-tag-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  position: relative;
+}
+.subgroup-tag-wrapper:hover .subgroup-tag-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.subgroup-tag-controls {
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.subgroup-ctrl-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 3px;
+  line-height: 1;
+}
+.subgroup-ctrl-btn:hover {
+  color: var(--text-primary);
+}
+.subgroup-ctrl-btn--danger:hover {
+  color: var(--danger, #e25555);
+}
+
+.subgroup-add-btn {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 13px;
+  width: 22px;
+  height: 22px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition), border-color var(--transition);
+}
+.subgroup-add-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.subgroup-new-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.subgroup-new-input,
+.subgroup-rename-input {
+  background: var(--bg-deep);
+  border: 1px solid var(--accent);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  width: 80px;
+  outline: none;
+}
+
+.subgroup-chips {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.subgroup-chip {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.subgroup-chip:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.subgroup-chip.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.set-ws-col-subgroups {
+  width: 120px;
+}
+.set-ws-cell-subgroups {
+  padding: 2px 4px;
 }

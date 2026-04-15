@@ -97,6 +97,7 @@ function makeTracks(count: number): Track[] {
     genre: 'Electronic',
     label: 'Label',
     energy: 0.5,
+    date_added: null,
   }));
 }
 
@@ -148,6 +149,7 @@ function makeSetBuilderMock(overrides: Record<string, unknown> = {}) {
     deleteExplorerEdge: vi.fn(),
     addSiblingNode: vi.fn(),
     swapExplorerNodes: vi.fn(),
+    moveExplorerNode: vi.fn(),
     explorerNodeAddToTracklist: vi.fn(),
     fetchEdgeScores: vi.fn().mockResolvedValue({ scores: [] }),
     isPoolAddInFlight: vi.fn().mockReturnValue(false),
@@ -160,8 +162,16 @@ function makeSetBuilderMock(overrides: Record<string, unknown> = {}) {
     activeTreeId: null as number | null,
     selectTree: vi.fn(),
     createTree: vi.fn(),
+    renameTree: vi.fn(),
+    deleteTree: vi.fn(),
     togglePoolStar: vi.fn(),
     toggleTracklistStar: vi.fn(),
+    createSubgroup: vi.fn().mockResolvedValue(null),
+    renameSubgroup: vi.fn().mockResolvedValue(true),
+    deleteSubgroup: vi.fn().mockResolvedValue(true),
+    reorderSubgroups: vi.fn().mockResolvedValue(true),
+    addSubgroupMember: vi.fn().mockResolvedValue(true),
+    removeSubgroupMember: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
 }
@@ -570,5 +580,72 @@ describe('DnD: pool source drops to explorer', () => {
     fireDragEnd('pool-track-1', poolPayload, 'dock-set');
 
     expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+});
+
+describe('DnD: tracklist row-to-row reorder', () => {
+  it('reorders tracklist when dragging row to a different row position', async () => {
+    const tracklist = [
+      { id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false, track: { id: 10, title: 'Track 10', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+      { id: 2, set_id: 1, track_id: 20, position: 1, note: '', starred: false, track: { id: 20, title: 'Track 20', artist_names: [], bpm: 130, key: 'D', camelot_code: '10B', genre: null, label: null, energy: null } },
+      { id: 3, set_id: 1, track_id: 30, position: 2, note: '', starred: false, track: { id: 30, title: 'Track 30', artist_names: [], bpm: 125, key: 'A', camelot_code: '11B', genre: null, label: null, energy: null } },
+    ];
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [], tracklist, explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
+    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-2');
+
+    expect(mockSB.reorderTracklist).toHaveBeenCalledWith(10, 2);
+  });
+
+  it('does not reorder when dropping on the same position', async () => {
+    const tracklist = [
+      { id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false, track: { id: 10, title: 'Track 10', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+      { id: 2, set_id: 1, track_id: 20, position: 1, note: '', starred: false, track: { id: 20, title: 'Track 20', artist_names: [], bpm: 130, key: 'D', camelot_code: '10B', genre: null, label: null, energy: null } },
+    ];
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [], tracklist, explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
+    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-0');
+
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+  });
+
+  it('no-ops tracklist reorder when dropping on tracklist container', async () => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [],
+        tracklist: [{ id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false, track: null }],
+        explorer_trees: [], explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
+    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist');
+
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
   });
 });

@@ -5,6 +5,7 @@ import { SetExplorerDeleteModal } from './SetExplorerDeleteModal';
 import { ExplorerGrid, type ConnectDragState } from './explorer/ExplorerGrid';
 import type { ExplorerCellViewModel } from './explorer/Level';
 import { formatOverallScore } from '../utils';
+import { stripTitlePrefix } from '../utils/explorer';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { MAX_COLS } from '../dnd';
 
@@ -69,6 +70,8 @@ interface Props {
     sourceTreeId?: number,
     sourceNodeId?: string,
   ) => Promise<ExplorerTree | null>;
+  onRenameTree?: (treeId: number, name: string) => Promise<boolean>;
+  onDeleteTree?: (treeId: number) => Promise<boolean>;
 }
 
 interface SiblingAddState {
@@ -90,17 +93,26 @@ interface ChildAddState {
 export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   nodes, edges, onAddNode, onDeleteNode, onAddEdge, onDeleteEdge, onSwap, onMoveNode,
   onNodeToTracklist, onAddSibling, tracklistTrackIds, fetchEdgeScores, warningNodeId,
-  trees, activeTreeId, onSelectTree, onCreateTree,
+  trees, activeTreeId, onSelectTree, onCreateTree, onRenameTree, onDeleteTree,
 }: Props) {
   const [showNewTreeInput, setShowNewTreeInput] = useState(false);
   const [newTreeName, setNewTreeName] = useState('');
   const [newTreeMode, setNewTreeMode] = useState<'empty' | 'full_copy' | 'subtree_copy'>('empty');
   const newTreeInputRef = useRef<HTMLInputElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [renamingTreeId, setRenamingTreeId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const renameInFlightRef = useRef(false);
+  const [deleteConfirmTreeId, setDeleteConfirmTreeId] = useState<number | null>(null);
 
   useEffect(() => {
     if (showNewTreeInput && newTreeInputRef.current) newTreeInputRef.current.focus();
   }, [showNewTreeInput]);
+
+  useEffect(() => {
+    if (renamingTreeId !== null && renameInputRef.current) renameInputRef.current.focus();
+  }, [renamingTreeId]);
 
   const handleCreateTree = useCallback(async () => {
     const name = newTreeName.trim();
@@ -111,6 +123,31 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     setShowNewTreeInput(false);
     setNewTreeMode('empty');
   }, [newTreeName, newTreeMode, activeTreeId, selectedNodeId, onCreateTree]);
+
+  const handleStartRename = useCallback((treeId: number, currentName: string) => {
+    setRenamingTreeId(treeId);
+    setRenameValue(currentName);
+  }, []);
+
+  const handleConfirmRename = useCallback(async () => {
+    if (renameInFlightRef.current) return;
+    if (renamingTreeId === null || !onRenameTree) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) { setRenamingTreeId(null); return; }
+    renameInFlightRef.current = true;
+    try {
+      await onRenameTree(renamingTreeId, trimmed);
+    } finally {
+      renameInFlightRef.current = false;
+    }
+    setRenamingTreeId(null);
+  }, [renamingTreeId, renameValue, onRenameTree]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (deleteConfirmTreeId === null || !onDeleteTree) return;
+    await onDeleteTree(deleteConfirmTreeId);
+    setDeleteConfirmTreeId(null);
+  }, [deleteConfirmTreeId, onDeleteTree]);
 
   const { track: playingTrack, playing: isAudioPlaying, togglePlayPause } = useAudioPlayer();
   const [deleteTarget, setDeleteTarget] = useState<ExplorerNode | null>(null);
@@ -609,15 +646,54 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
       {trees && trees.length > 0 && (
         <div className="explorer-tree-tabs" role="tablist" aria-label="Explorer trees">
           {trees.map(t => (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={t.id === activeTreeId}
-              className={`explorer-tree-tab${t.id === activeTreeId ? ' explorer-tree-tab--active' : ''}`}
-              onClick={() => onSelectTree?.(t.id)}
-            >
-              {t.name}
-            </button>
+            <span key={t.id} className="explorer-tree-tab-wrapper">
+              {renamingTreeId === t.id ? (
+                <input
+                  ref={renameInputRef}
+                  className="explorer-tree-name-input explorer-tree-rename-input"
+                  value={renameValue}
+                  onChange={e => setRenameValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleConfirmRename();
+                    if (e.key === 'Escape') setRenamingTreeId(null);
+                  }}
+                  onBlur={handleConfirmRename}
+                  data-testid="tree-rename-input"
+                />
+              ) : (
+                <button
+                  role="tab"
+                  aria-selected={t.id === activeTreeId}
+                  className={`explorer-tree-tab${t.id === activeTreeId ? ' explorer-tree-tab--active' : ''}`}
+                  onClick={() => onSelectTree?.(t.id)}
+                  onDoubleClick={() => onRenameTree && handleStartRename(t.id, t.name)}
+                >
+                  {t.name}
+                </button>
+              )}
+              {t.id === activeTreeId && renamingTreeId !== t.id && (
+                <>
+                  {onRenameTree && (
+                    <button
+                      className="explorer-tree-action"
+                      onClick={() => handleStartRename(t.id, t.name)}
+                      aria-label="Rename tree"
+                      data-testid="tree-rename-btn"
+                      title="Rename tree"
+                    >✎</button>
+                  )}
+                  {onDeleteTree && trees.length > 0 && (
+                    <button
+                      className="explorer-tree-action explorer-tree-action--danger"
+                      onClick={() => setDeleteConfirmTreeId(t.id)}
+                      aria-label="Delete tree"
+                      data-testid="tree-delete-btn"
+                      title="Delete tree"
+                    >×</button>
+                  )}
+                </>
+              )}
+            </span>
           ))}
           {onCreateTree && !showNewTreeInput && (
             <button
@@ -726,7 +802,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
                         checked={siblingAdd.selectedParents.has(pid)}
                         onChange={() => toggleSiblingParent(pid)}
                       />
-                      {' '}{pNode?.track?.title ?? pid}
+                      {' '}{pNode?.track?.title ? stripTitlePrefix(pNode.track.title) : pid}
                     </label>
                   );
                 })}
@@ -772,7 +848,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
           <div className="explorer-delete-modal" onClick={e => e.stopPropagation()} data-testid="child-add-modal">
             <h3>Add Child</h3>
             <p className="text-muted">
-              Matches for <strong>{childAdd.parentNode.track?.title ?? childAdd.parentNode.node_id}</strong>
+              Matches for <strong>{childAdd.parentNode.track?.title ? stripTitlePrefix(childAdd.parentNode.track.title) : childAdd.parentNode.node_id}</strong>
             </p>
 
             {childAdd.loading ? (
@@ -805,6 +881,28 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
 
             <div className="explorer-delete-buttons" style={{ marginTop: 12 }}>
               <button className="set-action-btn" onClick={() => setChildAdd(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmTreeId !== null && (
+        <div className="explorer-delete-overlay" onClick={() => setDeleteConfirmTreeId(null)}>
+          <div className="explorer-delete-modal" onClick={e => e.stopPropagation()} data-testid="tree-delete-modal">
+            <h3>Delete Tree</h3>
+            <p className="text-muted">
+              Delete &ldquo;{trees?.find(t => t.id === deleteConfirmTreeId)?.name}&rdquo;? All nodes and edges in this tree will be removed.
+            </p>
+            <div className="explorer-delete-buttons">
+              <button
+                className="set-action-btn set-action-btn--danger"
+                onClick={handleConfirmDelete}
+                data-testid="tree-delete-confirm"
+              >Delete</button>
+              <button
+                className="set-action-btn"
+                onClick={() => setDeleteConfirmTreeId(null)}
+              >Cancel</button>
             </div>
           </div>
         </div>

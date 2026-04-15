@@ -1,5 +1,5 @@
 import { useCallback, memo } from 'react';
-import type { HydratedSet } from '../types';
+import type { HydratedSet, PoolSubgroup } from '../types';
 import { SetTracklist } from './SetTracklist';
 import { SetPoolTable } from './SetPoolTable';
 
@@ -17,8 +17,15 @@ interface Props {
   togglePoolStar: (trackId: number, starred: boolean) => void;
   toggleTracklistStar: (trackId: number, starred: boolean) => void;
   addToTracklist: (trackId: number, title?: string) => void;
+  createSubgroup: (name: string) => Promise<PoolSubgroup | null>;
+  renameSubgroup: (subgroupId: number, name: string) => Promise<boolean>;
+  deleteSubgroup: (subgroupId: number) => Promise<boolean>;
+  reorderSubgroups: (subgroupIds: number[]) => Promise<boolean>;
+  addSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  removeSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   poolExpanded: boolean;
   onPoolExpandedChange: (expanded: boolean) => void;
+  dndDisabled?: boolean;
 }
 
 export const SetWorkspacePanel = memo(function SetWorkspacePanel({
@@ -26,7 +33,9 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
   removeFromPool, clearPool, movePoolToTracklist, addToPool,
   removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist,
   updateTracklistNote, togglePoolStar, toggleTracklistStar, addToTracklist,
-  poolExpanded, onPoolExpandedChange,
+  createSubgroup, renameSubgroup, deleteSubgroup,
+  reorderSubgroups, addSubgroupMember, removeSubgroupMember,
+  poolExpanded, onPoolExpandedChange, dndDisabled,
 }: Props) {
   const handlePoolAddTrack = useCallback((trackId: number, title?: string) => {
     addToPool(trackId, title);
@@ -44,6 +53,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
         onUpdateNote={updateTracklistNote}
         onToggleStar={toggleTracklistStar}
         onAddTrack={addToTracklist}
+        dndDisabled={dndDisabled}
       />
       <div className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}>
         {poolExpanded && (
@@ -70,11 +80,20 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
           <div className="set-pool-accordion-content">
             <SetPoolTable
               pool={activeSet.pool}
+              subgroups={activeSet.pool_subgroups ?? []}
+              subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
               onRemove={removeFromPool}
               onClearAll={clearPool}
               onMoveToTracklist={movePoolToTracklist}
               onToggleStar={togglePoolStar}
               onAddTrack={handlePoolAddTrack}
+              onCreateSubgroup={createSubgroup}
+              onRenameSubgroup={renameSubgroup}
+              onDeleteSubgroup={deleteSubgroup}
+              onReorderSubgroups={reorderSubgroups}
+              onAddSubgroupMember={addSubgroupMember}
+              onRemoveSubgroupMember={removeSubgroupMember}
+              dndDisabled={dndDisabled}
             />
           </div>
         )}

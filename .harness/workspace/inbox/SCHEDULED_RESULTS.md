@@ -1,39 +1,58 @@
 # Memory Sync Report
 
+Run ID: `20260415T060014Z-maintenance-memory-sync-align-ledger-index-p`
+Completed: `2026-04-15T06:00:14Z`
+Command: `run-meta-memory-sync`
+
 ## Sources Used
-- Sync time: `2026-04-14T06:01:07Z` run start, completed during the same maintenance pass.
-- Command/spec inputs: `AGENTS.md`, `.harness/knowledge/docs/core-beliefs.md`, `.harness/knowledge/docs/token-efficiency.md`, `.harness/spec/agents/meta-memory-sync-steward.md`, `.harness/spec/commands/run-meta-memory-sync.md`
-- Surfaces scanned: `.harness/history/ledgers/INDEX.md`, `.harness/history/ledgers/INDEX.json`, `.harness/history/ledgers/DOC_SYNC_REPORT.md`, `.harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.md`, `.harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.json`, `.harness/workspace/product-feedback/CUSTOMER_PERSONA_SPEC.md`, `.harness/knowledge/docs/index.md`, `.harness/workspace/contracts/INDEX.md`, `.harness/workspace/contracts/INDEX.json`, `.harness/knowledge/memory/MEMORY_SYNC_REPORT.md`
-- Published ledger evidence reviewed: `.harness/history/ledgers/LEDGER-20260413-product-feedback-stabilization.md`, `.harness/history/ledgers/20260413T192953Z-delivery-mixed-delivery-input-bundle.md`, `.harness/history/ledgers/20260414T004307Z-delivery-mixed-delivery-input-bundle.md`
-- Recent run artifacts reviewed for drift only: `.harness/history/runs/20260414T025725Z-product_feedback-sme-design-thought-partner-clien/DESIGN_THOUGHT_PARTNER_RECOMMENDATIONS.md`, `.harness/history/runs/20260414T025725Z-product_feedback-sme-design-thought-partner-clien/DESIGN_RECOMMENDATIONS.md`
+
+- Sync reviewed all published ledgers from `20260412T182615Z` through `20260415T052409Z` (all entries after the prior last-synced pointer at `20260412T163104Z`).
+- Durable surfaces scanned: `INDEX.md`, `INDEX.json`, `DOC_SYNC_STATE.json`, `CUSTOMER_PERSONA_SPEC.md`, `RECOMMENDATION_REGISTRY.md`, `RECOMMENDATION_REGISTRY.json`, `RECOMMENDATION_REGISTRY_SYNC.md`.
+- Product-feedback stabilization ledger `LEDGER-20260413-product-feedback-stabilization.md` used as registry evidence.
 
 ## Surfaces Updated
-- `.harness/knowledge/memory/MEMORY_SYNC_REPORT.md` refreshed because the prior durable sync report had become stale.
-- `.harness/workspace/inbox/SCHEDULED_RESULTS.md` replaced the placeholder text with this report as requested.
+
+- `.harness/history/ledgers/INDEX.md`
+- `.harness/history/ledgers/DOC_SYNC_STATE.json`
+- `.harness/workspace/product-feedback/CUSTOMER_PERSONA_SPEC.md`
+- `.harness/history/runs/20260415T060014Z-maintenance-memory-sync-align-ledger-index-p/MEMORY_SYNC_REPORT.md`
 
 ## Sync Decisions
-- Surface: `.harness/knowledge/memory/MEMORY_SYNC_REPORT.md`
-  - Change: Replaced the prior report with the current sync audit trail.
-  - Why: The report itself is a durable memory surface and had drifted.
-- Surface: `.harness/history/ledgers/INDEX.md` and `.harness/history/ledgers/INDEX.json`
-  - Change: Unchanged.
-  - Why: Both indexes already include the latest published ledgers through `20260414T004307Z-delivery-mixed-delivery-input-bundle`.
-- Surface: `.harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.md` and `.harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.json`
-  - Change: Unchanged.
-  - Why: The registry remains aligned with the published 2026-04-13 product-feedback stabilization ledger; the April 14 design-thought-partner run is ideation evidence, not yet a durable requirement.
-- Surface: `.harness/workspace/product-feedback/CUSTOMER_PERSONA_SPEC.md`
-  - Change: Unchanged.
-  - Why: It already reflects shipped April 2026 set-workspace capabilities, and no new shipped behavior warranted persona edits.
-- Surface: `.harness/knowledge/docs/index.md`
-  - Change: Unchanged.
-  - Why: No stale cross-reference or missing durable surface link was found.
-- Surface: `.harness/workspace/contracts/INDEX.md` and `.harness/workspace/contracts/INDEX.json`
-  - Change: Unchanged.
-  - Why: Contract status is already in sync with the April 14 harness-migration completion evidence.
-- Surface: `.harness/workspace/inbox/SCHEDULED_RESULTS.md`
-  - Change: Updated from placeholder to current report.
-  - Why: Required delivery location for this sync pass.
+
+### `.harness/history/ledgers/INDEX.md`
+- **Changed:** Added three missing ledger bullets that existed in `INDEX.json` but not in the markdown index:
+  - `20260414T051029Z-delivery-mixed-delivery-input-bundle` — delivery, FAIL/38
+  - `20260414T224140Z-delivery-fix-set-mode-layout-stacked-trac` — delivery, PASS/80
+  - `20260415T052409Z-delivery-development-contract-source-inpu` — delivery, FAIL/69
+- **Evidence:** Direct comparison of `INDEX.json` (68+ entries) vs `INDEX.md` (ended at entry 68, `20260414T004307Z`).
+
+### `.harness/history/ledgers/DOC_SYNC_STATE.json`
+- **Changed:** Advanced `last_synced_run_id` to `20260415T052409Z-delivery-development-contract-source-inpu`; set `last_synced_at` and `updated_at` to `2026-04-15T06:00:14.000000+00:00`.
+- **Evidence:** This sync reviewed all ledgers through the newest published entry; pointer was ~3 days stale.
+
+### `.harness/workspace/product-feedback/CUSTOMER_PERSONA_SPEC.md`
+- **Changed:** Three narrow additive notes applied to the Set preparation and Trust Requirements sections:
+  1. Audio player now uses a HEAD preflight on `/api/tracks/:id/audio` (shipped `20260413T044332Z` + `20260413T192953Z`) — trust/reliability note.
+  2. Set Mode now uses a verified two-column layout: tracklist stack left (37%), Explorer right (63%), no row above the split (shipped `20260414T224140Z`).
+  3. Browse, Matches, and Pool now support multi-sort; Browse restores prior list position on return (shipped `20260413T192953Z`).
+- **Evidence:** Three distinct delivery runs with PASS verdicts and build verification.
+
+## Surfaces Reviewed — No Change
+
+### `.harness/workspace/product-feedback/RECOMMENDATION_REGISTRY.md` and `.json`
+- No completed delivery run explicitly closed the scope of any `[promote]` recommendation.
+- `20260415T052409Z` targeted REC-013-adjacent explorer legibility work but finished FAIL; REC-013 through REC-015 remain `[promote]`.
+- No change applied.
+
+### Explorer rename/delete lifecycle (`20260415T052409Z`)
+- Excluded from `CUSTOMER_PERSONA_SPEC.md` because the run formally failed (qa: FAIL, build: FAIL); follow-on run `20260415T055235Z` is in progress for backend regression coverage.
 
 ## Deferred Sync Items
-- Drift risk: `.harness/history/runs/20260414T025725Z-product_feedback-sme-design-thought-partner-clien/DESIGN_THOUGHT_PARTNER_RECOMMENDATIONS.md` proposes an Explorer-only accordion workflow, but it has not yet been converted into a contract, registry item, or published ledger. Keeping durable surfaces unchanged avoids inventing a new requirement.
-- Drift risk: Memory-sync outputs can themselves become stale if they are not refreshed on later passes; this run resolves the current case but the report should continue to be treated as a durable surface in future scheduled syncs.
+
+- Recommendation registry promotion state deferred until a completed delivery run satisfies a recommendation's verification gates.
+- Future sync should check whether `20260415T055235Z` (explorer rename/delete follow-on) delivers a PASS, which would warrant adding a persona note and may support a future REC-013 promotion.
+- `DOC_SYNC_REPORT.md` in the ledgers folder was not regenerated; it was last written during a prior ledger-doc sync and is a separate surface from memory sync.
+
+## Full Report
+
+See `.harness/history/runs/20260415T060014Z-maintenance-memory-sync-align-ledger-index-p/MEMORY_SYNC_REPORT.md` for the full artifact.

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import type { PoolEntry } from '../types';
+import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
 import type { SearchSuggestion } from '../types';
@@ -14,11 +14,20 @@ interface SortDescriptor {
 
 interface Props {
   pool: PoolEntry[];
+  subgroups: PoolSubgroup[];
+  subgroupMemberships: PoolSubgroupMembership[];
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
   onToggleStar: (trackId: number, starred: boolean) => void;
   onAddTrack: (trackId: number, title?: string) => void;
   onClearAll?: () => void;
+  onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>;
+  onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>;
+  onDeleteSubgroup: (subgroupId: number) => Promise<boolean>;
+  onReorderSubgroups: (subgroupIds: number[]) => Promise<boolean>;
+  onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  onRemoveSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  dndDisabled?: boolean;
 }
 
 function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
@@ -28,11 +37,16 @@ function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
   return a.insertion_order - b.insertion_order;
 }
 
-function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar }: {
+function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dndDisabled, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember }: {
   entry: PoolEntry;
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
   onToggleStar: (trackId: number, starred: boolean) => void;
+  dndDisabled?: boolean;
+  subgroups: PoolSubgroup[];
+  memberSubgroupIds: Set<number>;
+  onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  onRemoveSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
 }) {
   const title = cleanTitle(entry.track, entry.track_id);
   const payload: DragPayload = { trackId: entry.track_id, title, source: 'pool' };
@@ -40,6 +54,7 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar }: 
     id: `pool-track-${entry.track_id}`,
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
+    disabled: dndDisabled,
   });
 
   const rowListeners = useMemo(() => {
@@ -53,6 +68,14 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar }: 
       },
     };
   }, [listeners]);
+
+  const handleSubgroupToggle = useCallback((sgId: number) => {
+    if (memberSubgroupIds.has(sgId)) {
+      onRemoveSubgroupMember(sgId, entry.id);
+    } else {
+      onAddSubgroupMember(sgId, entry.id);
+    }
+  }, [memberSubgroupIds, entry.id, onAddSubgroupMember, onRemoveSubgroupMember]);
 
   return (
     <tr
@@ -78,6 +101,22 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar }: 
       <td className="set-ws-cell-title">{title}</td>
       <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>
       <td className="mono set-ws-cell-bpm">{entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}</td>
+      {subgroups.length > 0 && (
+        <td className="set-ws-cell-subgroups">
+          <div className="subgroup-chips">
+            {subgroups.map(sg => (
+              <button
+                key={sg.id}
+                className={`subgroup-chip${memberSubgroupIds.has(sg.id) ? ' active' : ''}`}
+                onClick={() => handleSubgroupToggle(sg.id)}
+                title={memberSubgroupIds.has(sg.id) ? `Remove from ${sg.name}` : `Add to ${sg.name}`}
+              >
+                {sg.name}
+              </button>
+            ))}
+          </div>
+        </td>
+      )}
       <td className="set-ws-cell-actions">
         <div className="set-ws-actions-group">
           <button className="set-action-btn" onClick={() => onMoveToTracklist(entry.track_id)} title="Move to tracklist">To Tracklist</button>
@@ -88,12 +127,176 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar }: 
   );
 }
 
-export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onToggleStar, onAddTrack, onClearAll }: Props) {
-  const { setNodeRef: setPoolDropRef, isOver: isPoolOver } = useDroppable({ id: 'drop-pool' });
+function SubgroupBar({
+  subgroups,
+  onCreateSubgroup,
+  onRenameSubgroup,
+  onDeleteSubgroup,
+  onReorderSubgroups,
+  activeFilter,
+  onSetActiveFilter,
+}: {
+  subgroups: PoolSubgroup[];
+  onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>;
+  onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>;
+  onDeleteSubgroup: (subgroupId: number) => Promise<boolean>;
+  onReorderSubgroups: (subgroupIds: number[]) => Promise<boolean>;
+  activeFilter: number | null;
+  onSetActiveFilter: (id: number | null) => void;
+}) {
+  const [showNewInput, setShowNewInput] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const handleCreate = useCallback(async () => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    await onCreateSubgroup(trimmed);
+    setNewName('');
+    setShowNewInput(false);
+  }, [newName, onCreateSubgroup]);
+
+  const handleRename = useCallback(async (id: number) => {
+    const trimmed = editName.trim();
+    if (!trimmed) return;
+    await onRenameSubgroup(id, trimmed);
+    setEditingId(null);
+    setEditName('');
+  }, [editName, onRenameSubgroup]);
+
+  const handleMoveUp = useCallback((idx: number) => {
+    if (idx <= 0) return;
+    const ids = subgroups.map(sg => sg.id);
+    [ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]];
+    onReorderSubgroups(ids);
+  }, [subgroups, onReorderSubgroups]);
+
+  const handleMoveDown = useCallback((idx: number) => {
+    if (idx >= subgroups.length - 1) return;
+    const ids = subgroups.map(sg => sg.id);
+    [ids[idx], ids[idx + 1]] = [ids[idx + 1], ids[idx]];
+    onReorderSubgroups(ids);
+  }, [subgroups, onReorderSubgroups]);
+
+  return (
+    <div className="subgroup-bar">
+      <button
+        className={`subgroup-filter-btn${activeFilter === null ? ' active' : ''}`}
+        onClick={() => onSetActiveFilter(null)}
+      >
+        All
+      </button>
+      {subgroups.map((sg, idx) => (
+        <div key={sg.id} className="subgroup-tag-wrapper">
+          {editingId === sg.id ? (
+            <input
+              className="subgroup-rename-input"
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              onBlur={() => handleRename(sg.id)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleRename(sg.id);
+                if (e.key === 'Escape') { setEditingId(null); setEditName(''); }
+              }}
+              autoFocus
+            />
+          ) : (
+            <button
+              className={`subgroup-filter-btn${activeFilter === sg.id ? ' active' : ''}`}
+              onClick={() => onSetActiveFilter(activeFilter === sg.id ? null : sg.id)}
+              onDoubleClick={() => { setEditingId(sg.id); setEditName(sg.name); }}
+              title={`Filter by ${sg.name} (double-click to rename)`}
+            >
+              {sg.name}
+            </button>
+          )}
+          <div className="subgroup-tag-controls">
+            {idx > 0 && (
+              <button className="subgroup-ctrl-btn" onClick={() => handleMoveUp(idx)} title="Move left" aria-label={`Move ${sg.name} left`}>‹</button>
+            )}
+            {idx < subgroups.length - 1 && (
+              <button className="subgroup-ctrl-btn" onClick={() => handleMoveDown(idx)} title="Move right" aria-label={`Move ${sg.name} right`}>›</button>
+            )}
+            <button
+              className="subgroup-ctrl-btn subgroup-ctrl-btn--danger"
+              onClick={() => {
+                if (window.confirm(`Delete subgroup "${sg.name}"? Tracks will remain in the pool.`)) {
+                  onDeleteSubgroup(sg.id);
+                  if (activeFilter === sg.id) onSetActiveFilter(null);
+                }
+              }}
+              title={`Delete ${sg.name}`}
+              aria-label={`Delete subgroup ${sg.name}`}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ))}
+      {showNewInput ? (
+        <span className="subgroup-new-inline">
+          <input
+            className="subgroup-new-input"
+            placeholder="Name…"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleCreate();
+              if (e.key === 'Escape') { setShowNewInput(false); setNewName(''); }
+            }}
+            autoFocus
+          />
+          <button className="subgroup-ctrl-btn" onClick={handleCreate} title="Create subgroup">✓</button>
+          <button className="subgroup-ctrl-btn" onClick={() => { setShowNewInput(false); setNewName(''); }}>✕</button>
+        </span>
+      ) : (
+        <button
+          className="subgroup-add-btn"
+          onClick={() => setShowNewInput(true)}
+          title="Create subgroup"
+          aria-label="Create subgroup"
+        >
+          +
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function SetPoolTable({
+  pool, subgroups, subgroupMemberships,
+  onRemove, onMoveToTracklist, onToggleStar, onAddTrack, onClearAll,
+  onCreateSubgroup, onRenameSubgroup, onDeleteSubgroup, onReorderSubgroups,
+  onAddSubgroupMember, onRemoveSubgroupMember,
+  dndDisabled,
+}: Props) {
+  const { setNodeRef: setPoolDropRef, isOver: isPoolOver } = useDroppable({ id: 'drop-pool', disabled: dndDisabled });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [sorting, setSorting] = useState<SortDescriptor[]>([{ id: 'insertion_order', desc: false }]);
+  const [subgroupFilter, setSubgroupFilter] = useState<number | null>(null);
+
+  const membershipByEntry = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    for (const m of subgroupMemberships) {
+      let s = map.get(m.pool_entry_id);
+      if (!s) { s = new Set(); map.set(m.pool_entry_id, s); }
+      s.add(m.subgroup_id);
+    }
+    return map;
+  }, [subgroupMemberships]);
+
+  const memberEntriesBySubgroup = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    for (const m of subgroupMemberships) {
+      let s = map.get(m.subgroup_id);
+      if (!s) { s = new Set(); map.set(m.subgroup_id, s); }
+      s.add(m.pool_entry_id);
+    }
+    return map;
+  }, [subgroupMemberships]);
 
   const handleSearch = useCallback(async (q: string) => {
     setSearchQuery(q);
@@ -135,13 +338,20 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onToggleStar, 
     });
   }, []);
 
-  const sorted = useMemo(() => [...pool].sort((a, b) => {
+  const filteredPool = useMemo(() => {
+    if (subgroupFilter === null) return pool;
+    const entryIds = memberEntriesBySubgroup.get(subgroupFilter);
+    if (!entryIds) return [];
+    return pool.filter(e => entryIds.has(e.id));
+  }, [pool, subgroupFilter, memberEntriesBySubgroup]);
+
+  const sorted = useMemo(() => [...filteredPool].sort((a, b) => {
     for (const s of sorting) {
       const cmp = compareByColumn(a, b, s.id);
       if (cmp !== 0) return s.desc ? -cmp : cmp;
     }
     return 0;
-  }), [pool, sorting]);
+  }), [filteredPool, sorting]);
 
   const sortIndicator = (col: string) => {
     const idx = sorting.findIndex(s => s.id === col);
@@ -195,51 +405,71 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onToggleStar, 
           )}
         </div>
       </div>
-      {pool.length === 0 ? (
-        <p className="set-empty-tracks">Pool is empty. Search above or add tracks from other tabs.</p>
-      ) : (
-        <table className="set-pool-table">
-          <colgroup>
-            <col className="set-ws-col-star" />
-            <col className="set-ws-col-play" />
-            <col className="set-ws-col-num" />
-            <col className="set-ws-col-title" />
-            <col className="set-ws-col-key" />
-            <col className="set-ws-col-bpm" />
-            <col className="set-ws-col-actions-pool" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
-              <th className="set-ws-th" style={{ width: 32 }} />
-              <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('insertion_order', e)}>
-                #{sortIndicator('insertion_order')}
-              </th>
-              <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('title', e)}>
-                Title{sortIndicator('title')}
-              </th>
-              <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('camelot_code', e)}>
-                Key{sortIndicator('camelot_code')}
-              </th>
-              <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('bpm', e)}>
-                BPM{sortIndicator('bpm')}
-              </th>
-              <th className="set-ws-th set-ws-th-actions">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((entry) => (
-              <DraggablePoolRow
-                key={entry.id}
-                entry={entry}
-                onRemove={onRemove}
-                onMoveToTracklist={onMoveToTracklist}
-                onToggleStar={onToggleStar}
-              />
-            ))}
-          </tbody>
-        </table>
-      )}
+      <SubgroupBar
+        subgroups={subgroups}
+        onCreateSubgroup={onCreateSubgroup}
+        onRenameSubgroup={onRenameSubgroup}
+        onDeleteSubgroup={onDeleteSubgroup}
+        onReorderSubgroups={onReorderSubgroups}
+        activeFilter={subgroupFilter}
+        onSetActiveFilter={setSubgroupFilter}
+      />
+      <div className="set-table-scroll-shell">
+        {pool.length === 0 ? (
+          <p className="set-empty-tracks">Pool is empty. Search above or add tracks from other tabs.</p>
+        ) : sorted.length === 0 && subgroupFilter !== null ? (
+          <p className="set-empty-tracks">No tracks in this subgroup yet.</p>
+        ) : (
+          <table className="set-pool-table">
+            <colgroup>
+              <col className="set-ws-col-star" />
+              <col className="set-ws-col-play" />
+              <col className="set-ws-col-num" />
+              <col className="set-ws-col-title" />
+              <col className="set-ws-col-key" />
+              <col className="set-ws-col-bpm" />
+              {subgroups.length > 0 && <col className="set-ws-col-subgroups" />}
+              <col className="set-ws-col-actions-pool" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
+                <th className="set-ws-th" style={{ width: 32 }} />
+                <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('insertion_order', e)}>
+                  #{sortIndicator('insertion_order')}
+                </th>
+                <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('title', e)}>
+                  Title{sortIndicator('title')}
+                </th>
+                <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('camelot_code', e)}>
+                  Key{sortIndicator('camelot_code')}
+                </th>
+                <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('bpm', e)}>
+                  BPM{sortIndicator('bpm')}
+                </th>
+                {subgroups.length > 0 && <th className="set-ws-th">Groups</th>}
+                <th className="set-ws-th set-ws-th-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((entry) => (
+                <DraggablePoolRow
+                  key={entry.id}
+                  entry={entry}
+                  onRemove={onRemove}
+                  onMoveToTracklist={onMoveToTracklist}
+                  onToggleStar={onToggleStar}
+                  dndDisabled={dndDisabled}
+                  subgroups={subgroups}
+                  memberSubgroupIds={membershipByEntry.get(entry.id) ?? new Set()}
+                  onAddSubgroupMember={onAddSubgroupMember}
+                  onRemoveSubgroupMember={onRemoveSubgroupMember}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }

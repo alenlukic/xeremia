@@ -48,6 +48,10 @@ export function nodeHeight(title: string): number {
 const METADATA_PREFIX_RE = /^\[[^\]]*\]\s*/;
 const TITLE_TRUNCATE = 24;
 
+export function stripTitlePrefix(raw: string): string {
+  return raw.replace(METADATA_PREFIX_RE, '');
+}
+
 export function cleanTitle(raw: string): string {
   const stripped = raw.replace(METADATA_PREFIX_RE, '');
   return stripped.length > TITLE_TRUNCATE

@@ -917,6 +917,24 @@ describe('SetExplorerCanvas', () => {
     });
   });
 
+  describe('title stripping in modals', () => {
+    it('strips metadata prefix from parent names in sibling-add modal', async () => {
+      const parentNode = makeNode({
+        node_id: 'n1', track_id: 10, level: 0, col_index: 0,
+        track: { id: 10, title: '[8A - Aminor - 128] Parent Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+      });
+      const nodes = [parentNode];
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
+
+      const addBtns = screen.getAllByTestId('cell-add-btn');
+      await userEvent.click(addBtns[4]);
+
+      const modal = screen.getByTestId('sibling-add-modal');
+      expect(modal.textContent).toContain('Parent Track');
+      expect(modal.textContent).not.toContain('[8A');
+    });
+  });
+
   describe('sibling-add modal copy', () => {
     it('uses user-facing row language instead of Level/Column', async () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0, col_index: 0 })];
@@ -943,6 +961,117 @@ describe('SetExplorerCanvas', () => {
       const heading = modal.querySelector('h3')!;
       expect(heading.textContent).toContain('Row 1');
       expect(heading.textContent).not.toContain('Row 0');
+    });
+  });
+
+  describe('tree rename', () => {
+    it('shows rename input when rename button is clicked on active tree', async () => {
+      const trees = [{ id: 1, set_id: 1, name: 'Main' }];
+      const onRenameTree = vi.fn().mockResolvedValue(true);
+      render(
+        <SetExplorerCanvas
+          {...defaultProps()}
+          trees={trees}
+          activeTreeId={1}
+          onSelectTree={vi.fn()}
+          onCreateTree={vi.fn()}
+          onRenameTree={onRenameTree}
+          onDeleteTree={vi.fn()}
+        />,
+      );
+
+      const renameBtn = screen.getByTestId('tree-rename-btn');
+      await userEvent.click(renameBtn);
+
+      expect(screen.getByTestId('tree-rename-input')).toBeInTheDocument();
+      expect(screen.getByTestId('tree-rename-input')).toHaveValue('Main');
+    });
+
+    it('calls onRenameTree with new name on Enter', async () => {
+      const trees = [{ id: 1, set_id: 1, name: 'Main' }];
+      const onRenameTree = vi.fn().mockResolvedValue(true);
+      render(
+        <SetExplorerCanvas
+          {...defaultProps()}
+          trees={trees}
+          activeTreeId={1}
+          onSelectTree={vi.fn()}
+          onCreateTree={vi.fn()}
+          onRenameTree={onRenameTree}
+          onDeleteTree={vi.fn()}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('tree-rename-btn'));
+      const input = screen.getByTestId('tree-rename-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'Renamed{Enter}');
+
+      expect(onRenameTree).toHaveBeenCalledWith(1, 'Renamed');
+    });
+  });
+
+  describe('tree delete', () => {
+    it('shows delete confirmation modal when delete button is clicked', async () => {
+      const trees = [{ id: 1, set_id: 1, name: 'Main' }];
+      render(
+        <SetExplorerCanvas
+          {...defaultProps()}
+          trees={trees}
+          activeTreeId={1}
+          onSelectTree={vi.fn()}
+          onCreateTree={vi.fn()}
+          onRenameTree={vi.fn()}
+          onDeleteTree={vi.fn()}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('tree-delete-btn'));
+
+      expect(screen.getByTestId('tree-delete-modal')).toBeInTheDocument();
+      expect(screen.getByTestId('tree-delete-confirm')).toBeInTheDocument();
+    });
+
+    it('calls onDeleteTree when delete is confirmed', async () => {
+      const trees = [{ id: 1, set_id: 1, name: 'Main' }];
+      const onDeleteTree = vi.fn().mockResolvedValue(true);
+      render(
+        <SetExplorerCanvas
+          {...defaultProps()}
+          trees={trees}
+          activeTreeId={1}
+          onSelectTree={vi.fn()}
+          onCreateTree={vi.fn()}
+          onRenameTree={vi.fn()}
+          onDeleteTree={onDeleteTree}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('tree-delete-btn'));
+      await userEvent.click(screen.getByTestId('tree-delete-confirm'));
+
+      expect(onDeleteTree).toHaveBeenCalledWith(1);
+    });
+
+    it('does not call onDeleteTree when cancel is clicked in confirmation', async () => {
+      const trees = [{ id: 1, set_id: 1, name: 'Main' }];
+      const onDeleteTree = vi.fn().mockResolvedValue(true);
+      render(
+        <SetExplorerCanvas
+          {...defaultProps()}
+          trees={trees}
+          activeTreeId={1}
+          onSelectTree={vi.fn()}
+          onCreateTree={vi.fn()}
+          onRenameTree={vi.fn()}
+          onDeleteTree={onDeleteTree}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('tree-delete-btn'));
+      await userEvent.click(screen.getByText('Cancel'));
+
+      expect(onDeleteTree).not.toHaveBeenCalled();
     });
   });
 

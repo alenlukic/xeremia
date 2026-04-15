@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
-import type { SetSummary, HydratedSet } from '../types';
+import type { SetSummary, HydratedSet, PoolSubgroup } from '../types';
 import type { PendingAdd } from '../hooks/useSetBuilder';
 import { exportSetM3u8 } from '../api/http';
 import { SetWorkspacePanel } from './SetWorkspacePanel';
@@ -29,8 +29,15 @@ interface Props {
   resolvePendingAdd: (setId: number) => void;
   clearPendingAdd: () => void;
   clearError: () => void;
+  createSubgroup: (name: string) => Promise<PoolSubgroup | null>;
+  renameSubgroup: (subgroupId: number, name: string) => Promise<boolean>;
+  deleteSubgroup: (subgroupId: number) => Promise<boolean>;
+  reorderSubgroups: (subgroupIds: number[]) => Promise<boolean>;
+  addSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  removeSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   poolExpanded?: boolean;
   onPoolExpandedChange?: (expanded: boolean) => void;
+  dndDisabled?: boolean;
 }
 
 export const SetBuilder = memo(function SetBuilder({
@@ -40,8 +47,11 @@ export const SetBuilder = memo(function SetBuilder({
   removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist, updateTracklistNote,
   togglePoolStar, toggleTracklistStar, addToTracklist,
   resolvePendingAdd, clearPendingAdd, clearError,
+  createSubgroup, renameSubgroup, deleteSubgroup,
+  reorderSubgroups, addSubgroupMember, removeSubgroupMember,
   poolExpanded: poolExpandedProp = false,
   onPoolExpandedChange,
+  dndDisabled,
 }: Props) {
   const [newSetName, setNewSetName] = useState('');
   const [showNewInput, setShowNewInput] = useState(false);
@@ -212,8 +222,15 @@ export const SetBuilder = memo(function SetBuilder({
           togglePoolStar={togglePoolStar}
           toggleTracklistStar={toggleTracklistStar}
           addToTracklist={addToTracklist}
+          createSubgroup={createSubgroup}
+          renameSubgroup={renameSubgroup}
+          deleteSubgroup={deleteSubgroup}
+          reorderSubgroups={reorderSubgroups}
+          addSubgroupMember={addSubgroupMember}
+          removeSubgroupMember={removeSubgroupMember}
           poolExpanded={poolExpanded}
           onPoolExpandedChange={(expanded) => onPoolExpandedChange?.(expanded)}
+          dndDisabled={dndDisabled}
         />
       )}
     </div>

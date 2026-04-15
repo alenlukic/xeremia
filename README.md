@@ -262,8 +262,8 @@ bash src/scripts/start_web.sh
 The script will:
 1. Start the Elasticsearch Docker container (creating it on first run)
 2. Index tracks from PostgreSQL into Elasticsearch if the index doesn't exist
-3. Start the FastAPI server on port 8000
-4. Install client dependencies (if needed) and start the Vite dev server on port 5173
+3. Start the FastAPI server on port `$API_PORT` (default 8001)
+4. Install client dependencies (if needed) and start the Vite dev server on port `$CLIENT_PORT` (default 5174)
 
 Use `bash src/scripts/start_web.sh --reindex` to force a re-index of tracks into Elasticsearch.
 

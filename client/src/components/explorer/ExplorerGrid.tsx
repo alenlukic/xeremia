@@ -132,7 +132,7 @@ export const ExplorerGrid = memo(function ExplorerGrid({
             className="explorer-connect-drag-svg"
             width={GRID_TOTAL_WIDTH}
             height={totalHeight}
-            style={{ position: 'absolute', top: 0, left: 0, zIndex: 3, pointerEvents: 'none' }}
+            style={{ position: 'absolute', top: 0, left: 0, zIndex: 5, pointerEvents: 'none' }}
           >
             <line
               x1={connectDrag.sourceCX}
@@ -152,7 +152,7 @@ export const ExplorerGrid = memo(function ExplorerGrid({
             className="explorer-move-drag-svg"
             width={GRID_TOTAL_WIDTH}
             height={totalHeight}
-            style={{ position: 'absolute', top: 0, left: 0, zIndex: 4, pointerEvents: 'none' }}
+            style={{ position: 'absolute', top: 0, left: 0, zIndex: 6, pointerEvents: 'none' }}
           >
             <line
               x1={moveDrag.sourceCX}

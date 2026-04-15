@@ -245,6 +245,19 @@ class ExplorerEdgeResponse(BaseModel):
     child_node_id: str
 
 
+class PoolSubgroupResponse(BaseModel):
+    id: int
+    set_id: int
+    name: str
+    display_order: int
+
+
+class PoolSubgroupMemberResponse(BaseModel):
+    id: int
+    subgroup_id: int
+    pool_entry_id: int
+
+
 class HydratedSetResponse(BaseModel):
     set: SetSummary
     pool: List[PoolEntryResponse]
@@ -252,6 +265,8 @@ class HydratedSetResponse(BaseModel):
     explorer_trees: List[ExplorerTreeResponse]
     explorer_nodes: List[ExplorerNodeResponse]
     explorer_edges: List[ExplorerEdgeResponse]
+    pool_subgroups: List[PoolSubgroupResponse] = Field(default_factory=list)
+    pool_subgroup_memberships: List[PoolSubgroupMemberResponse] = Field(default_factory=list)
 
 
 class PoolAddRequest(BaseModel):
@@ -327,3 +342,28 @@ class ExplorerTreeCreateRequest(BaseModel):
     mode: Literal["empty", "full_copy", "subtree_copy"] = "empty"
     source_tree_id: Optional[int] = None
     source_node_id: Optional[str] = None
+
+
+class ExplorerTreeRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+# ---------------------------------------------------------------------------
+# Pool subgroup requests
+# ---------------------------------------------------------------------------
+
+
+class SubgroupCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class SubgroupRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class SubgroupReorderRequest(BaseModel):
+    subgroup_ids: List[int]
+
+
+class SubgroupMemberRequest(BaseModel):
+    pool_entry_id: int

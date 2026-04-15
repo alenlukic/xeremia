@@ -15,6 +15,8 @@ from src.models.set_tracklist_entry import SetTracklistEntry
 from src.models.set_explorer_tree import SetExplorerTree
 from src.models.set_explorer_node import SetExplorerNode
 from src.models.set_explorer_edge import SetExplorerEdge
+from src.models.set_pool_subgroup import SetPoolSubgroup
+from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
 from src.set_workspace.service import SetWorkspaceService
 
 
@@ -25,6 +27,8 @@ _TABLES = [
     SetExplorerTree.__table__,
     SetExplorerNode.__table__,
     SetExplorerEdge.__table__,
+    SetPoolSubgroup.__table__,
+    SetPoolSubgroupMember.__table__,
 ]
 
 

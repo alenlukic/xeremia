@@ -183,6 +183,19 @@ export interface ExplorerEdge {
   child_node_id: string;
 }
 
+export interface PoolSubgroup {
+  id: number;
+  set_id: number;
+  name: string;
+  display_order: number;
+}
+
+export interface PoolSubgroupMembership {
+  id: number;
+  subgroup_id: number;
+  pool_entry_id: number;
+}
+
 export interface HydratedSet {
   set: SetSummary;
   pool: PoolEntry[];
@@ -190,4 +203,6 @@ export interface HydratedSet {
   explorer_trees: ExplorerTree[];
   explorer_nodes: ExplorerNode[];
   explorer_edges: ExplorerEdge[];
+  pool_subgroups?: PoolSubgroup[];
+  pool_subgroup_memberships?: PoolSubgroupMembership[];
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { ExplorerEdgeLayer } from './ExplorerEdgeLayer';
-import { nodeHeightForTrack, cleanTitle, nodeHeight } from '../../utils/explorer';
+import { nodeHeightForTrack, cleanTitle, nodeHeight, stripTitlePrefix } from '../../utils/explorer';
 import type { ExplorerNode, ExplorerEdge } from '../../types';
 
 function makeNode(overrides: Partial<ExplorerNode> = {}): ExplorerNode {
@@ -145,6 +145,35 @@ describe('ExplorerEdgeLayer', () => {
     for (const raw of titles) {
       expect(nodeHeightForTrack(raw)).toBe(nodeHeight(cleanTitle(raw)));
     }
+  });
+
+  it('stripTitlePrefix removes metadata but does not truncate', () => {
+    expect(stripTitlePrefix('[8A - Aminor - 128] My Long Title Here For Testing')).toBe(
+      'My Long Title Here For Testing',
+    );
+    expect(stripTitlePrefix('No Prefix')).toBe('No Prefix');
+    expect(stripTitlePrefix('[1B] Tiny')).toBe('Tiny');
+  });
+
+  it('edge SVG has z-index above levels for clickability', () => {
+    const parent = makeNode({ node_id: 'n1', level: 0, col_index: 0 });
+    const child = makeNode({ id: 2, node_id: 'n2', level: 1, col_index: 0, track_id: 101,
+      track: { id: 101, title: 'B', artist_names: [], bpm: 128, key: 'Cm', camelot_code: '5A' },
+    });
+
+    const { container } = render(
+      <ExplorerEdgeLayer
+        edges={[makeEdge()]} nodes={[parent, child]}
+        edgeScores={new Map()} loadingEdgeKeys={new Set()}
+        selectedEdgeId={null}
+        onEdgeClick={vi.fn()} onDeleteEdge={vi.fn()}
+        totalWidth={1000} totalHeight={600}
+      />
+    );
+
+    const svg = container.querySelector('.explorer-edge-svg') as SVGElement;
+    expect(svg).toBeTruthy();
+    expect(svg.style.zIndex).toBe('3');
   });
 
   it('hitbox and delete interaction are preserved', () => {

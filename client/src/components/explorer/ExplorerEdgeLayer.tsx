@@ -49,7 +49,7 @@ export const ExplorerEdgeLayer = memo(function ExplorerEdgeLayer({
       className="explorer-edge-svg"
       width={totalWidth}
       height={totalHeight}
-      style={{ position: 'absolute', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
+      style={{ position: 'absolute', top: 0, left: 0, zIndex: 3, pointerEvents: 'none' }}
     >
       {edges.map(edge => {
         const parent = nodeMap.get(edge.parent_node_id);

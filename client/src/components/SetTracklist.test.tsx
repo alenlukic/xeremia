@@ -119,4 +119,27 @@ describe('SetTracklist', () => {
     renderTracklist([]);
     expect(screen.getByText(/tracklist is empty/i)).toBeTruthy();
   });
+
+  it('wraps table in a scroll shell container', () => {
+    const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })]);
+    const scrollShell = container.querySelector('.set-table-scroll-shell');
+    expect(scrollShell).toBeTruthy();
+    expect(scrollShell!.querySelector('table.set-tracklist-table')).toBeTruthy();
+  });
+
+  it('places header outside the scroll shell', () => {
+    const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })]);
+    const tracklist = container.querySelector('.set-tracklist')!;
+    const header = tracklist.querySelector('.set-tracklist-header')!;
+    const scrollShell = tracklist.querySelector('.set-table-scroll-shell')!;
+    expect(header.compareDocumentPosition(scrollShell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(header.closest('.set-table-scroll-shell')).toBeNull();
+  });
+
+  it('wraps empty message inside scroll shell', () => {
+    const { container } = renderTracklist([]);
+    const scrollShell = container.querySelector('.set-table-scroll-shell');
+    expect(scrollShell).toBeTruthy();
+    expect(scrollShell!.querySelector('.set-empty-tracks')).toBeTruthy();
+  });
 });

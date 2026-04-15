@@ -15,6 +15,7 @@ interface Props {
   onToggleStar: (trackId: number, starred: boolean) => void;
   onAddTrack: (trackId: number, title?: string) => void;
   onClearAll?: () => void;
+  dndDisabled?: boolean;
 }
 
 function NoteInput({ trackId, initialNote, onSave }: {
@@ -51,7 +52,7 @@ function NoteInput({ trackId, initialNote, onSave }: {
   );
 }
 
-function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar }: {
+function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, dndDisabled }: {
   entry: TracklistEntry;
   index: number;
   total: number;
@@ -60,6 +61,7 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
   onReorder: (trackId: number, newPosition: number) => void;
   onUpdateNote: (trackId: number, note: string) => void;
   onToggleStar: (trackId: number, starred: boolean) => void;
+  dndDisabled?: boolean;
 }) {
   const title = cleanTitle(entry.track, entry.track_id);
   const payload: DragPayload = { trackId: entry.track_id, title, source: 'tracklist' };
@@ -67,11 +69,13 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
     id: `tracklist-track-${entry.track_id}`,
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
+    disabled: dndDisabled,
   });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `drop-tracklist-row-${index}`,
     data: { index, trackId: entry.track_id },
+    disabled: dndDisabled,
   });
 
   const mergedRef = useCallback((node: HTMLTableRowElement | null) => {
@@ -141,8 +145,8 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
   );
 }
 
-export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, onAddTrack, onClearAll }: Props) {
-  const { setNodeRef: setTracklistDropRef, isOver: isTracklistOver } = useDroppable({ id: 'drop-tracklist' });
+export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, onAddTrack, onClearAll, dndDisabled }: Props) {
+  const { setNodeRef: setTracklistDropRef, isOver: isTracklistOver } = useDroppable({ id: 'drop-tracklist', disabled: dndDisabled });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
@@ -210,49 +214,52 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
           )}
         </div>
       </div>
-      {tracklist.length === 0 ? (
-        <p className="set-empty-tracks">Tracklist is empty. Move tracks from the pool or search above.</p>
-      ) : (
-        <table className="set-tracklist-table">
-          <colgroup>
-            <col className="set-ws-col-star" />
-            <col className="set-ws-col-play" />
-            <col className="set-ws-col-num" />
-            <col className="set-ws-col-title" />
-            <col className="set-ws-col-key" />
-            <col className="set-ws-col-bpm" />
-            <col className="set-ws-col-note" />
-            <col className="set-ws-col-actions-tracklist" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
-              <th className="set-ws-th" style={{ width: 32 }} />
-              <th className="set-ws-th">#</th>
-              <th className="set-ws-th">Title</th>
-              <th className="set-ws-th">Key</th>
-              <th className="set-ws-th">BPM</th>
-              <th className="set-ws-th">Note</th>
-              <th className="set-ws-th set-ws-th-actions">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tracklist.map((entry, i) => (
-              <DraggableTracklistRow
-                key={entry.id}
-                entry={entry}
-                index={i}
-                total={tracklist.length}
-                onRemove={onRemove}
-                onMoveToPool={onMoveToPool}
-                onReorder={onReorder}
-                onUpdateNote={onUpdateNote}
-                onToggleStar={onToggleStar}
-              />
-            ))}
-          </tbody>
-        </table>
-      )}
+      <div className="set-table-scroll-shell">
+        {tracklist.length === 0 ? (
+          <p className="set-empty-tracks">Tracklist is empty. Move tracks from the pool or search above.</p>
+        ) : (
+          <table className="set-tracklist-table">
+            <colgroup>
+              <col className="set-ws-col-star" />
+              <col className="set-ws-col-play" />
+              <col className="set-ws-col-num" />
+              <col className="set-ws-col-title" />
+              <col className="set-ws-col-key" />
+              <col className="set-ws-col-bpm" />
+              <col className="set-ws-col-note" />
+              <col className="set-ws-col-actions-tracklist" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
+                <th className="set-ws-th" style={{ width: 32 }} />
+                <th className="set-ws-th">#</th>
+                <th className="set-ws-th">Title</th>
+                <th className="set-ws-th">Key</th>
+                <th className="set-ws-th">BPM</th>
+                <th className="set-ws-th">Note</th>
+                <th className="set-ws-th set-ws-th-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tracklist.map((entry, i) => (
+                <DraggableTracklistRow
+                  key={entry.id}
+                  entry={entry}
+                  index={i}
+                  total={tracklist.length}
+                  onRemove={onRemove}
+                  onMoveToPool={onMoveToPool}
+                  onReorder={onReorder}
+                  onUpdateNote={onUpdateNote}
+                  onToggleStar={onToggleStar}
+                  dndDisabled={dndDisabled}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
