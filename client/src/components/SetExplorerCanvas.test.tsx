@@ -1565,4 +1565,205 @@ describe('SetExplorerCanvas', () => {
       expect(screen.queryByTestId('connect-drag-line')).toBeNull();
     });
   });
+
+  describe('edge-draw position stability regression', () => {
+    function nodeGridSnapshot(): string[] {
+      return screen.getAllByTestId('explorer-node').map((el) => {
+        const level = el.getAttribute('data-level') ?? '';
+        const col = el.getAttribute('data-col-index') ?? '';
+        const title = el.querySelector('.explorer-cell-title')?.textContent?.trim() ?? '';
+        return `${level}:${col}:${title}`;
+      }).sort();
+    }
+
+    function simulateConnectDrag(container: HTMLElement, source: Element, target: Element) {
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+      fireEvent.mouseDown(source, { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 60 });
+      fireEvent.mouseUp(target, { bubbles: true });
+    }
+
+    it('self-loop attempt does not create edge or move nodes', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateConnectDrag(container, nodeEls[0], nodeEls[0]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onAddEdge).not.toHaveBeenCalled();
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+    });
+
+    it('empty-space drop cancels connect-drag and preserves node positions', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 20, clientY: 60 });
+      fireEvent.mouseUp(gridScroll, { bubbles: true });
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onAddEdge).not.toHaveBeenCalled();
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+    });
+
+    it('rapid repeated A→B draws do not move nodes', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+
+      for (let i = 0; i < 5; i++) {
+        simulateConnectDrag(container, nodeEls[0], nodeEls[1]);
+      }
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+    });
+
+    it('rapid alternating A→B then B→A draws do not move nodes', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+
+      simulateConnectDrag(container, nodeEls[0], nodeEls[1]);
+      simulateConnectDrag(container, nodeEls[1], nodeEls[0]);
+      simulateConnectDrag(container, nodeEls[0], nodeEls[1]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+    });
+
+    it('grid-boundary nodes (col 4) remain stable after edge draw', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 4 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 4 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateConnectDrag(container, nodeEls[0], nodeEls[1]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+    });
+
+    it('grid-boundary nodes (col 0 to col 4) remain stable after edge draw', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 4 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateConnectDrag(container, nodeEls[0], nodeEls[1]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+    });
+
+    it('four-node multi-level graph remains stable through successive draws', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 0, col_index: 1 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 1, col_index: 0 }),
+        makeNode({ id: 4, node_id: 'n4', track_id: 13, level: 1, col_index: 1 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+
+      simulateConnectDrag(container, nodeEls[0], nodeEls[2]);
+      simulateConnectDrag(container, nodeEls[1], nodeEls[3]);
+      simulateConnectDrag(container, nodeEls[0], nodeEls[3]);
+      simulateConnectDrag(container, nodeEls[1], nodeEls[2]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+    });
+
+    it('async post-API hydration after addExplorerEdge does not change positions', async () => {
+      let edgeResolve: () => void;
+      const edgePromise = new Promise<void>(r => { edgeResolve = r; });
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      props.onAddEdge = vi.fn().mockReturnValue(edgePromise);
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateConnectDrag(container, nodeEls[0], nodeEls[1]);
+
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+      expect(nodeGridSnapshot()).toEqual(before);
+
+      edgeResolve!();
+      await vi.waitFor(() => {
+        expect(nodeGridSnapshot()).toEqual(before);
+      });
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+    });
+
+    it('async post-API hydration with re-render preserves grid positions', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const edges: ExplorerEdge[] = [];
+      const props = defaultProps({ nodes, edges });
+      let resolveEdge: () => void;
+      props.onAddEdge = vi.fn().mockImplementation(() => new Promise<void>(r => { resolveEdge = r; }));
+      const { container, rerender } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateConnectDrag(container, nodeEls[0], nodeEls[1]);
+
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+
+      const edgesAfter: ExplorerEdge[] = [
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ];
+      resolveEdge!();
+      rerender(<DndContext><SetExplorerCanvas {...{ ...props, edges: edgesAfter }} /></DndContext>);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+    });
+  });
 });

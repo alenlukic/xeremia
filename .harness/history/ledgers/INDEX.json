@@ -913,5 +913,19 @@
     "build_status": "FAIL",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "HIGH"
+  },
+  {
+    "run_id": "20260416T030358Z-delivery-fix-drawing-edge-flipping-parent",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Objective\n- Eliminate the persistent explorer edge-draw regression where creating an edge can move, flip, or visually reparent nodes away from their ",
+    "published_at": "2026-04-16T03:51:00.769528+00:00",
+    "path": ".harness/history/ledgers/20260416T030358Z-delivery-fix-drawing-edge-flipping-parent.md",
+    "files_changed": 3,
+    "eval_score": 87,
+    "eval_verdict": "FAIL",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "LOW"
   }
 ]

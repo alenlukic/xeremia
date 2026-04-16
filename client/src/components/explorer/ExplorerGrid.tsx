@@ -4,15 +4,15 @@ import { ExplorerEdgeLayer } from './ExplorerEdgeLayer';
 import type { ExplorerNode, ExplorerEdge } from '../../types';
 import type { ExplorerCellViewModel } from './Level';
 import { useEdgeAutoScroll } from '../../hooks/useEdgeAutoScroll';
+import { NODE_H_DEFAULT } from '../../utils/explorer';
 
-const NODE_H = 27;
 const V_GAP = 132;
 const SLOT_W = 292;
 const MAX_COLS = 5;
 const TOP_PAD = 32;
 const LABEL_W = 32;
 const CELL_NODE_OFFSET_Y = 0;
-const LEVEL_HEIGHT = NODE_H + V_GAP;
+const LEVEL_HEIGHT = NODE_H_DEFAULT + V_GAP;
 
 export const GRID_TOTAL_WIDTH = LABEL_W + MAX_COLS * SLOT_W;
 
@@ -80,7 +80,7 @@ export const ExplorerGrid = memo(function ExplorerGrid({
   const scrollRef = useRef<HTMLDivElement>(null);
   useEdgeAutoScroll(scrollRef);
 
-  const totalHeight = TOP_PAD + viewModel.length * LEVEL_HEIGHT + NODE_H;
+  const totalHeight = TOP_PAD + viewModel.length * LEVEL_HEIGHT + NODE_H_DEFAULT;
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const el = scrollRef.current;
@@ -168,7 +168,7 @@ export const ExplorerGrid = memo(function ExplorerGrid({
               x={LABEL_W + moveDrag.targetCol * SLOT_W + 4}
               y={TOP_PAD + moveDrag.targetLevel * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y + 4}
               width={SLOT_W - 8}
-              height={NODE_H}
+              height={NODE_H_DEFAULT}
               rx={6}
               fill="none"
               stroke={moveDrag.dropType === 'invalid' ? 'var(--danger)' : moveDrag.dropType === 'reparent' ? 'var(--accent)' : 'var(--success)'}

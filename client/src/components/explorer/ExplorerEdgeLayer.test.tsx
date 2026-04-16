@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { ExplorerEdgeLayer } from './ExplorerEdgeLayer';
-import { nodeHeightForTrack, cleanTitle, nodeHeight, stripTitlePrefix } from '../../utils/explorer';
+import { nodeHeightForTrack, cleanTitle, nodeHeight, stripTitlePrefix, NODE_H_DEFAULT } from '../../utils/explorer';
 import type { ExplorerNode, ExplorerEdge } from '../../types';
 
 function makeNode(overrides: Partial<ExplorerNode> = {}): ExplorerNode {
@@ -19,7 +19,6 @@ function makeEdge(overrides: Partial<ExplorerEdge> = {}): ExplorerEdge {
 
 const NODE_W = 203;
 const SLOT_W = 292;
-const NODE_H = 27;
 const TOP_PAD = 32;
 const LABEL_W = 32;
 const CELL_NODE_OFFSET_Y = 0;
@@ -125,8 +124,9 @@ describe('ExplorerEdgeLayer', () => {
 
     const d = container.querySelector('[data-testid="explorer-edge-hitbox"]')!.getAttribute('d')!;
     const V_GAP = 132;
-    const parentBottom = TOP_PAD + 0 * (NODE_H + V_GAP) + CELL_NODE_OFFSET_Y + NODE_H;
-    const childTop = TOP_PAD + 1 * (NODE_H + V_GAP) + CELL_NODE_OFFSET_Y;
+    const LEVEL_HEIGHT = NODE_H_DEFAULT + V_GAP;
+    const parentBottom = TOP_PAD + 0 * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y + nodeHeightForTrack('Short');
+    const childTop = TOP_PAD + 1 * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y;
 
     expect(d).toMatch(new RegExp(`M [\\d.]+ ${parentBottom}`));
     expect(d).toMatch(new RegExp(`L [\\d.]+ ${childTop}$`));
@@ -153,8 +153,7 @@ describe('ExplorerEdgeLayer', () => {
     );
 
     const d = container.querySelector('[data-testid="explorer-edge-hitbox"]')!.getAttribute('d')!;
-    const V_GAP = 132;
-    const parentBottom = TOP_PAD + 0 * (NODE_H + V_GAP) + CELL_NODE_OFFSET_Y + NODE_H;
+    const parentBottom = TOP_PAD + CELL_NODE_OFFSET_Y + nodeHeightForTrack(longTitle);
     expect(d).toMatch(new RegExp(`M [\\d.]+ ${parentBottom}`));
   });
 
@@ -178,8 +177,7 @@ describe('ExplorerEdgeLayer', () => {
     );
 
     const d = container.querySelector('[data-testid="explorer-edge-hitbox"]')!.getAttribute('d')!;
-    const V_GAP = 132;
-    const parentBottom = TOP_PAD + 0 * (NODE_H + V_GAP) + CELL_NODE_OFFSET_Y + NODE_H;
+    const parentBottom = TOP_PAD + CELL_NODE_OFFSET_Y + nodeHeightForTrack(noPrefix);
     expect(d).toMatch(new RegExp(`M [\\d.]+ ${parentBottom}`));
   });
 
@@ -243,10 +241,11 @@ describe('ExplorerEdgeLayer', () => {
 
     const d = container.querySelector('[data-testid="explorer-edge-hitbox"]')!.getAttribute('d')!;
     const V_GAP = 132;
-    const childTop = TOP_PAD + 1 * (NODE_H + V_GAP) + CELL_NODE_OFFSET_Y;
-    const dragOriginCY = TOP_PAD + 1 * (NODE_H + V_GAP) + CELL_NODE_OFFSET_Y + NODE_H / 2;
+    const LEVEL_HEIGHT = NODE_H_DEFAULT + V_GAP;
+    const childTop = TOP_PAD + 1 * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y;
+    const dragOriginCY = TOP_PAD + 1 * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y + NODE_H_DEFAULT / 2;
     expect(d).toMatch(new RegExp(`L [\\d.]+ ${childTop}$`));
-    expect(dragOriginCY).toBe(childTop + NODE_H / 2);
+    expect(dragOriginCY).toBe(childTop + NODE_H_DEFAULT / 2);
   });
 
   it('hitbox and delete interaction are preserved', () => {
