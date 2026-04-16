@@ -294,7 +294,7 @@ function waitForSourceBufferUpdate(sb: SourceBuffer): Promise<void> {
 
 async function appendToSourceBuffer(sb: SourceBuffer, data: ArrayBuffer | Uint8Array): Promise<void> {
   await waitForSourceBufferUpdate(sb);
-  sb.appendBuffer(data);
+  sb.appendBuffer(data as BufferSource);
   await new Promise<void>(r => sb.addEventListener('updateend', () => r(), { once: true }));
 }
 

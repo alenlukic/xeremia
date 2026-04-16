@@ -1168,3 +1168,135 @@ describe('TrackTable multi-sort', () => {
     expect(titles).toEqual(['Alpha', 'Beta', 'Gamma']);
   });
 });
+
+/* ─────────────────────────────────────────────── */
+
+describe('TrackTable column visibility', () => {
+  const sampleTrack: Track = {
+    id: 1, title: 'Test Title', artist_names: ['Artist'], bpm: 128,
+    key: 'Am', camelot_code: '8A', genre: 'House', label: 'Toolroom',
+    energy: 0.75, date_added: null,
+  };
+
+  it('hides a column when columnVisibility marks it false while Title remains', () => {
+    mockRange = { startIndex: 0, endIndex: 0 };
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={[sampleTrack]}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          columnVisibility={{ bpm: false }}
+        />,
+      ),
+    );
+    const headers = container.querySelectorAll('.track-table thead th');
+    const headerTexts = Array.from(headers).map(h => h.textContent);
+    expect(headerTexts).not.toContain('BPM');
+    expect(headerTexts.some(t => t?.includes('Title'))).toBe(true);
+  });
+
+  it('renders BPM as a rounded integer', () => {
+    mockRange = { startIndex: 0, endIndex: 0 };
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={[{ ...sampleTrack, bpm: 128.7 }]}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+        />,
+      ),
+    );
+    const cells = container.querySelectorAll('.track-table tbody td');
+    const cellTexts = Array.from(cells).map(c => c.textContent);
+    expect(cellTexts).toContain('129');
+    expect(cellTexts.some(t => t?.includes('128.7'))).toBe(false);
+  });
+
+  it('renders BPM as integer with no trailing decimal for whole numbers', () => {
+    mockRange = { startIndex: 0, endIndex: 0 };
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={[{ ...sampleTrack, bpm: 130.0 }]}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+        />,
+      ),
+    );
+    const cells = container.querySelectorAll('.track-table tbody td');
+    const cellTexts = Array.from(cells).map(c => c.textContent);
+    expect(cellTexts).toContain('130');
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
+describe('TrackTable in-header column chooser', () => {
+  const sampleTrack: Track = {
+    id: 1, title: 'Test Title', artist_names: ['Artist'], bpm: 128,
+    key: 'Am', camelot_code: '8A', genre: 'House', label: 'Toolroom',
+    energy: 0.75, date_added: null,
+  };
+
+  const configurableColumns = [
+    { id: 'bpm', label: 'BPM' },
+    { id: 'genre', label: 'Genre' },
+  ];
+
+  it('opens popover on three-dot click and lists only configurable columns (not Title)', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const onToggle = vi.fn();
+    mockRange = { startIndex: 0, endIndex: 0 };
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={[sampleTrack]}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          configurableColumns={configurableColumns}
+          onToggleColumn={onToggle}
+        />,
+      ),
+    );
+
+    const btn = container.querySelector('[aria-label="Configure columns"]') as HTMLElement;
+    await user.click(btn);
+
+    const labels = container.querySelectorAll('.column-config-popover label');
+    const labelTexts = Array.from(labels).map(l => l.textContent);
+    expect(labelTexts).toContain('BPM');
+    expect(labelTexts).toContain('Genre');
+    expect(labelTexts).not.toContain('Title');
+  });
+
+  it('calls onToggleColumn when a checkbox is clicked', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const onToggle = vi.fn();
+    mockRange = { startIndex: 0, endIndex: 0 };
+    const { container } = render(
+      wrap(
+        <TrackTable
+          tracks={[sampleTrack]}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          configurableColumns={configurableColumns}
+          onToggleColumn={onToggle}
+        />,
+      ),
+    );
+
+    const btn = container.querySelector('[aria-label="Configure columns"]') as HTMLElement;
+    await user.click(btn);
+
+    const checkboxes = container.querySelectorAll('.column-config-popover input[type="checkbox"]');
+    await user.click(checkboxes[0]);
+
+    expect(onToggle).toHaveBeenCalledWith('bpm');
+  });
+});

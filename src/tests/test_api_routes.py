@@ -513,11 +513,13 @@ class TestCorsAndSchemaValidation:
     """CORS allowlist behavior and pair-payload size limit validation."""
 
     def test_allowed_origin_receives_cors_header(self):
+        port = os.environ.get("CLIENT_PORT", "5174")
+        origin = f"http://localhost:{port}"
         with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)):
             from src.api.app import create_app
             with TestClient(create_app()) as tc:
-                resp = tc.get("/api/weights", headers={"Origin": "http://localhost:5173"})
-        assert resp.headers.get("access-control-allow-origin") == "http://localhost:5173"
+                resp = tc.get("/api/weights", headers={"Origin": origin})
+        assert resp.headers.get("access-control-allow-origin") == origin
 
     def test_disallowed_origin_no_cors_header(self):
         with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)):
@@ -526,16 +528,35 @@ class TestCorsAndSchemaValidation:
                 resp = tc.get("/api/weights", headers={"Origin": "http://evil.example.com"})
         assert resp.headers.get("access-control-allow-origin") != "http://evil.example.com"
 
+    def test_patch_preflight_allowed(self):
+        port = os.environ.get("CLIENT_PORT", "5174")
+        origin = f"http://localhost:{port}"
+        with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)):
+            from src.api.app import create_app
+            with TestClient(create_app()) as tc:
+                resp = tc.options(
+                    "/api/weights",
+                    headers={
+                        "Origin": origin,
+                        "Access-Control-Request-Method": "PATCH",
+                    },
+                )
+        assert resp.status_code == 200
+        allowed = resp.headers.get("access-control-allow-methods", "")
+        assert "PATCH" in allowed
+
     def test_env_override_replaces_defaults(self):
+        port = os.environ.get("CLIENT_PORT", "5174")
+        default_origin = f"http://localhost:{port}"
         os.environ["CORS_ALLOWED_ORIGINS"] = "http://myapp.com"
         try:
             with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)):
                 from src.api.app import create_app
                 with TestClient(create_app()) as tc:
                     allowed = tc.get("/api/weights", headers={"Origin": "http://myapp.com"})
-                    denied = tc.get("/api/weights", headers={"Origin": "http://localhost:5173"})
+                    denied = tc.get("/api/weights", headers={"Origin": default_origin})
             assert allowed.headers.get("access-control-allow-origin") == "http://myapp.com"
-            assert denied.headers.get("access-control-allow-origin") != "http://localhost:5173"
+            assert denied.headers.get("access-control-allow-origin") != default_origin
         finally:
             del os.environ["CORS_ALLOWED_ORIGINS"]
 
@@ -584,8 +605,347 @@ class TestExplorerTreeCreateModeValidation:
 
 
 # ---------------------------------------------------------------------------
+# PATCH/DELETE /api/sets/{set_id}/explorer/trees/{tree_id}
+# ---------------------------------------------------------------------------
+
+
+class TestExplorerTreeRenameDelete:
+    """Route-level tests for explorer tree rename and delete endpoints."""
+
+    @pytest.fixture()
+    def _db(self):
+        from sqlalchemy import Column, Integer, String, Table, MetaData, create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from src.models.dj_set import DjSet
+        from src.models.set_explorer_tree import SetExplorerTree
+        from src.models.set_explorer_node import SetExplorerNode
+        from src.models.set_explorer_edge import SetExplorerEdge
+
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        meta = MetaData()
+        Table("track", meta, Column("id", Integer, primary_key=True), Column("title", String))
+        meta.create_all(engine)
+        for t in [DjSet.__table__, SetExplorerTree.__table__,
+                   SetExplorerNode.__table__, SetExplorerEdge.__table__]:
+            t.create(engine, checkfirst=True)
+        return sessionmaker(bind=engine)
+
+    @pytest.fixture()
+    def _tc(self, _db):
+        with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)), \
+             patch("src.api.routes._get_session", side_effect=lambda: _db()), \
+             patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
+             patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+            from src.api.app import create_app
+            yield TestClient(create_app())
+
+    def _seed_set_and_trees(self, _db):
+        from src.set_workspace.service import SetWorkspaceService
+        s = _db()
+        s.expire_on_commit = False
+        svc = SetWorkspaceService(s)
+        dj_set = svc.create_set("Test Set")
+        tree_a, _ = svc.create_explorer_tree(dj_set.id, "Tree A")
+        tree_b, _ = svc.create_explorer_tree(dj_set.id, "Tree B")
+        s.commit()
+        ids = (dj_set.id, tree_a.id, tree_b.id)
+        s.close()
+        return ids
+
+    def _seed_nodes_and_edges(self, _db, set_id, tree_id):
+        from src.models.set_explorer_node import SetExplorerNode
+        from src.models.set_explorer_edge import SetExplorerEdge
+        s = _db()
+        s.add(SetExplorerNode(set_id=set_id, tree_id=tree_id, node_id="n1", track_id=1, level=0, col_index=0))
+        s.add(SetExplorerNode(set_id=set_id, tree_id=tree_id, node_id="n2", track_id=2, level=1, col_index=0))
+        s.add(SetExplorerEdge(set_id=set_id, tree_id=tree_id, parent_node_id="n1", child_node_id="n2"))
+        s.commit()
+        s.close()
+
+    def test_rename_success(self, _db, _tc):
+        set_id, tree_a_id, _ = self._seed_set_and_trees(_db)
+        resp = _tc.patch(f"/api/sets/{set_id}/explorer/trees/{tree_a_id}", json={"name": "Renamed"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["name"] == "Renamed"
+        assert body["id"] == tree_a_id
+
+    def test_rename_duplicate_name_rejected(self, _db, _tc):
+        set_id, tree_a_id, _ = self._seed_set_and_trees(_db)
+        resp = _tc.patch(f"/api/sets/{set_id}/explorer/trees/{tree_a_id}", json={"name": "Tree B"})
+        assert resp.status_code == 400
+        assert "already exists" in resp.json()["detail"]
+
+    def test_rename_missing_set_returns_404(self, _db, _tc):
+        resp = _tc.patch("/api/sets/9999/explorer/trees/1", json={"name": "X"})
+        assert resp.status_code == 404
+
+    def test_rename_missing_tree_returns_404(self, _db, _tc):
+        set_id, _, _ = self._seed_set_and_trees(_db)
+        resp = _tc.patch(f"/api/sets/{set_id}/explorer/trees/9999", json={"name": "X"})
+        assert resp.status_code == 404
+
+    def test_delete_success(self, _db, _tc):
+        set_id, tree_a_id, _ = self._seed_set_and_trees(_db)
+        resp = _tc.delete(f"/api/sets/{set_id}/explorer/trees/{tree_a_id}")
+        assert resp.status_code == 204
+
+    def test_delete_missing_set_returns_404(self, _db, _tc):
+        resp = _tc.delete("/api/sets/9999/explorer/trees/1")
+        assert resp.status_code == 404
+
+    def test_delete_missing_tree_returns_404(self, _db, _tc):
+        set_id, _, _ = self._seed_set_and_trees(_db)
+        resp = _tc.delete(f"/api/sets/{set_id}/explorer/trees/9999")
+        assert resp.status_code == 404
+
+    def test_delete_cascade_removes_nodes_and_edges(self, _db, _tc):
+        from src.models.set_explorer_node import SetExplorerNode
+        from src.models.set_explorer_edge import SetExplorerEdge
+
+        set_id, tree_a_id, _ = self._seed_set_and_trees(_db)
+        self._seed_nodes_and_edges(_db, set_id, tree_a_id)
+
+        s = _db()
+        assert s.query(SetExplorerNode).filter_by(tree_id=tree_a_id).count() == 2
+        assert s.query(SetExplorerEdge).filter_by(tree_id=tree_a_id).count() == 1
+        s.close()
+
+        resp = _tc.delete(f"/api/sets/{set_id}/explorer/trees/{tree_a_id}")
+        assert resp.status_code == 204
+
+        s2 = _db()
+        assert s2.query(SetExplorerNode).filter_by(tree_id=tree_a_id).count() == 0
+        assert s2.query(SetExplorerEdge).filter_by(tree_id=tree_a_id).count() == 0
+        s2.close()
+
+
+# ---------------------------------------------------------------------------
 # date_added serialization coverage
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Pool subgroup endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestPoolSubgroupEndpoints:
+    """Tests for the pool subgroup CRUD and membership endpoints."""
+
+    @pytest.fixture()
+    def _db_session(self):
+        """Create an in-memory SQLite session with workspace tables."""
+        from sqlalchemy import Column, Integer, String, Table, MetaData, create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from src.models.dj_set import DjSet
+        from src.models.set_pool_entry import SetPoolEntry
+        from src.models.set_pool_subgroup import SetPoolSubgroup
+        from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
+        from src.models.set_tracklist_entry import SetTracklistEntry
+        from src.models.set_explorer_tree import SetExplorerTree
+        from src.models.set_explorer_node import SetExplorerNode
+        from src.models.set_explorer_edge import SetExplorerEdge
+
+        engine = create_engine("sqlite:///:memory:")
+        meta = MetaData()
+        Table("track", meta, Column("id", Integer, primary_key=True), Column("title", String))
+        meta.create_all(engine)
+        tables = [
+            DjSet.__table__, SetPoolEntry.__table__,
+            SetPoolSubgroup.__table__, SetPoolSubgroupMember.__table__,
+            SetTracklistEntry.__table__, SetExplorerTree.__table__,
+            SetExplorerNode.__table__, SetExplorerEdge.__table__,
+        ]
+        for t in tables:
+            t.create(engine, checkfirst=True)
+        Session = sessionmaker(bind=engine)
+        return Session()
+
+    @pytest.fixture()
+    def svc(self, _db_session):
+        from src.set_workspace.service import SetWorkspaceService
+        return SetWorkspaceService(_db_session)
+
+    def test_create_subgroup(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        sg = svc.subgroup_create(dj_set.id, "Warmup")
+        assert sg.name == "Warmup"
+        assert sg.display_order == 0
+
+    def test_create_multiple_subgroups_ordered(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        sg1 = svc.subgroup_create(dj_set.id, "Warmup")
+        sg2 = svc.subgroup_create(dj_set.id, "Peak")
+        assert sg1.display_order == 0
+        assert sg2.display_order == 1
+
+    def test_rename_subgroup(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        sg = svc.subgroup_create(dj_set.id, "Warmup")
+        result = svc.subgroup_rename(dj_set.id, sg.id, "Intro")
+        assert result is not None
+        assert result.name == "Intro"
+
+    def test_rename_nonexistent_returns_none(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        result = svc.subgroup_rename(dj_set.id, 999, "Nope")
+        assert result is None
+
+    def test_delete_subgroup_preserves_pool_tracks(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        pool_entry, _ = svc.pool_add(dj_set.id, 1)
+        sg = svc.subgroup_create(dj_set.id, "Warmup")
+        svc.subgroup_add_track(dj_set.id, sg.id, pool_entry.id)
+
+        deleted = svc.subgroup_delete(dj_set.id, sg.id)
+        assert deleted is True
+
+        pool_list = svc.pool_list(dj_set.id)
+        assert len(pool_list) == 1
+        assert pool_list[0].track_id == 1
+
+    def test_delete_subgroup_reorders_remaining(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        sg1 = svc.subgroup_create(dj_set.id, "A")
+        sg2 = svc.subgroup_create(dj_set.id, "B")
+        sg3 = svc.subgroup_create(dj_set.id, "C")
+
+        svc.subgroup_delete(dj_set.id, sg1.id)
+        _db_session.expire_all()
+
+        from src.models.set_pool_subgroup import SetPoolSubgroup
+        remaining = (
+            _db_session.query(SetPoolSubgroup)
+            .filter_by(set_id=dj_set.id)
+            .order_by(SetPoolSubgroup.display_order)
+            .all()
+        )
+        assert len(remaining) == 2
+        assert remaining[0].id == sg2.id
+        assert remaining[0].display_order == 0
+        assert remaining[1].id == sg3.id
+        assert remaining[1].display_order == 1
+
+    def test_reorder_subgroups(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        sg1 = svc.subgroup_create(dj_set.id, "A")
+        sg2 = svc.subgroup_create(dj_set.id, "B")
+        sg3 = svc.subgroup_create(dj_set.id, "C")
+
+        svc.subgroup_reorder(dj_set.id, [sg3.id, sg1.id, sg2.id])
+        _db_session.expire_all()
+
+        from src.models.set_pool_subgroup import SetPoolSubgroup
+        ordered = (
+            _db_session.query(SetPoolSubgroup)
+            .filter_by(set_id=dj_set.id)
+            .order_by(SetPoolSubgroup.display_order)
+            .all()
+        )
+        assert [sg.id for sg in ordered] == [sg3.id, sg1.id, sg2.id]
+
+    def test_many_to_many_membership(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        pe1, _ = svc.pool_add(dj_set.id, 1)
+        pe2, _ = svc.pool_add(dj_set.id, 2)
+        sg1 = svc.subgroup_create(dj_set.id, "A")
+        sg2 = svc.subgroup_create(dj_set.id, "B")
+
+        svc.subgroup_add_track(dj_set.id, sg1.id, pe1.id)
+        svc.subgroup_add_track(dj_set.id, sg1.id, pe2.id)
+        svc.subgroup_add_track(dj_set.id, sg2.id, pe1.id)
+
+        from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
+        all_members = _db_session.query(SetPoolSubgroupMember).all()
+        assert len(all_members) == 3
+
+        sg1_members = _db_session.query(SetPoolSubgroupMember).filter_by(subgroup_id=sg1.id).all()
+        assert len(sg1_members) == 2
+        sg2_members = _db_session.query(SetPoolSubgroupMember).filter_by(subgroup_id=sg2.id).all()
+        assert len(sg2_members) == 1
+
+    def test_duplicate_membership_is_idempotent(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        pe, _ = svc.pool_add(dj_set.id, 1)
+        sg = svc.subgroup_create(dj_set.id, "A")
+
+        m1, err1 = svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
+        m2, err2 = svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
+        assert err1 is None
+        assert err2 is None
+        assert m1.id == m2.id
+
+    def test_remove_membership(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        pe, _ = svc.pool_add(dj_set.id, 1)
+        sg = svc.subgroup_create(dj_set.id, "A")
+        svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
+
+        removed, err = svc.subgroup_remove_track(dj_set.id, sg.id, pe.id)
+        assert removed is True
+        assert err is None
+
+        from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
+        remaining = _db_session.query(SetPoolSubgroupMember).filter_by(subgroup_id=sg.id).all()
+        assert len(remaining) == 0
+
+    def test_pool_remove_cleans_memberships(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        pe, _ = svc.pool_add(dj_set.id, 1)
+        sg = svc.subgroup_create(dj_set.id, "A")
+        svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
+
+        svc.pool_remove(dj_set.id, 1)
+
+        from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
+        remaining = _db_session.query(SetPoolSubgroupMember).all()
+        assert len(remaining) == 0
+
+    def test_hydrate_includes_subgroups(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        pe, _ = svc.pool_add(dj_set.id, 1)
+        sg = svc.subgroup_create(dj_set.id, "Warmup")
+        svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
+
+        hydration = svc.hydrate_set(dj_set.id)
+        assert "pool_subgroups" in hydration
+        assert len(hydration["pool_subgroups"]) == 1
+        assert hydration["pool_subgroups"][0].name == "Warmup"
+        assert "pool_subgroup_memberships" in hydration
+        assert len(hydration["pool_subgroup_memberships"]) == 1
+
+    def test_delete_set_cleans_subgroups(self, svc, _db_session):
+        dj_set = svc.create_set("Test Set")
+        _db_session.flush()
+        pe, _ = svc.pool_add(dj_set.id, 1)
+        sg = svc.subgroup_create(dj_set.id, "Warmup")
+        svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
+
+        svc.delete_set(dj_set.id)
+
+        from src.models.set_pool_subgroup import SetPoolSubgroup
+        from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
+        assert _db_session.query(SetPoolSubgroup).count() == 0
+        assert _db_session.query(SetPoolSubgroupMember).count() == 0
 
 
 class TestDateAddedSerialization:

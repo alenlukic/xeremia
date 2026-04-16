@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
-import type { SetSummary, HydratedSet } from '../types';
+import type { SetSummary, HydratedSet, PoolSubgroup } from '../types';
 import type { PendingAdd } from '../hooks/useSetBuilder';
 import { exportSetM3u8 } from '../api/http';
 import { SetWorkspacePanel } from './SetWorkspacePanel';
@@ -22,6 +22,7 @@ interface Props {
   clearTracklist: () => void;
   moveTracklistToPool: (trackId: number) => void;
   reorderTracklist: (trackId: number, newPosition: number) => void;
+  addToTracklistAtPosition: (trackId: number, position: number, title?: string) => void;
   updateTracklistNote: (trackId: number, note: string) => void;
   togglePoolStar: (trackId: number, starred: boolean) => void;
   toggleTracklistStar: (trackId: number, starred: boolean) => void;
@@ -29,19 +30,29 @@ interface Props {
   resolvePendingAdd: (setId: number) => void;
   clearPendingAdd: () => void;
   clearError: () => void;
+  createSubgroup: (name: string) => Promise<PoolSubgroup | null>;
+  renameSubgroup: (subgroupId: number, name: string) => Promise<boolean>;
+  deleteSubgroup: (subgroupId: number) => Promise<boolean>;
+  reorderSubgroups: (subgroupIds: number[]) => Promise<boolean>;
+  addSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  removeSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   poolExpanded?: boolean;
   onPoolExpandedChange?: (expanded: boolean) => void;
+  dndDisabled?: boolean;
 }
 
 export const SetBuilder = memo(function SetBuilder({
   sets, activeSetId, activeSet, loading, error, pendingAdd,
   createSet, selectSet, deleteSet,
   removeFromPool, clearPool, movePoolToTracklist, addToPool,
-  removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist, updateTracklistNote,
+  removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist, addToTracklistAtPosition, updateTracklistNote,
   togglePoolStar, toggleTracklistStar, addToTracklist,
   resolvePendingAdd, clearPendingAdd, clearError,
+  createSubgroup, renameSubgroup, deleteSubgroup,
+  reorderSubgroups, addSubgroupMember, removeSubgroupMember,
   poolExpanded: poolExpandedProp = false,
   onPoolExpandedChange,
+  dndDisabled,
 }: Props) {
   const [newSetName, setNewSetName] = useState('');
   const [showNewInput, setShowNewInput] = useState(false);
@@ -208,12 +219,20 @@ export const SetBuilder = memo(function SetBuilder({
           clearTracklist={clearTracklist}
           moveTracklistToPool={moveTracklistToPool}
           reorderTracklist={reorderTracklist}
+          addToTracklistAtPosition={addToTracklistAtPosition}
           updateTracklistNote={updateTracklistNote}
           togglePoolStar={togglePoolStar}
           toggleTracklistStar={toggleTracklistStar}
           addToTracklist={addToTracklist}
+          createSubgroup={createSubgroup}
+          renameSubgroup={renameSubgroup}
+          deleteSubgroup={deleteSubgroup}
+          reorderSubgroups={reorderSubgroups}
+          addSubgroupMember={addSubgroupMember}
+          removeSubgroupMember={removeSubgroupMember}
           poolExpanded={poolExpanded}
           onPoolExpandedChange={(expanded) => onPoolExpandedChange?.(expanded)}
+          dndDisabled={dndDisabled}
         />
       )}
     </div>

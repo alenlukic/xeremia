@@ -158,6 +158,9 @@ const scoreColumns = [
 const DRAG_HANDLE_WIDTH = 24;
 const COL_CHOOSER_WIDTH = 28;
 
+const coreRowModel = getCoreRowModel<TransitionMatch>();
+const sortedRowModel = getSortedRowModel<TransitionMatch>();
+
 interface Props {
   selectedTrack: Track | SearchSuggestion | null;
   matches: TransitionMatch[];
@@ -169,7 +172,12 @@ interface Props {
   starredTrackIds?: Set<number>;
 }
 
-function DraggableMatchRow({ row, isLoading, hasColChooser, isStarred }: { row: Row<TransitionMatch>; isLoading: boolean; hasColChooser?: boolean; isStarred?: boolean }) {
+const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasColChooser, isStarred }: {
+  row: Row<TransitionMatch>;
+  isLoading: boolean;
+  hasColChooser?: boolean;
+  isStarred?: boolean;
+}) {
   const payload: DragPayload = {
     trackId: row.original.candidate_id,
     title: row.original.title,
@@ -199,30 +207,36 @@ function DraggableMatchRow({ row, isLoading, hasColChooser, isStarred }: { row: 
       style={isLoading ? { opacity: 0.6, cursor: 'grab' } : isDragging ? { opacity: 0.4, cursor: 'grabbing' } : { cursor: 'grab' }}
       {...rowListeners}
     >
-      <td className="drag-handle-cell">
+      <td className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }}>
         {isStarred
           ? <span className="star-indicator" title="Starred in active set" aria-label="Starred">★</span>
           : <span className="drag-handle" aria-hidden="true">⠿</span>}
       </td>
-      <td className="play-cell">
+      <td className="play-cell" style={{ width: 32 }}>
         <PlayButton trackId={row.original.candidate_id} title={row.original.title} />
       </td>
       {row.getVisibleCells().map((cell) => (
-        <td key={cell.id}>
+        <td key={cell.id} style={{ width: cell.column.getSize() }}>
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
         </td>
       ))}
       {hasColChooser && <td style={{ width: COL_CHOOSER_WIDTH }} />}
     </tr>
   );
-}
+});
 
 export const MatchesPanel = memo(function MatchesPanel({
   selectedTrack, matches, loading, matchesError, onViewDetail, onUseAsSource, onAddToSet, starredTrackIds,
 }: Props) {
   const [bucketTab, setBucketTab] = useState<BucketKey>('same_key');
+  const [prevTrackId, setPrevTrackId] = useState<number | undefined>(selectedTrack?.id);
 
-  useEffect(() => { setBucketTab('same_key'); }, [selectedTrack?.id]);
+  if (selectedTrack?.id !== prevTrackId) {
+    setPrevTrackId(selectedTrack?.id);
+    if (bucketTab !== 'same_key') {
+      setBucketTab('same_key');
+    }
+  }
 
   const outerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -239,6 +253,11 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null);
   const hasTrack = selectedTrack != null;
+
+  const onUseAsSourceRef = useRef(onUseAsSource);
+  const onViewDetailRef = useRef(onViewDetail);
+  onUseAsSourceRef.current = onUseAsSource;
+  onViewDetailRef.current = onViewDetail;
 
   useEffect(() => {
     if (!colConfigOpen) return;
@@ -279,6 +298,8 @@ export const MatchesPanel = memo(function MatchesPanel({
     ) : null,
   }), [onAddToSet]);
 
+  const hasUseAsSource = onUseAsSource != null;
+
   const allColumns = useMemo(() => {
     const cols = [
       ...(onAddToSet ? [addToSetColumn] : []),
@@ -290,10 +311,10 @@ export const MatchesPanel = memo(function MatchesPanel({
         cell: (info) => (
           <div className="match-track-cell">
             <span className="match-track-title">{info.getValue()}</span>
-            {onUseAsSource && (
+            {hasUseAsSource && (
               <button
                 className="match-use-source-btn"
-                onClick={() => onUseAsSource(info.row.original.candidate_id)}
+                onClick={() => onUseAsSourceRef.current?.(info.row.original.candidate_id)}
                 title="Use as source track"
                 aria-label={`Use ${info.row.original.title} as source`}
               >
@@ -314,7 +335,7 @@ export const MatchesPanel = memo(function MatchesPanel({
           <div className="match-actions-cell">
             <button
               className="match-detail-btn"
-              onClick={(e) => { e.stopPropagation(); onViewDetail?.(info.row.original); }}
+              onClick={(e) => { e.stopPropagation(); onViewDetailRef.current?.(info.row.original); }}
               title="View match detail"
               aria-label={`View match detail for ${info.row.original.title}`}
             >
@@ -328,7 +349,7 @@ export const MatchesPanel = memo(function MatchesPanel({
       }),
     ];
     return cols;
-  }, [onViewDetail, onUseAsSource, onAddToSet, addToSetColumn]);
+  }, [hasUseAsSource, onAddToSet, addToSetColumn]);
 
   const fullColumnOrder = columnOrder;
 
@@ -385,11 +406,11 @@ export const MatchesPanel = memo(function MatchesPanel({
     onColumnSizingChange: handleColumnSizingChange,
     onColumnOrderChange: setColumnOrder,
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    getCoreRowModel: coreRowModel,
+    getSortedRowModel: sortedRowModel,
   });
 
-  const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH + COL_CHOOSER_WIDTH;
+  const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH + 32 + COL_CHOOSER_WIDTH;
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth;
 
   const handleTopScroll = useCallback(() => {
@@ -447,6 +468,8 @@ export const MatchesPanel = memo(function MatchesPanel({
   const handleDragEnd = useCallback(() => {
     setDraggedColumn(null);
   }, []);
+
+  const rows = table.getRowModel().rows;
 
   const { setNodeRef: setMatchesHeaderRef, isOver: isMatchesHeaderOver } = useDroppable({ id: 'drop-matches-header' });
 
@@ -587,8 +610,14 @@ export const MatchesPanel = memo(function MatchesPanel({
                   </td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <DraggableMatchRow key={row.id} row={row} isLoading={loading} hasColChooser isStarred={starredTrackIds?.has(row.original.candidate_id)} />
+                rows.map((row) => (
+                  <DraggableMatchRow
+                    key={row.id}
+                    row={row}
+                    isLoading={loading}
+                    hasColChooser
+                    isStarred={starredTrackIds?.has(row.original.candidate_id)}
+                  />
                 ))
               )}
             </tbody>

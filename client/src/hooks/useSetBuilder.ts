@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { SetSummary, HydratedSet } from '../types';
+import type { SetSummary, HydratedSet, PoolSubgroup } from '../types';
 import type { ExplorerTree } from '../types';
 import {
   fetchSets, createSet as apiCreateSet, fetchHydratedSet, deleteSet as apiDeleteSet,
@@ -10,7 +10,13 @@ import {
   togglePoolStar, toggleTracklistStar,
   explorerAddNode, explorerDeleteNode, explorerAddEdge, explorerDeleteEdge,
   explorerSwap, explorerMoveNode, explorerNodeToTracklist, explorerEdgeScores,
-  explorerCreateTree,
+  explorerCreateTree, explorerRenameTree, explorerDeleteTree,
+  subgroupCreate as apiSubgroupCreate,
+  subgroupRename as apiSubgroupRename,
+  subgroupDelete as apiSubgroupDelete,
+  subgroupReorder as apiSubgroupReorder,
+  subgroupAddMember as apiSubgroupAddMember,
+  subgroupRemoveMember as apiSubgroupRemoveMember,
 } from '../api/http';
 
 export interface PendingAdd {
@@ -281,12 +287,35 @@ export function useSetBuilder() {
   }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const reorderTracklist = useCallback(async (trackId: number, newPosition: number) => {
-    if (activeSetId === null) return;
+    if (activeSetId === null || trackId <= 0) return;
     try {
       await tracklistReorder(activeSetId, trackId, newPosition);
       await refreshActive();
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not reorder tracklist.'));
+    }
+  }, [activeSetId, refreshActive]);
+
+  const addToTracklistAtPosition = useCallback(async (trackId: number, position: number, title?: string) => {
+    if (trackId <= 0) return;
+    if (activeSetId === null) {
+      setPendingAdd({ type: 'tracklist', trackId, title: title ?? `Track #${trackId}` });
+      return;
+    }
+    let added = false;
+    try {
+      await tracklistAdd(activeSetId, trackId);
+      added = true;
+      if (position >= 0) {
+        await tracklistReorder(activeSetId, trackId, position);
+      }
+      await refreshActive();
+    } catch (err) {
+      if (added) {
+        try { await tracklistRemove(activeSetId, trackId); } catch { /* best-effort rollback */ }
+      }
+      await refreshActive();
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add track at position.'));
     }
   }, [activeSetId, refreshActive]);
 
@@ -521,6 +550,102 @@ export function useSetBuilder() {
     setActiveTreeId(treeId);
   }, []);
 
+  const renameTree = useCallback(async (treeId: number, name: string): Promise<boolean> => {
+    if (activeSetId === null) return false;
+    try {
+      await explorerRenameTree(activeSetId, treeId, name);
+      await refreshActive();
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not rename tree.'));
+      return false;
+    }
+  }, [activeSetId, refreshActive]);
+
+  const deleteTree = useCallback(async (treeId: number): Promise<boolean> => {
+    if (activeSetId === null) return false;
+    try {
+      await explorerDeleteTree(activeSetId, treeId);
+      await refreshActive();
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not delete tree.'));
+      return false;
+    }
+  }, [activeSetId, refreshActive]);
+
+  const createSubgroup = useCallback(async (name: string): Promise<PoolSubgroup | null> => {
+    if (activeSetId === null) return null;
+    try {
+      const sg = await apiSubgroupCreate(activeSetId, name);
+      await refreshActive();
+      return sg;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not create subgroup.'));
+      return null;
+    }
+  }, [activeSetId, refreshActive]);
+
+  const renameSubgroup = useCallback(async (subgroupId: number, name: string): Promise<boolean> => {
+    if (activeSetId === null) return false;
+    try {
+      await apiSubgroupRename(activeSetId, subgroupId, name);
+      await refreshActive();
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not rename subgroup.'));
+      return false;
+    }
+  }, [activeSetId, refreshActive]);
+
+  const deleteSubgroup = useCallback(async (subgroupId: number): Promise<boolean> => {
+    if (activeSetId === null) return false;
+    try {
+      await apiSubgroupDelete(activeSetId, subgroupId);
+      await refreshActive();
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not delete subgroup.'));
+      return false;
+    }
+  }, [activeSetId, refreshActive]);
+
+  const reorderSubgroups = useCallback(async (subgroupIds: number[]): Promise<boolean> => {
+    if (activeSetId === null) return false;
+    try {
+      await apiSubgroupReorder(activeSetId, subgroupIds);
+      await refreshActive();
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not reorder subgroups.'));
+      return false;
+    }
+  }, [activeSetId, refreshActive]);
+
+  const addSubgroupMember = useCallback(async (subgroupId: number, poolEntryId: number): Promise<boolean> => {
+    if (activeSetId === null) return false;
+    try {
+      await apiSubgroupAddMember(activeSetId, subgroupId, poolEntryId);
+      await refreshActive();
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add to subgroup.'));
+      return false;
+    }
+  }, [activeSetId, refreshActive]);
+
+  const removeSubgroupMember = useCallback(async (subgroupId: number, poolEntryId: number): Promise<boolean> => {
+    if (activeSetId === null) return false;
+    try {
+      await apiSubgroupRemoveMember(activeSetId, subgroupId, poolEntryId);
+      await refreshActive();
+      return true;
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not remove from subgroup.'));
+      return false;
+    }
+  }, [activeSetId, refreshActive]);
+
   return {
     sets,
     activeSetId,
@@ -540,6 +665,7 @@ export function useSetBuilder() {
     movePoolToTracklist,
     moveTracklistToPool,
     reorderTracklist,
+    addToTracklistAtPosition,
     updateTracklistNote,
     togglePoolStar: togglePoolStarAction,
     toggleTracklistStar: toggleTracklistStarAction,
@@ -560,5 +686,13 @@ export function useSetBuilder() {
     activeTreeId,
     selectTree,
     createTree,
+    renameTree,
+    deleteTree,
+    createSubgroup,
+    renameSubgroup,
+    deleteSubgroup,
+    reorderSubgroups,
+    addSubgroupMember,
+    removeSubgroupMember,
   };
 }

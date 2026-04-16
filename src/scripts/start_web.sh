@@ -11,6 +11,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Source local port overrides if present
+if [[ -f "$REPO_ROOT/override_env.sh" ]]; then
+  source "$REPO_ROOT/override_env.sh"
+fi
+
 # Prevent dual-OpenBLAS thread pool corruption: NumPy ships libopenblas64_
 # (ILP64) while SciPy ships libopenblas (LP64). Both initialise global
 # thread pools that can corrupt each other under contention. Limiting each
@@ -28,8 +33,9 @@ fi
 ES_CONTAINER="dj-tools-es"
 ES_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.17.0"
 ES_URL="http://127.0.0.1:9200"
-API_PORT=8000
-CLIENT_PORT=5173
+API_PORT="${API_PORT:-8001}"
+CLIENT_PORT="${CLIENT_PORT:-5174}"
+export API_PORT CLIENT_PORT
 STARTED_ES=false
 
 CLEANED_UP=false

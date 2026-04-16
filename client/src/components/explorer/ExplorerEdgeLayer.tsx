@@ -7,12 +7,21 @@ const NODE_W = 203;
 const V_GAP = 132;
 const SLOT_W = 292;
 const EDGE_SLOTS = 5;
+const EDGE_PAD = 23;
+const SLOT_STEP = 6;
+const BUCKET_GAP = 5;
 const LANE_STUB = 10;
 const LANE_S = 6;
 const TOP_PAD = 32;
 const LABEL_W = 32;
-const CELL_NODE_OFFSET_Y = 43;
+const CELL_NODE_OFFSET_Y = 0;
 const LEVEL_HEIGHT = NODE_H_DEFAULT + V_GAP;
+
+function nodeSlotX(nodeX: number, laneIndex: number): number {
+  const bucket = Math.floor(laneIndex / EDGE_SLOTS);
+  const slot = laneIndex % EDGE_SLOTS;
+  return nodeX + EDGE_PAD + bucket * (EDGE_SLOTS * SLOT_STEP + BUCKET_GAP) + slot * SLOT_STEP;
+}
 
 function calcNodeX(colIndex: number): number {
   return LABEL_W + colIndex * SLOT_W + (SLOT_W - NODE_W) / 2;
@@ -49,7 +58,7 @@ export const ExplorerEdgeLayer = memo(function ExplorerEdgeLayer({
       className="explorer-edge-svg"
       width={totalWidth}
       height={totalHeight}
-      style={{ position: 'absolute', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
+      style={{ position: 'absolute', top: 0, left: 0, zIndex: 3, pointerEvents: 'none' }}
     >
       {edges.map(edge => {
         const parent = nodeMap.get(edge.parent_node_id);
@@ -67,8 +76,8 @@ export const ExplorerEdgeLayer = memo(function ExplorerEdgeLayer({
         const parentH = nodeHeightForTrack(parent.track?.title ?? '');
         const parentBottom = py + parentH;
         const childTop = cy;
-        const startX = px + NODE_W / 2;
-        const endX = cx + NODE_W / 2;
+        const startX = nodeSlotX(px, laneIndex);
+        const endX = nodeSlotX(cx, laneIndex);
         const laneY = parentBottom + LANE_STUB + laneIndex * LANE_S;
         const pathD = `M ${startX} ${parentBottom} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${childTop}`;
 

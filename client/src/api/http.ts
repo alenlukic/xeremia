@@ -1,4 +1,4 @@
-import type { Track, SearchSuggestion, TransitionMatch, MatchDetail, CacheStats, WeightsResponse, TrackTraitEntry, SetSummary, HydratedSet, ExplorerTree } from '../types';
+import type { Track, SearchSuggestion, TransitionMatch, MatchDetail, CacheStats, WeightsResponse, TrackTraitEntry, SetSummary, HydratedSet, ExplorerTree, PoolSubgroup } from '../types';
 
 export async function fetchTracks(params: {
   camelot_code?: string;
@@ -263,6 +263,31 @@ export async function explorerCreateTree(
   return res.json();
 }
 
+export async function explorerRenameTree(
+  setId: number,
+  treeId: number,
+  name: string,
+): Promise<ExplorerTree> {
+  const res = await fetch(`/api/sets/${setId}/explorer/trees/${treeId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Rename tree failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function explorerDeleteTree(
+  setId: number,
+  treeId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/explorer/trees/${treeId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Delete tree failed: ${res.status}`);
+}
+
 export async function explorerAddNode(
   setId: number,
   trackId: number,
@@ -369,4 +394,70 @@ export async function explorerEdgeScores(
   });
   if (!res.ok) throw new Error(`Explorer edge scores failed: ${res.status}`);
   return res.json();
+}
+
+// --- Pool subgroup API ---
+
+export async function subgroupCreate(
+  setId: number, name: string,
+): Promise<PoolSubgroup> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`Subgroup create failed: ${res.status}`);
+  return res.json();
+}
+
+export async function subgroupRename(
+  setId: number, subgroupId: number, name: string,
+): Promise<PoolSubgroup> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups/${subgroupId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`Subgroup rename failed: ${res.status}`);
+  return res.json();
+}
+
+export async function subgroupDelete(
+  setId: number, subgroupId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups/${subgroupId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Subgroup delete failed: ${res.status}`);
+}
+
+export async function subgroupReorder(
+  setId: number, subgroupIds: number[],
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subgroup_ids: subgroupIds }),
+  });
+  if (!res.ok) throw new Error(`Subgroup reorder failed: ${res.status}`);
+}
+
+export async function subgroupAddMember(
+  setId: number, subgroupId: number, poolEntryId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups/${subgroupId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pool_entry_id: poolEntryId }),
+  });
+  if (!res.ok) throw new Error(`Subgroup add member failed: ${res.status}`);
+}
+
+export async function subgroupRemoveMember(
+  setId: number, subgroupId: number, poolEntryId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups/${subgroupId}/members/${poolEntryId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Subgroup remove member failed: ${res.status}`);
 }

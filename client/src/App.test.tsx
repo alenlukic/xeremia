@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
@@ -126,6 +126,12 @@ async function renderApp() {
   await act(async () => {});
 }
 
+async function expandFilterTray() {
+  await act(async () => {
+    screen.getByRole('button', { name: /toggle filters/i }).click();
+  });
+}
+
 describe('Reset Weights', () => {
   it('renders a Reset Weights button inside weights overlay', async () => {
     const httpMod = await import('./api/http');
@@ -247,6 +253,7 @@ describe('Browse infinite scroll', () => {
 
   it('resets to first chunk when key filter changes', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       triggerLoadMore();
@@ -267,13 +274,14 @@ describe('Browse infinite scroll', () => {
 
   it('resets to first chunk when BPM filter changes', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       triggerLoadMore();
     });
     expect(getRowCount()).toBe(500);
 
-    const bpmInput = screen.getByPlaceholderText('BPM Min');
+    const bpmInput = screen.getByPlaceholderText('Min');
     await userEvent.type(bpmInput, '120');
 
     await waitFor(() => {
@@ -317,6 +325,7 @@ describe('Browse infinite scroll', () => {
 
   it('restores loaded progress when returning to a previous filter key', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       triggerLoadMore();
@@ -611,9 +620,10 @@ describe('Error state handling', () => {
 describe('BPM unified filter', () => {
   it('min and max inputs coexist without cross-clearing', async () => {
     await renderApp();
+    await expandFilterTray();
 
-    const minInput = screen.getByPlaceholderText('BPM Min');
-    const maxInput = screen.getByPlaceholderText('BPM Max');
+    const minInput = screen.getByPlaceholderText('Min');
+    const maxInput = screen.getByPlaceholderText('Max');
 
     await userEvent.type(minInput, '100');
     await act(async () => { minInput.blur(); });
@@ -626,9 +636,10 @@ describe('BPM unified filter', () => {
 
   it('equal min and max expresses exact matching', async () => {
     await renderApp();
+    await expandFilterTray();
 
-    const minInput = screen.getByPlaceholderText('BPM Min');
-    const maxInput = screen.getByPlaceholderText('BPM Max');
+    const minInput = screen.getByPlaceholderText('Min');
+    const maxInput = screen.getByPlaceholderText('Max');
 
     await userEvent.type(minInput, '128');
     await act(async () => { minInput.blur(); });
@@ -643,6 +654,7 @@ describe('BPM unified filter', () => {
 describe('Camelot multi-select', () => {
   it('dropdown stays open after toggling a code', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -659,6 +671,7 @@ describe('Camelot multi-select', () => {
 
   it('allows selecting multiple codes in one session', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -679,6 +692,7 @@ describe('Camelot multi-select', () => {
 
   it('closes on Escape key', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -1040,6 +1054,28 @@ describe('DockBar keyboard navigation', () => {
   });
 });
 
+describe('DockBar', () => {
+  it('shows Matches, Set, and Explorer tabs on load (no auto-hide)', async () => {
+    await act(async () => { render(<App />); });
+    expect(document.querySelector('.dock-bar-zone')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Matches' })).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'Set' })).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'Explorer' })).toBeVisible();
+  });
+
+  it('tab switching works', async () => {
+    await act(async () => { render(<App />); });
+    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
+    await act(async () => { matchesTab.click(); });
+    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
+
+    const setTab = screen.getByRole('tab', { name: 'Set' });
+    await act(async () => { setTab.click(); });
+    expect(setTab).toHaveAttribute('aria-selected', 'true');
+    expect(matchesTab).toHaveAttribute('aria-selected', 'false');
+  });
+});
+
 describe('Clear Filters with BPM', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -1048,8 +1084,9 @@ describe('Clear Filters with BPM', () => {
   it('Clear Filters resets BPM min/max alongside other filters', async () => {
     const user = userEvent.setup();
     await renderApp();
+    await expandFilterTray();
 
-    const minInput = screen.getByPlaceholderText('BPM Min');
+    const minInput = screen.getByPlaceholderText('Min');
     await user.type(minInput, '128');
     await act(async () => { minInput.blur(); });
     expect(minInput).toHaveValue(128);
@@ -1327,11 +1364,11 @@ describe('Set Mode DockBar hiding', () => {
     vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
       set: { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 2, tracklist_count: 1 },
       pool: [
-        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Track 1', bpm: 120, camelot_code: '01A', energy: 0.5 } },
-        { id: 11, track_id: 2, insertion_order: 1, starred: true, track: { id: 2, title: 'Track 2', bpm: 128, camelot_code: '02A', energy: 0.6 } },
+        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Track 1', artist_names: [], bpm: 120, key: null, camelot_code: '01A', genre: null, label: null, energy: 0.5, date_added: null } },
+        { id: 11, track_id: 2, insertion_order: 1, starred: true, track: { id: 2, title: 'Track 2', artist_names: [], bpm: 128, key: null, camelot_code: '02A', genre: null, label: null, energy: 0.6, date_added: null } },
       ],
       tracklist: [
-        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track 3', bpm: 125, camelot_code: '01B', energy: 0.55 } },
+        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track 3', artist_names: [], bpm: 125, key: null, camelot_code: '01B', genre: null, label: null, energy: 0.55, date_added: null } },
       ],
       explorer_trees: [], explorer_nodes: [], explorer_edges: [],
     });
@@ -1414,10 +1451,10 @@ describe('Set Mode two-column layout', () => {
     vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
       set: { id: 1, name: 'Layout Set', created_at: '', updated_at: '', pool_count: 1, tracklist_count: 1 },
       pool: [
-        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Pool Track', bpm: 120, camelot_code: '01A', energy: 0.5 } },
+        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Pool Track', artist_names: [], bpm: 120, key: null, camelot_code: '01A', genre: null, label: null, energy: 0.5, date_added: null } },
       ],
       tracklist: [
-        { id: 20, track_id: 2, position: 0, starred: false, note: '', track: { id: 2, title: 'TL Track', bpm: 128, camelot_code: '02A', energy: 0.6 } },
+        { id: 20, track_id: 2, position: 0, starred: false, note: '', track: { id: 2, title: 'TL Track', artist_names: [], bpm: 128, key: null, camelot_code: '02A', genre: null, label: null, energy: 0.6, date_added: null } },
       ],
       explorer_trees: [], explorer_nodes: [], explorer_edges: [],
     });

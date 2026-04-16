@@ -63,6 +63,7 @@ function defaultProps() {
     removeFromTracklist: noop,
     moveTracklistToPool: noop,
     reorderTracklist: noop,
+    addToTracklistAtPosition: noop,
     updateTracklistNote: noop,
     togglePoolStar: noop,
     toggleTracklistStar: noop,
@@ -72,6 +73,12 @@ function defaultProps() {
     clearError: noop,
     clearPool: noop,
     clearTracklist: noop,
+    createSubgroup: async () => null,
+    renameSubgroup: async () => true,
+    deleteSubgroup: async () => true,
+    reorderSubgroups: async () => true,
+    addSubgroupMember: async () => true,
+    removeSubgroupMember: async () => true,
   };
 }
 
