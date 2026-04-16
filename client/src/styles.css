@@ -2511,7 +2511,7 @@ body,
 .explorer-level {
   display: flex;
   align-items: flex-start;
-  height: 159px; /* NODE_H(27) + V_GAP(132) */
+  height: 166px; /* NODE_H(34) + V_GAP(132) */
   gap: 0;
 }
 
@@ -2536,7 +2536,7 @@ body,
 /* --- Explorer Cell --- */
 .explorer-cell {
   width: 292px; /* SLOT_W */
-  min-height: 27px;
+  min-height: 34px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -2599,7 +2599,7 @@ body,
 /* --- Explorer Cell Node --- */
 .explorer-cell-node {
   width: 203px; /* NODE_W (270 * 0.75) */
-  min-height: 27px; /* NODE_H (36 * 0.75) */
+  min-height: 34px; /* NODE_H */
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -2610,7 +2610,7 @@ body,
 
 .explorer-cell-title {
   color: #fff;
-  font-size: 6px;
+  font-size: 9px;
   text-align: center;
   overflow: hidden;
   display: -webkit-box;
@@ -2622,7 +2622,7 @@ body,
 }
 
 .explorer-cell-node.node-wrapped {
-  min-height: 34px;
+  min-height: 43px;
 }
 
 /* --- Explorer Cell Row (node + right-side controls) --- */

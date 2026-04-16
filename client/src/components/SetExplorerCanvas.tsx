@@ -9,7 +9,7 @@ import { stripTitlePrefix } from '../utils/explorer';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { MAX_COLS } from '../dnd';
 
-const NODE_H = 27;
+const NODE_H = 34;
 const V_GAP = 132;
 const SLOT_W = 292;
 const TOP_PAD = 32;
@@ -415,22 +415,26 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
   }, []);
 
   const isOverValidConnectTarget = useCallback((
-    gridX: number, gridY: number, sourceNodeId: string, sourceLevel: number,
+    gridX: number, gridY: number, sourceNodeId: string,
   ): boolean => {
+    const sourceNode = nodesRef.current.find(n => n.node_id === sourceNodeId);
+    if (!sourceNode) return false;
+    const srcLevel = sourceNode.level;
     const tLevel = Math.max(0, Math.min(MAX_LEVELS - 1, Math.floor((gridY - TOP_PAD) / LEVEL_HEIGHT)));
-    if (Math.abs(sourceLevel - tLevel) !== 1) return false;
+    if (Math.abs(srcLevel - tLevel) !== 1) return false;
     const tCol = Math.max(0, Math.min(MAX_COLS - 1, Math.floor((gridX - LABEL_W) / SLOT_W)));
     const target = nodesRef.current.find(n => n.level === tLevel && n.col_index === tCol);
     if (!target || target.node_id === sourceNodeId) return false;
-    const parentId = sourceNodeId;
-    const childId = target.node_id;
+    const parentId = srcLevel < target.level ? sourceNodeId : target.node_id;
+    const childId = srcLevel < target.level ? target.node_id : sourceNodeId;
     return !edgesRef.current.some(
       e => (e.parent_node_id === parentId && e.child_node_id === childId) ||
            (e.parent_node_id === childId && e.child_node_id === parentId),
     );
   }, []);
 
-  const handleNodeMouseUp = useCallback((nodeId: string, level: number) => {
+  const handleNodeMouseUp = useCallback((nodeId: string, _level: number) => {
+    pendingDragRef.current = null;
     if (moveDragRef.current) return;
     const acs = activeConnectSourceRef.current;
     if (!acs) return;
@@ -439,17 +443,25 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
       setConnectDrag(null);
       return;
     }
-    const srcLevel = acs.sourceLevel;
-    const tgtLevel = level;
-    if (Math.abs(srcLevel - tgtLevel) === 1) {
-      const parentId = srcLevel < tgtLevel ? acs.sourceNodeId : nodeId;
-      const childId = srcLevel < tgtLevel ? nodeId : acs.sourceNodeId;
-      const alreadyConnected = edgesRef.current.some(
-        e => (e.parent_node_id === parentId && e.child_node_id === childId) ||
-             (e.parent_node_id === childId && e.child_node_id === parentId),
-      );
-      if (!alreadyConnected) onAddEdgeRef.current(parentId, childId);
+    const srcNode = nodesRef.current.find(n => n.node_id === acs.sourceNodeId);
+    const tgtNode = nodesRef.current.find(n => n.node_id === nodeId);
+    if (!srcNode || !tgtNode) {
+      activeConnectSourceRef.current = null;
+      setConnectDrag(null);
+      return;
     }
+    if (Math.abs(srcNode.level - tgtNode.level) !== 1) {
+      activeConnectSourceRef.current = null;
+      setConnectDrag(null);
+      return;
+    }
+    const parentId = srcNode.level < tgtNode.level ? srcNode.node_id : tgtNode.node_id;
+    const childId = srcNode.level < tgtNode.level ? tgtNode.node_id : srcNode.node_id;
+    const alreadyConnected = edgesRef.current.some(
+      e => (e.parent_node_id === parentId && e.child_node_id === childId) ||
+           (e.parent_node_id === childId && e.child_node_id === parentId),
+    );
+    if (!alreadyConnected) onAddEdgeRef.current(parentId, childId);
     activeConnectSourceRef.current = null;
     setConnectDrag(null);
   }, []);
@@ -487,7 +499,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
             sourceCX: pd.sourceCX,
             sourceCY: pd.sourceCY,
           };
-          if (isOverValidConnectTarget(gridX, gridY, pd.sourceNodeId, pd.sourceLevel)) {
+          if (isOverValidConnectTarget(gridX, gridY, pd.sourceNodeId)) {
             setConnectDrag({
               sourceNodeId: pd.sourceNodeId,
               sourceLevel: pd.sourceLevel,
@@ -511,7 +523,7 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     }
     const acs = activeConnectSourceRef.current;
     if (acs) {
-      if (isOverValidConnectTarget(gridX, gridY, acs.sourceNodeId, acs.sourceLevel)) {
+      if (isOverValidConnectTarget(gridX, gridY, acs.sourceNodeId)) {
         setConnectDrag({
           sourceNodeId: acs.sourceNodeId,
           sourceLevel: acs.sourceLevel,

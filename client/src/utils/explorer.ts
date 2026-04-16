@@ -37,8 +37,8 @@ export function edgeColorForColumn(columnIndex: number): string {
   return EDGE_COLORS[columnIndex % EDGE_COLORS.length];
 }
 
-export const NODE_H_DEFAULT = 27;
-export const NODE_H_WRAPPED = 34;
+export const NODE_H_DEFAULT = 34;
+export const NODE_H_WRAPPED = 43;
 const WRAP_CHAR_THRESHOLD = 40;
 
 export function nodeHeight(title: string): number {
@@ -46,17 +46,16 @@ export function nodeHeight(title: string): number {
 }
 
 const METADATA_PREFIX_RE = /^\[[^\]]*\]\s*/;
-const TITLE_TRUNCATE = 24;
+const TITLE_TRUNCATE = 48;
 
 export function stripTitlePrefix(raw: string): string {
   return raw.replace(METADATA_PREFIX_RE, '');
 }
 
 export function cleanTitle(raw: string): string {
-  const stripped = raw.replace(METADATA_PREFIX_RE, '');
-  return stripped.length > TITLE_TRUNCATE
-    ? stripped.slice(0, TITLE_TRUNCATE) + '…'
-    : stripped;
+  return raw.length > TITLE_TRUNCATE
+    ? raw.slice(0, TITLE_TRUNCATE) + '…'
+    : raw;
 }
 
 export function nodeHeightForTrack(rawTitle: string): number {

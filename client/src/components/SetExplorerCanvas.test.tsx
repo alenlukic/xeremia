@@ -378,6 +378,85 @@ describe('SetExplorerCanvas', () => {
 
       expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
     });
+
+    /** Stable grid snapshot: level, column, and visible title (unique per test node). */
+    function nodeGridSnapshot(): string[] {
+      return screen.getAllByTestId('explorer-node').map((el) => {
+        const level = el.getAttribute('data-level') ?? '';
+        const col = el.getAttribute('data-col-index') ?? '';
+        const title = el.querySelector('.explorer-cell-title')?.textContent?.trim() ?? '';
+        return `${level}:${col}:${title}`;
+      }).sort();
+    }
+
+    it('connect-drag does not change any node grid positions (0→1)', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateDrag(container, nodeEls[0], nodeEls[1]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+    });
+
+    it('connect-drag does not change any node grid positions (1→0 reverse drag)', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateDrag(container, nodeEls[1], nodeEls[0]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+    });
+
+    it('connect-drag leaves all nodes unmoved when a third node exists on another column', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+        makeNode({ id: 3, node_id: 'n3', track_id: 12, level: 2, col_index: 2 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateDrag(container, nodeEls[0], nodeEls[1]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+    });
+
+    it('connect-drag between high level indices still assigns parent by level and does not move nodes', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'na', track_id: 20, level: 14, col_index: 1 }),
+        makeNode({ id: 2, node_id: 'nb', track_id: 21, level: 15, col_index: 1 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const before = nodeGridSnapshot();
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      simulateDrag(container, nodeEls[1], nodeEls[0]);
+
+      expect(nodeGridSnapshot()).toEqual(before);
+      expect(props.onMoveNode).not.toHaveBeenCalled();
+      expect(props.onAddEdge).toHaveBeenCalledWith('na', 'nb');
+    });
   });
 
   describe('background click clears selection', () => {
@@ -406,13 +485,13 @@ describe('SetExplorerCanvas', () => {
   });
 
   describe('node title display', () => {
-    it('strips metadata prefix from track title display', () => {
+    it('preserves metadata prefix in track title display', () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
       nodes[0].track = { id: 10, title: '[8A - Aminor - 128] My Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null, date_added: null };
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
 
       const titleEl = document.querySelector('.explorer-cell-title');
-      expect(titleEl?.textContent).not.toContain('[8A');
+      expect(titleEl?.textContent).toContain('[8A');
       expect(titleEl?.textContent).toContain('My Track');
     });
 
@@ -1316,7 +1395,7 @@ describe('SetExplorerCanvas', () => {
       fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 200 });
 
       const line = screen.getByTestId('connect-drag-line');
-      const NODE_H = 27;
+      const NODE_H = 34;
       const TOP_PAD = 32;
       const V_GAP = 132;
       const LEVEL_HEIGHT = NODE_H + V_GAP;
