@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, useDeferredValue } f
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, type DragMoveEvent, PointerSensor, useSensor, useSensors, MeasuringStrategy, pointerWithin, rectIntersection, type CollisionDetection } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { SearchPanel } from './components/SearchPanel';
-import { FilterBar } from './components/FilterBar';
+import { FilterBar, FilterToggleButton } from './components/FilterBar';
 import { TrackTable } from './components/TrackTable';
 import { MatchesPanel } from './components/MatchesPanel';
 import { MatchDetail } from './components/MatchDetail';
@@ -22,6 +22,7 @@ import { useWeights } from './hooks/useWeights';
 import { useSetBuilder } from './hooks/useSetBuilder';
 import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 import type { DragPayload } from './dnd';
+import { DragFillContext, type DragFillNotification } from './dnd';
 import type { SortingState } from '@tanstack/react-table';
 
 const BROWSE_PAGE_SIZE = 250;
@@ -42,29 +43,82 @@ const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'date_added', label: 'Date Added' },
 ];
 
-const dndCollisionDetection: CollisionDetection = (args) => {
+const isEmptyRowId = (id: string) =>
+  id.includes('drop-tracklist-empty-') || id.includes('drop-pool-empty-');
+
+// dnd-kit's internal collisionRect / pointerCoordinates can lag behind
+// fast pointer movements (the PointerSensor resets delta to zero at
+// activation). Track the real pointer position at the document level
+// so the collision fallback always has up-to-date coordinates.
+let _lastPointerX = 0;
+let _lastPointerY = 0;
+if (typeof document !== 'undefined') {
+  const _trackPointer = (e: PointerEvent) => {
+    _lastPointerX = e.clientX;
+    _lastPointerY = e.clientY;
+  };
+  document.addEventListener('pointermove', _trackPointer, true);
+  document.addEventListener('pointerup', _trackPointer, true);
+}
+
+export const dndCollisionDetection: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
+  const rect = rectIntersection(args);
+
   if (pointer.length > 0) {
     const hasCell = pointer.some(c => String(c.id).startsWith('drop-explorer-cell-'));
     if (hasCell) {
       const filtered = pointer.filter(c => String(c.id).startsWith('drop-explorer-cell-'));
       if (filtered.length > 0) return filtered;
     }
+  }
+
+  const pointerEmpty = pointer.filter(c => isEmptyRowId(String(c.id)));
+  if (pointerEmpty.length > 0) return pointerEmpty;
+  const rectEmpty = rect.filter(c => isEmptyRowId(String(c.id)));
+  if (rectEmpty.length > 0) return rectEmpty;
+
+  // Fallback: use the real last-known pointer position and fresh
+  // getBoundingClientRect() to detect empty-row droppable hits.
+  {
+    const x = _lastPointerX;
+    const y = _lastPointerY;
+    const containers = Array.isArray(args.droppableContainers)
+      ? args.droppableContainers
+      : [...(args.droppableContainers as Iterable<unknown>)].map(
+          (entry) => (Array.isArray(entry) ? entry[1] : entry) as { id: unknown; disabled: boolean; node: { current: HTMLElement | null }; data: { current?: Record<string, unknown> } },
+        );
+    for (const container of containers) {
+      if (container.disabled) continue;
+      const cid = String(container.id);
+      if (!isEmptyRowId(cid)) continue;
+      const node = container.node.current;
+      if (!node) continue;
+      const r = node.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        return [{ id: container.id as string, data: { droppableContainer: container, value: 0 } }];
+      }
+    }
+  }
+
+  if (pointer.length > 0) {
     const activeData = args.active.data.current as DragPayload | undefined;
     if (activeData?.source === 'tracklist') {
-      const rows = pointer.filter(c => String(c.id).startsWith('drop-tracklist-row-'));
+      const isRowId = (id: string) =>
+        id.startsWith('drop-tracklist-row-') || /^alt-drop-tracklist-row-/.test(id);
+      const rows = pointer.filter(c => isRowId(String(c.id)));
       if (rows.length > 0) return rows;
-      // Pointer is between rows (e.g. dragging upward) — use rect intersection
-      // to find the nearest row instead of letting the parent container highlight.
-      const rect = rectIntersection(args);
-      const rectRows = rect.filter(c => String(c.id).startsWith('drop-tracklist-row-'));
+      const rectRows = rect.filter(c => isRowId(String(c.id)));
       if (rectRows.length > 0) return rectRows;
-      // Outside tracklist entirely — let non-container targets through
-      return pointer.filter(c => String(c.id) !== 'drop-tracklist');
+      const filtered = pointer.filter(c => {
+        const id = String(c.id);
+        return id !== 'drop-tracklist' && id !== 'alt-drop-tracklist';
+      });
+      if (filtered.length > 0) return filtered;
     }
     return pointer;
   }
-  return rectIntersection(args);
+  return rect;
 };
 
 function isPlainObject(v: unknown): v is Record<string, boolean> {
@@ -121,6 +175,8 @@ export default function App() {
   const [poolExpanded, setPoolExpanded] = useState(loadPoolExpanded);
   const [dragItem, setDragItem] = useState<DragPayload | null>(null);
   const [dndWarning, setDndWarning] = useState<string | null>(null);
+  const [dragFillNotification, setDragFillNotification] = useState<DragFillNotification | null>(null);
+  const dragFillNonceRef = useRef(0);
 
   const browseScrollRef = useRef<HTMLDivElement | null>(null);
   const browseContextRef = useRef<{ scrollTop: number; targetFilterKey: string } | null>(null);
@@ -166,10 +222,19 @@ export default function App() {
     filters,
     filteredTracks,
     filterCacheKey,
+    activeFilterCount,
     setCamelotCodes,
     setBpmMin,
     setBpmMax,
+    setArtist,
+    setLabel,
+    setGenre,
+    setDateAddedMin,
+    setDateAddedMax,
+    clearAllFilters,
   } = useTrackFilters(allTracks, effectiveSearchText);
+
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   const {
     weights,
@@ -234,6 +299,7 @@ export default function App() {
     movePoolToTracklist,
     moveTracklistToPool,
     reorderTracklist,
+    addToTracklistAtPosition,
     updateTracklistNote,
     togglePoolStar,
     toggleTracklistStar,
@@ -253,6 +319,14 @@ export default function App() {
     activeTreeId,
     selectTree,
     createTree,
+    renameTree,
+    deleteTree,
+    createSubgroup,
+    renameSubgroup,
+    deleteSubgroup,
+    reorderSubgroups,
+    addSubgroupMember,
+    removeSubgroupMember,
   } = useSetBuilder();
 
   const starredTrackIds = useMemo(() => {
@@ -441,13 +515,11 @@ export default function App() {
   );
 
   const handleClearFilters = useCallback(() => {
-    setCamelotCodes([]);
-    setBpmMin(undefined);
-    setBpmMax(undefined);
+    clearAllFilters();
     if (!selectedTrack) {
       setSearchText('');
     }
-  }, [setCamelotCodes, setBpmMin, setBpmMax, selectedTrack]);
+  }, [clearAllFilters, selectedTrack]);
 
   const handleClearSelectedTrack = useCallback(() => {
     setDetailMatch(null);
@@ -529,12 +601,75 @@ export default function App() {
     }
     lastHoverPanelRef.current = null;
     setDragItem(null);
-    const { active, over } = event;
-    if (!over) return;
+    const { active, over: dndOver } = event;
     const payload = active.data.current as DragPayload | undefined;
     if (!payload) return;
-    const targetId = String(over.id);
+
+    let over = dndOver;
+    const CONTAINER_IDS = ['drop-tracklist', 'alt-drop-tracklist', 'drop-pool', 'alt-drop-pool'];
+    if (
+      payload.trackId > 0 &&
+      (!over || CONTAINER_IDS.includes(String(over.id)))
+    ) {
+      const el = typeof document.elementFromPoint === 'function'
+        ? document.elementFromPoint(_lastPointerX, _lastPointerY)
+        : null;
+      const emptyTr = el?.closest?.('tr[data-empty-id]');
+      if (emptyTr) {
+        const domEmptyId = emptyTr.getAttribute('data-empty-id')!;
+        const inTracklist = emptyTr.closest('.set-tracklist-table') != null;
+        const prefix = inTracklist ? 'drop-tracklist-empty-' : 'drop-pool-empty-';
+        const isAlt = emptyTr.closest('#panel-explorer') != null;
+        const droppableId = (isAlt ? 'alt-' : '') + prefix + domEmptyId;
+        const realPosAttr = emptyTr.getAttribute('data-real-position');
+        const realPosition = realPosAttr != null && !isNaN(Number(realPosAttr))
+          ? parseInt(realPosAttr, 10)
+          : undefined;
+        over = {
+          id: droppableId,
+          rect: emptyTr.getBoundingClientRect(),
+          data: { current: { __emptyId: domEmptyId, realPosition } },
+          disabled: false,
+        } as typeof dndOver;
+      }
+    }
+
+    if (!over) return;
+    const rawTargetId = String(over.id);
+    const targetId = rawTargetId.startsWith('alt-') ? rawTargetId.slice(4) : rawTargetId;
     const sb = setBuilderRef.current;
+    const trackIds = payload.selectedTrackIds && payload.selectedTrackIds.length > 1
+      ? payload.selectedTrackIds
+      : [payload.trackId];
+
+    if (targetId.startsWith('drop-tracklist-empty-') || targetId.startsWith('drop-pool-empty-')) {
+      if (!sb.activeSet) return;
+      const isTracklist = targetId.startsWith('drop-tracklist-empty-');
+      const overData = over.data?.current as { __emptyId?: string; realPosition?: number } | undefined;
+      const emptyId = overData?.__emptyId;
+      const realPosition = overData?.realPosition;
+      const validTrackIds = trackIds.filter(id => id > 0);
+      if (validTrackIds.length === 0) return;
+      for (const tid of validTrackIds) {
+        const t = allTracks.find(tr => tr.id === tid);
+        if (isTracklist) {
+          if (payload.source === 'tracklist' && realPosition != null) {
+            reorderTracklist(tid, realPosition);
+          } else if (realPosition != null) {
+            addToTracklistAtPosition(tid, realPosition, t?.title ?? payload.title);
+          } else {
+            addToTracklistFn(tid, t?.title ?? payload.title);
+          }
+        } else {
+          addToPoolFn(tid, t?.title ?? payload.title);
+        }
+      }
+      if (emptyId) {
+        dragFillNonceRef.current += 1;
+        setDragFillNotification({ emptyId, nonce: dragFillNonceRef.current });
+      }
+      return;
+    }
 
     if (payload.source === 'tracklist' && targetId.startsWith('drop-tracklist-row-')) {
       const newPosition = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
@@ -564,18 +699,27 @@ export default function App() {
         if (targetId === 'dock-set') setActivePanel('set');
         return;
       }
-      addToTracklistFn(payload.trackId, payload.title);
+      for (const tid of trackIds) {
+        const t = allTracks.find(tr => tr.id === tid);
+        addToTracklistFn(tid, t?.title ?? payload.title);
+      }
       if (targetId === 'dock-set') setActivePanel('set');
     } else if (targetId === 'drop-pool') {
-      if (
-        (sb.activeSet && sb.activeSet.pool.some(e => e.track_id === payload.trackId))
-        || sb.isPoolAddInFlight(payload.trackId)
-      ) {
+      const poolSet = sb.activeSet ? new Set(sb.activeSet.pool.map(e => e.track_id)) : new Set<number>();
+      let anySkipped = false;
+      for (const tid of trackIds) {
+        if (poolSet.has(tid) || sb.isPoolAddInFlight(tid)) {
+          anySkipped = true;
+          continue;
+        }
+        const t = allTracks.find(tr => tr.id === tid);
+        addToPoolFn(tid, t?.title ?? payload.title);
+      }
+      if (anySkipped && trackIds.length === 1) {
         setDndWarning('Track already in pool');
         setTimeout(() => setDndWarning(null), 2000);
         return;
       }
-      addToPoolFn(payload.trackId, payload.title);
       if (!poolExpanded) handlePoolExpandedChange(true);
     } else if (targetId === 'dock-explorer') {
       if (sb.activeSet) {
@@ -615,16 +759,17 @@ export default function App() {
         }
       }
     }
-  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, poolExpanded, handlePoolExpandedChange, reorderTracklist]);
+  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, addToTracklistAtPosition, poolExpanded, handlePoolExpandedChange, reorderTracklist]);
 
   return (
     <AudioPlayerProvider>
+    <DragFillContext.Provider value={dragFillNotification}>
     <DndContext sensors={sensors} collisionDetection={dndCollisionDetection} measuring={measuringConfig} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
       <div className="app-shell-v2">
         {/* ─── Top Anchor Zone (hidden in Set Mode) ─── */}
         {!isSetMode && (
           <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: '28vh' }}>
-            {/* ─── Unified search + filter row ─── */}
+            {/* ─── Search row with filter toggle ─── */}
             <div className="controls-strip">
               <SearchPanel
                 selectedTrack={selectedTrack}
@@ -633,14 +778,10 @@ export default function App() {
                 onClearSelectedTrack={handleClearSelectedTrack}
                 searchText={searchText}
               />
-              <FilterBar
-                camelotCodes={filters.camelotCodes}
-                bpmMin={filters.bpmMin}
-                bpmMax={filters.bpmMax}
-                setCamelotCodes={setCamelotCodes}
-                setBpmMin={setBpmMin}
-                setBpmMax={setBpmMax}
-                onClearFilters={handleClearFilters}
+              <FilterToggleButton
+                expanded={filtersExpanded}
+                onToggle={() => setFiltersExpanded(prev => !prev)}
+                activeCount={activeFilterCount}
               />
               <div className="controls-strip-actions">
                 <button
@@ -661,6 +802,30 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* ─── Expandable filter tray ─── */}
+            <FilterBar
+              expanded={filtersExpanded}
+              onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
+              activeFilterCount={activeFilterCount}
+              camelotCodes={filters.camelotCodes}
+              bpmMin={filters.bpmMin}
+              bpmMax={filters.bpmMax}
+              artist={filters.artist}
+              label={filters.label}
+              genre={filters.genre}
+              dateAddedMin={filters.dateAddedMin}
+              dateAddedMax={filters.dateAddedMax}
+              setCamelotCodes={setCamelotCodes}
+              setBpmMin={setBpmMin}
+              setBpmMax={setBpmMax}
+              setArtist={setArtist}
+              setLabel={setLabel}
+              setGenre={setGenre}
+              setDateAddedMin={setDateAddedMin}
+              setDateAddedMax={setDateAddedMax}
+              onClearFilters={handleClearFilters}
+            />
 
             {traitsError && (
               <p className="table-status table-status--error" style={{ margin: '0 var(--content-gutter)' }}>
@@ -796,6 +961,7 @@ export default function App() {
               clearTracklist={clearTracklist}
               moveTracklistToPool={moveTracklistToPool}
               reorderTracklist={reorderTracklist}
+              addToTracklistAtPosition={addToTracklistAtPosition}
               updateTracklistNote={updateTracklistNote}
               togglePoolStar={togglePoolStar}
               toggleTracklistStar={toggleTracklistStar}
@@ -803,8 +969,15 @@ export default function App() {
               resolvePendingAdd={resolvePendingAdd}
               clearPendingAdd={clearPendingAdd}
               clearError={clearError}
+              createSubgroup={createSubgroup}
+              renameSubgroup={renameSubgroup}
+              deleteSubgroup={deleteSubgroup}
+              reorderSubgroups={reorderSubgroups}
+              addSubgroupMember={addSubgroupMember}
+              removeSubgroupMember={removeSubgroupMember}
               poolExpanded={poolExpanded}
               onPoolExpandedChange={handlePoolExpandedChange}
+              dndDisabled={activePanel !== 'set'}
             />
           </div>
 
@@ -829,12 +1002,21 @@ export default function App() {
                     clearTracklist={clearTracklist}
                     moveTracklistToPool={moveTracklistToPool}
                     reorderTracklist={reorderTracklist}
+                    addToTracklistAtPosition={addToTracklistAtPosition}
                     updateTracklistNote={updateTracklistNote}
                     togglePoolStar={togglePoolStar}
                     toggleTracklistStar={toggleTracklistStar}
                     addToTracklist={sbAddToTracklist}
+                    createSubgroup={createSubgroup}
+                    renameSubgroup={renameSubgroup}
+                    deleteSubgroup={deleteSubgroup}
+                    reorderSubgroups={reorderSubgroups}
+                    addSubgroupMember={addSubgroupMember}
+                    removeSubgroupMember={removeSubgroupMember}
                     poolExpanded={true}
                     onPoolExpandedChange={handlePoolExpandedChange}
+                    dndDisabled={activePanel !== 'explorer'}
+                    dndIdPrefix="alt-"
                   />
                 </div>
                 <div className="set-mode-right">
@@ -860,6 +1042,8 @@ export default function App() {
                     activeTreeId={activeTreeId}
                     onSelectTree={selectTree}
                     onCreateTree={createTree}
+                    onRenameTree={renameTree}
+                    onDeleteTree={deleteTree}
                   />
                 </div>
               </div>
@@ -982,10 +1166,14 @@ export default function App() {
         {dragItem && (
           <div className="dnd-drag-preview">
             {dragItem.title}
+            {dragItem.selectedTrackIds && dragItem.selectedTrackIds.length > 1 && (
+              <span className="dnd-drag-preview__count"> +{dragItem.selectedTrackIds.length - 1}</span>
+            )}
           </div>
         )}
       </DragOverlay>
     </DndContext>
+    </DragFillContext.Provider>
     </AudioPlayerProvider>
   );
 }

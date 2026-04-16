@@ -1,7 +1,10 @@
 version: 4
 
 repo:
-  type: python
+  type: polyglot
+  languages:
+    - python
+    - typescript
   default_branch: main
 
 execution:
@@ -11,15 +14,28 @@ execution:
   use_git_root: true
 
 read_only_commands:
-  - "git status --short"
-  - "git diff --stat"
+  - "git status"
   - "git diff"
+  - "git diff --stat"
   - "git diff --name-only"
+  - "git diff --cached"
+  - "git log"
+  - "git show"
+  - "git branch"
   - "git ls-files"
   - "pwd"
   - "ls"
   - "find"
-  - "cat"
+  - "head"
+  - "tail"
+  - "wc"
+  - "tree"
+  - "file"
+  - "grep"
+  - "rg"
+  - "python --version"
+  - "node --version"
+  - "npm ls"
 
 commands:
   format:
@@ -34,11 +50,27 @@ commands:
   build:
     - "python -m pytest src/tests/ -v && ruff check src/"
 
+  client_lint:
+    - "cd client && npx eslint ."
+
+  client_typecheck:
+    - "cd client && npx tsc -b"
+
+  client_test:
+    - "cd client && npx vitest run"
+
+  client_build:
+    - "cd client && npm run build"
+
+  full_build:
+    - "python -m pytest src/tests/ -v && ruff check src/ && cd client && npm run build"
+
   db:
     - "true  # configure if needed for local state validation"
 
 stages:
   delivery:
+    - spec_contract_producer          # Spec Contract Producer (contract normalization)
     - coord_delivery_supervisor       # Coord Delivery Supervisor
     - dev_delivery_coder              # Dev Delivery Coder
     - test_delivery_reviewer          # Test Delivery Reviewer
@@ -50,6 +82,7 @@ stages:
     - coord_breaker_orchestrator      # Coord Breaker Orchestrator
     - test_delivery_evaluator         # Test Delivery Evaluator
     - test_regression_detector        # Test Regression Detector
+    - test_design_qa                  # Test Design QA (conditional: design/UI contracts)
     - spec_ledger_curator             # Spec Ledger Curator
 
   thought_partner:
@@ -73,6 +106,28 @@ stages:
     - dev_delivery_coder              # Dev Delivery Coder
     - test_delivery_reviewer          # Test Delivery Reviewer
     - test_delivery_qa                # Test Delivery QA
+
+  verification:
+    - test_build_verifier             # Test Build Verifier
+    - meta_bad_state_monitor          # Meta Bad State Monitor
+    - coord_breaker_orchestrator      # Coord Breaker Orchestrator
+    - test_delivery_evaluator         # Test Delivery Evaluator
+    - test_regression_detector        # Test Regression Detector
+
+  breaker_followup:
+    - spec_contract_producer          # Spec Contract Producer
+
+  maintenance:
+    - maint_coder                     # Maint Coder
+    - maint_reviewer                  # Maint Reviewer
+
+  restructure:
+    - coord_delivery_supervisor       # Coord Delivery Supervisor
+    - dev_restructure_coder           # Dev Restructure Coder
+    - test_delivery_reviewer          # Test Delivery Reviewer
+    - test_delivery_qa                # Test Delivery QA
+    - test_delivery_broad_reviewer    # Test Delivery Broad Reviewer
+    - test_build_verifier             # Test Build Verifier
 
   design_verification:
     - test_design_qa                  # Test Design QA
@@ -137,6 +192,10 @@ artifacts:
     - "EVAL_REPORT.json"
     - "RUN_LEDGER.md"
   optional:
+    - "INPUT_BUNDLE.md"
+    - "CONTRACT_SET.md"
+    - "EXECUTION_DAG.md"
+    - "EXECUTION_DAG.json"
     - "REVIEW_NOTES.md"
     - "QA_REPORT.md"
     - "BUILD_VERIFICATION.md"
@@ -169,15 +228,25 @@ artifacts:
     - "DESIGN_THOUGHT_PARTNER_RECOMMENDATIONS.md"
     - "PRODUCT_THOUGHT_PARTNER_RECOMMENDATIONS.md"
     - "TECHNICAL_THOUGHT_PARTNER_RECOMMENDATIONS.md"
+    - "RESTRUCTURE_ANALYSIS.md"
+    - "RESTRUCTURE_SUMMARY.md"
+    - "HARNESS_ENGINEER_REPORT.md"
 
 policies:
   forbid_paths:
     - ".env"
+    - ".env.*"
     - ".git/"
     - "secrets/"
     - "config/"
     - ".venv/"
     - "data/"
+    - "node_modules/"
+    - "client/dist/"
+    - "__pycache__/"
+    - "*.pem"
+    - "*.key"
+    - "credentials.json"
   max_files_changed: 50
   max_diff_lines: 5000
   forbid_full_file_rewrites: true

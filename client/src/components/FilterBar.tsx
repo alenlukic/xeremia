@@ -7,24 +7,71 @@ const CAMELOT_CODES = [
 ];
 
 const RANGE_DEBOUNCE_MS = 300;
+const TEXT_DEBOUNCE_MS = 250;
 
 interface Props {
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  activeFilterCount: number;
   camelotCodes: string[];
   bpmMin: number | undefined;
   bpmMax: number | undefined;
+  artist: string;
+  label: string;
+  genre: string;
+  dateAddedMin: string;
+  dateAddedMax: string;
   setCamelotCodes: (codes: string[]) => void;
   setBpmMin: (min: number | undefined) => void;
   setBpmMax: (max: number | undefined) => void;
+  setArtist: (artist: string) => void;
+  setLabel: (label: string) => void;
+  setGenre: (genre: string) => void;
+  setDateAddedMin: (date: string) => void;
+  setDateAddedMax: (date: string) => void;
   onClearFilters?: () => void;
 }
 
+export function FilterToggleButton({ expanded, onToggle, activeCount }: {
+  expanded: boolean;
+  onToggle: () => void;
+  activeCount: number;
+}) {
+  return (
+    <button
+      className={`filter-toggle-btn${expanded ? ' filter-toggle-btn--active' : ''}${activeCount > 0 ? ' filter-toggle-btn--has-active' : ''}`}
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-label="Toggle filters"
+      title={activeCount > 0 ? `Filters (${activeCount} active)` : 'Filters'}
+    >
+      Filters
+      {activeCount > 0 && <span className="filter-badge">{activeCount}</span>}
+      <span className="caret">{expanded ? '▲' : '▼'}</span>
+    </button>
+  );
+}
+
 export function FilterBar({
+  expanded,
+  onToggleExpanded: _onToggleExpanded,
+  activeFilterCount: _activeFilterCount,
   camelotCodes,
   bpmMin,
   bpmMax,
+  artist,
+  label,
+  genre,
+  dateAddedMin,
+  dateAddedMax,
   setCamelotCodes,
   setBpmMin,
   setBpmMax,
+  setArtist,
+  setLabel,
+  setGenre,
+  setDateAddedMin,
+  setDateAddedMax,
   onClearFilters,
 }: Props) {
   const [camelotOpen, setCamelotOpen] = useState(false);
@@ -35,10 +82,20 @@ export function FilterBar({
   const minTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const maxTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  const [artistText, setArtistText] = useState(artist);
+  const [labelText, setLabelText] = useState(label);
+  const [genreText, setGenreText] = useState(genre);
+  const artistTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const labelTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const genreTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   useEffect(() => {
     return () => {
       clearTimeout(minTimer.current);
       clearTimeout(maxTimer.current);
+      clearTimeout(artistTimer.current);
+      clearTimeout(labelTimer.current);
+      clearTimeout(genreTimer.current);
     };
   }, []);
 
@@ -61,13 +118,11 @@ export function FilterBar({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [camelotOpen]);
 
-  useEffect(() => {
-    setMinText(bpmMin != null ? String(bpmMin) : '');
-  }, [bpmMin]);
-
-  useEffect(() => {
-    setMaxText(bpmMax != null ? String(bpmMax) : '');
-  }, [bpmMax]);
+  useEffect(() => { setMinText(bpmMin != null ? String(bpmMin) : ''); }, [bpmMin]);
+  useEffect(() => { setMaxText(bpmMax != null ? String(bpmMax) : ''); }, [bpmMax]);
+  useEffect(() => { setArtistText(artist); }, [artist]);
+  useEffect(() => { setLabelText(label); }, [label]);
+  useEffect(() => { setGenreText(genre); }, [genre]);
 
   function toggleCode(code: string) {
     if (camelotCodes.includes(code)) {
@@ -106,92 +161,212 @@ export function FilterBar({
     setBpmMax(parseNum(maxText));
   }
 
+  function handleTextFilter(
+    value: string,
+    setLocal: (v: string) => void,
+    setFilter: (v: string) => void,
+    timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | undefined>,
+  ) {
+    setLocal(value);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setFilter(value), TEXT_DEBOUNCE_MS);
+  }
+
+  function handleTextBlur(
+    value: string,
+    setFilter: (v: string) => void,
+    timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | undefined>,
+  ) {
+    clearTimeout(timerRef.current);
+    setFilter(value);
+  }
+
+  const hasAnyFilter =
+    camelotCodes.length > 0 ||
+    bpmMin != null ||
+    bpmMax != null ||
+    artist.trim() !== '' ||
+    label.trim() !== '' ||
+    genre.trim() !== '' ||
+    dateAddedMin !== '' ||
+    dateAddedMax !== '';
+
+  if (!expanded) return null;
+
   return (
-    <div className="filter-bar">
-      <div className="filter-group" ref={camelotRef}>
-        <div className="filter-input-row">
-          <button
-            className="filter-camelot-toggle"
-            onClick={() => setCamelotOpen(!camelotOpen)}
-          >
-            {camelotCodes.length > 0 ? camelotCodes.join(', ') : 'All keys'}
-            <span className="caret">{camelotOpen ? '▲' : '▼'}</span>
-          </button>
-          {camelotCodes.length > 0 && (
-            <button className="clear-btn" onClick={() => setCamelotCodes([])} tabIndex={-1}>×</button>
+    <div className="filter-tray" data-testid="filter-tray">
+      <div className="filter-tray-row">
+        {/* Key filter */}
+        <div className="filter-group" ref={camelotRef}>
+          <span className="filter-label">Key</span>
+          <div className="filter-input-row">
+            <button
+              className="filter-camelot-toggle"
+              onClick={() => setCamelotOpen(!camelotOpen)}
+            >
+              {camelotCodes.length > 0 ? camelotCodes.join(', ') : 'All keys'}
+              <span className="caret">{camelotOpen ? '▲' : '▼'}</span>
+            </button>
+            {camelotCodes.length > 0 && (
+              <button className="clear-btn" onClick={() => setCamelotCodes([])} tabIndex={-1}>×</button>
+            )}
+          </div>
+          {camelotOpen && (
+            <div className="camelot-grid">
+              {CAMELOT_CODES.map((code) => (
+                <button
+                  key={code}
+                  className={`camelot-chip${camelotCodes.includes(code) ? ' selected' : ''}`}
+                  onClick={() => toggleCode(code)}
+                >
+                  {code}
+                </button>
+              ))}
+              {camelotCodes.length > 0 && (
+                <button className="camelot-chip clear" onClick={() => setCamelotCodes([])}>
+                  Clear
+                </button>
+              )}
+            </div>
           )}
         </div>
-        {camelotOpen && (
-          <div className="camelot-grid">
-            {CAMELOT_CODES.map((code) => (
+
+        {/* BPM range */}
+        <div className="filter-group">
+          <span className="filter-label">BPM</span>
+          <div className="filter-range">
+            <input
+              type="number"
+              className="filter-input mono"
+              placeholder="Min"
+              value={minText}
+              onChange={handleMinChange}
+              onBlur={handleMinBlur}
+            />
+            <span className="range-sep">–</span>
+            <input
+              type="number"
+              className="filter-input mono"
+              placeholder="Max"
+              value={maxText}
+              onChange={handleMaxChange}
+              onBlur={handleMaxBlur}
+            />
+            {(minText || maxText) && (
               <button
-                key={code}
-                className={`camelot-chip${camelotCodes.includes(code) ? ' selected' : ''}`}
-                onClick={() => toggleCode(code)}
+                className="clear-btn"
+                onClick={() => {
+                  clearTimeout(minTimer.current);
+                  clearTimeout(maxTimer.current);
+                  setMinText('');
+                  setMaxText('');
+                  setBpmMin(undefined);
+                  setBpmMax(undefined);
+                }}
+                tabIndex={-1}
               >
-                {code}
-              </button>
-            ))}
-            {camelotCodes.length > 0 && (
-              <button className="camelot-chip clear" onClick={() => setCamelotCodes([])}>
-                Clear
+                ×
               </button>
             )}
           </div>
+        </div>
+
+        {/* Artist */}
+        <div className="filter-group">
+          <span className="filter-label">Artist</span>
+          <div className="filter-input-row">
+            <input
+              type="text"
+              className="filter-input filter-input--text"
+              placeholder="Artist…"
+              value={artistText}
+              onChange={(e) => handleTextFilter(e.target.value, setArtistText, setArtist, artistTimer)}
+              onBlur={() => handleTextBlur(artistText, setArtist, artistTimer)}
+            />
+            {artistText && (
+              <button className="clear-btn" onClick={() => { clearTimeout(artistTimer.current); setArtistText(''); setArtist(''); }} tabIndex={-1}>×</button>
+            )}
+          </div>
+        </div>
+
+        {/* Label */}
+        <div className="filter-group">
+          <span className="filter-label">Label</span>
+          <div className="filter-input-row">
+            <input
+              type="text"
+              className="filter-input filter-input--text"
+              placeholder="Label…"
+              value={labelText}
+              onChange={(e) => handleTextFilter(e.target.value, setLabelText, setLabel, labelTimer)}
+              onBlur={() => handleTextBlur(labelText, setLabel, labelTimer)}
+            />
+            {labelText && (
+              <button className="clear-btn" onClick={() => { clearTimeout(labelTimer.current); setLabelText(''); setLabel(''); }} tabIndex={-1}>×</button>
+            )}
+          </div>
+        </div>
+
+        {/* Genre */}
+        <div className="filter-group">
+          <span className="filter-label">Genre</span>
+          <div className="filter-input-row">
+            <input
+              type="text"
+              className="filter-input filter-input--text"
+              placeholder="Genre…"
+              value={genreText}
+              onChange={(e) => handleTextFilter(e.target.value, setGenreText, setGenre, genreTimer)}
+              onBlur={() => handleTextBlur(genreText, setGenre, genreTimer)}
+            />
+            {genreText && (
+              <button className="clear-btn" onClick={() => { clearTimeout(genreTimer.current); setGenreText(''); setGenre(''); }} tabIndex={-1}>×</button>
+            )}
+          </div>
+        </div>
+
+        {/* Date Added range */}
+        <div className="filter-group">
+          <span className="filter-label">Date Added</span>
+          <div className="filter-range">
+            <input
+              type="date"
+              className="filter-input filter-input--date"
+              value={dateAddedMin}
+              onChange={(e) => setDateAddedMin(e.target.value)}
+              aria-label="Date added from"
+            />
+            <span className="range-sep">–</span>
+            <input
+              type="date"
+              className="filter-input filter-input--date"
+              value={dateAddedMax}
+              onChange={(e) => setDateAddedMax(e.target.value)}
+              aria-label="Date added to"
+            />
+            {(dateAddedMin || dateAddedMax) && (
+              <button
+                className="clear-btn"
+                onClick={() => { setDateAddedMin(''); setDateAddedMax(''); }}
+                tabIndex={-1}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Clear all */}
+        {onClearFilters && (
+          <button
+            className="clear-filters-btn"
+            onClick={onClearFilters}
+            disabled={!hasAnyFilter}
+          >
+            Clear Filters
+          </button>
         )}
       </div>
-
-      <div className="filter-group">
-        <div className="filter-range">
-          <input
-            type="number"
-            className="filter-input mono"
-            placeholder="BPM Min"
-            value={minText}
-            onChange={handleMinChange}
-            onBlur={handleMinBlur}
-          />
-          <span className="range-sep">–</span>
-          <input
-            type="number"
-            className="filter-input mono"
-            placeholder="BPM Max"
-            value={maxText}
-            onChange={handleMaxChange}
-            onBlur={handleMaxBlur}
-          />
-          {(minText || maxText) && (
-            <button
-              className="clear-btn"
-              onClick={() => {
-                clearTimeout(minTimer.current);
-                clearTimeout(maxTimer.current);
-                setMinText('');
-                setMaxText('');
-                setBpmMin(undefined);
-                setBpmMax(undefined);
-              }}
-              tabIndex={-1}
-            >
-              ×
-            </button>
-          )}
-        </div>
-      </div>
-
-      {onClearFilters && (
-        <button
-          className="clear-filters-btn"
-          onClick={onClearFilters}
-          disabled={
-            camelotCodes.length === 0 &&
-            bpmMin == null &&
-            bpmMax == null
-          }
-        >
-          Clear Filters
-        </button>
-      )}
     </div>
   );
 }

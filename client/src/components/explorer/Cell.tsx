@@ -94,56 +94,58 @@ export const Cell = memo(function Cell({
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
     >
-      <div
-        className={`explorer-cell-action-row${isSelected ? ' explorer-cell-action-row--visible' : ''}`}
-        data-testid="explorer-action-row"
-      >
-        <button
-          className="explorer-cell-action explorer-cell-play-btn"
-          onClick={e => { e.stopPropagation(); onPlayTrack(node.track_id, fullTitle); }}
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-          data-testid="explorer-play-btn"
+      <div className="explorer-cell-row">
+        <div
+          className={`explorer-cell-node${wrapped ? ' node-wrapped' : ''}${isMoveDragSource ? ' explorer-cell-node--move-drag' : ''}`}
+          style={{ backgroundColor: color, opacity: isMoveDragSource ? 0.35 : isSwapSource ? 0.5 : 0.85 }}
+          title={fullTitle}
+          data-testid="explorer-node"
+          data-level={level}
+          data-col-index={colIndex}
         >
-          {isPlaying ? '⏸' : '▶'}
-        </button>
-        <button
-          className="explorer-cell-action explorer-cell-action--danger"
-          onClick={e => { e.stopPropagation(); onDelete(node.node_id); }}
-          onMouseDown={e => e.stopPropagation()}
-          aria-label="Delete node"
-        >×</button>
-        <button
-          className="explorer-cell-action"
-          onClick={e => { e.stopPropagation(); onSwap(node.node_id); }}
-          onMouseDown={e => e.stopPropagation()}
-          aria-label="Swap track IDs"
-        >↕</button>
-        {!inTracklist && (
-          <button
-            className="explorer-cell-action explorer-cell-action--success"
-            onClick={e => { e.stopPropagation(); onAddToTracklist(node.node_id); }}
-            onMouseDown={e => e.stopPropagation()}
-            aria-label="Add to Tracklist"
-          >→TL</button>
-        )}
-      </div>
-      <button
-        className="explorer-cell-child-cue"
-        onClick={e => { e.stopPropagation(); onOpenChildAdd(node.node_id); }}
-        onMouseDown={e => e.stopPropagation()}
-        aria-label="Add child node"
-        data-testid="child-add-btn"
-      >+</button>
+          <span className="explorer-cell-title">{displayTitle}</span>
+        </div>
 
-      <div
-        className={`explorer-cell-node${wrapped ? ' node-wrapped' : ''}${isMoveDragSource ? ' explorer-cell-node--move-drag' : ''}`}
-        style={{ backgroundColor: color, opacity: isMoveDragSource ? 0.35 : isSwapSource ? 0.5 : 0.85 }}
-        title={fullTitle}
-        data-testid="explorer-node"
-        data-level={level}
-        data-col-index={colIndex}
-      >
-        <span className="explorer-cell-title">{displayTitle}</span>
+        <div
+          className={`explorer-cell-action-row${isSelected ? ' explorer-cell-action-row--visible' : ''}`}
+          data-testid="explorer-action-row"
+        >
+          <button
+            className="explorer-cell-action explorer-cell-play-btn"
+            onClick={e => { e.stopPropagation(); onPlayTrack(node.track_id, fullTitle); }}
+            aria-label={isPlaying ? 'Pause' : 'Play'}
+            data-testid="explorer-play-btn"
+          >
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+          <button
+            className="explorer-cell-action explorer-cell-action--danger"
+            onClick={e => { e.stopPropagation(); onDelete(node.node_id); }}
+            onMouseDown={e => e.stopPropagation()}
+            aria-label="Delete node"
+          >×</button>
+          <button
+            className="explorer-cell-action"
+            onClick={e => { e.stopPropagation(); onSwap(node.node_id); }}
+            onMouseDown={e => e.stopPropagation()}
+            aria-label="Swap track IDs"
+          >↕</button>
+          <button
+            className="explorer-cell-child-cue"
+            onClick={e => { e.stopPropagation(); onOpenChildAdd(node.node_id); }}
+            onMouseDown={e => e.stopPropagation()}
+            aria-label="Add child node"
+            data-testid="child-add-btn"
+          >+</button>
+          {!inTracklist && (
+            <button
+              className="explorer-cell-action explorer-cell-action--success"
+              onClick={e => { e.stopPropagation(); onAddToTracklist(node.node_id); }}
+              onMouseDown={e => e.stopPropagation()}
+              aria-label="Add to Tracklist"
+            >→TL</button>
+          )}
+        </div>
       </div>
     </div>
   );

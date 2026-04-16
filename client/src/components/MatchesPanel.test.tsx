@@ -160,6 +160,62 @@ describe('MatchesPanel', () => {
     });
   });
 
+  describe('row cell widths match header widths', () => {
+    it('body cells have the same explicit widths as their header counterparts', () => {
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headerCells = document.querySelectorAll('.matches-table thead th');
+      const bodyRow = document.querySelector('.matches-table tbody tr') as HTMLElement;
+      expect(bodyRow).toBeTruthy();
+      const bodyCells = bodyRow.querySelectorAll('td');
+      expect(bodyCells.length).toBe(headerCells.length);
+      for (let i = 0; i < headerCells.length; i++) {
+        const hw = (headerCells[i] as HTMLElement).style.width;
+        const bw = (bodyCells[i] as HTMLElement).style.width;
+        expect(bw).toBe(hw);
+      }
+    });
+  });
+
+  describe('large bucket row reachability', () => {
+    it('renders all 36 rows when Higher bucket has 36 items', async () => {
+      const higherMatches = Array.from({ length: 36 }, (_, i) =>
+        makeMatch({ candidate_id: i + 1, bucket: 'higher_key', title: `Track ${i + 1}` })
+      );
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={higherMatches}
+          loading={false}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Higher/ }));
+      const bodyRows = document.querySelectorAll('.matches-table tbody tr');
+      expect(bodyRows.length).toBe(36);
+    });
+
+    it('renders all 14 rows when Lower bucket has 14 items', async () => {
+      const lowerMatches = Array.from({ length: 14 }, (_, i) =>
+        makeMatch({ candidate_id: i + 1, bucket: 'lower_key', title: `Track ${i + 1}` })
+      );
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={lowerMatches}
+          loading={false}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Lower/ }));
+      const bodyRows = document.querySelectorAll('.matches-table tbody tr');
+      expect(bodyRows.length).toBe(14);
+    });
+  });
+
   describe('resize and reorder chrome', () => {
     it('renders a resize handle on Track and score headers', () => {
       renderWithDnd(
