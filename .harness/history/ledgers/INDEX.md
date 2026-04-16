@@ -65,3 +65,5 @@
 - `20260413T080212Z-delivery-devdsl-1-mode-strict-flags-no_ea` — delivery
 - `20260413T192953Z-delivery-mixed-delivery-input-bundle` — delivery
 - `20260414T004307Z-delivery-mixed-delivery-input-bundle` — delivery
+- `20260414T051029Z-delivery-mixed-delivery-input-bundle` — delivery
+- `20260414T224140Z-delivery-fix-set-mode-layout-stacked-trac` — delivery

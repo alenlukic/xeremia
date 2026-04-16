@@ -34,7 +34,38 @@
       "Tibetania Records",
       "Art Vault",
       "LW Recordings",
-      "Unfinished Monkey Records"
+      "Unfinished Monkey Records",
+      "Noom (UK) artist page",
+      "Lost & Found (label page scan via Levantine)",
+      "Balance Music (search/track pages)",
+      "Solis Records (search page)",
+      "Meanwhile (search page)",
+      "Sudbeat Music (label page, deep crawl)",
+      "Early Morning (search page)",
+      "Music To Die For (search page)",
+      "Music To Die For (label page, tracks page crawl)",
+      "Solis Records (label page, deep track crawl)",
+      "Hope Recordings (via Nick Warren + Nicolas Rada)",
+      "Meanwhile (deep crawl via Gauntlet recs)",
+      "onedotsixtwo (via Blind & Happy track page)",
+      "Soulsynth (via Going Nowhere track page)",
+      "Mango Alley (via Oceans in Between track page)",
+      "inU (via Moving Lights track page)",
+      "Droid9 (via Switch track page)",
+      "Sudbeat Music (deep crawl session 4, Marcelo Vasami + Paul Deep + Simply City)",
+      "Pattern (via Raven search — Cendryma)",
+      "Klassified (via Tehran Happened — Armen Miran)",
+      "Clepsydra (via Heavenly Life — Armen Miran)",
+      "The Soundgarden (deep crawl via Nicolas Rada discography)",
+      "Solis Records (deep crawl — Cuba Libre track page)",
+      "Juicebox Music (via Kasper Koman discography)",
+      "Lowbit (via Kasper Koman discography)",
+      "Movement Recordings (via Kasper Koman discography)",
+      "Monog Records (via Kasper Koman discography)",
+      "Anjunadeep (via Kasper Koman discography)",
+      "keep my letters (via Kasper Koman discography)",
+      "Meanwhile Horizons (via Imran Khan discography)",
+      "MNL (via Imran Khan discography)"
     ],
     "artists": [
       "Verche",
@@ -45,7 +76,60 @@
       "Akariel",
       "Chronos",
       "Vantitan",
-      "Dream Essence"
+      "Dream Essence",
+      "Jamie Stevens",
+      "UnbrokenOne",
+      "Noom (UK)",
+      "Allan McLoud",
+      "Anderson (SE)",
+      "Freedom Fighters",
+      "Khen",
+      "Nicolas Rada",
+      "Armen Miran",
+      "Kasper Koman",
+      "GMJ",
+      "Matter",
+      "Alex O'Rion",
+      "Imran Khan",
+      "Subandrio",
+      "John Cosani",
+      "Vandelor",
+      "Guy J",
+      "Gai Barone",
+      "Nick Warren",
+      "EANP",
+      "Hobin Rude",
+      "Digital Mess",
+      "Fran Garay",
+      "Berni Turletti",
+      "EMPHI",
+      "Tomas Briski",
+      "Maze 28",
+      "David Calo",
+      "slEdger (UK)",
+      "Tim French",
+      "Anthony Pappa",
+      "Mallinder",
+      "Tape Tomorrow",
+      "Diego Acosta (UY)",
+      "Juan Deminicis",
+      "Meeting Molly",
+      "Jiminy Hop",
+      "Kostya Outta",
+      "Luca Abayan",
+      "Boraa",
+      "Marcelo Vasami",
+      "Paul Deep (AR)",
+      "Simply City",
+      "Cendryma",
+      "Redspace",
+      "Ezequiel Arias",
+      "Hobin Rude",
+      "Lukas Bohlender",
+      "Kasper Koman (discography)",
+      "Jamie Stevens (discography)",
+      "Guy J (discography)",
+      "Imran Khan (discography)"
     ],
     "tracks": [
       "Amaryllis for V (Reprise For V)",
@@ -66,7 +150,84 @@
       "The Earth Below",
       "Secret of the Logos",
       "Midnight",
-      "Wide Spectrum"
+      "Wide Spectrum",
+      "Vanaheim",
+      "Embrace Me",
+      "Zero Dark",
+      "Miragem",
+      "The Dying Light",
+      "Hades",
+      "Healer",
+      "Night at the Velvet Mountain",
+      "Aphelion",
+      "Levantine",
+      "Fall Away",
+      "Pull",
+      "Loco Motif (Tantum Remix)",
+      "Shelter of Hearts",
+      "The Serpent (Imran Khan Remix)",
+      "Dirk",
+      "Karnage",
+      "Idid",
+      "The Sound of Freedom",
+      "Worlds Apart",
+      "With You (Alex O'Rion Remix)",
+      "Tassolem (Don't Worry 'bout Me) Club Mix",
+      "Buenos Aires (Nicolas Rada Remix)",
+      "Retroglow",
+      "Tinderbox",
+      "Tunnel",
+      "Gauntlet (Alex O'Rion Remix)",
+      "Wombat Forest",
+      "Blind & Happy",
+      "Going Nowhere",
+      "Umbra",
+      "Deuterium (Auditoria Remix)",
+      "Kodac",
+      "Oceans in Between (GMJ & Matter Remix)",
+      "Caladan",
+      "Moving Lights (Redspace Remix)",
+      "Switch (Fran Garay Remix)",
+      "Dirty Talk",
+      "Subatomic",
+      "Sound Sanctuary",
+      "Panorama",
+      "Solis (Alex O'Rion & Ezequiel Arias)",
+      "Cuba Libre (Alex O'Rion)",
+      "Tehran Happened (Armen Miran)",
+      "Last Chance (Armen Miran)",
+      "Reborn (Armen Miran)",
+      "Heavenly Life (Armen Miran)",
+      "Cascadia (Nicolas Rada)",
+      "Glasgow (Nicolas Rada)",
+      "Controversia (Nicolas Rada)",
+      "Borealis (Nicolas Rada)",
+      "Ignition (Nicolas Rada)",
+      "Living Memory (GMJ)",
+      "Higher Self (GMJ)",
+      "Empty to Fill (GMJ)",
+      "Door of Light (GMJ)",
+      "Rite of Passage (GMJ)",
+      "Massive (EANP)",
+      "Vivid Dreamscapes (Hobin Rude)",
+      "Message Me When You Get Home (Hobin Rude)",
+      "The Blind Navigator (Kasper Koman)",
+      "In Circles (Kasper Koman)",
+      "Wilder (Kasper Koman)",
+      "Matter of Conflict (Kasper Koman)",
+      "All Ein (Kasper Koman)",
+      "Mon Nom (Kasper Koman)",
+      "Loud Silence (Kasper Koman)",
+      "Mad Bells (Jamie Stevens)",
+      "Kanlan (Jamie Stevens)",
+      "The Peace Machine (Jamie Stevens)",
+      "Worlds Apart (Guy J)",
+      "Illusions (Guy J)",
+      "Selector (Guy J)",
+      "Hourglass (Imran Khan)",
+      "Big Sky (Imran Khan)",
+      "Generator (Imran Khan)",
+      "Kashmir Sun (Imran Khan)"
     ],
     "pages": [
       "https://www.beatport.com/label/joof-aura/53901/tracks?page=1&per_page=150",
@@ -100,7 +261,18 @@
       "https://www.beatport.com/track/midnight/17004854",
       "https://www.beatport.com/search?q=Dreaming%20Cooper",
       "https://www.beatport.com/search?q=Chronos",
-      "https://www.beatport.com/search?q=Akariel"
+      "https://www.beatport.com/search?q=Akariel",
+      "https://www.beatport.com/label/bedrock-records/63/tracks?page=1&per_page=150",
+      "https://www.beatport.com/label/stripped-recordings/1197/tracks?page=2&per_page=150",
+      "https://www.beatport.com/artist/verche/131372/tracks?page=1&per_page=150",
+      "https://www.beatport.com/artist/noom-uk/710187/tracks?per_page=50",
+      "https://www.beatport.com/track/aphelion/11750637",
+      "https://www.beatport.com/track/levantine/16770819",
+      "https://www.beatport.com/track/fall-away/15352538",
+      "https://www.beatport.com/search?q=Fall+Away+Nicolas+Rada+Armen+Miran",
+      "https://www.beatport.com/search?q=Loco+Motif+Kasper+Koman+Tantum",
+      "https://www.beatport.com/search?q=Shelter+of+Hearts+GMJ+Matter",
+      "https://www.beatport.com/search?q=The+Serpent+Alex+ORion+Imran+Khan"
     ]
   },
   "labels": {
@@ -219,6 +391,222 @@
       "notes": [
         "Selective yes: a real dark low-BPM neighbor, but noisier than Mystic with significant bass-house, dubstep, and breakbeat spillover on the first 150-track page."
       ]
+    },
+    "Lost & Found": {
+      "source": "people_also_bought_from_aphelion",
+      "notes": [
+        "Guy J's label; discovered via People Also Bought on Aphelion (Noom UK). Guy J is a top-tier dark progressive house artist. HIGH PRIORITY for 108-122 BPM pass."
+      ]
+    },
+    "onedotsixtwo": {
+      "source": "people_also_bought_from_aphelion",
+      "notes": [
+        "Nick Warren's label; discovered via People Also Bought on Aphelion (Noom UK). Nick Warren is a seminal dark progressive figure. HIGH PRIORITY."
+      ]
+    },
+    "ICONYC": {
+      "source": "people_also_bought_from_aphelion",
+      "notes": [
+        "Paul Hazendonk's label; discovered via People Also Bought on Aphelion (Noom UK). Progressive house with potential dark pocket."
+      ]
+    },
+    "Emotional Content Records": {
+      "source": "people_also_bought_from_aphelion",
+      "notes": [
+        "Xspance + Daniela Rhodes release spotted via People Also Bought on Aphelion."
+      ]
+    },
+    "Balance Music": {
+      "source": "recommendations_on_levantine",
+      "notes": [
+        "Premium dark progressive house label. Nicolas Rada + Armen Miran collab (Corner of the Room EP). Fall Away and Pull both added to cart. HIGH PRIORITY for further exploration."
+      ]
+    },
+    "Hoomidaas": {
+      "source": "people_also_bought_on_levantine_and_fall_away",
+      "notes": [
+        "Appears 4+ times in recommendations: Hraach, Armen Miran, Eli Nissan, Pambouk, Hrag Mikkel, Serious Dancers. Organic House dominant genre but has dark material. Worth selective exploration."
+      ]
+    },
+    "DELYSID": {
+      "source": "people_also_bought_on_fall_away",
+      "notes": [
+        "DAVI, Hraach, Armen Miran collaboration (Boarding Call). Dark progressive crossover potential."
+      ]
+    },
+    "Hope Recordings": {
+      "source": "people_also_bought_on_fall_away",
+      "notes": [
+        "Nick Warren + Nicolas Rada release (Buenos Aires). Nick Warren's label for deeper material."
+      ]
+    },
+    "The Soundgarden": {
+      "source": "people_also_bought_on_fall_away",
+      "notes": [
+        "Nick Warren's compilation/label brand. Armen Miran appears (Another Green Mile)."
+      ]
+    },
+    "Moonlight": {
+      "source": "people_also_bought_on_fall_away",
+      "notes": [
+        "Nikola Jovanovic label. Appears twice in People Also Bought. Dark progressive potential."
+      ]
+    },
+    "Future Avenue": {
+      "source": "people_also_bought_on_fall_away",
+      "notes": [
+        "Progressive house label. Redemption Sound release spotted."
+      ]
+    },
+    "Solis Records": {
+      "source": "recommendations_on_fall_away",
+      "notes": [
+        "Strong progressive house label. Shelter of Hearts by GMJ & Matter added to cart. Alex O'Rion also releases here. HIGH PRIORITY."
+      ]
+    },
+    "Meanwhile": {
+      "source": "recommendations_on_fall_away",
+      "notes": [
+        "Dark progressive house label. The Serpent (Imran Khan Remix) by Alex O'Rion added to cart. Kasper Koman also releases here (Biome, Sinking Sky). HIGH PRIORITY for further exploration."
+      ]
+    },
+    "WARPP": {
+      "source": "recommendations_on_fall_away",
+      "notes": [
+        "foglight's Progressive House label. Gridlock (122 BPM, F Minor) is a candidate for investigation."
+      ]
+    },
+    "Songspire Records": {
+      "source": "recommendations_on_fall_away",
+      "notes": [
+        "Progressive house label. Endless Love (HAFT Remix) by Wassu (120 BPM, E Minor) is a candidate."
+      ]
+    },
+    "Melody Of the Soul": {
+      "source": "recommendations_on_levantine",
+      "notes": [
+        "Organic House label appearing frequently in recommendations. Multiple minor-key tracks but genre leans organic. Selective exploration only."
+      ]
+    },
+    "Replug": {
+      "source": "search_on_gmj_matter",
+      "notes": [
+        "GMJ & Matter release (Metanoia). Progressive house label."
+      ]
+    },
+    "Proton Music": {
+      "source": "search_on_imran_khan",
+      "notes": [
+        "Imran Khan releases here (Hagel, Mystic Sea). Established progressive house label."
+      ]
+    },
+    "Music To Die For": {
+      "source": "alex_orion_discography",
+      "notes": [
+        "Jamie Stevens + Alex O'Rion collaboration label. With You (Alex O'Rion Remix) at 122 BPM B Minor is a strong candidate. Jamie Stevens is a confirmed productive artist from Session 1."
+      ]
+    },
+    "Sudbeat Music": {
+      "source": "alex_orion_discography",
+      "notes": [
+        "Hernan Cattaneo's label. Alex O'Rion's Atlas (122 BPM D Minor) is a strong candidate. HIGH PRIORITY — Hernan Cattaneo is a legendary dark progressive DJ."
+      ]
+    },
+    "Songbird": {
+      "source": "alex_orion_discography",
+      "notes": [
+        "Alex O'Rion + Vinson release (Circular Progression). Progressive house label."
+      ]
+    },
+    "Soulsynth": {
+      "source": "people_also_bought_on_gauntlet",
+      "notes": [
+        "Juan Deminicis label. Going Nowhere (120 BPM F Minor) added to cart. Progressive house label."
+      ]
+    },
+    "Flown Records": {
+      "source": "people_also_bought_on_gauntlet",
+      "notes": [
+        "Fran Garay releases here (Cavernas, 120 BPM G Minor). Cross-reference with Solis Records where Fran Garay is also productive."
+      ]
+    },
+    "COMET Records": {
+      "source": "people_also_bought_on_gauntlet",
+      "notes": [
+        "Gorkiz releases here (Flusterstorm, 122 BPM G Minor). New dark progressive label."
+      ]
+    },
+    "Mango Alley": {
+      "source": "people_also_bought_on_gauntlet_and_blind_happy",
+      "notes": [
+        "GMJ & Matter remix of Oceans in Between (120 BPM D Minor). Appeared on multiple recommendation surfaces. Progressive house label."
+      ]
+    },
+    "Superordinate Music": {
+      "source": "people_also_bought_on_blind_happy",
+      "notes": [
+        "Sensus (Matter Remix) by Robert R. Hardy (121 BPM Eb Minor). Progressive house label."
+      ]
+    },
+    "HIGHER STATES": {
+      "source": "people_also_bought_on_blind_happy",
+      "notes": [
+        "Dream One by Amháin (122 BPM E Minor). Progressive house label."
+      ]
+    },
+    "Tunnel Label": {
+      "source": "people_also_bought_on_blind_happy",
+      "notes": [
+        "Inner Growth by Tomas Harguintegui (120 BPM F Minor). Progressive house label."
+      ]
+    },
+    "Klassified": {
+      "source": "armen_miran_discography",
+      "notes": [
+        "Armen Miran releases here. Tehran Happened (121 BPM F# Minor, Melodic House & Techno) added. Dark and mysterious character."
+      ]
+    },
+    "Clepsydra": {
+      "source": "armen_miran_discography",
+      "notes": [
+        "Deep house label. Armen Miran's Heavenly Life (118 BPM Db Minor) added. Worth selective exploration for deeper material."
+      ]
+    },
+    "Juicebox Music": {
+      "source": "kasper_koman_discography",
+      "notes": [
+        "Kasper Koman releases here. Wilder (120 BPM D Minor) and In Circles (121 BPM C Minor) added. Progressive house label."
+      ]
+    },
+    "Lowbit": {
+      "source": "kasper_koman_discography",
+      "notes": [
+        "Kasper Koman releases here. Matter of Conflict (122 BPM F Minor) added. Progressive house label."
+      ]
+    },
+    "Monog Records": {
+      "source": "kasper_koman_discography",
+      "notes": [
+        "Kasper Koman releases here. Loud Silence (121 BPM G Minor) added. Progressive house label."
+      ]
+    },
+    "keep my letters": {
+      "source": "kasper_koman_discography",
+      "notes": [
+        "Kasper Koman releases here. Mon Nom (121 BPM A Minor) added. Smaller progressive house label."
+      ]
+    },
+    "Meanwhile Horizons": {
+      "source": "imran_khan_discography",
+      "notes": [
+        "Meanwhile sub-label or partner. Imran Khan's Hourglass (120 BPM C Minor) and Big Sky (121 BPM E Minor) added."
+      ]
+    },
+    "MNL": {
+      "source": "imran_khan_discography",
+      "notes": [
+        "Imran Khan's Kashmir Sun (120 BPM G Minor) added. Progressive house label."
+      ]
     }
   },
   "edges": [
@@ -305,6 +693,132 @@
       "to": "Unfinished Monkey Records",
       "weight": 1,
       "shared_artists": ["Six Dead Bulgarians"]
+    },
+    {
+      "from": "Stripped Recordings",
+      "to": "Lost & Found",
+      "weight": 1,
+      "via": "people_also_bought_on_aphelion",
+      "shared_artists": ["Guy J (co-buyer signal)"]
+    },
+    {
+      "from": "Stripped Recordings",
+      "to": "onedotsixtwo",
+      "weight": 1,
+      "via": "people_also_bought_on_aphelion",
+      "shared_artists": ["Nick Warren (co-buyer signal)"]
+    },
+    {
+      "from": "Stripped Recordings",
+      "to": "ICONYC",
+      "weight": 1,
+      "via": "people_also_bought_on_aphelion",
+      "shared_artists": ["Paul Hazendonk (co-buyer signal)"]
+    },
+    {
+      "from": "Lost & Found",
+      "to": "Balance Music",
+      "weight": 2,
+      "via": "recommendations_on_levantine",
+      "shared_artists": ["Armen Miran (co-buyer signal)", "Nicolas Rada (co-buyer signal)"]
+    },
+    {
+      "from": "Lost & Found",
+      "to": "Hoomidaas",
+      "weight": 1,
+      "via": "recommendations_on_levantine_and_fall_away",
+      "shared_artists": ["Hraach (co-buyer signal)", "Armen Miran (co-buyer signal)"]
+    },
+    {
+      "from": "Balance Music",
+      "to": "DELYSID",
+      "weight": 1,
+      "via": "people_also_bought_on_fall_away",
+      "shared_artists": ["Hraach", "Armen Miran"]
+    },
+    {
+      "from": "Balance Music",
+      "to": "Hope Recordings",
+      "weight": 1,
+      "via": "people_also_bought_on_fall_away",
+      "shared_artists": ["Nick Warren", "Nicolas Rada"]
+    },
+    {
+      "from": "Balance Music",
+      "to": "Moonlight",
+      "weight": 1,
+      "via": "people_also_bought_on_fall_away",
+      "shared_artists": ["Nikola Jovanovic (co-buyer signal)"]
+    },
+    {
+      "from": "Balance Music",
+      "to": "Solis Records",
+      "weight": 2,
+      "via": "recommendations_on_fall_away",
+      "shared_artists": ["GMJ", "Matter", "Alex O'Rion"]
+    },
+    {
+      "from": "Balance Music",
+      "to": "Meanwhile",
+      "weight": 2,
+      "via": "recommendations_on_fall_away",
+      "shared_artists": ["Alex O'Rion", "Imran Khan", "Kasper Koman"]
+    },
+    {
+      "from": "Solis Records",
+      "to": "Meanwhile",
+      "weight": 2,
+      "via": "shared_artists_gmj_matter_alex_orion",
+      "shared_artists": ["Alex O'Rion", "Matter", "GMJ"]
+    },
+    {
+      "from": "Lost & Found",
+      "to": "Meanwhile",
+      "weight": 1,
+      "via": "shared_artist_kasper_koman",
+      "shared_artists": ["Kasper Koman"]
+    },
+    {
+      "from": "Meanwhile",
+      "to": "Visceral",
+      "weight": 1,
+      "via": "shared_release_the_serpent",
+      "shared_artists": ["Alex O'Rion", "Imran Khan"]
+    },
+    {
+      "from": "Meanwhile",
+      "to": "Sudbeat Music",
+      "weight": 1,
+      "via": "shared_artist_alex_orion",
+      "shared_artists": ["Alex O'Rion"]
+    },
+    {
+      "from": "Solis Records",
+      "to": "Sudbeat Music",
+      "weight": 1,
+      "via": "shared_artist_alex_orion",
+      "shared_artists": ["Alex O'Rion"]
+    },
+    {
+      "from": "Meanwhile",
+      "to": "Stripped Recordings",
+      "weight": 1,
+      "via": "shared_artist_alex_orion",
+      "shared_artists": ["Alex O'Rion"]
+    },
+    {
+      "from": "Meanwhile",
+      "to": "Music To Die For",
+      "weight": 1,
+      "via": "shared_artists_alex_orion_jamie_stevens",
+      "shared_artists": ["Alex O'Rion", "Jamie Stevens"]
+    },
+    {
+      "from": "Bedrock Records",
+      "to": "Music To Die For",
+      "weight": 1,
+      "via": "shared_artist_jamie_stevens",
+      "shared_artists": ["Jamie Stevens"]
     }
   ],
   "candidate_tracks": [
@@ -415,6 +929,821 @@
       "key": "C# Minor",
       "status": "added_to_cart",
       "reason": "Restrained, cinematic Mystic cut with a low-BPM minor-key profile that matches the sleek underworld brief."
+    },
+    {
+      "title": "Vanaheim",
+      "artist": "Anderson (SE)",
+      "label": "JOOF Aura",
+      "bpm": 122,
+      "key": "D Minor",
+      "status": "added_to_cart",
+      "reason": "Research described it as deep and hypnotic; among the cleaner JOOF Aura fits in the higher BPM band."
+    },
+    {
+      "title": "Embrace Me",
+      "artist": "Allan McLoud",
+      "label": "JOOF Aura",
+      "bpm": 122,
+      "key": "G Minor",
+      "status": "added_to_cart",
+      "reason": "Deep-trance side of JOOF Aura with the right sleek-dark pull for the 108-122 BPM pass."
+    },
+    {
+      "title": "Zero Dark",
+      "artist": "Jamie Stevens",
+      "label": "Bedrock Records",
+      "bpm": 122,
+      "key": "E Minor",
+      "status": "added_to_cart",
+      "reason": "One of the strongest Bedrock fits in range; dark-progressive framing and title/theme aligned well with the brief."
+    },
+    {
+      "title": "Miragem",
+      "artist": "UnbrokenOne",
+      "label": "Bedrock Records",
+      "bpm": 121,
+      "key": "Ab Minor",
+      "status": "added_to_cart",
+      "reason": "Research and Bedrock context both pointed to a strong dark-progressive fit."
+    },
+    {
+      "title": "The Dying Light",
+      "artist": "Noom (UK)",
+      "label": "Stripped Recordings",
+      "bpm": 118,
+      "key": "E Minor",
+      "status": "added_to_cart",
+      "reason": "Best darker electronica candidate from the Stripped full-page crawl; outside references emphasized cinematic and shadowy textures."
+    },
+    {
+      "title": "Hades",
+      "artist": "Verche",
+      "label": "Stripped Recordings",
+      "bpm": 121,
+      "key": "D Minor",
+      "status": "added_to_cart",
+      "reason": "Artist-led expansion via Verche paid off; external references described it as a slick late-night dark-progressive release."
+    },
+    {
+      "title": "Healer",
+      "artist": "Verche",
+      "label": "Stripped Recordings",
+      "bpm": 122,
+      "key": "D Minor",
+      "status": "added_to_cart",
+      "reason": "Strong Verche cross-label fit from the artist-depth scan; shadowy progressive lane remained consistent."
+    },
+    {
+      "title": "Night at the Velvet Mountain",
+      "artist": "Verche",
+      "label": "Particles",
+      "bpm": 122,
+      "key": "D Minor",
+      "status": "added_to_cart",
+      "reason": "Artist-page exploration surfaced another minor-key Verche fit that stayed on-brief and extended the graph beyond the seed-label surface."
+    },
+    {
+      "title": "Aphelion",
+      "artist": "Noom (UK)",
+      "label": "Stripped Recordings",
+      "bpm": 119,
+      "key": "D Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Original mix from Noom (UK) discography scan; 119 BPM D Minor on Stripped Recordings. People Also Bought surfaced Guy J, Nick Warren, and Paul Hazendonk — strong dark-progressive graph expansion."
+    },
+    {
+      "title": "Levantine",
+      "artist": "Freedom Fighters, Khen",
+      "label": "Lost & Found",
+      "bpm": 122,
+      "key": "G Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via Lost & Found label scan. 122 BPM G Minor Progressive House, 8:01. People Also Bought was highly productive: Khen (All Day I Dream), Tim Green (Lost Miracle), Guy J/Chicola/Guy Mantzur (Lost & Found), Newman I Love (Melody Of the Soul)."
+    },
+    {
+      "title": "Fall Away",
+      "artist": "Nicolas Rada, Armen Miran",
+      "label": "Balance Music",
+      "bpm": 120,
+      "key": "A Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Discovered via recommendations on Levantine. Balance Music is a premium dark progressive label. Nicolas Rada and Armen Miran are top-tier dark prog artists. People Also Bought surfaced Moonlight, DAYS like NIGHTS, Future Avenue, DELYSID labels."
+    },
+    {
+      "title": "Pull",
+      "artist": "Armen Miran, Nicolas Rada",
+      "label": "Balance Music",
+      "bpm": 122,
+      "key": "A Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Same EP as Fall Away (Corner of the Room on Balance Music). 122 BPM A Minor Progressive House."
+    },
+    {
+      "title": "Loco Motif (Tantum Remix)",
+      "artist": "Kasper Koman, Tantum",
+      "label": "Lost & Found",
+      "bpm": 121,
+      "key": "F Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Appeared in recommendations on both Levantine and Fall Away pages. Kasper Koman also releases on Anjunadeep, Meanwhile, and Lost Miracle. Tantum remix adds a darker edge."
+    },
+    {
+      "title": "Shelter of Hearts",
+      "artist": "Matter, GMJ",
+      "label": "Solis Records",
+      "bpm": 121,
+      "key": "E Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Discovered via recommendations on Fall Away. GMJ and Matter are established dark progressive artists. Solis Records is a quality progressive house label."
+    },
+    {
+      "title": "The Serpent (Imran Khan Remix)",
+      "artist": "Imran Khan, Alex O'Rion",
+      "label": "Meanwhile",
+      "bpm": 121,
+      "key": "Bb Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Discovered via recommendations on Fall Away. Alex O'Rion and Imran Khan are dark progressive specialists. Meanwhile is a strong dark prog label. Same remix also released on Visceral."
+    },
+    {
+      "title": "Dirk",
+      "artist": "Alex O'Rion",
+      "label": "Sudbeat Music",
+      "bpm": 122,
+      "key": "Eb Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found on Alex O'Rion search and confirmed on Sudbeat Music label page. Part of Atlas EP on Sudbeat. Dark progressive house."
+    },
+    {
+      "title": "Karnage",
+      "artist": "Subandrio",
+      "label": "Sudbeat Music",
+      "bpm": 122,
+      "key": "C Minor",
+      "genre": "Techno (Raw / Deep / Hypnotic)",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found on Sudbeat Music label page crawl. Subandrio is a Sri Lankan dark progressive / deep techno producer. Raw/Deep/Hypnotic techno classification confirms dark aesthetic. Track page: /track/karnage/21234750"
+    },
+    {
+      "title": "Idid",
+      "artist": "John Cosani",
+      "label": "Sudbeat Music",
+      "bpm": 121,
+      "key": "D Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found on Sudbeat Music label page crawl. John Cosani is an Argentine progressive producer, Hernan Cattaneo regular. 121 BPM D Minor progressive house. Track page: /track/idid/21906760"
+    },
+    {
+      "title": "The Sound of Freedom",
+      "artist": "Vandelor",
+      "label": "Sudbeat Music",
+      "bpm": 122,
+      "key": "Ab Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found on Sudbeat Music label page crawl. Sudbeat regular, 122 BPM Ab Minor. Has a Gai Barone remix on the same release (E Major, excluded). Track page: /track/the-sound-of-freedom/20616580"
+    },
+    {
+      "title": "Worlds Apart",
+      "artist": "Guy J",
+      "label": "Early Morning",
+      "bpm": 122,
+      "key": "A Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Guy J is a pillar of Sudbeat Music and dark progressive house. Early Morning is his own label. 122 BPM A Minor. Track page: /track/worlds-apart/21809459"
+    },
+    {
+      "title": "With You",
+      "artist": "Jamie Stevens (Alex O'Rion Remix)",
+      "label": "Music To Die For",
+      "bpm": 122,
+      "key": "B Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Bridge track connecting Jamie Stevens (Bedrock Records, productive from Session 1) with Alex O'Rion (Meanwhile/Sudbeat). Music To Die For is the bridge label. Brand new release (2026-04-03). Track page: /track/with-you/26967584"
+    },
+    {
+      "title": "Tassolem (Don't Worry 'bout Me) Club Mix",
+      "artist": "Jamie Stevens",
+      "label": "Music To Die For",
+      "bpm": 108,
+      "key": "D Minor",
+      "genre": "Electronica",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Jamie Stevens club mix on his own label. 108 BPM D Minor. Bottom of the BPM range. Track page: /track/tassolem-dont-worry-bout-me/21754450"
+    },
+    {
+      "title": "Buenos Aires",
+      "artist": "Nick Warren (Nicolas Rada Remix)",
+      "label": "Hope Recordings",
+      "bpm": 122,
+      "key": "E Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Nick Warren + Nicolas Rada collaboration. Hope Recordings is a new label discovery. Found via Music To Die For artist connections. Track page: /track/buenos-aires/15190878"
+    },
+    {
+      "title": "Retroglow",
+      "artist": "Alex O'Rion",
+      "label": "Solis Records",
+      "bpm": 122,
+      "key": "B Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Top Ten track on Solis Records. Alex O'Rion is the anchor artist for Solis. 122 BPM B Minor. Track page: /track/retroglow/22256009"
+    },
+    {
+      "title": "Tinderbox",
+      "artist": "Alex O'Rion",
+      "label": "Solis Records",
+      "bpm": 122,
+      "key": "C Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Top Ten track on Solis Records. Same EP as Spektre. 122 BPM C Minor. Track page: /track/tinderbox/20403880"
+    },
+    {
+      "title": "Tunnel",
+      "artist": "Alex O'Rion",
+      "label": "Meanwhile",
+      "bpm": 122,
+      "key": "D Minor",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Priority target from Session 2 continuation note. Alex O'Rion on Meanwhile. Same EP as Blackout. 122 BPM D Minor. Track page: /track/tunnel/20031640"
+    },
+    {
+      "title": "Gauntlet (Alex O'Rion Remix)",
+      "artist": "GMJ, Matter",
+      "label": "Meanwhile",
+      "bpm": 120,
+      "key": "C Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via Meanwhile deep crawl. GMJ & Matter original with Alex O'Rion remix. 120 BPM C Minor — perfect dark progressive fit. Track page: /track/gauntlet/13637118"
+    },
+    {
+      "title": "Wombat Forest",
+      "artist": "Matter",
+      "label": "Meanwhile",
+      "bpm": 120,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Gauntlet page. Matter solo release on Meanwhile. 120 BPM G Minor. Track page: /track/wombat-forest/19879523"
+    },
+    {
+      "title": "Blind & Happy",
+      "artist": "Diego Acosta (UY)",
+      "label": "onedotsixtwo",
+      "bpm": 121,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Gauntlet page. Nick Warren's label (onedotsixtwo). First add from this HIGH PRIORITY frontier label. 121 BPM G Minor. Track page: /track/blind-happy/20507571"
+    },
+    {
+      "title": "Going Nowhere",
+      "artist": "Juan Deminicis",
+      "label": "Soulsynth",
+      "bpm": 120,
+      "key": "F Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Gauntlet page. New label discovery (Soulsynth). Juan Deminicis is an Argentine progressive producer. 120 BPM F Minor. Track page: /track/going-nowhere/21281522"
+    },
+    {
+      "title": "Umbra",
+      "artist": "Alex O'Rion",
+      "label": "Solis Records",
+      "bpm": 120,
+      "key": "Ab Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Solis Records deep crawl continuation. Alex O'Rion. 120 BPM Ab Minor, 8:36. Track page: /track/umbra/20762622"
+    },
+    {
+      "title": "Deuterium (Auditoria Remix)",
+      "artist": "Digital Mess",
+      "label": "Solis Records",
+      "bpm": 121,
+      "key": "E Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Solis Records deep crawl. Brand new release (2026-01-30). Digital Mess with Auditoria remix. Track page: /track/deuterium/23281394"
+    },
+    {
+      "title": "Kodac",
+      "artist": "EANP",
+      "label": "Solis Records",
+      "bpm": 122,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Solis Records deep crawl. EANP is a productive Solis artist. Brand new release. 122 BPM G Minor. Track page: /track/kodac/26905077"
+    },
+    {
+      "title": "Oceans in Between (GMJ & Matter Remix)",
+      "artist": "Meeting Molly, Maze 28",
+      "label": "Mango Alley",
+      "bpm": 120,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Multi-session recommendation target. GMJ & Matter remix. 120 BPM D Minor, 8:01. Track page: /track/oceans-in-between/18632081"
+    },
+    {
+      "title": "Caladan",
+      "artist": "GMJ, Jiminy Hop",
+      "label": "Meanwhile",
+      "bpm": 122,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Oceans in Between page. GMJ on Meanwhile. 122 BPM G Minor. Track page: /track/caladan/18991799"
+    },
+    {
+      "title": "Moving Lights (Redspace Remix)",
+      "artist": "Kostya Outta",
+      "label": "inU",
+      "bpm": 121,
+      "key": "F Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Oceans in Between page. New label discovery (inU). 121 BPM F Minor. Track page: /track/moving-lights/20189485"
+    },
+    {
+      "title": "Switch (Fran Garay Remix)",
+      "artist": "Luca Abayan, Boraa",
+      "label": "Droid9",
+      "bpm": 122,
+      "key": "C Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Oceans in Between page. Fran Garay remix, Droid9 label. 122 BPM C Minor. Track page: /track/switch/19773082"
+    },
+    {
+      "title": "Dirty Talk",
+      "artist": "Marcelo Vasami",
+      "label": "Sudbeat Music",
+      "bpm": 122,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Sudbeat Music deep crawl. Marcelo Vasami is a Sudbeat anchor artist. 122 BPM D Minor. Track page: /track/dirty-talk/12864894"
+    },
+    {
+      "title": "Subatomic",
+      "artist": "Paul Deep (AR)",
+      "label": "Sudbeat Music",
+      "bpm": 121,
+      "key": "C Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Dirty Talk page. Paul Deep (AR) on Sudbeat. 121 BPM C Minor. Track page: /track/subatomic/19010350"
+    },
+    {
+      "title": "Sound Sanctuary",
+      "artist": "Simply City",
+      "label": "Sudbeat Music",
+      "bpm": 122,
+      "key": "F Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Dirty Talk page. Simply City on Sudbeat. 122 BPM F Minor. Track page: /track/sound-sanctuary/18514190"
+    },
+    {
+      "title": "Panorama",
+      "artist": "Marcelo Vasami",
+      "label": "Sudbeat Music",
+      "bpm": 120,
+      "key": "Ab Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Sudbeat Music deep crawl. Marcelo Vasami classic. 120 BPM Ab Minor. Track page: /track/panorama/7212274"
+    },
+    {
+      "title": "Solis",
+      "artist": "Alex O'Rion, Ezequiel Arias",
+      "label": "Meanwhile",
+      "bpm": 120,
+      "key": "E Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Alex O'Rion discography expansion. Collab with Ezequiel Arias on Meanwhile. 120 BPM E Minor. Track page: /track/solis/16798221"
+    },
+    {
+      "title": "Cuba Libre",
+      "artist": "Alex O'Rion",
+      "label": "Solis Records",
+      "bpm": 120,
+      "key": "C Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Found via People Also Bought on Solis track page. Alex O'Rion on his own label. 120 BPM C Minor. Track page: /track/cuba-libre/17928383"
+    },
+    {
+      "title": "Tehran Happened",
+      "artist": "Armen Miran",
+      "label": "Klassified",
+      "bpm": 121,
+      "key": "F# Minor",
+      "genre": "Melodic House & Techno",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Armen Miran discography expansion. Klassified label. 121 BPM F# Minor — dark, mysterious. Track page: /track/tehran-happened/11467967"
+    },
+    {
+      "title": "Last Chance",
+      "artist": "Armen Miran",
+      "label": "Balance Music",
+      "bpm": 122,
+      "key": "D Minor",
+      "genre": "Deep House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Armen Miran discography expansion. Balance Music — premium dark progressive label. 122 BPM D Minor."
+    },
+    {
+      "title": "Reborn",
+      "artist": "Armen Miran",
+      "label": "Hoomidaas",
+      "bpm": 121,
+      "key": "A Minor",
+      "genre": "Deep House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Armen Miran discography expansion. Hoomidaas label (selective dark pocket). 121 BPM A Minor."
+    },
+    {
+      "title": "Heavenly Life",
+      "artist": "Armen Miran",
+      "label": "Clepsydra",
+      "bpm": 118,
+      "key": "Db Minor",
+      "genre": "Deep House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Armen Miran discography expansion. Clepsydra label discovery. 118 BPM Db Minor — very dark key."
+    },
+    {
+      "title": "Cascadia",
+      "artist": "Nicolas Rada",
+      "label": "Sudbeat Music",
+      "bpm": 122,
+      "key": "B Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Nicolas Rada discography expansion. Sudbeat Music — satisfies Sudbeat crawl priority. 122 BPM B Minor."
+    },
+    {
+      "title": "Glasgow",
+      "artist": "Nicolas Rada",
+      "label": "Meanwhile",
+      "bpm": 122,
+      "key": "B Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Nicolas Rada discography expansion. Meanwhile — deepens Meanwhile crawl. 122 BPM B Minor."
+    },
+    {
+      "title": "Controversia",
+      "artist": "Nicolas Rada",
+      "label": "The Soundgarden",
+      "bpm": 121,
+      "key": "C Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Nicolas Rada discography expansion. The Soundgarden. 121 BPM C Minor."
+    },
+    {
+      "title": "Borealis",
+      "artist": "Nicolas Rada",
+      "label": "The Soundgarden",
+      "bpm": 120,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Nicolas Rada discography expansion. The Soundgarden. 120 BPM G Minor."
+    },
+    {
+      "title": "Ignition",
+      "artist": "Nicolas Rada",
+      "label": "The Soundgarden",
+      "bpm": 121,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Nicolas Rada discography expansion. The Soundgarden. 121 BPM G Minor."
+    },
+    {
+      "title": "Living Memory",
+      "artist": "GMJ",
+      "label": "Meanwhile",
+      "bpm": 119,
+      "key": "B Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "GMJ discography expansion. Meanwhile. 119 BPM B Minor."
+    },
+    {
+      "title": "Higher Self",
+      "artist": "GMJ",
+      "label": "Meanwhile",
+      "bpm": 121,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "GMJ discography expansion. Meanwhile. 121 BPM D Minor."
+    },
+    {
+      "title": "Empty to Fill",
+      "artist": "GMJ",
+      "label": "Meanwhile",
+      "bpm": 121,
+      "key": "Ab Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "GMJ discography expansion. Meanwhile. 121 BPM Ab Minor."
+    },
+    {
+      "title": "Door of Light",
+      "artist": "GMJ",
+      "label": "Meanwhile",
+      "bpm": 120,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "GMJ discography expansion. Meanwhile. 120 BPM G Minor."
+    },
+    {
+      "title": "Rite of Passage",
+      "artist": "GMJ",
+      "label": "Meanwhile",
+      "bpm": 120,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "GMJ discography expansion. Meanwhile. 120 BPM D Minor."
+    },
+    {
+      "title": "Multiverse",
+      "artist": "GMJ",
+      "label": "HIGHER STATES",
+      "bpm": 121,
+      "key": "A Minor",
+      "genre": "Progressive House",
+      "status": "excluded_add_failed",
+      "cart_status": "add_failed",
+      "reason": "GMJ on HIGHER STATES. 121 BPM A Minor. Cookie consent modal repeatedly blocked the add-to-cart button."
+    },
+    {
+      "title": "Massive",
+      "artist": "EANP",
+      "label": "Solis Records",
+      "bpm": 120,
+      "key": "Gb Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Solis Records deep crawl continuation. EANP. 120 BPM Gb Minor."
+    },
+    {
+      "title": "Vivid Dreamscapes",
+      "artist": "Hobin Rude",
+      "label": "Solis Records",
+      "bpm": 120,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Hobin Rude on Solis Records. 120 BPM D Minor."
+    },
+    {
+      "title": "Message Me When You Get Home",
+      "artist": "Hobin Rude",
+      "label": "Solis Records",
+      "bpm": 121,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Hobin Rude on Solis Records. 121 BPM D Minor."
+    },
+    {
+      "title": "The Blind Navigator",
+      "artist": "Kasper Koman",
+      "label": "Anjunadeep",
+      "bpm": 122,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Kasper Koman discography expansion. Premium label Anjunadeep. 122 BPM D Minor."
+    },
+    {
+      "title": "In Circles",
+      "artist": "Kasper Koman",
+      "label": "Juicebox Music",
+      "bpm": 121,
+      "key": "C Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Kasper Koman discography expansion. Juicebox Music. 121 BPM C Minor. Collection version (C Minor) added — standalone version is C Major."
+    },
+    {
+      "title": "Wilder",
+      "artist": "Kasper Koman",
+      "label": "Juicebox Music",
+      "bpm": 120,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Kasper Koman discography expansion. Juicebox Music. 120 BPM D Minor."
+    },
+    {
+      "title": "Matter of Conflict",
+      "artist": "Kasper Koman",
+      "label": "Lowbit",
+      "bpm": 122,
+      "key": "F Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Kasper Koman discography expansion. Lowbit label. 122 BPM F Minor."
+    },
+    {
+      "title": "All Ein",
+      "artist": "Kasper Koman",
+      "label": "Movement Recordings",
+      "bpm": 121,
+      "key": "Db Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Kasper Koman discography expansion. Movement Recordings. 121 BPM Db Minor — very dark key."
+    },
+    {
+      "title": "Mon Nom",
+      "artist": "Kasper Koman",
+      "label": "keep my letters",
+      "bpm": 121,
+      "key": "A Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Kasper Koman discography expansion. keep my letters label. 121 BPM A Minor."
+    },
+    {
+      "title": "Loud Silence",
+      "artist": "Kasper Koman",
+      "label": "Monog Records",
+      "bpm": 121,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Kasper Koman discography expansion. Monog Records. 121 BPM G Minor."
+    },
+    {
+      "title": "Mad Bells",
+      "artist": "Jamie Stevens",
+      "label": "Meanwhile",
+      "bpm": 122,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Jamie Stevens discography expansion. Meanwhile. 122 BPM G Minor."
+    },
+    {
+      "title": "Kanlan",
+      "artist": "Jamie Stevens",
+      "label": "Meanwhile",
+      "bpm": 122,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Jamie Stevens discography expansion. Meanwhile. 122 BPM D Minor."
+    },
+    {
+      "title": "The Peace Machine",
+      "artist": "Jamie Stevens",
+      "label": "Balance Music",
+      "bpm": 122,
+      "key": "E Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Jamie Stevens discography expansion. Balance Music — premium dark progressive label. 122 BPM E Minor."
+    },
+    {
+      "title": "Illusions",
+      "artist": "Guy J",
+      "label": "Lost & Found",
+      "bpm": 122,
+      "key": "A Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Guy J discography expansion. Lost & Found. 122 BPM A Minor."
+    },
+    {
+      "title": "Selector",
+      "artist": "Guy J",
+      "label": "Early Morning",
+      "bpm": 121,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Guy J discography expansion. Early Morning (his own label). 121 BPM D Minor."
+    },
+    {
+      "title": "Hourglass",
+      "artist": "Imran Khan",
+      "label": "Meanwhile Horizons",
+      "bpm": 120,
+      "key": "C Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Imran Khan discography expansion. Meanwhile Horizons. 120 BPM C Minor."
+    },
+    {
+      "title": "Big Sky",
+      "artist": "Imran Khan",
+      "label": "Meanwhile Horizons",
+      "bpm": 121,
+      "key": "E Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Imran Khan discography expansion. Meanwhile Horizons. 121 BPM E Minor."
+    },
+    {
+      "title": "Generator",
+      "artist": "Imran Khan",
+      "label": "Meanwhile",
+      "bpm": 122,
+      "key": "D Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Imran Khan discography expansion. Meanwhile. 122 BPM D Minor."
+    },
+    {
+      "title": "Kashmir Sun",
+      "artist": "Imran Khan",
+      "label": "MNL",
+      "bpm": 120,
+      "key": "G Minor",
+      "genre": "Progressive House",
+      "status": "added_to_cart",
+      "cart_status": "added",
+      "reason": "Imran Khan discography expansion. MNL label. 120 BPM G Minor."
     }
   ],
   "notes": [
@@ -433,6 +1762,92 @@
     "LW Recordings appears to be a weak overlap branch for this brief and should stay deprioritized.",
     "People Also Bought on Midnight drifted into bass-heavy UK-bass / dubstep territory and was materially less useful than artist-led or label-graph exploration.",
     "Dreaming Cooper inside Mystic Sound Records surfaced Wide Spectrum as another strong fit.",
-    "Cart count reached 20 during the clock-time continuation."
+    "Cart count reached 20 during the clock-time continuation.",
+    "A separate 108-122 BPM pass used 150 results per page and crawled up to 10 pages on promising labels before narrowing to JOOF Aura, Bedrock Records, Stripped Recordings, and artist-led Verche expansion.",
+    "10-page label census showed the biggest raw volume in-range on Visceral, Particles, and Stripped Recordings, but JOOF Aura stayed cleaner and more on-brief while Bedrock strengthened materially versus the low-BPM pass.",
+    "Artist-depth scan confirmed Verche as a productive cross-label node in this band, surfacing Hades, Healer, and Night at the Velvet Mountain.",
+    "108-122 BPM clean adds in the current Chrome DevTools cart context: Vanaheim, Embrace Me, Zero Dark, Miragem, The Dying Light, Hades, Healer, Night at the Velvet Mountain.",
+    "Current Chrome DevTools Beatport cart count reached 8 during the 108-122 BPM pass.",
+    "Session 2 started at 2026-04-15T15:30:19Z with 108-122 BPM focus and 60-120 minute runtime bounds.",
+    "Noom (UK) artist page crawl surfaced Aphelion (119 BPM, D Minor) as a strong add. People Also Bought on Aphelion was highly productive: Guy J (Lost & Found), Nick Warren (onedotsixtwo), Paul Hazendonk (ICONYC).",
+    "Cart count reached 10 after Aphelion add in Session 2.",
+    "Lost & Found label scan via Levantine (122 BPM, G Minor) surfaced a rich recommendation graph: Freedom Fighters, Khen, Kasper Koman, Nicolas Rada, Armen Miran.",
+    "People Also Bought on Levantine was the single most productive recommendation scan in Session 2: led to Balance Music, Hoomidaas, Moonlight, Future Avenue, and multiple strong artist nodes.",
+    "Balance Music emerged as a top-tier label for this brief: Armen Miran + Nicolas Rada collab EP (Corner of the Room) yielded Fall Away and Pull.",
+    "Recommendations on Fall Away cross-validated with Levantine: Loco Motif Tantum Remix appeared on both, confirming the Lost & Found → Balance Music corridor as the strongest graph neighborhood.",
+    "Solis Records emerged via recommendations: Shelter of Hearts by GMJ & Matter (121 BPM E Minor) — strong dark progressive fit.",
+    "Meanwhile emerged as a high-value label: The Serpent (Imran Khan Remix) by Alex O'Rion (121 BPM Bb Minor) added. Kasper Koman also releases on Meanwhile (Biome, Sinking Sky).",
+    "Session 2 added 7 tracks: Levantine, Fall Away, Pull, Loco Motif (Tantum Remix), Shelter of Hearts, The Serpent (Imran Khan Remix). Aphelion was added earlier in Session 2.",
+    "Cart count reached 15 during Session 2 continuation.",
+    "Organic House genre tracks dominate recommendations but are mostly too bright/organic for this brief. The strongest corridor is pure Progressive House on Lost & Found → Balance Music → Solis Records → Meanwhile.",
+    "Priority frontier for next pass: Meanwhile (deep crawl), Balance Music (deep crawl), Solis Records (deep crawl), Hoomidaas (selective), onedotsixtwo (Nick Warren, not yet crawled), ICONYC (not yet crawled).",
+    "Remaining uncrawled priority labels from Session 1: Mudra Music, trndmsk, System Recordings, Mioli Music.",
+    "Alex O'Rion artist-graph expansion surfaced three more strong candidates: Tunnel (Meanwhile, 122 BPM D Minor), With You (Music To Die For, Jamie Stevens collab, 122 BPM B Minor), Atlas (Sudbeat Music, 122 BPM D Minor).",
+    "Sudbeat Music (Hernan Cattaneo's label) is a critical new HIGH PRIORITY frontier — Hernan Cattaneo's curation is perfectly aligned with the dark progressive brief.",
+    "Music To Die For bridges Jamie Stevens (already productive from Bedrock Records) with Alex O'Rion (productive from Meanwhile/Solis Records). Strong cross-reference.",
+    "Search page add-to-cart is unreliable (toggle behavior). Track page adds are more reliable. Cart count at session end: approximately 15-17 (fluctuating).",
+    "The strongest graph corridor discovered in Session 2 is: Lost & Found → Balance Music → Solis Records → Meanwhile, with Alex O'Rion as the key connecting node across Solis Records, Meanwhile, Stripped Recordings, and Sudbeat Music.",
+    "Session 3 started at 2026-04-15T16:22:00Z, continuing from session 2's Sudbeat Music frontier.",
+    "Sudbeat Music (label ID 12968) confirmed as a HIGHLY PRODUCTIVE label. Page 1 (50 tracks) yielded 7 strong candidates in 108-122 BPM minor keys: Karnage (Subandrio), Idid (John Cosani), The Sound of Freedom (Vandelor), and 4 more pending investigation.",
+    "New artists discovered via Sudbeat: Subandrio (Sri Lankan dark progressive/deep techno), John Cosani (Argentine Hernan Cattaneo regular), Vandelor (Sudbeat regular with Cross Land Music releases too), Guy J (pillar of dark progressive, runs Early Morning label).",
+    "Early Morning is Guy J's own label — confirmed highly productive for dark progressive house. Worlds Apart (122 BPM A Minor) added.",
+    "Music To Die For confirmed as a bridge label between Jamie Stevens and Alex O'Rion. 'With You' (Alex O'Rion Remix, 122 BPM B Minor) is a brand-new release (2026-04-03).",
+    "Session 3 cart adds: Karnage, Idid, The Sound of Freedom, Worlds Apart, With You (Alex O'Rion Remix). Dirk and Atlas confirmed already in cart from Session 2.",
+    "Remaining Sudbeat candidates not yet visited: Tunnel (Alex O'Rion, 122 BPM D Minor), Drooping (John Cosani, 121 BPM F Major — excluded, major key), other pages not yet scanned.",
+    "Cart count at this checkpoint: approximately 17-19 (Beatport header shows 17 but may not reflect all adds due to known cart UI inconsistency).",
+    "Music To Die For label (ID 100055) crawled: 7 pages of tracks, primarily Jamie Stevens and collaborators. Best candidates: Tassolem Club Mix (108 BPM D Minor), Buenos Aires Nicolas Rada Remix (found via artist connections, on Hope Recordings).",
+    "Music To Die For Top Ten Tracks include collaborations with Guy J, Nick Warren, Nicolas Rada, Hernan Cattaneo, Dave Seaman, Quivver — confirming it as a premium dark progressive label. However, much of the catalog is Breaks/Breakbeat/Dance/Pop from Astrotrain/Tape Tomorrow.",
+    "Hope Recordings emerged as a new label via Nick Warren + Nicolas Rada. Buenos Aires (122 BPM E Minor) was a strong add.",
+    "People Also Bought on Buenos Aires was productive: Drps Classic (Guy J Remix, Lost & Found, 122 BPM Eb Minor), Distant Blips (Dowden Remix, Univack, 122 BPM D Minor), The Quest (Kabi Remix, Juicebox Music, 122 BPM C Minor) — all future leads.",
+    "Solis Records (label ID 112733) confirmed as EXTREMELY PRODUCTIVE for this brief. Pure progressive house label. 50-track page 1 yielded 25+ minor-key tracks in the 108-122 BPM range. Alex O'Rion is the anchor artist with Retroglow, Tinderbox, Umbra, Emerald, Void, Lucida, Spektre.",
+    "Other productive Solis Records artists: Fran Garay (Kuentzmann, Lazhar, Remembering Old Times), Digital Mess (Deuterium, Tritium), EANP (Kodac, Massive), Hobin Rude (Message Me When You Get Home, Vivid Dreamscapes), EMPHI (Among the Gods, Locate), Berni Turletti (Onix).",
+    "Alex O'Rion's discography connections confirmed: Solis Records, Meanwhile, Stripped Recordings, Sudbeat Music, Music To Die For (as remixer), Visceral, Songbird. He is the single most productive artist node in the graph.",
+    "Session 3 cart adds so far: Karnage, Idid, The Sound of Freedom, Worlds Apart, With You (Alex O'Rion Remix), Tassolem Club Mix, Buenos Aires (Nicolas Rada Remix), Retroglow, Tinderbox, Tunnel = 10 new tracks.",
+    "Cart count at this checkpoint: Beatport header shows 17 (with known inconsistency from earlier search page toggle issues).",
+    "Session 3 Pass 6-9: Meanwhile deep crawl via Gauntlet recommendations yielded Wombat Forest (120 BPM G Minor). onedotsixtwo (Nick Warren's label) first confirmed add: Blind & Happy (121 BPM G Minor). Soulsynth new label: Going Nowhere (120 BPM F Minor).",
+    "Solis Records deep crawl continued: Umbra (Alex O'Rion, 120 BPM Ab Minor), Deuterium Auditoria Remix (Digital Mess, 121 BPM E Minor), Kodac (EANP, 122 BPM G Minor) all added.",
+    "New labels discovered via recommendation graph: Soulsynth, Flown Records, COMET Records, Mango Alley, Superordinate Music, HIGHER STATES, Tunnel Label.",
+    "onedotsixtwo label page loaded but tracks page returned 404 — label ID may differ from URL format. Label roster includes Nick Warren, Nicolas Rada, Subandrio — strong dark progressive graph connections.",
+    "Cart count at Session 3 end: 23 (header confirmed).",
+    "Session 4 started at 2026-04-15T17:00:00Z. Continuation crawl focusing on recommendation-derived candidates and Sudbeat Music deep crawl.",
+    "Session 4 Pass 10: Mango Alley / recommendation follow-up. Oceans in Between GMJ & Matter Remix (120 BPM D Minor) added — appeared on multiple prior recommendation surfaces. People Also Bought highly productive.",
+    "Session 4 Pass 11: Meanwhile + recommendation graph expansion. Caladan (GMJ & Jiminy Hop, 122 BPM G Minor) added from Meanwhile. Raven (Cendryma, Pattern) returned 404 — track unavailable.",
+    "Session 4 Pass 12: Recommendation-derived candidates. Moving Lights Redspace Remix (Kostya Outta, inU, 121 BPM F Minor) and Switch Fran Garay Remix (Luca Abayan & Boraa, Droid9, 122 BPM C Minor) both added.",
+    "Session 4 Pass 13: Sudbeat Music deep crawl via Marcelo Vasami. Dirty Talk (122 BPM D Minor) added. People Also Bought revealed two more Sudbeat gems: Subatomic (Paul Deep AR, 121 BPM C Minor), Sound Sanctuary (Simply City, 122 BPM F Minor). Also Panorama (120 BPM Ab Minor) added.",
+    "New labels discovered session 4: inU (Redspace/Kostya Outta releases), Droid9 (Argentine progressive label with Fran Garay), Pattern (Cendryma, progressive/techno). Plaisirs Sonores Records and Vapour Recordings also appeared in recs.",
+    "New artists discovered session 4: Marcelo Vasami (Sudbeat anchor), Paul Deep (AR) (Sudbeat), Simply City (Sudbeat), Kostya Outta, Luca Abayan, Boraa, Cendryma, Jiminy Hop.",
+    "Sudbeat label page navigation via ID still returns 404. The label ID from prior sessions (12968) no longer works. Access via artist search + recommendations instead.",
+    "Cart count at Session 4 checkpoint: 31 (header confirmed).",
+    "Session 5 started at 2026-04-15T17:13:00Z. Continuation crawl focusing on Alex O'Rion discography expansion, Armen Miran and Nicolas Rada discography crawls.",
+    "Session 5 Pass 14: Alex O'Rion discography. Solis (Alex O'Rion & Ezequiel Arias, Meanwhile, 120 BPM E Minor) added. Cuba Libre (Alex O'Rion, Solis Records, 120 BPM C Minor) found via People Also Bought on Solis page — added.",
+    "Session 5 Pass 15: Armen Miran discography crawl. Highly productive artist — 5 tracks added: Tehran Happened (Klassified, 121 BPM F# Minor), Last Chance (Balance Music, 122 BPM D Minor), Reborn (Hoomidaas, 121 BPM A Minor), Heavenly Life (Clepsydra, 118 BPM Db Minor). Organic House-tagged tracks excluded due to genre mismatch.",
+    "Session 5 Pass 16: Nicolas Rada discography crawl. Extremely productive — 5 tracks added: Cascadia (Sudbeat Music, 122 BPM B Minor), Glasgow (Meanwhile, 122 BPM B Minor), Controversia (The Soundgarden, 121 BPM C Minor), Borealis (The Soundgarden, 120 BPM G Minor), Ignition (The Soundgarden, 121 BPM G Minor).",
+    "Nicolas Rada confirmed as a top-tier artist node: releases on Sudbeat Music, Meanwhile, The Soundgarden, Soundteller Records, Tale & Tone, Hoomidaas, TRYBESof, Do Not Sit On The Furniture Recordings.",
+    "Armen Miran confirmed as a key artist node but many tracks are Organic House genre — selective filtering required. Best tracks from Armen Miran are tagged Deep House or Melodic House & Techno.",
+    "New labels discovered session 5: Klassified (Armen Miran releases), Clepsydra (deep house label with Armen Miran).",
+    "Hernan Cattaneo search for Sudbeat yielded no viable 108-122 BPM minor key tracks — his output trends 123-127 BPM.",
+    "Cookie consent overlay on Beatport intermittently hides the cart count and add-to-cart buttons. Pressing Escape dismisses it and restores normal page interaction.",
+    "Cart count at Session 5 mid-checkpoint: 42 (header confirmed).",
+    "Session 5 Pass 17: GMJ discography crawl. Extremely productive — 5 tracks added from Meanwhile solo releases: Living Memory (119 BPM B Minor), Higher Self (121 BPM D Minor), Empty to Fill (121 BPM Ab Minor), Door of Light (120 BPM G Minor), Rite of Passage (120 BPM D Minor). Multiverse (HIGHER STATES, 121 BPM A Minor) add failed due to persistent cookie consent modal.",
+    "Session 5 Pass 18: Frontier label scan. Mudra Music is primarily Bass/Club/Dubstep — dead end for this brief. trndmsk is primarily Downtempo/Melodic House & Techno — low yield. System Recordings trends 126-128 BPM with only a few 2016-era tracks in range — low yield. Mioli Music has only 3 in-range minor key tracks and leans melodic — low priority.",
+    "Session 5 Pass 19: Solis Records continuation. EANP Massive (120 BPM Gb Minor) added. Hobin Rude's Vivid Dreamscapes (120 BPM D Minor) and Message Me When You Get Home (121 BPM D Minor) both added.",
+    "GMJ confirmed as the third most productive artist node: dense Meanwhile solo catalog with consistent minor keys and 119-121 BPM range.",
+    "Meanwhile is now the single most productive label in the graph: GMJ (5 tracks), Alex O'Rion (3 tracks), Nicolas Rada (1 track), and Kasper Koman pending.",
+    "Frontier labels assessed and classified: Mudra Music (dead end), trndmsk (low yield), System Recordings (low yield), Mioli Music (low priority).",
+    "Cart count at Session 5 final checkpoint: 50 (header confirmed).",
+    "Session 6 started at 2026-04-15T17:36:00Z. Final continuation crawl focusing on remaining frontier artists: Kasper Koman, Jamie Stevens, Guy J, Imran Khan.",
+    "Session 6 Pass 20: Kasper Koman discography. Extremely productive — 7 tracks added from 6 different labels: The Blind Navigator (Anjunadeep, D Minor), In Circles (Juicebox Music, C Minor), Wilder (Juicebox Music, D Minor), Matter of Conflict (Lowbit, F Minor), All Ein (Movement Recordings, Db Minor), Mon Nom (keep my letters, A Minor), Loud Silence (Monog Records, G Minor).",
+    "Kasper Koman confirmed as the second most productive artist after Alex O'Rion. Releases across Anjunadeep, Juicebox Music, Meanwhile, Lost & Found, Lowbit, Movement Recordings, Monog Records, keep my letters, Plattenbank, RH2, Lost Miracle.",
+    "Session 6 Pass 21: Jamie Stevens discography expansion. 3 tracks added: Mad Bells (Meanwhile, 122 BPM G Minor), Kanlan (Meanwhile, 122 BPM D Minor), The Peace Machine (Balance Music, 122 BPM E Minor).",
+    "Music To Die For label assessment: Primarily Electronica/Breaks/Breakbeat genre. Most tracks are outside our genre preferences. Tassolem (Don't Worry 'bout Me) has vocal concerns. The strongest Jamie Stevens tracks are on Meanwhile and Balance Music, not Music To Die For.",
+    "Sudbeat Music assessment: Hernan Cattaneo's own releases trend 124-127 BPM and Major keys — outside our brief. The best Sudbeat material in 108-122 BPM minor keys was found through other artists (Marcelo Vasami, Paul Deep AR, Simply City, Subandrio, John Cosani, Vandelor, Nicolas Rada). Guy J's releases on Sudbeat didn't surface in search results — his best material is on his own Early Morning and Lost & Found labels.",
+    "Session 6 Pass 22: Guy J discography. 3 tracks added: Worlds Apart (already in cart from Session 3 — duplicate entry noted), Illusions (Lost & Found, 122 BPM A Minor), Selector (Early Morning, 121 BPM D Minor).",
+    "Session 6 Pass 23: Imran Khan discography. 4 tracks added: Hourglass (Meanwhile Horizons, 120 BPM C Minor), Big Sky (Meanwhile Horizons, 121 BPM E Minor), Generator (Meanwhile, 122 BPM D Minor), Kashmir Sun (MNL, 120 BPM G Minor).",
+    "Meanwhile Horizons appears to be a Meanwhile sub-label or partner. Imran Khan is a strong producer with consistent dark progressive output.",
+    "Matter artist search returned wrong results — 'Matter' is too generic a word, returning Rock music from 'Bye Bye Productions'. Dead end for search-based discovery.",
+    "Cart count at Session 6 final checkpoint: 67 (header confirmed).",
+    "Total tracks added across all sessions: approximately 67 (cumulative across Sessions 1-6).",
+    "Most productive artists (by cart adds): Alex O'Rion (8+), Kasper Koman (7+), GMJ (6+), Nicolas Rada (5+), Armen Miran (4+), Jamie Stevens (4+), Imran Khan (4+), Guy J (3+), Verche (3+).",
+    "Most productive labels (by cart adds): Meanwhile (12+), Solis Records (8+), Sudbeat Music (7+), Balance Music (4+), Stripped Recordings (4+), Lost & Found (3+), The Soundgarden (3+), Juicebox Music (2+), Early Morning (2+), Meanwhile Horizons (2+)."
   ]
 }
