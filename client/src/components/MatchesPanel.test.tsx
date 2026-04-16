@@ -14,6 +14,27 @@ vi.mock('../hooks/useAudioPlayer', () => ({
   }),
 }));
 
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: vi.fn(({ count }: { count: number }) => {
+    if (!count) {
+      return {
+        getVirtualItems: () => [],
+        getTotalSize: () => 0,
+        measureElement: vi.fn(),
+      };
+    }
+    const items: Array<{ index: number; start: number; size: number; end: number; key: number; lane: number }> = [];
+    for (let i = 0; i < count; i++) {
+      items.push({ index: i, start: i * 40, size: 40, end: (i + 1) * 40, key: i, lane: 0 });
+    }
+    return {
+      getVirtualItems: () => items,
+      getTotalSize: () => count * 40,
+      measureElement: vi.fn(),
+    };
+  }),
+}));
+
 function renderWithDnd(ui: ReactElement, options?: RenderOptions) {
   return render(<DndContext>{ui}</DndContext>, options);
 }
@@ -157,6 +178,43 @@ describe('MatchesPanel', () => {
       expect((headers[10] as HTMLElement).style.width).toBe('73px');  // Energy (MIK)
       expect((headers[12] as HTMLElement).style.width).toBe('73px');  // Instruments
       expect((headers[14] as HTMLElement).style.width).toBe('70px');  // DETAILS
+    });
+  });
+
+  describe('virtual row cell widths match header widths', () => {
+    it('body cells have the same explicit widths as their header counterparts', () => {
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch()]}
+          loading={false}
+        />
+      );
+      const headerCells = document.querySelectorAll('.matches-table thead th');
+      const bodyRow = document.querySelector('.matches-table tbody tr') as HTMLElement;
+      expect(bodyRow).toBeTruthy();
+      const bodyCells = bodyRow.querySelectorAll('td');
+      expect(bodyCells.length).toBe(headerCells.length);
+      for (let i = 0; i < headerCells.length; i++) {
+        const hw = (headerCells[i] as HTMLElement).style.width;
+        const bw = (bodyCells[i] as HTMLElement).style.width;
+        expect(bw).toBe(hw);
+      }
+    });
+
+    it('virtual rows have data-index attribute for measurement', () => {
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={[makeMatch(), makeMatch({ candidate_id: 99 })]}
+          loading={false}
+        />
+      );
+      const bodyRows = document.querySelectorAll('.matches-table tbody tr');
+      bodyRows.forEach((row) => {
+        expect(row.hasAttribute('data-index')).toBe(true);
+        expect(Number.isNaN(Number(row.getAttribute('data-index')))).toBe(false);
+      });
     });
   });
 
