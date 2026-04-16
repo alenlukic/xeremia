@@ -196,6 +196,18 @@ export interface PoolSubgroupMembership {
   pool_entry_id: number;
 }
 
+export interface EmptyRow {
+  __empty: true;
+  emptyId: string;
+}
+
+export type TracklistDisplayRow = TracklistEntry | EmptyRow;
+export type PoolDisplayRow = PoolEntry | EmptyRow;
+
+export function isEmptyRow(row: TracklistDisplayRow | PoolDisplayRow): row is EmptyRow {
+  return '__empty' in row && row.__empty === true;
+}
+
 export interface HydratedSet {
   set: SetSummary;
   pool: PoolEntry[];

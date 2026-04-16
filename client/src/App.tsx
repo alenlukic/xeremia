@@ -22,6 +22,7 @@ import { useWeights } from './hooks/useWeights';
 import { useSetBuilder } from './hooks/useSetBuilder';
 import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 import type { DragPayload } from './dnd';
+import { DragFillContext, type DragFillNotification } from './dnd';
 import type { SortingState } from '@tanstack/react-table';
 
 const BROWSE_PAGE_SIZE = 250;
@@ -121,6 +122,8 @@ export default function App() {
   const [poolExpanded, setPoolExpanded] = useState(loadPoolExpanded);
   const [dragItem, setDragItem] = useState<DragPayload | null>(null);
   const [dndWarning, setDndWarning] = useState<string | null>(null);
+  const [dragFillNotification, setDragFillNotification] = useState<DragFillNotification | null>(null);
+  const dragFillNonceRef = useRef(0);
 
   const browseScrollRef = useRef<HTMLDivElement | null>(null);
   const browseContextRef = useRef<{ scrollTop: number; targetFilterKey: string } | null>(null);
@@ -555,6 +558,30 @@ export default function App() {
       ? payload.selectedTrackIds
       : [payload.trackId];
 
+    if (targetId.startsWith('drop-tracklist-empty-') || targetId.startsWith('drop-pool-empty-')) {
+      if (!sb.activeSet) return;
+      const isTracklist = targetId.startsWith('drop-tracklist-empty-');
+      const overData = over.data?.current as { __emptyId?: string; realPosition?: number } | undefined;
+      const emptyId = overData?.__emptyId;
+      const realPosition = overData?.realPosition;
+      for (const tid of trackIds) {
+        const t = allTracks.find(tr => tr.id === tid);
+        if (isTracklist) {
+          addToTracklistFn(tid, t?.title ?? payload.title);
+          if (realPosition != null) {
+            reorderTracklist(tid, realPosition);
+          }
+        } else {
+          addToPoolFn(tid, t?.title ?? payload.title);
+        }
+      }
+      if (emptyId) {
+        dragFillNonceRef.current += 1;
+        setDragFillNotification({ emptyId, nonce: dragFillNonceRef.current });
+      }
+      return;
+    }
+
     if (payload.source === 'tracklist' && targetId.startsWith('drop-tracklist-row-')) {
       const newPosition = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
       if (!isNaN(newPosition) && sb.activeSet) {
@@ -647,6 +674,7 @@ export default function App() {
 
   return (
     <AudioPlayerProvider>
+    <DragFillContext.Provider value={dragFillNotification}>
     <DndContext sensors={sensors} collisionDetection={dndCollisionDetection} measuring={measuringConfig} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
       <div className="app-shell-v2">
         {/* ─── Top Anchor Zone (hidden in Set Mode) ─── */}
@@ -1054,6 +1082,7 @@ export default function App() {
         )}
       </DragOverlay>
     </DndContext>
+    </DragFillContext.Provider>
     </AudioPlayerProvider>
   );
 }

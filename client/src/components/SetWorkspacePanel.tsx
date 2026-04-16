@@ -43,6 +43,15 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
     if (!poolExpanded) onPoolExpandedChange(true);
   }, [addToPool, poolExpanded, onPoolExpandedChange]);
 
+  const handleTracklistFillEmptyRow = useCallback((_emptyId: string, trackId: number, title?: string) => {
+    addToTracklist(trackId, title);
+  }, [addToTracklist]);
+
+  const handlePoolFillEmptyRow = useCallback((_emptyId: string, trackId: number, title?: string) => {
+    addToPool(trackId, title);
+    if (!poolExpanded) onPoolExpandedChange(true);
+  }, [addToPool, poolExpanded, onPoolExpandedChange]);
+
   return (
     <div className="set-workspace-split">
       <SetTracklist
@@ -54,6 +63,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
         onUpdateNote={updateTracklistNote}
         onToggleStar={toggleTracklistStar}
         onAddTrack={addToTracklist}
+        onFillEmptyRow={handleTracklistFillEmptyRow}
         dndDisabled={dndDisabled}
         dndIdPrefix={dndIdPrefix}
       />
@@ -89,6 +99,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
               onMoveToTracklist={movePoolToTracklist}
               onToggleStar={togglePoolStar}
               onAddTrack={handlePoolAddTrack}
+              onFillEmptyRow={handlePoolFillEmptyRow}
               onCreateSubgroup={createSubgroup}
               onRenameSubgroup={renameSubgroup}
               onDeleteSubgroup={deleteSubgroup}

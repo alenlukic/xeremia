@@ -1,3 +1,5 @@
+import { createContext } from 'react';
+
 export interface DragPayload {
   trackId: number;
   title: string;
@@ -6,3 +8,11 @@ export interface DragPayload {
 }
 
 export const MAX_COLS = 5;
+
+export interface DragFillNotification {
+  emptyId: string;
+  nonce: number;
+}
+
+export const DragFillContext = createContext<DragFillNotification | null>(null);
+

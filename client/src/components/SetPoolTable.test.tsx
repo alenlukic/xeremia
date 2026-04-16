@@ -4,6 +4,7 @@ import { searchTracks } from '../api/http';
 import { DndContext } from '@dnd-kit/core';
 import { SetPoolTable } from './SetPoolTable';
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types';
+import { DragFillContext } from '../dnd';
 
 vi.mock('../hooks/useAudioPlayer', () => ({
   useAudioPlayer: () => ({
@@ -1003,6 +1004,343 @@ describe('SetPoolTable Groups view', () => {
 
     const counts = Array.from(container.querySelectorAll('.subgroup-section-count')).map(el => el.textContent);
     expect(counts).toEqual(['2 tracks', '1 track']);
+  });
+});
+
+describe('SetPoolTable empty row insertion', () => {
+  function makeEntries(): PoolEntry[] {
+    return [
+      makePoolEntry({ id: 1, track_id: 10, insertion_order: 0 }),
+      makePoolEntry({ id: 2, track_id: 20, insertion_order: 1 }),
+    ];
+  }
+
+  it('shows insert empty rows button', () => {
+    renderPool(makeEntries());
+    const btn = screen.getByRole('button', { name: /insert empty rows/i });
+    expect(btn).toBeTruthy();
+  });
+
+  it('opens insert controls when button is clicked', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    expect(container.querySelector('.insert-empty-inline')).toBeTruthy();
+  });
+
+  it('inserts 1 empty row at end', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    const rows = container.querySelectorAll('.set-pool-table tbody tr');
+    expect(rows.length).toBe(3);
+    const emptyRows = container.querySelectorAll('.set-pool-table tbody tr.empty-row');
+    expect(emptyRows.length).toBe(1);
+    expect(emptyRows[0].querySelector('.empty-row-label')?.textContent).toBe('Empty slot');
+  });
+
+  it('inserts arbitrary count of empty rows', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    const countInput = container.querySelector('.insert-empty-count') as HTMLInputElement;
+    fireEvent.change(countInput, { target: { value: '4' } });
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    const emptyRows = container.querySelectorAll('.set-pool-table tbody tr.empty-row');
+    expect(emptyRows.length).toBe(4);
+  });
+
+  it('inserts empty rows at start', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at start'));
+
+    const rows = container.querySelectorAll('.set-pool-table tbody tr');
+    expect(rows.length).toBe(3);
+    expect(rows[0].classList.contains('empty-row')).toBe(true);
+  });
+
+  it('empty row renders placeholder content with em-dashes', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    const emptyRow = container.querySelector('.set-pool-table tbody tr.empty-row')!;
+    expect(emptyRow.querySelector('.set-ws-cell-key')?.textContent).toBe('—');
+    expect(emptyRow.querySelector('.set-ws-cell-bpm')?.textContent).toBe('—');
+  });
+
+  it('empty row can be deleted', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    let emptyRows = container.querySelectorAll('.set-pool-table tbody tr.empty-row');
+    expect(emptyRows.length).toBe(1);
+
+    const deleteBtn = emptyRows[0].querySelector('.set-action-btn--danger') as HTMLButtonElement;
+    fireEvent.click(deleteBtn);
+
+    emptyRows = container.querySelectorAll('.set-pool-table tbody tr.empty-row');
+    expect(emptyRows.length).toBe(0);
+    expect(container.querySelectorAll('.set-pool-table tbody tr').length).toBe(2);
+  });
+
+  it('deleting an empty row preserves surrounding real rows', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at start'));
+
+    const deleteBtn = container.querySelector('.set-pool-table tbody tr.empty-row .set-action-btn--danger') as HTMLButtonElement;
+    fireEvent.click(deleteBtn);
+
+    const rows = container.querySelectorAll('.set-pool-table tbody tr');
+    expect(rows.length).toBe(2);
+    const titles = Array.from(rows).map(r => r.querySelector('.set-ws-cell-title')?.textContent);
+    expect(titles).toEqual(['Pool Track 10', 'Pool Track 20']);
+  });
+
+  it('empty row has Fill button', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    const emptyRow = container.querySelector('.set-pool-table tbody tr.empty-row')!;
+    expect(emptyRow.querySelector('[title="Fill with track"]')).toBeTruthy();
+  });
+
+  it('clicking Fill activates fill mode on search', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    const fillBtn = container.querySelector('.set-pool-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
+    fireEvent.click(fillBtn);
+
+    const searchInput = container.querySelector('.set-pool-search') as HTMLInputElement;
+    expect(searchInput.placeholder).toBe('Search to fill empty row…');
+    expect(container.querySelector('.fill-cancel-btn')).toBeTruthy();
+  });
+
+  it('search-fill removes targeted empty row and calls onFillEmptyRow', async () => {
+    const onFillEmptyRow = vi.fn();
+    vi.mocked(searchTracks).mockResolvedValue([
+      { id: 99, title: 'Fill Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
+    ]);
+
+    const { container } = render(
+      <DndContext>
+        <SetPoolTable
+          pool={makeEntries()}
+          subgroups={[]}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={noop}
+          onCreateSubgroup={noopAsyncNull}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={noopAsync}
+          onRemoveSubgroupMember={noopAsync}
+          onFillEmptyRow={onFillEmptyRow}
+        />
+      </DndContext>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    const fillBtn = container.querySelector('.set-pool-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
+    fireEvent.click(fillBtn);
+
+    const searchInput = container.querySelector('.set-pool-search') as HTMLInputElement;
+    fireEvent.change(searchInput, { target: { value: 'Fill' } });
+
+    await waitFor(() => {
+      expect(container.querySelector('.set-pool-search-dropdown')).toBeTruthy();
+    });
+
+    fireEvent.mouseDown(container.querySelector('.set-pool-search-item')!);
+
+    expect(onFillEmptyRow).toHaveBeenCalledWith(expect.any(String), 99, 'Fill Track');
+    expect(container.querySelectorAll('.set-pool-table tbody tr.empty-row').length).toBe(0);
+  });
+
+  it('cancel fill mode restores normal search', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    const fillBtn = container.querySelector('.set-pool-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
+    fireEvent.click(fillBtn);
+
+    expect(container.querySelector('.fill-cancel-btn')).toBeTruthy();
+    fireEvent.click(container.querySelector('.fill-cancel-btn')!);
+
+    const searchInput = container.querySelector('.set-pool-search') as HTMLInputElement;
+    expect(searchInput.placeholder).toBe('Search to add…');
+    expect(container.querySelector('.fill-cancel-btn')).toBeNull();
+  });
+
+  it('inserts empty rows at an arbitrary chosen position', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+
+    const countInput = container.querySelector('.insert-empty-count') as HTMLInputElement;
+    fireEvent.change(countInput, { target: { value: '2' } });
+
+    const posInput = container.querySelector('.insert-empty-position') as HTMLInputElement;
+    fireEvent.change(posInput, { target: { value: '2' } });
+    fireEvent.click(screen.getByTitle('Insert at position'));
+
+    const rows = container.querySelectorAll('.set-pool-table tbody tr');
+    expect(rows.length).toBe(4);
+    expect(rows[0].classList.contains('empty-row')).toBe(false);
+    expect(rows[1].classList.contains('empty-row')).toBe(true);
+    expect(rows[2].classList.contains('empty-row')).toBe(true);
+    expect(rows[3].classList.contains('empty-row')).toBe(false);
+  });
+
+  it('shows position input and At Position button when insert controls are open', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+
+    expect(container.querySelector('.insert-empty-position')).toBeTruthy();
+    expect(screen.getByTitle('Insert at position')).toBeTruthy();
+  });
+
+  it('shows placeholders when pool is empty but empty rows exist', () => {
+    const { container } = renderPool([]);
+    expect(screen.getByText(/pool is empty/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    expect(container.querySelector('.set-pool-table')).toBeTruthy();
+    expect(container.querySelector('.set-empty-tracks')).toBeNull();
+    const emptyRows = container.querySelectorAll('.set-pool-table tbody tr.empty-row');
+    expect(emptyRows.length).toBe(1);
+  });
+
+  it('drag-fill via DragFillContext removes the targeted empty row', () => {
+    const entries = makeEntries();
+    const { container, rerender } = render(
+      <DragFillContext.Provider value={null}>
+        <DndContext>
+          <SetPoolTable
+            pool={entries}
+            subgroups={[]}
+            subgroupMemberships={[]}
+            onRemove={noop}
+            onMoveToTracklist={noop}
+            onToggleStar={noop}
+            onAddTrack={noop}
+            onCreateSubgroup={noopAsyncNull}
+            onRenameSubgroup={noopAsync}
+            onDeleteSubgroup={noopAsync}
+            onReorderSubgroups={noopAsync}
+            onAddSubgroupMember={noopAsync}
+            onRemoveSubgroupMember={noopAsync}
+          />
+        </DndContext>
+      </DragFillContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at end'));
+
+    let emptyRows = container.querySelectorAll('.set-pool-table tbody tr.empty-row');
+    expect(emptyRows.length).toBe(1);
+    const emptyId = emptyRows[0].getAttribute('data-empty-id')!;
+
+    rerender(
+      <DragFillContext.Provider value={{ emptyId, nonce: 1 }}>
+        <DndContext>
+          <SetPoolTable
+            pool={entries}
+            subgroups={[]}
+            subgroupMemberships={[]}
+            onRemove={noop}
+            onMoveToTracklist={noop}
+            onToggleStar={noop}
+            onAddTrack={noop}
+            onCreateSubgroup={noopAsyncNull}
+            onRenameSubgroup={noopAsync}
+            onDeleteSubgroup={noopAsync}
+            onReorderSubgroups={noopAsync}
+            onAddSubgroupMember={noopAsync}
+            onRemoveSubgroupMember={noopAsync}
+          />
+        </DndContext>
+      </DragFillContext.Provider>,
+    );
+
+    emptyRows = container.querySelectorAll('.set-pool-table tbody tr.empty-row');
+    expect(emptyRows.length).toBe(0);
+    expect(container.querySelectorAll('.set-pool-table tbody tr').length).toBe(entries.length);
+  });
+
+  it('drag-fill preserves surrounding pool row order', () => {
+    const entries = makeEntries();
+    const { container, rerender } = render(
+      <DragFillContext.Provider value={null}>
+        <DndContext>
+          <SetPoolTable
+            pool={entries}
+            subgroups={[]}
+            subgroupMemberships={[]}
+            onRemove={noop}
+            onMoveToTracklist={noop}
+            onToggleStar={noop}
+            onAddTrack={noop}
+            onCreateSubgroup={noopAsyncNull}
+            onRenameSubgroup={noopAsync}
+            onDeleteSubgroup={noopAsync}
+            onReorderSubgroups={noopAsync}
+            onAddSubgroupMember={noopAsync}
+            onRemoveSubgroupMember={noopAsync}
+          />
+        </DndContext>
+      </DragFillContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at start'));
+
+    let rows = container.querySelectorAll('.set-pool-table tbody tr');
+    expect(rows.length).toBe(3);
+    expect(rows[0].classList.contains('empty-row')).toBe(true);
+
+    const emptyId = rows[0].getAttribute('data-empty-id')!;
+
+    rerender(
+      <DragFillContext.Provider value={{ emptyId, nonce: 1 }}>
+        <DndContext>
+          <SetPoolTable
+            pool={entries}
+            subgroups={[]}
+            subgroupMemberships={[]}
+            onRemove={noop}
+            onMoveToTracklist={noop}
+            onToggleStar={noop}
+            onAddTrack={noop}
+            onCreateSubgroup={noopAsyncNull}
+            onRenameSubgroup={noopAsync}
+            onDeleteSubgroup={noopAsync}
+            onReorderSubgroups={noopAsync}
+            onAddSubgroupMember={noopAsync}
+            onRemoveSubgroupMember={noopAsync}
+          />
+        </DndContext>
+      </DragFillContext.Provider>,
+    );
+
+    rows = container.querySelectorAll('.set-pool-table tbody tr');
+    expect(rows.length).toBe(2);
+    const titles = Array.from(rows).map(r => r.querySelector('.set-ws-cell-title')?.textContent);
+    expect(titles).toEqual(['Pool Track 10', 'Pool Track 20']);
   });
 });
 

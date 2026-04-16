@@ -101,10 +101,10 @@ function makeTracks(count: number): Track[] {
   }));
 }
 
-function makeDragEnd(activeId: string, payload: DragPayload, overId: string | null) {
+function makeDragEnd(activeId: string, payload: DragPayload, overId: string | null, overData?: Record<string, unknown>) {
   return {
     active: { id: activeId, data: { current: payload } },
-    over: overId ? { id: overId } : null,
+    over: overId ? { id: overId, data: overData ? { current: overData } : undefined } : null,
   };
 }
 
@@ -200,9 +200,9 @@ async function renderApp() {
   expect(capturedOnDragEnd).toBeDefined();
 }
 
-function fireDragEnd(activeId: string, payload: DragPayload, overId: string | null) {
+function fireDragEnd(activeId: string, payload: DragPayload, overId: string | null, overData?: Record<string, unknown>) {
   act(() => {
-    capturedOnDragEnd!(makeDragEnd(activeId, payload, overId));
+    capturedOnDragEnd!(makeDragEnd(activeId, payload, overId, overData));
   });
 }
 
@@ -806,6 +806,126 @@ describe('DnD: Set tab parity with Explorer', () => {
     fireDragEnd('pool-track-1', poolPayload, 'drop-tracklist');
 
     expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+});
+
+describe('DnD: drag-fill into empty rows', () => {
+  beforeEach(() => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [],
+        tracklist: [],
+        explorer_trees: [],
+        explorer_nodes: [],
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+  });
+
+  it('browse drag to drop-tracklist-empty-* calls addToTracklist (fill)', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-tracklist-empty-empty-tl-1');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('tracklist fill calls reorderTracklist when droppable data includes realPosition', async () => {
+    await renderApp();
+
+    act(() => {
+      capturedOnDragEnd!(makeDragEnd(
+        'browse-track-1', browsePayload, 'drop-tracklist-empty-empty-tl-1',
+        { __emptyId: 'empty-tl-1', realPosition: 2 },
+      ));
+    });
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+    expect(mockSB.reorderTracklist).toHaveBeenCalledWith(1, 2);
+  });
+
+  it('matches drag to drop-tracklist-empty-* calls addToTracklist', async () => {
+    await renderApp();
+
+    const matchPayload: DragPayload = { trackId: 2, title: 'Track 2', source: 'matches' };
+    fireDragEnd('match-track-2', matchPayload, 'drop-tracklist-empty-empty-tl-2');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(2, 'Track 2');
+  });
+
+  it('pool drag to drop-tracklist-empty-* calls addToTracklist', async () => {
+    await renderApp();
+
+    fireDragEnd('pool-track-1', poolPayload, 'drop-tracklist-empty-empty-tl-3');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('browse drag to drop-pool-empty-* calls addToPool (fill)', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-pool-empty-empty-pool-1');
+
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('pool fill does not call reorderTracklist', async () => {
+    await renderApp();
+
+    act(() => {
+      capturedOnDragEnd!(makeDragEnd(
+        'browse-track-1', browsePayload, 'drop-pool-empty-empty-pool-1',
+        { __emptyId: 'empty-pool-1', realPosition: 0 },
+      ));
+    });
+
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+  });
+
+  it('tracklist drag to drop-pool-empty-* calls addToPool', async () => {
+    await renderApp();
+
+    fireDragEnd('tracklist-track-1', tracklistPayload, 'drop-pool-empty-empty-pool-2');
+
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('multi-select drop on drop-tracklist-empty-* adds all selected tracks', async () => {
+    await renderApp();
+
+    const multiPayload: DragPayload = {
+      trackId: 1,
+      title: 'Track 1',
+      source: 'browse',
+      selectedTrackIds: [1, 2],
+    };
+    fireDragEnd('browse-track-1', multiPayload, 'drop-tracklist-empty-empty-tl-4');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledTimes(2);
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(2, 'Track 2');
+  });
+
+  it('alt-prefixed empty row targets are normalized and handled', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'alt-drop-tracklist-empty-empty-tl-5');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('no-ops empty row fill when no active set', async () => {
+    mockSB = makeSetBuilderMock({ activeSetId: null, activeSet: null });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-tracklist-empty-empty-tl-6');
+
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
   });
 });
 
