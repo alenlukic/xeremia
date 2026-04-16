@@ -287,14 +287,67 @@ body,
   padding: 16px var(--panel-inner) 8px;
 }
 
-/* === Filter Bar === */
-.filter-bar {
-  display: flex;
-  gap: 12px;
+/* === Filter Toggle Button (inline in search row) === */
+.filter-toggle-btn {
+  display: inline-flex;
   align-items: center;
-  padding: 8px var(--content-gutter) 8px 0;
-  flex: 0 0 auto;
-  min-width: 0;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+  margin-right: 4px;
+}
+
+.filter-toggle-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.filter-toggle-btn--active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.filter-toggle-btn--has-active {
+  color: var(--accent);
+}
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* === Filter Tray (expandable below search row) === */
+.filter-tray {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 8px var(--content-gutter);
+  background: var(--bg);
+}
+
+.filter-tray-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
 }
 
 .filter-group {
@@ -469,6 +522,21 @@ body,
   grid-column: span 2;
   color: var(--text-muted);
   font-family: var(--font-body);
+}
+
+.filter-input--text {
+  width: 120px;
+}
+
+.filter-input--date {
+  width: 130px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.filter-input--date::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
 }
 
 /* === Tables (shared) === */
@@ -3610,56 +3678,106 @@ body,
   width: 32px;
 }
 
-/* === Pool Subgroup Styles === */
+/* === Pool Tab Bar & Subgroup Styles === */
 
-.subgroup-bar {
+.pool-tab-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: 2px;
+  padding: 0 8px;
   flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   min-height: 32px;
 }
 
-.subgroup-filter-btn {
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
+.pool-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
   color: var(--text-secondary);
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 6px 10px 4px;
   cursor: pointer;
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  transition: color var(--transition), border-color var(--transition);
   white-space: nowrap;
 }
-.subgroup-filter-btn:hover {
-  background: var(--accent-dim);
+.pool-tab:hover {
   color: var(--text-primary);
 }
-.subgroup-filter-btn.active {
-  background: var(--accent-dim);
-  border-color: var(--accent);
+.pool-tab--active {
   color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.pool-tab--default {
+  font-weight: 600;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
 }
 
-.subgroup-tag-wrapper {
+.pool-tab-wrapper {
   display: inline-flex;
   align-items: center;
   gap: 1px;
   position: relative;
 }
-.subgroup-tag-wrapper:hover .subgroup-tag-controls {
+.pool-tab-wrapper:hover .pool-tab-controls {
   opacity: 1;
   pointer-events: auto;
 }
 
-.subgroup-tag-controls {
+.pool-tab-controls {
   display: flex;
   gap: 1px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
+}
+
+/* === Subgroup Section (Groups view) === */
+
+.subgroup-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.subgroup-section {
+  border-bottom: 1px solid var(--border);
+}
+.subgroup-section--alt {
+  background: var(--bg-raised);
+}
+.subgroup-section--drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.subgroup-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 4px;
+  cursor: grab;
+  user-select: none;
+}
+.subgroup-section-header:active {
+  cursor: grabbing;
+}
+.subgroup-section-drag-handle {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+.subgroup-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.subgroup-section-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
 }
 
 .subgroup-ctrl-btn {

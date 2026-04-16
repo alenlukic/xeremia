@@ -26,6 +26,7 @@ interface Props {
   poolExpanded: boolean;
   onPoolExpandedChange: (expanded: boolean) => void;
   dndDisabled?: boolean;
+  dndIdPrefix?: string;
 }
 
 export const SetWorkspacePanel = memo(function SetWorkspacePanel({
@@ -35,7 +36,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
   updateTracklistNote, togglePoolStar, toggleTracklistStar, addToTracklist,
   createSubgroup, renameSubgroup, deleteSubgroup,
   reorderSubgroups, addSubgroupMember, removeSubgroupMember,
-  poolExpanded, onPoolExpandedChange, dndDisabled,
+  poolExpanded, onPoolExpandedChange, dndDisabled, dndIdPrefix,
 }: Props) {
   const handlePoolAddTrack = useCallback((trackId: number, title?: string) => {
     addToPool(trackId, title);
@@ -54,6 +55,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
         onToggleStar={toggleTracklistStar}
         onAddTrack={addToTracklist}
         dndDisabled={dndDisabled}
+        dndIdPrefix={dndIdPrefix}
       />
       <div className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}>
         {poolExpanded && (
@@ -94,6 +96,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
               onAddSubgroupMember={addSubgroupMember}
               onRemoveSubgroupMember={removeSubgroupMember}
               dndDisabled={dndDisabled}
+              dndIdPrefix={dndIdPrefix}
             />
           </div>
         )}

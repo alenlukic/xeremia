@@ -126,6 +126,12 @@ async function renderApp() {
   await act(async () => {});
 }
 
+async function expandFilterTray() {
+  await act(async () => {
+    screen.getByRole('button', { name: /toggle filters/i }).click();
+  });
+}
+
 describe('Reset Weights', () => {
   it('renders a Reset Weights button inside weights overlay', async () => {
     const httpMod = await import('./api/http');
@@ -247,6 +253,7 @@ describe('Browse infinite scroll', () => {
 
   it('resets to first chunk when key filter changes', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       triggerLoadMore();
@@ -267,13 +274,14 @@ describe('Browse infinite scroll', () => {
 
   it('resets to first chunk when BPM filter changes', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       triggerLoadMore();
     });
     expect(getRowCount()).toBe(500);
 
-    const bpmInput = screen.getByPlaceholderText('BPM Min');
+    const bpmInput = screen.getByPlaceholderText('Min');
     await userEvent.type(bpmInput, '120');
 
     await waitFor(() => {
@@ -317,6 +325,7 @@ describe('Browse infinite scroll', () => {
 
   it('restores loaded progress when returning to a previous filter key', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       triggerLoadMore();
@@ -611,9 +620,10 @@ describe('Error state handling', () => {
 describe('BPM unified filter', () => {
   it('min and max inputs coexist without cross-clearing', async () => {
     await renderApp();
+    await expandFilterTray();
 
-    const minInput = screen.getByPlaceholderText('BPM Min');
-    const maxInput = screen.getByPlaceholderText('BPM Max');
+    const minInput = screen.getByPlaceholderText('Min');
+    const maxInput = screen.getByPlaceholderText('Max');
 
     await userEvent.type(minInput, '100');
     await act(async () => { minInput.blur(); });
@@ -626,9 +636,10 @@ describe('BPM unified filter', () => {
 
   it('equal min and max expresses exact matching', async () => {
     await renderApp();
+    await expandFilterTray();
 
-    const minInput = screen.getByPlaceholderText('BPM Min');
-    const maxInput = screen.getByPlaceholderText('BPM Max');
+    const minInput = screen.getByPlaceholderText('Min');
+    const maxInput = screen.getByPlaceholderText('Max');
 
     await userEvent.type(minInput, '128');
     await act(async () => { minInput.blur(); });
@@ -643,6 +654,7 @@ describe('BPM unified filter', () => {
 describe('Camelot multi-select', () => {
   it('dropdown stays open after toggling a code', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -659,6 +671,7 @@ describe('Camelot multi-select', () => {
 
   it('allows selecting multiple codes in one session', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -679,6 +692,7 @@ describe('Camelot multi-select', () => {
 
   it('closes on Escape key', async () => {
     await renderApp();
+    await expandFilterTray();
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click();
@@ -1070,8 +1084,9 @@ describe('Clear Filters with BPM', () => {
   it('Clear Filters resets BPM min/max alongside other filters', async () => {
     const user = userEvent.setup();
     await renderApp();
+    await expandFilterTray();
 
-    const minInput = screen.getByPlaceholderText('BPM Min');
+    const minInput = screen.getByPlaceholderText('Min');
     await user.type(minInput, '128');
     await act(async () => { minInput.blur(); });
     expect(minInput).toHaveValue(128);

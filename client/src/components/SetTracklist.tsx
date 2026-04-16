@@ -32,6 +32,7 @@ interface Props {
   onAddTrack: (trackId: number, title?: string) => void;
   onClearAll?: () => void;
   dndDisabled?: boolean;
+  dndIdPrefix?: string;
 }
 
 function NoteInput({ trackId, initialNote, onSave }: {
@@ -86,7 +87,7 @@ function ConfirmDeleteModal({ count, onConfirm, onCancel }: {
   );
 }
 
-function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, dndDisabled, reorderDisabled, isSelected, onToggleSelect }: {
+function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, dndDisabled, reorderDisabled, isSelected, onToggleSelect, selectedIds, dndIdPrefix }: {
   entry: TracklistEntry;
   index: number;
   total: number;
@@ -99,19 +100,23 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
   reorderDisabled?: boolean;
   isSelected: boolean;
   onToggleSelect: (trackId: number) => void;
+  selectedIds: Set<number>;
+  dndIdPrefix?: string;
 }) {
+  const prefix = dndIdPrefix ?? '';
   const effectiveDndDisabled = dndDisabled || reorderDisabled;
   const title = cleanTitle(entry.track, entry.track_id);
-  const payload: DragPayload = { trackId: entry.track_id, title, source: 'tracklist' };
+  const multiIds = isSelected && selectedIds.size > 1 ? Array.from(selectedIds) : undefined;
+  const payload: DragPayload = { trackId: entry.track_id, title, source: 'tracklist', selectedTrackIds: multiIds };
   const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
-    id: `tracklist-track-${entry.track_id}`,
+    id: `${prefix}tracklist-track-${entry.track_id}`,
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
     disabled: effectiveDndDisabled,
   });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `drop-tracklist-row-${index}`,
+    id: `${prefix}drop-tracklist-row-${index}`,
     data: { index, trackId: entry.track_id },
     disabled: effectiveDndDisabled,
   });
@@ -196,8 +201,9 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
   );
 }
 
-export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, onAddTrack, onClearAll, dndDisabled }: Props) {
-  const { setNodeRef: setTracklistDropRef, isOver: isTracklistOver } = useDroppable({ id: 'drop-tracklist', disabled: dndDisabled });
+export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, onAddTrack, onClearAll, dndDisabled, dndIdPrefix }: Props) {
+  const prefix = dndIdPrefix ?? '';
+  const { setNodeRef: setTracklistDropRef, isOver: isTracklistOver } = useDroppable({ id: `${prefix}drop-tracklist`, disabled: dndDisabled });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
@@ -388,6 +394,8 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
                   reorderDisabled={sorting.length > 0}
                   isSelected={selectedIds.has(entry.track_id)}
                   onToggleSelect={handleToggleSelect}
+                  selectedIds={selectedIds}
+                  dndIdPrefix={dndIdPrefix}
                 />
               ))}
             </tbody>

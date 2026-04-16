@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, useDeferredValue } f
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, type DragMoveEvent, PointerSensor, useSensor, useSensors, MeasuringStrategy, pointerWithin, rectIntersection, type CollisionDetection } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { SearchPanel } from './components/SearchPanel';
-import { FilterBar } from './components/FilterBar';
+import { FilterBar, FilterToggleButton } from './components/FilterBar';
 import { TrackTable } from './components/TrackTable';
 import { MatchesPanel } from './components/MatchesPanel';
 import { MatchDetail } from './components/MatchDetail';
@@ -166,10 +166,19 @@ export default function App() {
     filters,
     filteredTracks,
     filterCacheKey,
+    activeFilterCount,
     setCamelotCodes,
     setBpmMin,
     setBpmMax,
+    setArtist,
+    setLabel,
+    setGenre,
+    setDateAddedMin,
+    setDateAddedMax,
+    clearAllFilters,
   } = useTrackFilters(allTracks, effectiveSearchText);
+
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   const {
     weights,
@@ -449,13 +458,11 @@ export default function App() {
   );
 
   const handleClearFilters = useCallback(() => {
-    setCamelotCodes([]);
-    setBpmMin(undefined);
-    setBpmMax(undefined);
+    clearAllFilters();
     if (!selectedTrack) {
       setSearchText('');
     }
-  }, [setCamelotCodes, setBpmMin, setBpmMax, selectedTrack]);
+  }, [clearAllFilters, selectedTrack]);
 
   const handleClearSelectedTrack = useCallback(() => {
     setDetailMatch(null);
@@ -541,8 +548,12 @@ export default function App() {
     if (!over) return;
     const payload = active.data.current as DragPayload | undefined;
     if (!payload) return;
-    const targetId = String(over.id);
+    const rawTargetId = String(over.id);
+    const targetId = rawTargetId.startsWith('alt-') ? rawTargetId.slice(4) : rawTargetId;
     const sb = setBuilderRef.current;
+    const trackIds = payload.selectedTrackIds && payload.selectedTrackIds.length > 1
+      ? payload.selectedTrackIds
+      : [payload.trackId];
 
     if (payload.source === 'tracklist' && targetId.startsWith('drop-tracklist-row-')) {
       const newPosition = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
@@ -572,18 +583,27 @@ export default function App() {
         if (targetId === 'dock-set') setActivePanel('set');
         return;
       }
-      addToTracklistFn(payload.trackId, payload.title);
+      for (const tid of trackIds) {
+        const t = allTracks.find(tr => tr.id === tid);
+        addToTracklistFn(tid, t?.title ?? payload.title);
+      }
       if (targetId === 'dock-set') setActivePanel('set');
     } else if (targetId === 'drop-pool') {
-      if (
-        (sb.activeSet && sb.activeSet.pool.some(e => e.track_id === payload.trackId))
-        || sb.isPoolAddInFlight(payload.trackId)
-      ) {
+      const poolSet = sb.activeSet ? new Set(sb.activeSet.pool.map(e => e.track_id)) : new Set<number>();
+      let anySkipped = false;
+      for (const tid of trackIds) {
+        if (poolSet.has(tid) || sb.isPoolAddInFlight(tid)) {
+          anySkipped = true;
+          continue;
+        }
+        const t = allTracks.find(tr => tr.id === tid);
+        addToPoolFn(tid, t?.title ?? payload.title);
+      }
+      if (anySkipped && trackIds.length === 1) {
         setDndWarning('Track already in pool');
         setTimeout(() => setDndWarning(null), 2000);
         return;
       }
-      addToPoolFn(payload.trackId, payload.title);
       if (!poolExpanded) handlePoolExpandedChange(true);
     } else if (targetId === 'dock-explorer') {
       if (sb.activeSet) {
@@ -632,7 +652,7 @@ export default function App() {
         {/* ─── Top Anchor Zone (hidden in Set Mode) ─── */}
         {!isSetMode && (
           <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: '28vh' }}>
-            {/* ─── Unified search + filter row ─── */}
+            {/* ─── Search row with filter toggle ─── */}
             <div className="controls-strip">
               <SearchPanel
                 selectedTrack={selectedTrack}
@@ -641,14 +661,10 @@ export default function App() {
                 onClearSelectedTrack={handleClearSelectedTrack}
                 searchText={searchText}
               />
-              <FilterBar
-                camelotCodes={filters.camelotCodes}
-                bpmMin={filters.bpmMin}
-                bpmMax={filters.bpmMax}
-                setCamelotCodes={setCamelotCodes}
-                setBpmMin={setBpmMin}
-                setBpmMax={setBpmMax}
-                onClearFilters={handleClearFilters}
+              <FilterToggleButton
+                expanded={filtersExpanded}
+                onToggle={() => setFiltersExpanded(prev => !prev)}
+                activeCount={activeFilterCount}
               />
               <div className="controls-strip-actions">
                 <button
@@ -669,6 +685,30 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* ─── Expandable filter tray ─── */}
+            <FilterBar
+              expanded={filtersExpanded}
+              onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
+              activeFilterCount={activeFilterCount}
+              camelotCodes={filters.camelotCodes}
+              bpmMin={filters.bpmMin}
+              bpmMax={filters.bpmMax}
+              artist={filters.artist}
+              label={filters.label}
+              genre={filters.genre}
+              dateAddedMin={filters.dateAddedMin}
+              dateAddedMax={filters.dateAddedMax}
+              setCamelotCodes={setCamelotCodes}
+              setBpmMin={setBpmMin}
+              setBpmMax={setBpmMax}
+              setArtist={setArtist}
+              setLabel={setLabel}
+              setGenre={setGenre}
+              setDateAddedMin={setDateAddedMin}
+              setDateAddedMax={setDateAddedMax}
+              onClearFilters={handleClearFilters}
+            />
 
             {traitsError && (
               <p className="table-status table-status--error" style={{ margin: '0 var(--content-gutter)' }}>
@@ -857,6 +897,7 @@ export default function App() {
                     poolExpanded={true}
                     onPoolExpandedChange={handlePoolExpandedChange}
                     dndDisabled={activePanel !== 'explorer'}
+                    dndIdPrefix="alt-"
                   />
                 </div>
                 <div className="set-mode-right">
@@ -1006,6 +1047,9 @@ export default function App() {
         {dragItem && (
           <div className="dnd-drag-preview">
             {dragItem.title}
+            {dragItem.selectedTrackIds && dragItem.selectedTrackIds.length > 1 && (
+              <span className="dnd-drag-preview__count"> +{dragItem.selectedTrackIds.length - 1}</span>
+            )}
           </div>
         )}
       </DragOverlay>

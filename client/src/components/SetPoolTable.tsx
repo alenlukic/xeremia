@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { DndContext, closestCenter, useDraggable, useDroppable } from '@dnd-kit/core';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
@@ -8,6 +9,8 @@ import type { DragPayload } from '../dnd';
 import { PlayButton } from './PlayButton';
 import { SortTierBar } from './SortTierBar';
 import type { SortDescriptor, SortColumn } from './SortTierBar';
+
+type PoolTab = 'all' | 'groups' | number;
 
 const POOL_SORT_COLUMNS: SortColumn[] = [
   { id: 'insertion_order', label: '#' },
@@ -32,6 +35,7 @@ interface Props {
   onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   onRemoveSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   dndDisabled?: boolean;
+  dndIdPrefix?: string;
 }
 
 function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
@@ -41,7 +45,7 @@ function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
   return a.insertion_order - b.insertion_order;
 }
 
-function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dndDisabled, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember }: {
+function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dndDisabled, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember, dndIdPrefix }: {
   entry: PoolEntry;
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
@@ -51,11 +55,13 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dn
   memberSubgroupIds: Set<number>;
   onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   onRemoveSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  dndIdPrefix?: string;
 }) {
+  const prefix = dndIdPrefix ?? '';
   const title = cleanTitle(entry.track, entry.track_id);
   const payload: DragPayload = { trackId: entry.track_id, title, source: 'pool' };
   const { listeners, setNodeRef, isDragging } = useDraggable({
-    id: `pool-track-${entry.track_id}`,
+    id: `${prefix}pool-track-${entry.track_id}`,
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
     disabled: dndDisabled,
@@ -131,22 +137,87 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dn
   );
 }
 
-function SubgroupBar({
+function PoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember }: {
+  entry: PoolEntry;
+  onRemove: (trackId: number) => void;
+  onMoveToTracklist: (trackId: number) => void;
+  onToggleStar: (trackId: number, starred: boolean) => void;
+  subgroups: PoolSubgroup[];
+  memberSubgroupIds: Set<number>;
+  onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  onRemoveSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+}) {
+  const title = cleanTitle(entry.track, entry.track_id);
+
+  const handleSubgroupToggle = useCallback((sgId: number) => {
+    if (memberSubgroupIds.has(sgId)) {
+      onRemoveSubgroupMember(sgId, entry.id);
+    } else {
+      onAddSubgroupMember(sgId, entry.id);
+    }
+  }, [memberSubgroupIds, entry.id, onAddSubgroupMember, onRemoveSubgroupMember]);
+
+  return (
+    <tr>
+      <td className="set-ws-cell-star">
+        <button
+          className={`star-toggle${entry.starred ? ' starred' : ''}`}
+          onClick={() => onToggleStar(entry.track_id, !entry.starred)}
+          title={entry.starred ? 'Unstar' : 'Star'}
+          aria-label={entry.starred ? 'Unstar track' : 'Star track'}
+        >
+          {entry.starred ? '★' : '☆'}
+        </button>
+      </td>
+      <td className="play-cell">
+        <PlayButton trackId={entry.track_id} title={title} />
+      </td>
+      <td className="mono set-ws-cell-num">{entry.insertion_order + 1}</td>
+      <td className="set-ws-cell-title">{title}</td>
+      <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>
+      <td className="mono set-ws-cell-bpm">{entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}</td>
+      {subgroups.length > 0 && (
+        <td className="set-ws-cell-subgroups">
+          <div className="subgroup-chips">
+            {subgroups.map(sg => (
+              <button
+                key={sg.id}
+                className={`subgroup-chip${memberSubgroupIds.has(sg.id) ? ' active' : ''}`}
+                onClick={() => handleSubgroupToggle(sg.id)}
+                title={memberSubgroupIds.has(sg.id) ? `Remove from ${sg.name}` : `Add to ${sg.name}`}
+              >
+                {sg.name}
+              </button>
+            ))}
+          </div>
+        </td>
+      )}
+      <td className="set-ws-cell-actions">
+        <div className="set-ws-actions-group">
+          <button className="set-action-btn" onClick={() => onMoveToTracklist(entry.track_id)} title="Move to tracklist">To Tracklist</button>
+          <button className="set-action-btn set-action-btn--danger" onClick={() => onRemove(entry.track_id)} title="Remove from pool">×</button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function PoolTabBar({
   subgroups,
   onCreateSubgroup,
   onRenameSubgroup,
   onDeleteSubgroup,
   onReorderSubgroups,
-  activeFilter,
-  onSetActiveFilter,
+  activeTab,
+  onTabChange,
 }: {
   subgroups: PoolSubgroup[];
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>;
   onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>;
   onDeleteSubgroup: (subgroupId: number) => Promise<boolean>;
   onReorderSubgroups: (subgroupIds: number[]) => Promise<boolean>;
-  activeFilter: number | null;
-  onSetActiveFilter: (id: number | null) => void;
+  activeTab: PoolTab;
+  onTabChange: (tab: PoolTab) => void;
 }) {
   const [showNewInput, setShowNewInput] = useState(false);
   const [newName, setNewName] = useState('');
@@ -156,11 +227,10 @@ function SubgroupBar({
   const handleCreate = useCallback(async () => {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    const sg = await onCreateSubgroup(trimmed);
+    await onCreateSubgroup(trimmed);
     setNewName('');
     setShowNewInput(false);
-    if (sg) onSetActiveFilter(sg.id);
-  }, [newName, onCreateSubgroup, onSetActiveFilter]);
+  }, [newName, onCreateSubgroup]);
 
   const handleRename = useCallback(async (id: number) => {
     const trimmed = editName.trim();
@@ -185,15 +255,25 @@ function SubgroupBar({
   }, [subgroups, onReorderSubgroups]);
 
   return (
-    <div className="subgroup-bar">
+    <div className="pool-tab-bar" role="tablist" aria-label="Pool view">
       <button
-        className={`subgroup-filter-btn${activeFilter === null ? ' active' : ''}`}
-        onClick={() => onSetActiveFilter(null)}
+        role="tab"
+        className={`pool-tab pool-tab--default${activeTab === 'all' ? ' pool-tab--active' : ''}`}
+        aria-selected={activeTab === 'all'}
+        onClick={() => onTabChange('all')}
       >
         All
       </button>
+      <button
+        role="tab"
+        className={`pool-tab pool-tab--default${activeTab === 'groups' ? ' pool-tab--active' : ''}`}
+        aria-selected={activeTab === 'groups'}
+        onClick={() => onTabChange('groups')}
+      >
+        Groups
+      </button>
       {subgroups.map((sg, idx) => (
-        <div key={sg.id} className="subgroup-tag-wrapper">
+        <div key={sg.id} className="pool-tab-wrapper">
           {editingId === sg.id ? (
             <input
               className="subgroup-rename-input"
@@ -208,15 +288,17 @@ function SubgroupBar({
             />
           ) : (
             <button
-              className={`subgroup-filter-btn${activeFilter === sg.id ? ' active' : ''}`}
-              onClick={() => onSetActiveFilter(activeFilter === sg.id ? null : sg.id)}
+              role="tab"
+              className={`pool-tab${activeTab === sg.id ? ' pool-tab--active' : ''}`}
+              aria-selected={activeTab === sg.id}
+              onClick={() => onTabChange(sg.id)}
               onDoubleClick={() => { setEditingId(sg.id); setEditName(sg.name); }}
-              title={`Filter by ${sg.name} (double-click to rename)`}
+              title={`View ${sg.name} (double-click to rename)`}
             >
               {sg.name}
             </button>
           )}
-          <div className="subgroup-tag-controls">
+          <div className="pool-tab-controls">
             {idx > 0 && (
               <button className="subgroup-ctrl-btn" onClick={() => handleMoveUp(idx)} title="Move left" aria-label={`Move ${sg.name} left`}>‹</button>
             )}
@@ -228,7 +310,7 @@ function SubgroupBar({
               onClick={() => {
                 if (window.confirm(`Delete subgroup "${sg.name}"? Tracks will remain in the pool.`)) {
                   onDeleteSubgroup(sg.id);
-                  if (activeFilter === sg.id) onSetActiveFilter(null);
+                  if (activeTab === sg.id) onTabChange('all');
                 }
               }}
               title={`Delete ${sg.name}`}
@@ -269,19 +351,130 @@ function SubgroupBar({
   );
 }
 
+function SubgroupSection({
+  subgroup,
+  entries,
+  subgroups,
+  membershipByEntry,
+  sorting,
+  index,
+  onRemove,
+  onMoveToTracklist,
+  onToggleStar,
+  onAddSubgroupMember,
+  onRemoveSubgroupMember,
+}: {
+  subgroup: PoolSubgroup;
+  entries: PoolEntry[];
+  subgroups: PoolSubgroup[];
+  membershipByEntry: Map<number, Set<number>>;
+  sorting: SortDescriptor[];
+  index: number;
+  onRemove: (trackId: number) => void;
+  onMoveToTracklist: (trackId: number) => void;
+  onToggleStar: (trackId: number, starred: boolean) => void;
+  onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  onRemoveSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+}) {
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
+    id: `section-${subgroup.id}`,
+    attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
+  });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `section-${subgroup.id}` });
+
+  const ref = useCallback((node: HTMLDivElement | null) => {
+    setDragRef(node);
+    setDropRef(node);
+  }, [setDragRef, setDropRef]);
+
+  const sorted = useMemo(() => [...entries].sort((a, b) => {
+    for (const s of sorting) {
+      const cmp = compareByColumn(a, b, s.id);
+      if (cmp !== 0) return s.desc ? -cmp : cmp;
+    }
+    return 0;
+  }), [entries, sorting]);
+
+  const style: React.CSSProperties = {
+    transform: transform ? `translate3d(0, ${transform.y}px, 0)` : undefined,
+    opacity: isDragging ? 0.5 : 1,
+    position: isDragging ? 'relative' : undefined,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <div
+      ref={ref}
+      style={style}
+      className={`subgroup-section${index % 2 === 1 ? ' subgroup-section--alt' : ''}${isOver && !isDragging ? ' subgroup-section--drop-target' : ''}`}
+      data-subgroup-id={subgroup.id}
+    >
+      <div className="subgroup-section-header" {...attributes} {...listeners}>
+        <span className="subgroup-section-drag-handle" aria-hidden="true">⠿</span>
+        <h4 className="subgroup-section-title">{subgroup.name}</h4>
+        <span className="subgroup-section-count">{entries.length} track{entries.length !== 1 ? 's' : ''}</span>
+      </div>
+      {sorted.length === 0 ? (
+        <p className="set-empty-tracks">No tracks in {subgroup.name}.</p>
+      ) : (
+        <table className="set-pool-table">
+          <colgroup>
+            <col className="set-ws-col-star" />
+            <col className="set-ws-col-play" />
+            <col className="set-ws-col-num" />
+            <col className="set-ws-col-title" />
+            <col className="set-ws-col-key" />
+            <col className="set-ws-col-bpm" />
+            {subgroups.length > 0 && <col className="set-ws-col-subgroups" />}
+            <col className="set-ws-col-actions-pool" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
+              <th className="set-ws-th" style={{ width: 32 }} />
+              <th className="set-ws-th">#</th>
+              <th className="set-ws-th">Title</th>
+              <th className="set-ws-th">Key</th>
+              <th className="set-ws-th">BPM</th>
+              {subgroups.length > 0 && <th className="set-ws-th">Groups</th>}
+              <th className="set-ws-th set-ws-th-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map(entry => (
+              <PoolRow
+                key={entry.id}
+                entry={entry}
+                onRemove={onRemove}
+                onMoveToTracklist={onMoveToTracklist}
+                onToggleStar={onToggleStar}
+                subgroups={subgroups}
+                memberSubgroupIds={membershipByEntry.get(entry.id) ?? new Set()}
+                onAddSubgroupMember={onAddSubgroupMember}
+                onRemoveSubgroupMember={onRemoveSubgroupMember}
+              />
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export function SetPoolTable({
   pool, subgroups, subgroupMemberships,
   onRemove, onMoveToTracklist, onToggleStar, onAddTrack, onClearAll,
   onCreateSubgroup, onRenameSubgroup, onDeleteSubgroup, onReorderSubgroups,
   onAddSubgroupMember, onRemoveSubgroupMember,
-  dndDisabled,
+  dndDisabled, dndIdPrefix,
 }: Props) {
-  const { setNodeRef: setPoolDropRef, isOver: isPoolOver } = useDroppable({ id: 'drop-pool', disabled: dndDisabled });
+  const prefix = dndIdPrefix ?? '';
+  const { setNodeRef: setPoolDropRef, isOver: isPoolOver } = useDroppable({ id: `${prefix}drop-pool`, disabled: dndDisabled });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [sorting, setSorting] = useState<SortDescriptor[]>([{ id: 'insertion_order', desc: false }]);
-  const [subgroupFilter, setSubgroupFilter] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<PoolTab>('all');
   const pendingSubgroupAssign = useRef<{ trackId: number; subgroupId: number } | null>(null);
 
   useEffect(() => {
@@ -329,14 +522,14 @@ export function SetPoolTable({
   }, []);
 
   const handleSearchSelect = useCallback((s: SearchSuggestion) => {
-    if (subgroupFilter !== null) {
-      pendingSubgroupAssign.current = { trackId: s.id, subgroupId: subgroupFilter };
+    if (typeof activeTab === 'number') {
+      pendingSubgroupAssign.current = { trackId: s.id, subgroupId: activeTab };
     }
     onAddTrack(s.id, s.title);
     setSearchQuery('');
     setSearchResults([]);
     setShowSearch(false);
-  }, [onAddTrack, subgroupFilter]);
+  }, [onAddTrack, activeTab]);
 
   const handleSort = useCallback((col: string, e: React.MouseEvent) => {
     setSorting(prev => {
@@ -358,11 +551,26 @@ export function SetPoolTable({
   }, []);
 
   const filteredPool = useMemo(() => {
-    if (subgroupFilter === null) return pool;
-    const entryIds = memberEntriesBySubgroup.get(subgroupFilter);
+    if (activeTab === 'all' || activeTab === 'groups') return pool;
+    const entryIds = memberEntriesBySubgroup.get(activeTab);
     if (!entryIds) return [];
     return pool.filter(e => entryIds.has(e.id));
-  }, [pool, subgroupFilter, memberEntriesBySubgroup]);
+  }, [pool, activeTab, memberEntriesBySubgroup]);
+
+  const handleSectionDragEnd = useCallback((event: { active: { id: string | number }; over: { id: string | number } | null }) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const toNum = (v: string | number) => typeof v === 'number' ? v : Number(v.replace('section-', ''));
+    const activeId = toNum(active.id);
+    const overId = toNum(over.id);
+    const oldIndex = subgroups.findIndex(sg => sg.id === activeId);
+    const newIndex = subgroups.findIndex(sg => sg.id === overId);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const ids = subgroups.map(sg => sg.id);
+    const [moved] = ids.splice(oldIndex, 1);
+    ids.splice(newIndex, 0, moved);
+    onReorderSubgroups(ids);
+  }, [subgroups, onReorderSubgroups]);
 
   const sorted = useMemo(() => [...filteredPool].sort((a, b) => {
     for (const s of sorting) {
@@ -424,14 +632,14 @@ export function SetPoolTable({
           )}
         </div>
       </div>
-      <SubgroupBar
+      <PoolTabBar
         subgroups={subgroups}
         onCreateSubgroup={onCreateSubgroup}
         onRenameSubgroup={onRenameSubgroup}
         onDeleteSubgroup={onDeleteSubgroup}
         onReorderSubgroups={onReorderSubgroups}
-        activeFilter={subgroupFilter}
-        onSetActiveFilter={setSubgroupFilter}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
       />
       <SortTierBar
         sorting={sorting}
@@ -439,9 +647,42 @@ export function SetPoolTable({
         onSortingChange={setSorting}
       />
       <div className="set-table-scroll-shell">
-        {pool.length === 0 ? (
+        {activeTab === 'groups' ? (
+          subgroups.length === 0 ? (
+            <p className="set-empty-tracks">No subgroups yet. Create one using the + button above.</p>
+          ) : (
+            <DndContext
+              collisionDetection={closestCenter}
+              onDragEnd={handleSectionDragEnd}
+              modifiers={[restrictToVerticalAxis]}
+            >
+              <div className="subgroup-sections">
+                {subgroups.map((sg, idx) => {
+                  const entryIds = memberEntriesBySubgroup.get(sg.id);
+                  const entries = entryIds ? pool.filter(e => entryIds.has(e.id)) : [];
+                  return (
+                    <SubgroupSection
+                      key={sg.id}
+                      subgroup={sg}
+                      entries={entries}
+                      subgroups={subgroups}
+                      membershipByEntry={membershipByEntry}
+                      sorting={sorting}
+                      index={idx}
+                      onRemove={onRemove}
+                      onMoveToTracklist={onMoveToTracklist}
+                      onToggleStar={onToggleStar}
+                      onAddSubgroupMember={onAddSubgroupMember}
+                      onRemoveSubgroupMember={onRemoveSubgroupMember}
+                    />
+                  );
+                })}
+              </div>
+            </DndContext>
+          )
+        ) : pool.length === 0 ? (
           <p className="set-empty-tracks">Pool is empty. Search above or add tracks from other tabs.</p>
-        ) : sorted.length === 0 && subgroupFilter !== null ? (
+        ) : sorted.length === 0 && typeof activeTab === 'number' ? (
           <p className="set-empty-tracks">No tracks in this subgroup yet.</p>
         ) : (
           <table className="set-pool-table">
@@ -488,6 +729,7 @@ export function SetPoolTable({
                   memberSubgroupIds={membershipByEntry.get(entry.id) ?? new Set()}
                   onAddSubgroupMember={onAddSubgroupMember}
                   onRemoveSubgroupMember={onRemoveSubgroupMember}
+                  dndIdPrefix={dndIdPrefix}
                 />
               ))}
             </tbody>

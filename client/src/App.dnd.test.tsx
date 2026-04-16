@@ -649,3 +649,222 @@ describe('DnD: tracklist row-to-row reorder', () => {
     expect(mockSB.addToTracklist).not.toHaveBeenCalled();
   });
 });
+
+describe('DnD: multi-select payload handling', () => {
+  beforeEach(() => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [],
+        tracklist: [
+          { id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false, track: { id: 10, title: 'Track 10', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+          { id: 2, set_id: 1, track_id: 20, position: 1, note: '', starred: false, track: { id: 20, title: 'Track 20', artist_names: [], bpm: 130, key: 'D', camelot_code: '10B', genre: null, label: null, energy: null } },
+          { id: 3, set_id: 1, track_id: 30, position: 2, note: '', starred: false, track: { id: 30, title: 'Track 30', artist_names: [], bpm: 125, key: 'A', camelot_code: '11B', genre: null, label: null, energy: null } },
+        ],
+        explorer_trees: [],
+        explorer_nodes: [],
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+  });
+
+  it('multi-select drop on drop-pool adds all selected tracks', async () => {
+    await renderApp();
+
+    const multiPayload: DragPayload = {
+      trackId: 1,
+      title: 'Track 1',
+      source: 'tracklist',
+      selectedTrackIds: [1, 2, 3],
+    };
+    fireDragEnd('tracklist-track-1', multiPayload, 'drop-pool');
+
+    expect(mockSB.addToPool).toHaveBeenCalledTimes(3);
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 2');
+    expect(mockSB.addToPool).toHaveBeenCalledWith(3, 'Track 3');
+  });
+
+  it('multi-select drop on drop-tracklist adds all selected tracks', async () => {
+    await renderApp();
+
+    const multiPayload: DragPayload = {
+      trackId: 1,
+      title: 'Track 1',
+      source: 'browse',
+      selectedTrackIds: [1, 2, 3],
+    };
+    fireDragEnd('browse-track-1', multiPayload, 'drop-tracklist');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledTimes(3);
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(2, 'Track 2');
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(3, 'Track 3');
+  });
+
+  it('multi-select drop on drop-pool skips duplicates', async () => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [{ id: 1, set_id: 1, track_id: 1, insertion_order: 0, starred: false, track: null }],
+        tracklist: [],
+        explorer_trees: [],
+        explorer_nodes: [],
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    const multiPayload: DragPayload = {
+      trackId: 1,
+      title: 'Track 1',
+      source: 'tracklist',
+      selectedTrackIds: [1, 2],
+    };
+    fireDragEnd('tracklist-track-1', multiPayload, 'drop-pool');
+
+    expect(mockSB.addToPool).toHaveBeenCalledTimes(1);
+    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 2');
+  });
+
+  it('single-track payload without selectedTrackIds still works for drop-tracklist', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-tracklist');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledTimes(1);
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('single-track payload without selectedTrackIds still works for drop-pool', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-pool');
+
+    expect(mockSB.addToPool).toHaveBeenCalledTimes(1);
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+  });
+});
+
+describe('DnD: Set tab parity with Explorer', () => {
+  beforeEach(() => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [],
+        tracklist: [],
+        explorer_trees: [],
+        explorer_nodes: [],
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+  });
+
+  it('browse drag to drop-tracklist adds track (same as Explorer context)', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-tracklist');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('browse drag to drop-pool adds track (same as Explorer context)', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-pool');
+
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('matches drag to drop-tracklist adds track', async () => {
+    await renderApp();
+
+    const matchPayload: DragPayload = { trackId: 1, title: 'Track 1', source: 'matches' };
+    fireDragEnd('match-track-1', matchPayload, 'drop-tracklist');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('matches drag to drop-pool adds track', async () => {
+    await renderApp();
+
+    const matchPayload: DragPayload = { trackId: 1, title: 'Track 1', source: 'matches' };
+    fireDragEnd('match-track-1', matchPayload, 'drop-pool');
+
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('pool drag to drop-tracklist adds track', async () => {
+    await renderApp();
+
+    fireDragEnd('pool-track-1', poolPayload, 'drop-tracklist');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+});
+
+describe('DnD: alt-prefix normalization (Explorer panel droppable IDs)', () => {
+  beforeEach(() => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [],
+        tracklist: [
+          { id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false, track: { id: 10, title: 'Track 10', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+        ],
+        explorer_trees: [],
+        explorer_nodes: [],
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+  });
+
+  it('drop on alt-drop-tracklist adds track (Explorer workspace panel)', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'alt-drop-tracklist');
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('drop on alt-drop-pool adds track (Explorer workspace panel)', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'alt-drop-pool');
+
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+  });
+
+  it('tracklist reorder via alt-drop-tracklist-row works', async () => {
+    await renderApp();
+
+    const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
+    fireDragEnd('alt-tracklist-track-10', reorderPayload, 'alt-drop-tracklist-row-0');
+
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+  });
+
+  it('multi-select drop on alt-drop-pool adds all selected tracks', async () => {
+    await renderApp();
+
+    const multiPayload: DragPayload = {
+      trackId: 1,
+      title: 'Track 1',
+      source: 'browse',
+      selectedTrackIds: [1, 2],
+    };
+    fireDragEnd('browse-track-1', multiPayload, 'alt-drop-pool');
+
+    expect(mockSB.addToPool).toHaveBeenCalledTimes(2);
+    expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
+    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 2');
+  });
+});

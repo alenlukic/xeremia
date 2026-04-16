@@ -927,5 +927,47 @@
     "build_status": "PASS",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260416T042608Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Scope\n- Implement the `DEVELOPMENT_CONTRACT_2.md` UI/filter expansion for the client track table only.\n\n## Goals\n- Replace inline search-row filters ",
+    "published_at": "2026-04-16T05:32:33.110078+00:00",
+    "path": ".harness/history/ledgers/20260416T042608Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 13,
+    "eval_score": 85,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260416T042609Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Contract\n- Source contract: `.harness/history/runs/20260416T042259Z-delivery-pool-subgroups-rework-expanded-f/DEVELOPMENT_CONTRACT_3.md`\n- Parent con",
+    "published_at": "2026-04-16T05:37:33.816756+00:00",
+    "path": ".harness/history/ledgers/20260416T042609Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 13,
+    "eval_score": 88,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260416T042544Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\nExecute the delivery pipeline for `DEVELOPMENT_CONTRACT_1.md` only.\n\n## Scope\n- Rework client-side pool subgroup navigation from pills to tabs.\n- Preser",
+    "published_at": "2026-04-16T05:53:41.086794+00:00",
+    "path": ".harness/history/ledgers/20260416T042544Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 3,
+    "eval_score": 84,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "LOW"
   }
 ]
