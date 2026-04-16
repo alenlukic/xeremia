@@ -22,6 +22,7 @@ interface Props {
   clearTracklist: () => void;
   moveTracklistToPool: (trackId: number) => void;
   reorderTracklist: (trackId: number, newPosition: number) => void;
+  addToTracklistAtPosition: (trackId: number, position: number, title?: string) => void;
   updateTracklistNote: (trackId: number, note: string) => void;
   togglePoolStar: (trackId: number, starred: boolean) => void;
   toggleTracklistStar: (trackId: number, starred: boolean) => void;
@@ -44,7 +45,7 @@ export const SetBuilder = memo(function SetBuilder({
   sets, activeSetId, activeSet, loading, error, pendingAdd,
   createSet, selectSet, deleteSet,
   removeFromPool, clearPool, movePoolToTracklist, addToPool,
-  removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist, updateTracklistNote,
+  removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist, addToTracklistAtPosition, updateTracklistNote,
   togglePoolStar, toggleTracklistStar, addToTracklist,
   resolvePendingAdd, clearPendingAdd, clearError,
   createSubgroup, renameSubgroup, deleteSubgroup,
@@ -218,6 +219,7 @@ export const SetBuilder = memo(function SetBuilder({
           clearTracklist={clearTracklist}
           moveTracklistToPool={moveTracklistToPool}
           reorderTracklist={reorderTracklist}
+          addToTracklistAtPosition={addToTracklistAtPosition}
           updateTracklistNote={updateTracklistNote}
           togglePoolStar={togglePoolStar}
           toggleTracklistStar={toggleTracklistStar}

@@ -14,27 +14,6 @@ vi.mock('../hooks/useAudioPlayer', () => ({
   }),
 }));
 
-vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: vi.fn(({ count }: { count: number }) => {
-    if (!count) {
-      return {
-        getVirtualItems: () => [],
-        getTotalSize: () => 0,
-        measureElement: vi.fn(),
-      };
-    }
-    const items: Array<{ index: number; start: number; size: number; end: number; key: number; lane: number }> = [];
-    for (let i = 0; i < count; i++) {
-      items.push({ index: i, start: i * 40, size: 40, end: (i + 1) * 40, key: i, lane: 0 });
-    }
-    return {
-      getVirtualItems: () => items,
-      getTotalSize: () => count * 40,
-      measureElement: vi.fn(),
-    };
-  }),
-}));
-
 function renderWithDnd(ui: ReactElement, options?: RenderOptions) {
   return render(<DndContext>{ui}</DndContext>, options);
 }
@@ -181,7 +160,7 @@ describe('MatchesPanel', () => {
     });
   });
 
-  describe('virtual row cell widths match header widths', () => {
+  describe('row cell widths match header widths', () => {
     it('body cells have the same explicit widths as their header counterparts', () => {
       renderWithDnd(
         <MatchesPanel
@@ -201,20 +180,39 @@ describe('MatchesPanel', () => {
         expect(bw).toBe(hw);
       }
     });
+  });
 
-    it('virtual rows have data-index attribute for measurement', () => {
+  describe('large bucket row reachability', () => {
+    it('renders all 36 rows when Higher bucket has 36 items', async () => {
+      const higherMatches = Array.from({ length: 36 }, (_, i) =>
+        makeMatch({ candidate_id: i + 1, bucket: 'higher_key', title: `Track ${i + 1}` })
+      );
       renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
-          matches={[makeMatch(), makeMatch({ candidate_id: 99 })]}
+          matches={higherMatches}
           loading={false}
         />
       );
+      await userEvent.click(screen.getByRole('button', { name: /Higher/ }));
       const bodyRows = document.querySelectorAll('.matches-table tbody tr');
-      bodyRows.forEach((row) => {
-        expect(row.hasAttribute('data-index')).toBe(true);
-        expect(Number.isNaN(Number(row.getAttribute('data-index')))).toBe(false);
-      });
+      expect(bodyRows.length).toBe(36);
+    });
+
+    it('renders all 14 rows when Lower bucket has 14 items', async () => {
+      const lowerMatches = Array.from({ length: 14 }, (_, i) =>
+        makeMatch({ candidate_id: i + 1, bucket: 'lower_key', title: `Track ${i + 1}` })
+      );
+      renderWithDnd(
+        <MatchesPanel
+          selectedTrack={selectedTrack}
+          matches={lowerMatches}
+          loading={false}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Lower/ }));
+      const bodyRows = document.querySelectorAll('.matches-table tbody tr');
+      expect(bodyRows.length).toBe(14);
     });
   });
 

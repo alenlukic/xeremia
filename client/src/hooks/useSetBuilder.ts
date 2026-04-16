@@ -287,12 +287,35 @@ export function useSetBuilder() {
   }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const reorderTracklist = useCallback(async (trackId: number, newPosition: number) => {
-    if (activeSetId === null) return;
+    if (activeSetId === null || trackId <= 0) return;
     try {
       await tracklistReorder(activeSetId, trackId, newPosition);
       await refreshActive();
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not reorder tracklist.'));
+    }
+  }, [activeSetId, refreshActive]);
+
+  const addToTracklistAtPosition = useCallback(async (trackId: number, position: number, title?: string) => {
+    if (trackId <= 0) return;
+    if (activeSetId === null) {
+      setPendingAdd({ type: 'tracklist', trackId, title: title ?? `Track #${trackId}` });
+      return;
+    }
+    let added = false;
+    try {
+      await tracklistAdd(activeSetId, trackId);
+      added = true;
+      if (position >= 0) {
+        await tracklistReorder(activeSetId, trackId, position);
+      }
+      await refreshActive();
+    } catch (err) {
+      if (added) {
+        try { await tracklistRemove(activeSetId, trackId); } catch { /* best-effort rollback */ }
+      }
+      await refreshActive();
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add track at position.'));
     }
   }, [activeSetId, refreshActive]);
 
@@ -642,6 +665,7 @@ export function useSetBuilder() {
     movePoolToTracklist,
     moveTracklistToPool,
     reorderTracklist,
+    addToTracklistAtPosition,
     updateTracklistNote,
     togglePoolStar: togglePoolStarAction,
     toggleTracklistStar: toggleTracklistStarAction,

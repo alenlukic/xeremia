@@ -166,6 +166,7 @@ function DraggablePoolEmptyRow({ emptyRow, onDelete, onFillSearch, dndDisabled, 
       style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
       className={`empty-row${isDragging ? ' row-dragging' : ''}${isOver && !isDragging ? ' row-drop-target' : ''}`}
       data-empty-id={emptyRow.emptyId}
+      data-real-position={realPosition}
       {...rowListeners}
     >
       <td className="set-ws-cell-star" />

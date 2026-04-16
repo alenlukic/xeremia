@@ -13,6 +13,7 @@ interface Props {
   clearTracklist: () => void;
   moveTracklistToPool: (trackId: number) => void;
   reorderTracklist: (trackId: number, newPosition: number) => void;
+  addToTracklistAtPosition: (trackId: number, position: number, title?: string) => void;
   updateTracklistNote: (trackId: number, note: string) => void;
   togglePoolStar: (trackId: number, starred: boolean) => void;
   toggleTracklistStar: (trackId: number, starred: boolean) => void;
@@ -33,6 +34,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
   activeSet,
   removeFromPool, clearPool, movePoolToTracklist, addToPool,
   removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist,
+  addToTracklistAtPosition,
   updateTracklistNote, togglePoolStar, toggleTracklistStar, addToTracklist,
   createSubgroup, renameSubgroup, deleteSubgroup,
   reorderSubgroups, addSubgroupMember, removeSubgroupMember,
@@ -43,9 +45,13 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
     if (!poolExpanded) onPoolExpandedChange(true);
   }, [addToPool, poolExpanded, onPoolExpandedChange]);
 
-  const handleTracklistFillEmptyRow = useCallback((_emptyId: string, trackId: number, title?: string) => {
-    addToTracklist(trackId, title);
-  }, [addToTracklist]);
+  const handleTracklistFillEmptyRow = useCallback((_emptyId: string, trackId: number, title?: string, position?: number) => {
+    if (position != null) {
+      addToTracklistAtPosition(trackId, position, title);
+    } else {
+      addToTracklist(trackId, title);
+    }
+  }, [addToTracklist, addToTracklistAtPosition]);
 
   const handlePoolFillEmptyRow = useCallback((_emptyId: string, trackId: number, title?: string) => {
     addToPool(trackId, title);

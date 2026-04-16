@@ -11,7 +11,6 @@ import {
   type Updater,
   type Row,
 } from '@tanstack/react-table';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { Track, SearchSuggestion, TransitionMatch } from '../types';
 import { formatScore, formatOverallScore } from '../utils';
@@ -161,7 +160,6 @@ const COL_CHOOSER_WIDTH = 28;
 
 const coreRowModel = getCoreRowModel<TransitionMatch>();
 const sortedRowModel = getSortedRowModel<TransitionMatch>();
-const ESTIMATE_ROW_SIZE = () => 40;
 
 interface Props {
   selectedTrack: Track | SearchSuggestion | null;
@@ -174,15 +172,11 @@ interface Props {
   starredTrackIds?: Set<number>;
 }
 
-const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasColChooser, isStarred, virtualTop, totalWidth, measureRef, virtualIndex }: {
+const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasColChooser, isStarred }: {
   row: Row<TransitionMatch>;
   isLoading: boolean;
   hasColChooser?: boolean;
   isStarred?: boolean;
-  virtualTop?: number;
-  totalWidth?: number;
-  measureRef?: (node: HTMLElement | null) => void;
-  virtualIndex?: number;
 }) {
   const payload: DragPayload = {
     trackId: row.original.candidate_id,
@@ -194,11 +188,6 @@ const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasC
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
   });
-
-  const combinedRef = useCallback((node: HTMLElement | null) => {
-    setNodeRef(node);
-    measureRef?.(node);
-  }, [setNodeRef, measureRef]);
 
   const rowListeners = useMemo(() => {
     if (!listeners) return {};
@@ -212,25 +201,10 @@ const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasC
     };
   }, [listeners]);
 
-  const isVirtual = virtualTop !== undefined;
-  const style: React.CSSProperties = isVirtual
-    ? {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: totalWidth,
-        transform: `translateY(${virtualTop}px)`,
-        display: 'table-row',
-        cursor: isDragging ? 'grabbing' : 'grab',
-        opacity: isLoading ? 0.6 : isDragging ? 0.4 : undefined,
-      }
-    : isLoading ? { opacity: 0.6, cursor: 'grab' } : isDragging ? { opacity: 0.4, cursor: 'grabbing' } : { cursor: 'grab' };
-
   return (
     <tr
-      ref={combinedRef}
-      data-index={virtualIndex}
-      style={style}
+      ref={setNodeRef}
+      style={isLoading ? { opacity: 0.6, cursor: 'grab' } : isDragging ? { opacity: 0.4, cursor: 'grabbing' } : { cursor: 'grab' }}
       {...rowListeners}
     >
       <td className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }}>
@@ -496,14 +470,6 @@ export const MatchesPanel = memo(function MatchesPanel({
   }, []);
 
   const rows = table.getRowModel().rows;
-  const getScrollElement = useCallback(() => wrapperRef.current, []);
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement,
-    estimateSize: ESTIMATE_ROW_SIZE,
-    overscan: 5,
-  });
-  const virtualItems = rowVirtualizer.getVirtualItems();
 
   const { setNodeRef: setMatchesHeaderRef, isOver: isMatchesHeaderOver } = useDroppable({ id: 'drop-matches-header' });
 
@@ -624,7 +590,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                 </tr>
               ))}
             </thead>
-            <tbody style={virtualItems.length > 0 ? { height: rowVirtualizer.getTotalSize(), position: 'relative' } : undefined}>
+            <tbody>
               {loading && bucketMatches.length === 0 ? (
                 <tr>
                   <td colSpan={table.getVisibleLeafColumns().length + 2} className="table-status">
@@ -644,22 +610,15 @@ export const MatchesPanel = memo(function MatchesPanel({
                   </td>
                 </tr>
               ) : (
-                virtualItems.map((virtualRow) => {
-                  const row = rows[virtualRow.index];
-                  return (
-                    <DraggableMatchRow
-                      key={row.id}
-                      row={row}
-                      isLoading={loading}
-                      hasColChooser
-                      isStarred={starredTrackIds?.has(row.original.candidate_id)}
-                      virtualTop={virtualRow.start}
-                      totalWidth={totalWidth}
-                      measureRef={rowVirtualizer.measureElement}
-                      virtualIndex={virtualRow.index}
-                    />
-                  );
-                })
+                rows.map((row) => (
+                  <DraggableMatchRow
+                    key={row.id}
+                    row={row}
+                    isLoading={loading}
+                    hasColChooser
+                    isStarred={starredTrackIds?.has(row.original.candidate_id)}
+                  />
+                ))
               )}
             </tbody>
           </table>

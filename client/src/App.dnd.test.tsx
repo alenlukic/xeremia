@@ -7,6 +7,9 @@ import { useSetBuilder } from './hooks/useSetBuilder';
 
 let capturedOnDragEnd: ((event: unknown) => void) | undefined;
 
+const mockPointerWithin = vi.fn().mockReturnValue([]);
+const mockRectIntersection = vi.fn().mockReturnValue([]);
+
 vi.mock('@dnd-kit/core', () => ({
   DndContext: (props: { children: React.ReactNode; onDragEnd?: (e: unknown) => void }) => {
     capturedOnDragEnd = props.onDragEnd;
@@ -28,6 +31,8 @@ vi.mock('@dnd-kit/core', () => ({
   DragOverlay: ({ children }: { children?: React.ReactNode }) => children || null,
   PointerSensor: class {},
   MeasuringStrategy: { WhileDragging: 'whileDragging' },
+  pointerWithin: (...a: unknown[]) => mockPointerWithin(...a),
+  rectIntersection: (...a: unknown[]) => mockRectIntersection(...a),
 }));
 
 vi.mock('./hooks/useCollectionCache', () => ({
@@ -142,6 +147,7 @@ function makeSetBuilderMock(overrides: Record<string, unknown> = {}) {
     movePoolToTracklist: vi.fn(),
     moveTracklistToPool: vi.fn(),
     reorderTracklist: vi.fn(),
+    addToTracklistAtPosition: vi.fn(),
     updateTracklistNote: vi.fn(),
     addExplorerNode: vi.fn(),
     deleteExplorerNode: vi.fn(),
@@ -180,6 +186,8 @@ let mockSB: ReturnType<typeof makeSetBuilderMock>;
 
 beforeEach(() => {
   capturedOnDragEnd = undefined;
+  mockPointerWithin.mockReset().mockReturnValue([]);
+  mockRectIntersection.mockReset().mockReturnValue([]);
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   vi.stubGlobal('IntersectionObserver', IntersectionObserverMock);
   localStorage.clear();
@@ -825,15 +833,16 @@ describe('DnD: drag-fill into empty rows', () => {
     vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
   });
 
-  it('browse drag to drop-tracklist-empty-* calls addToTracklist (fill)', async () => {
+  it('browse drag to drop-tracklist-empty-* without realPosition calls addToTracklist', async () => {
     await renderApp();
 
     fireDragEnd('browse-track-1', browsePayload, 'drop-tracklist-empty-empty-tl-1');
 
     expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
   });
 
-  it('tracklist fill calls reorderTracklist when droppable data includes realPosition', async () => {
+  it('tracklist fill calls addToTracklistAtPosition when droppable data includes realPosition', async () => {
     await renderApp();
 
     act(() => {
@@ -843,8 +852,9 @@ describe('DnD: drag-fill into empty rows', () => {
       ));
     });
 
-    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
-    expect(mockSB.reorderTracklist).toHaveBeenCalledWith(1, 2);
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(1, 2, 'Track 1');
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
   });
 
   it('matches drag to drop-tracklist-empty-* calls addToTracklist', async () => {
@@ -872,7 +882,7 @@ describe('DnD: drag-fill into empty rows', () => {
     expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
   });
 
-  it('pool fill does not call reorderTracklist', async () => {
+  it('pool fill does not call reorderTracklist or addToTracklistAtPosition', async () => {
     await renderApp();
 
     act(() => {
@@ -884,6 +894,7 @@ describe('DnD: drag-fill into empty rows', () => {
 
     expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
     expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
   });
 
   it('tracklist drag to drop-pool-empty-* calls addToPool', async () => {
@@ -986,5 +997,271 @@ describe('DnD: alt-prefix normalization (Explorer panel droppable IDs)', () => {
     expect(mockSB.addToPool).toHaveBeenCalledTimes(2);
     expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
     expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 2');
+  });
+});
+
+describe('dndCollisionDetection: empty-row rectIntersection fallback', () => {
+  function makeCollisionArgs(source: DragPayload['source']) {
+    return {
+      active: { id: `${source}-1`, data: { current: { trackId: 1, title: 'T1', source } } },
+      collisionRect: { top: 0, left: 0, bottom: 10, right: 10, width: 10, height: 10 },
+      droppableRects: new Map(),
+      droppableContainers: [],
+      pointerCoordinates: { x: 5, y: 5 },
+    };
+  }
+
+  function col(id: string) {
+    return { id, data: { droppableContainer: { id } } };
+  }
+
+  let collisionDetection: typeof import('./App').dndCollisionDetection;
+
+  beforeEach(async () => {
+    const mod = await import('./App');
+    collisionDetection = mod.dndCollisionDetection;
+  });
+
+  it('prefers empty-row from rectIntersection when pointerWithin hits only container (browse source)', () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-empty-empty-tl-1')]);
+
+    const result = collisionDetection(makeCollisionArgs('browse') as never);
+
+    expect(result).toEqual([col('drop-tracklist-empty-empty-tl-1')]);
+  });
+
+  it('prefers empty-row from rectIntersection when pointerWithin hits only container (pool source)', () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-empty-empty-tl-2')]);
+
+    const result = collisionDetection(makeCollisionArgs('pool') as never);
+
+    expect(result).toEqual([col('drop-tracklist-empty-empty-tl-2')]);
+  });
+
+  it('prefers empty-row over row targets for tracklist-source drag', () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-row-1')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-row-1'), col('drop-tracklist-empty-empty-tl-3')]);
+
+    const result = collisionDetection(makeCollisionArgs('tracklist') as never);
+
+    expect(result).toEqual([col('drop-tracklist-empty-empty-tl-3')]);
+  });
+
+  it('prefers empty-row from rectIntersection in pure fallback (no pointer hits)', () => {
+    mockPointerWithin.mockReturnValueOnce([]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-empty-empty-tl-4')]);
+
+    const result = collisionDetection(makeCollisionArgs('browse') as never);
+
+    expect(result).toEqual([col('drop-tracklist-empty-empty-tl-4')]);
+  });
+
+  it('falls through to row targets when no empty-row in either source (tracklist reorder)', () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-row-2')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-row-2')]);
+
+    const result = collisionDetection(makeCollisionArgs('tracklist') as never);
+
+    expect(result).toEqual([col('drop-tracklist-row-2')]);
+  });
+
+  it('prefers pool-empty from rectIntersection when pointer hits only pool container', () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-pool')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-pool'), col('drop-pool-empty-empty-pool-1')]);
+
+    const result = collisionDetection(makeCollisionArgs('browse') as never);
+
+    expect(result).toEqual([col('drop-pool-empty-empty-pool-1')]);
+  });
+
+  it('direct pointer hit on empty-row still takes priority (no regression)', () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-empty-empty-tl-5')]);
+    mockRectIntersection.mockReturnValueOnce([]);
+
+    const result = collisionDetection(makeCollisionArgs('browse') as never);
+
+    expect(result).toEqual([col('drop-tracklist-empty-empty-tl-5')]);
+  });
+});
+
+describe('DnD: empty-row drag guard (reorder 400 fix)', () => {
+  beforeEach(() => {
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [],
+        tracklist: [],
+        explorer_trees: [],
+        explorer_nodes: [],
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+  });
+
+  it('empty row (trackId=-1) dropped onto tracklist-empty does not call addToTracklist or addToTracklistAtPosition', async () => {
+    await renderApp();
+
+    const emptyPayload: DragPayload = { trackId: -1, title: '', source: 'tracklist' };
+    fireDragEnd('tracklist-empty-e1', emptyPayload, 'drop-tracklist-empty-e2', { __emptyId: 'e2', realPosition: 1 });
+
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+  });
+
+  it('empty row (trackId=-1) dropped onto pool-empty does not call addToPool', async () => {
+    await renderApp();
+
+    const emptyPayload: DragPayload = { trackId: -1, title: '', source: 'pool' };
+    fireDragEnd('pool-empty-e1', emptyPayload, 'drop-pool-empty-e2', { __emptyId: 'e2', realPosition: 0 });
+
+    expect(mockSB.addToPool).not.toHaveBeenCalled();
+  });
+
+  it('valid track dropped onto tracklist-empty with realPosition calls addToTracklistAtPosition', async () => {
+    await renderApp();
+
+    fireDragEnd('browse-track-3', { trackId: 3, title: 'Track 3', source: 'browse' }, 'drop-tracklist-empty-e1', { __emptyId: 'e1', realPosition: 1 });
+
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(3, 1, 'Track 3');
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+  });
+
+  it('pool track dropped onto tracklist-empty without realPosition calls addToTracklist', async () => {
+    await renderApp();
+
+    fireDragEnd('pool-track-5', { trackId: 5, title: 'Track 5', source: 'pool' }, 'drop-tracklist-empty-e1', { __emptyId: 'e1' });
+
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(5, 'Track 5');
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
+  });
+
+  it('matches track dropped onto pool-empty calls addToPool', async () => {
+    await renderApp();
+
+    fireDragEnd('match-track-7', { trackId: 7, title: 'Track 7', source: 'matches' }, 'drop-pool-empty-e1', { __emptyId: 'e1', realPosition: 0 });
+
+    expect(mockSB.addToPool).toHaveBeenCalledWith(7, 'Track 7');
+  });
+
+  it('tracklist-source drag onto tracklist-empty with realPosition calls reorderTracklist instead of addToTracklistAtPosition', async () => {
+    await renderApp();
+
+    fireDragEnd('tracklist-track-5', { trackId: 5, title: 'Track 5', source: 'tracklist' }, 'drop-tracklist-empty-e1', { __emptyId: 'e1', realPosition: 2 });
+
+    expect(mockSB.reorderTracklist).toHaveBeenCalledWith(5, 2);
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+  });
+});
+
+describe('DnD integration: collision detection → handleDragEnd for all three drag-fill sources', () => {
+  function makeCollisionArgs(source: DragPayload['source']) {
+    return {
+      active: { id: `${source}-1`, data: { current: { trackId: 1, title: 'Track 1', source } } },
+      collisionRect: { top: 0, left: 0, bottom: 10, right: 10, width: 10, height: 10 },
+      droppableRects: new Map(),
+      droppableContainers: [],
+      pointerCoordinates: { x: 5, y: 5 },
+    };
+  }
+
+  function col(id: string, data?: Record<string, unknown>) {
+    return { id, data: { droppableContainer: { id }, ...data } };
+  }
+
+  let collisionDetection: typeof import('./App').dndCollisionDetection;
+
+  beforeEach(async () => {
+    const mod = await import('./App');
+    collisionDetection = mod.dndCollisionDetection;
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [],
+        tracklist: [
+          { id: 1, set_id: 1, track_id: 1, position: 0, note: '', starred: false, track: { id: 1, title: 'Track 1', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+        ],
+        explorer_trees: [],
+        explorer_nodes: [],
+        explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+  });
+
+  it('browse-source: collision resolves empty row from rect, handleDragEnd calls addToTracklistAtPosition', async () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-empty-e1')]);
+
+    const result = collisionDetection(makeCollisionArgs('browse') as never);
+    expect(result).toEqual([col('drop-tracklist-empty-e1')]);
+
+    await renderApp();
+    fireDragEnd('browse-track-3', { trackId: 3, title: 'Track 3', source: 'browse' }, 'drop-tracklist-empty-e1', { __emptyId: 'e1', realPosition: 1 });
+
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(3, 1, 'Track 3');
+  });
+
+  it('pool-source: collision resolves empty row from rect, handleDragEnd calls addToTracklistAtPosition', async () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-empty-e2')]);
+
+    const result = collisionDetection(makeCollisionArgs('pool') as never);
+    expect(result).toEqual([col('drop-tracklist-empty-e2')]);
+
+    await renderApp();
+    fireDragEnd('pool-track-2', { trackId: 2, title: 'Track 2', source: 'pool' }, 'drop-tracklist-empty-e2', { __emptyId: 'e2', realPosition: 0 });
+
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(2, 0, 'Track 2');
+  });
+
+  it('tracklist-source: collision resolves empty row from rect, handleDragEnd calls reorderTracklist', async () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-row-0')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-row-0'), col('drop-tracklist-empty-e3')]);
+
+    const result = collisionDetection(makeCollisionArgs('tracklist') as never);
+    expect(result).toEqual([col('drop-tracklist-empty-e3')]);
+
+    await renderApp();
+    fireDragEnd('tracklist-track-1', { trackId: 1, title: 'Track 1', source: 'tracklist' }, 'drop-tracklist-empty-e3', { __emptyId: 'e3', realPosition: 2 });
+
+    expect(mockSB.reorderTracklist).toHaveBeenCalledWith(1, 2);
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+  });
+
+  it('browse-source: collision resolves empty row from pointer directly', async () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist'), col('drop-tracklist-empty-e4')]);
+    mockRectIntersection.mockReturnValueOnce([]);
+
+    const result = collisionDetection(makeCollisionArgs('browse') as never);
+    expect(result).toEqual([col('drop-tracklist-empty-e4')]);
+
+    await renderApp();
+    fireDragEnd('browse-track-5', { trackId: 5, title: 'Track 5', source: 'browse' }, 'drop-tracklist-empty-e4', { __emptyId: 'e4', realPosition: 3 });
+
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(5, 3, 'Track 5');
+  });
+
+  it('tracklist-source: collision does not return empty when only container is in pointer', async () => {
+    mockPointerWithin.mockReturnValueOnce([col('drop-tracklist')]);
+    mockRectIntersection.mockReturnValueOnce([col('drop-tracklist')]);
+
+    const result = collisionDetection(makeCollisionArgs('tracklist') as never);
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('tracklist-source: collision recognizes alt-prefixed row targets', async () => {
+    mockPointerWithin.mockReturnValueOnce([col('alt-drop-tracklist'), col('alt-drop-tracklist-row-1')]);
+    mockRectIntersection.mockReturnValueOnce([col('alt-drop-tracklist'), col('alt-drop-tracklist-row-1')]);
+
+    const result = collisionDetection(makeCollisionArgs('tracklist') as never);
+    expect(result).toEqual([col('alt-drop-tracklist-row-1')]);
   });
 });

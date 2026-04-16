@@ -40,7 +40,7 @@ interface Props {
   onClearAll?: () => void;
   dndDisabled?: boolean;
   dndIdPrefix?: string;
-  onFillEmptyRow?: (emptyId: string, trackId: number, title?: string) => void;
+  onFillEmptyRow?: (emptyId: string, trackId: number, title?: string, position?: number) => void;
 }
 
 function InsertEmptyRowsControl({ onInsert, totalRows }: { onInsert: (count: number, position: number) => void; totalRows: number }) {
@@ -177,6 +177,7 @@ function DraggableEmptyRow({ emptyRow, index, total, onDelete, onReorder, onFill
       style={{ cursor: rowCursor }}
       className={className}
       data-empty-id={emptyRow.emptyId}
+      data-real-position={realPosition}
       {...rowListeners}
     >
       <td className="set-ws-cell-star" />
@@ -512,11 +513,10 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
       const emptyRow = emptyRows.find(r => r.id === fillTargetId);
       const targetPosition = emptyRow?.position ?? sortedTracklist.length;
       if (onFillEmptyRow) {
-        onFillEmptyRow(fillTargetId, s.id, s.title);
+        onFillEmptyRow(fillTargetId, s.id, s.title, targetPosition);
       } else {
         onAddTrack(s.id, s.title);
       }
-      onReorder(s.id, targetPosition);
       setEmptyRows(prev => prev.filter(r => r.id !== fillTargetId));
       setFillTargetId(null);
     } else {
@@ -525,7 +525,7 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
     setSearchQuery('');
     setSearchResults([]);
     setShowSearch(false);
-  }, [onAddTrack, onFillEmptyRow, fillTargetId, emptyRows, sortedTracklist.length, onReorder]);
+  }, [onAddTrack, onFillEmptyRow, fillTargetId, emptyRows, sortedTracklist.length]);
 
   const totalDisplayRows = displayRows.length;
 

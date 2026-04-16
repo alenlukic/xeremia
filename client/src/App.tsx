@@ -43,29 +43,82 @@ const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'date_added', label: 'Date Added' },
 ];
 
-const dndCollisionDetection: CollisionDetection = (args) => {
+const isEmptyRowId = (id: string) =>
+  id.includes('drop-tracklist-empty-') || id.includes('drop-pool-empty-');
+
+// dnd-kit's internal collisionRect / pointerCoordinates can lag behind
+// fast pointer movements (the PointerSensor resets delta to zero at
+// activation). Track the real pointer position at the document level
+// so the collision fallback always has up-to-date coordinates.
+let _lastPointerX = 0;
+let _lastPointerY = 0;
+if (typeof document !== 'undefined') {
+  const _trackPointer = (e: PointerEvent) => {
+    _lastPointerX = e.clientX;
+    _lastPointerY = e.clientY;
+  };
+  document.addEventListener('pointermove', _trackPointer, true);
+  document.addEventListener('pointerup', _trackPointer, true);
+}
+
+export const dndCollisionDetection: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
+  const rect = rectIntersection(args);
+
   if (pointer.length > 0) {
     const hasCell = pointer.some(c => String(c.id).startsWith('drop-explorer-cell-'));
     if (hasCell) {
       const filtered = pointer.filter(c => String(c.id).startsWith('drop-explorer-cell-'));
       if (filtered.length > 0) return filtered;
     }
+  }
+
+  const pointerEmpty = pointer.filter(c => isEmptyRowId(String(c.id)));
+  if (pointerEmpty.length > 0) return pointerEmpty;
+  const rectEmpty = rect.filter(c => isEmptyRowId(String(c.id)));
+  if (rectEmpty.length > 0) return rectEmpty;
+
+  // Fallback: use the real last-known pointer position and fresh
+  // getBoundingClientRect() to detect empty-row droppable hits.
+  {
+    const x = _lastPointerX;
+    const y = _lastPointerY;
+    const containers = Array.isArray(args.droppableContainers)
+      ? args.droppableContainers
+      : [...(args.droppableContainers as Iterable<unknown>)].map(
+          (entry) => (Array.isArray(entry) ? entry[1] : entry) as { id: unknown; disabled: boolean; node: { current: HTMLElement | null }; data: { current?: Record<string, unknown> } },
+        );
+    for (const container of containers) {
+      if (container.disabled) continue;
+      const cid = String(container.id);
+      if (!isEmptyRowId(cid)) continue;
+      const node = container.node.current;
+      if (!node) continue;
+      const r = node.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        return [{ id: container.id as string, data: { droppableContainer: container, value: 0 } }];
+      }
+    }
+  }
+
+  if (pointer.length > 0) {
     const activeData = args.active.data.current as DragPayload | undefined;
     if (activeData?.source === 'tracklist') {
-      const rows = pointer.filter(c => String(c.id).startsWith('drop-tracklist-row-'));
+      const isRowId = (id: string) =>
+        id.startsWith('drop-tracklist-row-') || /^alt-drop-tracklist-row-/.test(id);
+      const rows = pointer.filter(c => isRowId(String(c.id)));
       if (rows.length > 0) return rows;
-      // Pointer is between rows (e.g. dragging upward) — use rect intersection
-      // to find the nearest row instead of letting the parent container highlight.
-      const rect = rectIntersection(args);
-      const rectRows = rect.filter(c => String(c.id).startsWith('drop-tracklist-row-'));
+      const rectRows = rect.filter(c => isRowId(String(c.id)));
       if (rectRows.length > 0) return rectRows;
-      // Outside tracklist entirely — let non-container targets through
-      return pointer.filter(c => String(c.id) !== 'drop-tracklist');
+      const filtered = pointer.filter(c => {
+        const id = String(c.id);
+        return id !== 'drop-tracklist' && id !== 'alt-drop-tracklist';
+      });
+      if (filtered.length > 0) return filtered;
     }
     return pointer;
   }
-  return rectIntersection(args);
+  return rect;
 };
 
 function isPlainObject(v: unknown): v is Record<string, boolean> {
@@ -246,6 +299,7 @@ export default function App() {
     movePoolToTracklist,
     moveTracklistToPool,
     reorderTracklist,
+    addToTracklistAtPosition,
     updateTracklistNote,
     togglePoolStar,
     toggleTracklistStar,
@@ -547,10 +601,40 @@ export default function App() {
     }
     lastHoverPanelRef.current = null;
     setDragItem(null);
-    const { active, over } = event;
-    if (!over) return;
+    const { active, over: dndOver } = event;
     const payload = active.data.current as DragPayload | undefined;
     if (!payload) return;
+
+    let over = dndOver;
+    const CONTAINER_IDS = ['drop-tracklist', 'alt-drop-tracklist', 'drop-pool', 'alt-drop-pool'];
+    if (
+      payload.trackId > 0 &&
+      (!over || CONTAINER_IDS.includes(String(over.id)))
+    ) {
+      const el = typeof document.elementFromPoint === 'function'
+        ? document.elementFromPoint(_lastPointerX, _lastPointerY)
+        : null;
+      const emptyTr = el?.closest?.('tr[data-empty-id]');
+      if (emptyTr) {
+        const domEmptyId = emptyTr.getAttribute('data-empty-id')!;
+        const inTracklist = emptyTr.closest('.set-tracklist-table') != null;
+        const prefix = inTracklist ? 'drop-tracklist-empty-' : 'drop-pool-empty-';
+        const isAlt = emptyTr.closest('#panel-explorer') != null;
+        const droppableId = (isAlt ? 'alt-' : '') + prefix + domEmptyId;
+        const realPosAttr = emptyTr.getAttribute('data-real-position');
+        const realPosition = realPosAttr != null && !isNaN(Number(realPosAttr))
+          ? parseInt(realPosAttr, 10)
+          : undefined;
+        over = {
+          id: droppableId,
+          rect: emptyTr.getBoundingClientRect(),
+          data: { current: { __emptyId: domEmptyId, realPosition } },
+          disabled: false,
+        } as typeof dndOver;
+      }
+    }
+
+    if (!over) return;
     const rawTargetId = String(over.id);
     const targetId = rawTargetId.startsWith('alt-') ? rawTargetId.slice(4) : rawTargetId;
     const sb = setBuilderRef.current;
@@ -564,12 +648,17 @@ export default function App() {
       const overData = over.data?.current as { __emptyId?: string; realPosition?: number } | undefined;
       const emptyId = overData?.__emptyId;
       const realPosition = overData?.realPosition;
-      for (const tid of trackIds) {
+      const validTrackIds = trackIds.filter(id => id > 0);
+      if (validTrackIds.length === 0) return;
+      for (const tid of validTrackIds) {
         const t = allTracks.find(tr => tr.id === tid);
         if (isTracklist) {
-          addToTracklistFn(tid, t?.title ?? payload.title);
-          if (realPosition != null) {
+          if (payload.source === 'tracklist' && realPosition != null) {
             reorderTracklist(tid, realPosition);
+          } else if (realPosition != null) {
+            addToTracklistAtPosition(tid, realPosition, t?.title ?? payload.title);
+          } else {
+            addToTracklistFn(tid, t?.title ?? payload.title);
           }
         } else {
           addToPoolFn(tid, t?.title ?? payload.title);
@@ -670,7 +759,7 @@ export default function App() {
         }
       }
     }
-  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, poolExpanded, handlePoolExpandedChange, reorderTracklist]);
+  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, addToTracklistAtPosition, poolExpanded, handlePoolExpandedChange, reorderTracklist]);
 
   return (
     <AudioPlayerProvider>
@@ -872,6 +961,7 @@ export default function App() {
               clearTracklist={clearTracklist}
               moveTracklistToPool={moveTracklistToPool}
               reorderTracklist={reorderTracklist}
+              addToTracklistAtPosition={addToTracklistAtPosition}
               updateTracklistNote={updateTracklistNote}
               togglePoolStar={togglePoolStar}
               toggleTracklistStar={toggleTracklistStar}
@@ -912,6 +1002,7 @@ export default function App() {
                     clearTracklist={clearTracklist}
                     moveTracklistToPool={moveTracklistToPool}
                     reorderTracklist={reorderTracklist}
+                    addToTracklistAtPosition={addToTracklistAtPosition}
                     updateTracklistNote={updateTracklistNote}
                     togglePoolStar={togglePoolStar}
                     toggleTracklistStar={toggleTracklistStar}
