@@ -5,6 +5,22 @@ import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
 import type { DragPayload } from '../dnd';
 import { PlayButton } from './PlayButton';
+import { SortTierBar } from './SortTierBar';
+import type { SortDescriptor, SortColumn } from './SortTierBar';
+
+const TRACKLIST_SORT_COLUMNS: SortColumn[] = [
+  { id: 'position', label: '#' },
+  { id: 'title', label: 'Title' },
+  { id: 'camelot_code', label: 'Key' },
+  { id: 'bpm', label: 'BPM' },
+];
+
+function compareTracklistByColumn(a: TracklistEntry, b: TracklistEntry, col: string): number {
+  if (col === 'title') return (a.track?.title ?? '').localeCompare(b.track?.title ?? '');
+  if (col === 'bpm') return (a.track?.bpm ?? 0) - (b.track?.bpm ?? 0);
+  if (col === 'camelot_code') return (a.track?.camelot_code ?? '').localeCompare(b.track?.camelot_code ?? '');
+  return a.position - b.position;
+}
 
 interface Props {
   tracklist: TracklistEntry[];
@@ -52,7 +68,25 @@ function NoteInput({ trackId, initialNote, onSave }: {
   );
 }
 
-function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, dndDisabled }: {
+function ConfirmDeleteModal({ count, onConfirm, onCancel }: {
+  count: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="tracklist-confirm-overlay" onClick={onCancel}>
+      <div className="tracklist-confirm-modal" onClick={e => e.stopPropagation()}>
+        <p>Delete {count} selected track{count === 1 ? '' : 's'} from the tracklist?</p>
+        <div className="tracklist-confirm-actions">
+          <button className="set-action-btn" onClick={onCancel}>Cancel</button>
+          <button className="set-action-btn set-action-btn--danger" onClick={onConfirm}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, dndDisabled, reorderDisabled, isSelected, onToggleSelect }: {
   entry: TracklistEntry;
   index: number;
   total: number;
@@ -62,20 +96,24 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
   onUpdateNote: (trackId: number, note: string) => void;
   onToggleStar: (trackId: number, starred: boolean) => void;
   dndDisabled?: boolean;
+  reorderDisabled?: boolean;
+  isSelected: boolean;
+  onToggleSelect: (trackId: number) => void;
 }) {
+  const effectiveDndDisabled = dndDisabled || reorderDisabled;
   const title = cleanTitle(entry.track, entry.track_id);
   const payload: DragPayload = { trackId: entry.track_id, title, source: 'tracklist' };
   const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `tracklist-track-${entry.track_id}`,
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
-    disabled: dndDisabled,
+    disabled: effectiveDndDisabled,
   });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `drop-tracklist-row-${index}`,
     data: { index, trackId: entry.track_id },
-    disabled: dndDisabled,
+    disabled: effectiveDndDisabled,
   });
 
   const mergedRef = useCallback((node: HTMLTableRowElement | null) => {
@@ -90,22 +128,35 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
       ...rest,
       onPointerDown: (e: React.PointerEvent) => {
         if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        if (e.metaKey || e.ctrlKey) return;
         e.stopPropagation();
         (onPointerDown as (e: React.PointerEvent) => void)?.(e);
       },
     };
   }, [listeners]);
 
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      onToggleSelect(entry.track_id);
+    }
+  }, [entry.track_id, onToggleSelect]);
+
   const className = [
     isDragging && 'row-dragging',
     isOver && !isDragging && 'row-drop-target',
+    isSelected && 'row-multiselected',
   ].filter(Boolean).join(' ') || undefined;
+
+  const rowCursor = effectiveDndDisabled ? 'default' : isDragging ? 'grabbing' : 'grab';
 
   return (
     <tr
       ref={mergedRef}
-      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      style={{ cursor: rowCursor }}
       className={className}
+      onClick={handleClick}
       {...rowListeners}
     >
       <td className="set-ws-cell-star">
@@ -135,8 +186,8 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
       </td>
       <td className="set-ws-cell-actions">
         <div className="set-ws-actions-group">
-          <button className="set-move-btn" disabled={index === 0} onClick={() => onReorder(entry.track_id, index - 1)} title="Move up">↑</button>
-          <button className="set-move-btn" disabled={index === total - 1} onClick={() => onReorder(entry.track_id, index + 1)} title="Move down">↓</button>
+          <button className="set-move-btn" disabled={reorderDisabled || index === 0} onClick={() => onReorder(entry.track_id, index - 1)} title="Move up">↑</button>
+          <button className="set-move-btn" disabled={reorderDisabled || index === total - 1} onClick={() => onReorder(entry.track_id, index + 1)} title="Move down">↓</button>
           <button className="set-action-btn" onClick={() => onMoveToPool(entry.track_id)} title="Move to pool">To Pool</button>
           <button className="set-action-btn set-action-btn--danger" onClick={() => onRemove(entry.track_id)} title="Delete from tracklist">×</button>
         </div>
@@ -150,6 +201,70 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
+  const [sorting, setSorting] = useState<SortDescriptor[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const tracklistIdsRef = useRef<string>('');
+  useEffect(() => {
+    const key = tracklist.map(e => e.track_id).join(',');
+    if (key !== tracklistIdsRef.current) {
+      tracklistIdsRef.current = key;
+      setSelectedIds(prev => {
+        const validIds = new Set(tracklist.map(e => e.track_id));
+        const pruned = new Set([...prev].filter(id => validIds.has(id)));
+        return pruned.size === prev.size ? prev : pruned;
+      });
+    }
+  }, [tracklist]);
+
+  const sortedTracklist = useMemo(() => {
+    if (sorting.length === 0) return tracklist;
+    return [...tracklist].sort((a, b) => {
+      for (const s of sorting) {
+        const cmp = compareTracklistByColumn(a, b, s.id);
+        if (cmp !== 0) return s.desc ? -cmp : cmp;
+      }
+      return 0;
+    });
+  }, [tracklist, sorting]);
+
+  const handleToggleSelect = useCallback((trackId: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(trackId)) {
+        next.delete(trackId);
+      } else {
+        next.add(trackId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleRowDelete = useCallback((trackId: number) => {
+    if (selectedIds.has(trackId) && selectedIds.size > 1) {
+      setConfirmDelete(true);
+    } else {
+      onRemove(trackId);
+      setSelectedIds(prev => {
+        if (!prev.has(trackId)) return prev;
+        const next = new Set(prev);
+        next.delete(trackId);
+        return next;
+      });
+    }
+  }, [selectedIds, onRemove]);
+
+  const handleConfirmDelete = useCallback(() => {
+    const ids = Array.from(selectedIds);
+    ids.forEach(id => onRemove(id));
+    setSelectedIds(new Set());
+    setConfirmDelete(false);
+  }, [selectedIds, onRemove]);
+
+  const handleCancelDelete = useCallback(() => {
+    setConfirmDelete(false);
+  }, []);
 
   const handleSearch = useCallback(async (q: string) => {
     setSearchQuery(q);
@@ -176,6 +291,17 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
     <div ref={setTracklistDropRef} className={`set-tracklist${isTracklistOver ? ' drop-zone--active' : ''}`}>
       <div className="set-tracklist-header">
         <h3 className="set-section-title">Tracklist ({tracklist.length})</h3>
+        {selectedIds.size > 0 && (
+          <span className="tracklist-selection-count">{selectedIds.size} selected</span>
+        )}
+        {selectedIds.size > 1 && (
+          <button
+            className="set-action-btn set-action-btn--danger"
+            onClick={() => setConfirmDelete(true)}
+          >
+            Delete Selected
+          </button>
+        )}
         {tracklist.length > 0 && onClearAll && (
           <button
             className="set-action-btn set-action-btn--danger set-clear-all-btn"
@@ -214,6 +340,11 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
           )}
         </div>
       </div>
+      <SortTierBar
+        sorting={sorting}
+        columns={TRACKLIST_SORT_COLUMNS}
+        onSortingChange={setSorting}
+      />
       <div className="set-table-scroll-shell">
         {tracklist.length === 0 ? (
           <p className="set-empty-tracks">Tracklist is empty. Move tracks from the pool or search above.</p>
@@ -242,24 +373,34 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
               </tr>
             </thead>
             <tbody>
-              {tracklist.map((entry, i) => (
+              {sortedTracklist.map((entry, i) => (
                 <DraggableTracklistRow
                   key={entry.id}
                   entry={entry}
                   index={i}
-                  total={tracklist.length}
-                  onRemove={onRemove}
+                  total={sortedTracklist.length}
+                  onRemove={handleRowDelete}
                   onMoveToPool={onMoveToPool}
                   onReorder={onReorder}
                   onUpdateNote={onUpdateNote}
                   onToggleStar={onToggleStar}
                   dndDisabled={dndDisabled}
+                  reorderDisabled={sorting.length > 0}
+                  isSelected={selectedIds.has(entry.track_id)}
+                  onToggleSelect={handleToggleSelect}
                 />
               ))}
             </tbody>
           </table>
         )}
       </div>
+      {confirmDelete && (
+        <ConfirmDeleteModal
+          count={selectedIds.size}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
+        />
+      )}
     </div>
   );
 }

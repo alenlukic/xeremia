@@ -44,7 +44,7 @@ function makeNode(overrides: Partial<ExplorerNode> & { node_id: string; track_id
     set_id: 1,
     tree_id: 1,
     col_index: 0,
-    track: { id: overrides.track_id, title: `Track ${overrides.track_id}`, artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+    track: { id: overrides.track_id, title: `Track ${overrides.track_id}`, artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null, date_added: null },
     ...overrides,
   };
 }
@@ -171,6 +171,28 @@ describe('SetExplorerCanvas', () => {
       expect(screen.getByLabelText('Swap track IDs')).toBeInTheDocument();
       expect(screen.getByTestId('child-add-btn')).toBeInTheDocument();
       expect(screen.getByLabelText('Add to Tracklist')).toBeInTheDocument();
+    });
+
+    it('child-add button remains interactive when edges exist on the same node', async () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
+      ];
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, tree_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ];
+      render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      await userEvent.click(nodeEls[0]);
+
+      const actionRow = screen.getAllByTestId('explorer-action-row')[0];
+      expect(actionRow.classList.contains('explorer-cell-action-row--visible')).toBe(true);
+
+      const childBtn = screen.getAllByTestId('child-add-btn')[0];
+      await userEvent.click(childBtn);
+
+      expect(screen.getByTestId('child-add-modal')).toBeInTheDocument();
     });
 
     it('hides +TL when track is already in tracklist', async () => {
@@ -343,7 +365,7 @@ describe('SetExplorerCanvas', () => {
       expect(props.onAddEdge).not.toHaveBeenCalled();
     });
 
-    it('treats the drag source as parent regardless of level position', async () => {
+    it('assigns parent/child by level regardless of drag direction', async () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -354,7 +376,7 @@ describe('SetExplorerCanvas', () => {
       const nodeEls = screen.getAllByTestId('explorer-node');
       simulateDrag(container, nodeEls[1], nodeEls[0]);
 
-      expect(props.onAddEdge).toHaveBeenCalledWith('n2', 'n1');
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
     });
   });
 
@@ -386,7 +408,7 @@ describe('SetExplorerCanvas', () => {
   describe('node title display', () => {
     it('strips metadata prefix from track title display', () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
-      nodes[0].track = { id: 10, title: '[8A - Aminor - 128] My Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null };
+      nodes[0].track = { id: 10, title: '[8A - Aminor - 128] My Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null, date_added: null };
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
 
       const titleEl = document.querySelector('.explorer-cell-title');
@@ -397,7 +419,7 @@ describe('SetExplorerCanvas', () => {
     it('node uses title attribute for full text', () => {
       const longTitle = 'A'.repeat(80);
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })];
-      nodes[0].track = { id: 10, title: longTitle, artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null };
+      nodes[0].track = { id: 10, title: longTitle, artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null, date_added: null };
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
 
       const nodeEl = screen.getByTestId('explorer-node');
@@ -921,7 +943,7 @@ describe('SetExplorerCanvas', () => {
     it('strips metadata prefix from parent names in sibling-add modal', async () => {
       const parentNode = makeNode({
         node_id: 'n1', track_id: 10, level: 0, col_index: 0,
-        track: { id: 10, title: '[8A - Aminor - 128] Parent Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+        track: { id: 10, title: '[8A - Aminor - 128] Parent Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null, date_added: null },
       });
       const nodes = [parentNode];
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />);
@@ -1107,7 +1129,7 @@ describe('SetExplorerCanvas', () => {
   });
 
   describe('node move-drag (top-zone drag)', () => {
-    function simulateMoveDrag(container: HTMLElement, source: Element, targetClientX: number, targetClientY: number) {
+    function _simulateMoveDrag(container: HTMLElement, source: Element, targetClientX: number, targetClientY: number) {
       const gridScroll = container.querySelector('.explorer-grid-scroll')!;
       fireEvent.mouseDown(source, { bubbles: true, clientX: 0, clientY: 10 });
       fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: targetClientX, clientY: targetClientY });
@@ -1275,6 +1297,53 @@ describe('SetExplorerCanvas', () => {
       await userEvent.click(nodeEl);
       const actionRow = screen.getByTestId('explorer-action-row');
       expect(actionRow.classList.contains('explorer-cell-action-row--visible')).toBe(true);
+    });
+  });
+
+  describe('normal-direction connect-drag geometry', () => {
+    it('connect-drag origin Y sits at node vertical center for normal 0→1 drag', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 200 });
+
+      const line = screen.getByTestId('connect-drag-line');
+      const NODE_H = 27;
+      const TOP_PAD = 32;
+      const V_GAP = 132;
+      const LEVEL_HEIGHT = NODE_H + V_GAP;
+      const CELL_NODE_OFFSET_Y = 0;
+      const expectedCY = TOP_PAD + 0 * LEVEL_HEIGHT + CELL_NODE_OFFSET_Y + NODE_H / 2;
+      expect(Number(line.getAttribute('y1'))).toBe(expectedCY);
+    });
+
+    it('normal direction 0→1 full flow: preview appears then edge is created', () => {
+      const nodes = [
+        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1, col_index: 0 }),
+      ];
+      const props = defaultProps({ nodes });
+      const { container } = render(<SetExplorerCanvas {...props} />);
+
+      const nodeEls = screen.getAllByTestId('explorer-node');
+      const gridScroll = container.querySelector('.explorer-grid-scroll')!;
+
+      fireEvent.mouseDown(nodeEls[0], { bubbles: true, clientX: 0, clientY: 40 });
+      fireEvent.mouseMove(gridScroll, { bubbles: true, clientX: 100, clientY: 200 });
+      expect(screen.getByTestId('connect-drag-line')).toBeInTheDocument();
+
+      fireEvent.mouseUp(nodeEls[1], { bubbles: true });
+
+      expect(props.onAddEdge).toHaveBeenCalledWith('n1', 'n2');
+      expect(screen.queryByTestId('connect-drag-line')).toBeNull();
     });
   });
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
@@ -6,11 +6,15 @@ import { searchTracks } from '../api/http';
 import type { SearchSuggestion } from '../types';
 import type { DragPayload } from '../dnd';
 import { PlayButton } from './PlayButton';
+import { SortTierBar } from './SortTierBar';
+import type { SortDescriptor, SortColumn } from './SortTierBar';
 
-interface SortDescriptor {
-  id: string;
-  desc: boolean;
-}
+const POOL_SORT_COLUMNS: SortColumn[] = [
+  { id: 'insertion_order', label: '#' },
+  { id: 'title', label: 'Title' },
+  { id: 'camelot_code', label: 'Key' },
+  { id: 'bpm', label: 'BPM' },
+];
 
 interface Props {
   pool: PoolEntry[];
@@ -152,10 +156,11 @@ function SubgroupBar({
   const handleCreate = useCallback(async () => {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    await onCreateSubgroup(trimmed);
+    const sg = await onCreateSubgroup(trimmed);
     setNewName('');
     setShowNewInput(false);
-  }, [newName, onCreateSubgroup]);
+    if (sg) onSetActiveFilter(sg.id);
+  }, [newName, onCreateSubgroup, onSetActiveFilter]);
 
   const handleRename = useCallback(async (id: number) => {
     const trimmed = editName.trim();
@@ -277,6 +282,17 @@ export function SetPoolTable({
   const [showSearch, setShowSearch] = useState(false);
   const [sorting, setSorting] = useState<SortDescriptor[]>([{ id: 'insertion_order', desc: false }]);
   const [subgroupFilter, setSubgroupFilter] = useState<number | null>(null);
+  const pendingSubgroupAssign = useRef<{ trackId: number; subgroupId: number } | null>(null);
+
+  useEffect(() => {
+    const pending = pendingSubgroupAssign.current;
+    if (!pending) return;
+    const entry = pool.find(e => e.track_id === pending.trackId);
+    if (entry) {
+      pendingSubgroupAssign.current = null;
+      onAddSubgroupMember(pending.subgroupId, entry.id);
+    }
+  }, [pool, onAddSubgroupMember]);
 
   const membershipByEntry = useMemo(() => {
     const map = new Map<number, Set<number>>();
@@ -313,11 +329,14 @@ export function SetPoolTable({
   }, []);
 
   const handleSearchSelect = useCallback((s: SearchSuggestion) => {
+    if (subgroupFilter !== null) {
+      pendingSubgroupAssign.current = { trackId: s.id, subgroupId: subgroupFilter };
+    }
     onAddTrack(s.id, s.title);
     setSearchQuery('');
     setSearchResults([]);
     setShowSearch(false);
-  }, [onAddTrack]);
+  }, [onAddTrack, subgroupFilter]);
 
   const handleSort = useCallback((col: string, e: React.MouseEvent) => {
     setSorting(prev => {
@@ -413,6 +432,11 @@ export function SetPoolTable({
         onReorderSubgroups={onReorderSubgroups}
         activeFilter={subgroupFilter}
         onSetActiveFilter={setSubgroupFilter}
+      />
+      <SortTierBar
+        sorting={sorting}
+        columns={POOL_SORT_COLUMNS}
+        onSortingChange={setSorting}
       />
       <div className="set-table-scroll-shell">
         {pool.length === 0 ? (

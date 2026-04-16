@@ -14,7 +14,7 @@ const V_GAP = 132;
 const SLOT_W = 292;
 const TOP_PAD = 32;
 const LABEL_W = 32;
-const CELL_NODE_OFFSET_Y = 43;
+const CELL_NODE_OFFSET_Y = 0;
 const LEVEL_HEIGHT = NODE_H + V_GAP;
 const MAX_LEVELS = 100;
 const DRAG_THRESHOLD = 5;
@@ -442,8 +442,8 @@ export const SetExplorerCanvas = memo(function SetExplorerCanvas({
     const srcLevel = acs.sourceLevel;
     const tgtLevel = level;
     if (Math.abs(srcLevel - tgtLevel) === 1) {
-      const parentId = acs.sourceNodeId;
-      const childId = nodeId;
+      const parentId = srcLevel < tgtLevel ? acs.sourceNodeId : nodeId;
+      const childId = srcLevel < tgtLevel ? nodeId : acs.sourceNodeId;
       const alreadyConnected = edgesRef.current.some(
         e => (e.parent_node_id === parentId && e.child_node_id === childId) ||
              (e.parent_node_id === childId && e.child_node_id === parentId),

@@ -1,6 +1,6 @@
 """Set workspace orchestration service.
 
-Handles set CRUD, pool/tracklist mutations with mutual exclusivity,
+Handles set CRUD, pool/tracklist mutations,
 and explorer graph mutations with constraint validation.
 """
 
@@ -133,14 +133,6 @@ class SetWorkspaceService:
         )
         if existing:
             return existing, None
-
-        in_tracklist = (
-            self.session.query(SetTracklistEntry)
-            .filter_by(set_id=set_id, track_id=track_id)
-            .first()
-        )
-        if in_tracklist:
-            return None, "Track is already in the tracklist for this set"
 
         max_order = (
             self.session.query(SetPoolEntry.insertion_order)
@@ -279,51 +271,81 @@ class SetWorkspaceService:
         self.session.flush()
         return True
 
-    def subgroup_reorder(self, set_id: int, subgroup_ids: List[int]) -> bool:
-        subgroups = (
+    def subgroup_reorder(
+        self, set_id: int, subgroup_ids: List[int],
+    ) -> Tuple[bool, Optional[str]]:
+        if len(subgroup_ids) != len(set(subgroup_ids)):
+            return False, "Duplicate subgroup IDs in reorder list"
+
+        current = (
             self.session.query(SetPoolSubgroup)
-            .filter(
-                SetPoolSubgroup.set_id == set_id,
-                SetPoolSubgroup.id.in_(subgroup_ids),
-            )
+            .filter_by(set_id=set_id)
             .all()
         )
-        sg_map = {sg.id: sg for sg in subgroups}
+        current_ids = {sg.id for sg in current}
+        if set(subgroup_ids) != current_ids:
+            return False, "Submitted subgroup IDs do not match current subgroups for this set"
+
+        sg_map = {sg.id: sg for sg in current}
         for idx, sg_id in enumerate(subgroup_ids):
-            sg = sg_map.get(sg_id)
-            if sg is not None:
-                sg.display_order = idx
+            sg_map[sg_id].display_order = idx
         self.session.flush()
-        return True
+        return True, None
 
     def subgroup_add_track(
-        self, subgroup_id: int, pool_entry_id: int,
-    ) -> Tuple[Optional[SetPoolSubgroupMember], bool]:
+        self, set_id: int, subgroup_id: int, pool_entry_id: int,
+    ) -> Tuple[Optional[SetPoolSubgroupMember], Optional[str]]:
+        sg = (
+            self.session.query(SetPoolSubgroup)
+            .filter_by(id=subgroup_id, set_id=set_id)
+            .first()
+        )
+        if sg is None:
+            return None, "Subgroup does not belong to this set"
+
+        pool_entry = (
+            self.session.query(SetPoolEntry)
+            .filter_by(id=pool_entry_id, set_id=set_id)
+            .first()
+        )
+        if pool_entry is None:
+            return None, "Pool entry does not belong to this set"
+
         existing = (
             self.session.query(SetPoolSubgroupMember)
             .filter_by(subgroup_id=subgroup_id, pool_entry_id=pool_entry_id)
             .first()
         )
         if existing:
-            return existing, False
+            return existing, None
         member = SetPoolSubgroupMember(
             subgroup_id=subgroup_id, pool_entry_id=pool_entry_id,
         )
         self.session.add(member)
         self.session.flush()
-        return member, True
+        return member, None
 
-    def subgroup_remove_track(self, subgroup_id: int, pool_entry_id: int) -> bool:
+    def subgroup_remove_track(
+        self, set_id: int, subgroup_id: int, pool_entry_id: int,
+    ) -> Tuple[bool, Optional[str]]:
+        sg = (
+            self.session.query(SetPoolSubgroup)
+            .filter_by(id=subgroup_id, set_id=set_id)
+            .first()
+        )
+        if sg is None:
+            return False, "Subgroup does not belong to this set"
+
         member = (
             self.session.query(SetPoolSubgroupMember)
             .filter_by(subgroup_id=subgroup_id, pool_entry_id=pool_entry_id)
             .first()
         )
         if member is None:
-            return False
+            return False, "Membership not found"
         self.session.delete(member)
         self.session.flush()
-        return True
+        return True, None
 
     # --- Tracklist operations ---
 
@@ -335,14 +357,6 @@ class SetWorkspaceService:
         )
         if existing:
             return existing, None
-
-        in_pool = (
-            self.session.query(SetPoolEntry)
-            .filter_by(set_id=set_id, track_id=track_id)
-            .first()
-        )
-        if in_pool:
-            return None, "Track is already in the pool for this set"
 
         max_pos = (
             self.session.query(SetTracklistEntry.position)
@@ -1000,14 +1014,6 @@ class SetWorkspaceService:
         )
         if existing:
             return True, None
-
-        in_pool = (
-            self.session.query(SetPoolEntry)
-            .filter_by(set_id=set_id, track_id=node.track_id)
-            .first()
-        )
-        if in_pool:
-            self.session.delete(in_pool)
 
         max_pos = (
             self.session.query(SetTracklistEntry.position)

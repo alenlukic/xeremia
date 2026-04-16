@@ -972,7 +972,9 @@ def api_subgroup_reorder(set_id: int, body: SubgroupReorderRequest):
     session = _get_session()
     try:
         svc = SetWorkspaceService(session)
-        svc.subgroup_reorder(set_id, body.subgroup_ids)
+        ok, err = svc.subgroup_reorder(set_id, body.subgroup_ids)
+        if not ok:
+            raise HTTPException(status_code=400, detail=err)
         session.commit()
         return {"ok": True}
     except HTTPException:
@@ -994,11 +996,11 @@ def api_subgroup_add_member(set_id: int, subgroup_id: int, body: SubgroupMemberR
         svc = SetWorkspaceService(session)
         if svc.get_set(set_id) is None:
             raise HTTPException(status_code=404, detail="Set not found")
-        member, created = svc.subgroup_add_track(subgroup_id, body.pool_entry_id)
-        if member is None:
-            raise HTTPException(status_code=400, detail="Could not add member")
+        member, err = svc.subgroup_add_track(set_id, subgroup_id, body.pool_entry_id)
+        if err is not None:
+            raise HTTPException(status_code=400, detail=err)
         session.commit()
-        return {"ok": True, "id": member.id, "created": created}
+        return {"ok": True, "id": member.id}
     except HTTPException:
         raise
     except Exception:
@@ -1016,9 +1018,12 @@ def api_subgroup_remove_member(set_id: int, subgroup_id: int, pool_entry_id: int
     session = _get_session()
     try:
         svc = SetWorkspaceService(session)
-        removed = svc.subgroup_remove_track(subgroup_id, pool_entry_id)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        removed, err = svc.subgroup_remove_track(set_id, subgroup_id, pool_entry_id)
         if not removed:
-            raise HTTPException(status_code=404, detail="Membership not found")
+            status = 400 if err and "does not belong" in err else 404
+            raise HTTPException(status_code=status, detail=err or "Membership not found")
         session.commit()
     except HTTPException:
         raise
@@ -1275,7 +1280,8 @@ def api_explorer_rename_tree(set_id: int, tree_id: int, body: ExplorerTreeRename
             raise HTTPException(status_code=404, detail="Set not found")
         tree, error = svc.rename_explorer_tree(set_id, tree_id, body.name)
         if error:
-            raise HTTPException(status_code=400, detail=error)
+            status = 404 if error == "Tree not found" else 400
+            raise HTTPException(status_code=status, detail=error)
         session.commit()
         return {"id": tree.id, "set_id": tree.set_id, "name": tree.name}
     except HTTPException:

@@ -1,4 +1,11 @@
-import { useCallback, useRef, useEffect, useState } from 'react';
+import {
+  useCallback,
+  useRef,
+  useEffect,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { useDroppable } from '@dnd-kit/core';
 
 export type PanelKey = 'matches' | 'set' | 'explorer';
@@ -70,7 +77,7 @@ export function DockBar({
   );
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: ReactKeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.getAttribute('role') !== 'tab') return;
 
@@ -102,7 +109,7 @@ export function DockBar({
   );
 
   const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
+    (e: ReactMouseEvent) => {
       e.preventDefault();
       dragging.current = true;
       startY.current = e.clientY;

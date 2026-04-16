@@ -528,6 +528,23 @@ class TestCorsAndSchemaValidation:
                 resp = tc.get("/api/weights", headers={"Origin": "http://evil.example.com"})
         assert resp.headers.get("access-control-allow-origin") != "http://evil.example.com"
 
+    def test_patch_preflight_allowed(self):
+        port = os.environ.get("CLIENT_PORT", "5174")
+        origin = f"http://localhost:{port}"
+        with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)):
+            from src.api.app import create_app
+            with TestClient(create_app()) as tc:
+                resp = tc.options(
+                    "/api/weights",
+                    headers={
+                        "Origin": origin,
+                        "Access-Control-Request-Method": "PATCH",
+                    },
+                )
+        assert resp.status_code == 200
+        allowed = resp.headers.get("access-control-allow-methods", "")
+        assert "PATCH" in allowed
+
     def test_env_override_replaces_defaults(self):
         port = os.environ.get("CLIENT_PORT", "5174")
         default_origin = f"http://localhost:{port}"
@@ -585,6 +602,127 @@ class TestExplorerTreeCreateModeValidation:
             from src.api.schemas import ExplorerTreeCreateRequest
             req = ExplorerTreeCreateRequest(name="Test", mode=mode)
             assert req.mode == mode
+
+
+# ---------------------------------------------------------------------------
+# PATCH/DELETE /api/sets/{set_id}/explorer/trees/{tree_id}
+# ---------------------------------------------------------------------------
+
+
+class TestExplorerTreeRenameDelete:
+    """Route-level tests for explorer tree rename and delete endpoints."""
+
+    @pytest.fixture()
+    def _db(self):
+        from sqlalchemy import Column, Integer, String, Table, MetaData, create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from src.models.dj_set import DjSet
+        from src.models.set_explorer_tree import SetExplorerTree
+        from src.models.set_explorer_node import SetExplorerNode
+        from src.models.set_explorer_edge import SetExplorerEdge
+
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        meta = MetaData()
+        Table("track", meta, Column("id", Integer, primary_key=True), Column("title", String))
+        meta.create_all(engine)
+        for t in [DjSet.__table__, SetExplorerTree.__table__,
+                   SetExplorerNode.__table__, SetExplorerEdge.__table__]:
+            t.create(engine, checkfirst=True)
+        return sessionmaker(bind=engine)
+
+    @pytest.fixture()
+    def _tc(self, _db):
+        with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)), \
+             patch("src.api.routes._get_session", side_effect=lambda: _db()), \
+             patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
+             patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+            from src.api.app import create_app
+            yield TestClient(create_app())
+
+    def _seed_set_and_trees(self, _db):
+        from src.set_workspace.service import SetWorkspaceService
+        s = _db()
+        s.expire_on_commit = False
+        svc = SetWorkspaceService(s)
+        dj_set = svc.create_set("Test Set")
+        tree_a, _ = svc.create_explorer_tree(dj_set.id, "Tree A")
+        tree_b, _ = svc.create_explorer_tree(dj_set.id, "Tree B")
+        s.commit()
+        ids = (dj_set.id, tree_a.id, tree_b.id)
+        s.close()
+        return ids
+
+    def _seed_nodes_and_edges(self, _db, set_id, tree_id):
+        from src.models.set_explorer_node import SetExplorerNode
+        from src.models.set_explorer_edge import SetExplorerEdge
+        s = _db()
+        s.add(SetExplorerNode(set_id=set_id, tree_id=tree_id, node_id="n1", track_id=1, level=0, col_index=0))
+        s.add(SetExplorerNode(set_id=set_id, tree_id=tree_id, node_id="n2", track_id=2, level=1, col_index=0))
+        s.add(SetExplorerEdge(set_id=set_id, tree_id=tree_id, parent_node_id="n1", child_node_id="n2"))
+        s.commit()
+        s.close()
+
+    def test_rename_success(self, _db, _tc):
+        set_id, tree_a_id, _ = self._seed_set_and_trees(_db)
+        resp = _tc.patch(f"/api/sets/{set_id}/explorer/trees/{tree_a_id}", json={"name": "Renamed"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["name"] == "Renamed"
+        assert body["id"] == tree_a_id
+
+    def test_rename_duplicate_name_rejected(self, _db, _tc):
+        set_id, tree_a_id, _ = self._seed_set_and_trees(_db)
+        resp = _tc.patch(f"/api/sets/{set_id}/explorer/trees/{tree_a_id}", json={"name": "Tree B"})
+        assert resp.status_code == 400
+        assert "already exists" in resp.json()["detail"]
+
+    def test_rename_missing_set_returns_404(self, _db, _tc):
+        resp = _tc.patch("/api/sets/9999/explorer/trees/1", json={"name": "X"})
+        assert resp.status_code == 404
+
+    def test_rename_missing_tree_returns_404(self, _db, _tc):
+        set_id, _, _ = self._seed_set_and_trees(_db)
+        resp = _tc.patch(f"/api/sets/{set_id}/explorer/trees/9999", json={"name": "X"})
+        assert resp.status_code == 404
+
+    def test_delete_success(self, _db, _tc):
+        set_id, tree_a_id, _ = self._seed_set_and_trees(_db)
+        resp = _tc.delete(f"/api/sets/{set_id}/explorer/trees/{tree_a_id}")
+        assert resp.status_code == 204
+
+    def test_delete_missing_set_returns_404(self, _db, _tc):
+        resp = _tc.delete("/api/sets/9999/explorer/trees/1")
+        assert resp.status_code == 404
+
+    def test_delete_missing_tree_returns_404(self, _db, _tc):
+        set_id, _, _ = self._seed_set_and_trees(_db)
+        resp = _tc.delete(f"/api/sets/{set_id}/explorer/trees/9999")
+        assert resp.status_code == 404
+
+    def test_delete_cascade_removes_nodes_and_edges(self, _db, _tc):
+        from src.models.set_explorer_node import SetExplorerNode
+        from src.models.set_explorer_edge import SetExplorerEdge
+
+        set_id, tree_a_id, _ = self._seed_set_and_trees(_db)
+        self._seed_nodes_and_edges(_db, set_id, tree_a_id)
+
+        s = _db()
+        assert s.query(SetExplorerNode).filter_by(tree_id=tree_a_id).count() == 2
+        assert s.query(SetExplorerEdge).filter_by(tree_id=tree_a_id).count() == 1
+        s.close()
+
+        resp = _tc.delete(f"/api/sets/{set_id}/explorer/trees/{tree_a_id}")
+        assert resp.status_code == 204
+
+        s2 = _db()
+        assert s2.query(SetExplorerNode).filter_by(tree_id=tree_a_id).count() == 0
+        assert s2.query(SetExplorerEdge).filter_by(tree_id=tree_a_id).count() == 0
+        s2.close()
 
 
 # ---------------------------------------------------------------------------
@@ -669,7 +807,7 @@ class TestPoolSubgroupEndpoints:
         _db_session.flush()
         pool_entry, _ = svc.pool_add(dj_set.id, 1)
         sg = svc.subgroup_create(dj_set.id, "Warmup")
-        svc.subgroup_add_track(sg.id, pool_entry.id)
+        svc.subgroup_add_track(dj_set.id, sg.id, pool_entry.id)
 
         deleted = svc.subgroup_delete(dj_set.id, sg.id)
         assert deleted is True
@@ -728,9 +866,9 @@ class TestPoolSubgroupEndpoints:
         sg1 = svc.subgroup_create(dj_set.id, "A")
         sg2 = svc.subgroup_create(dj_set.id, "B")
 
-        svc.subgroup_add_track(sg1.id, pe1.id)
-        svc.subgroup_add_track(sg1.id, pe2.id)
-        svc.subgroup_add_track(sg2.id, pe1.id)
+        svc.subgroup_add_track(dj_set.id, sg1.id, pe1.id)
+        svc.subgroup_add_track(dj_set.id, sg1.id, pe2.id)
+        svc.subgroup_add_track(dj_set.id, sg2.id, pe1.id)
 
         from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
         all_members = _db_session.query(SetPoolSubgroupMember).all()
@@ -747,10 +885,10 @@ class TestPoolSubgroupEndpoints:
         pe, _ = svc.pool_add(dj_set.id, 1)
         sg = svc.subgroup_create(dj_set.id, "A")
 
-        m1, created1 = svc.subgroup_add_track(sg.id, pe.id)
-        m2, created2 = svc.subgroup_add_track(sg.id, pe.id)
-        assert created1 is True
-        assert created2 is False
+        m1, err1 = svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
+        m2, err2 = svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
+        assert err1 is None
+        assert err2 is None
         assert m1.id == m2.id
 
     def test_remove_membership(self, svc, _db_session):
@@ -758,10 +896,11 @@ class TestPoolSubgroupEndpoints:
         _db_session.flush()
         pe, _ = svc.pool_add(dj_set.id, 1)
         sg = svc.subgroup_create(dj_set.id, "A")
-        svc.subgroup_add_track(sg.id, pe.id)
+        svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
 
-        removed = svc.subgroup_remove_track(sg.id, pe.id)
+        removed, err = svc.subgroup_remove_track(dj_set.id, sg.id, pe.id)
         assert removed is True
+        assert err is None
 
         from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
         remaining = _db_session.query(SetPoolSubgroupMember).filter_by(subgroup_id=sg.id).all()
@@ -772,7 +911,7 @@ class TestPoolSubgroupEndpoints:
         _db_session.flush()
         pe, _ = svc.pool_add(dj_set.id, 1)
         sg = svc.subgroup_create(dj_set.id, "A")
-        svc.subgroup_add_track(sg.id, pe.id)
+        svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
 
         svc.pool_remove(dj_set.id, 1)
 
@@ -785,7 +924,7 @@ class TestPoolSubgroupEndpoints:
         _db_session.flush()
         pe, _ = svc.pool_add(dj_set.id, 1)
         sg = svc.subgroup_create(dj_set.id, "Warmup")
-        svc.subgroup_add_track(sg.id, pe.id)
+        svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
 
         hydration = svc.hydrate_set(dj_set.id)
         assert "pool_subgroups" in hydration
@@ -799,7 +938,7 @@ class TestPoolSubgroupEndpoints:
         _db_session.flush()
         pe, _ = svc.pool_add(dj_set.id, 1)
         sg = svc.subgroup_create(dj_set.id, "Warmup")
-        svc.subgroup_add_track(sg.id, pe.id)
+        svc.subgroup_add_track(dj_set.id, sg.id, pe.id)
 
         svc.delete_set(dj_set.id)
 

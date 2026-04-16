@@ -1,6 +1,6 @@
 """Service-level tests for set workspace operations.
 
-Covers: set CRUD, pool/tracklist mutual exclusivity, tracklist reorder,
+Covers: set CRUD, pool/tracklist dual membership, tracklist reorder,
 delete-node resolution, and edge-score request shape.
 """
 
@@ -117,7 +117,7 @@ class TestSetCRUD:
         assert session.query(SetExplorerNode).filter_by(set_id=sid).count() == 0
 
 
-class TestPoolTracklistExclusivity:
+class TestPoolTracklistDualMembership:
     def test_pool_add_basic(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
         session.commit()
@@ -134,23 +134,49 @@ class TestPoolTracklistExclusivity:
         assert err2 is None
         assert entry2.track_id == 10
 
-    def test_pool_blocked_by_tracklist(self, svc: SetWorkspaceService, session: Session):
+    def test_pool_add_succeeds_when_in_tracklist(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
         session.commit()
         svc.tracklist_add(s.id, 10)
+        session.commit()
         entry, err = svc.pool_add(s.id, 10)
-        assert entry is None
-        assert err is not None
-        assert "tracklist" in err.lower()
+        assert err is None
+        assert entry is not None
+        assert entry.track_id == 10
+        assert session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).count() == 1
+        assert session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).count() == 1
 
-    def test_tracklist_blocked_by_pool(self, svc: SetWorkspaceService, session: Session):
+    def test_tracklist_add_succeeds_when_in_pool(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
         session.commit()
         svc.pool_add(s.id, 20)
+        session.commit()
         entry, err = svc.tracklist_add(s.id, 20)
-        assert entry is None
-        assert err is not None
-        assert "pool" in err.lower()
+        assert err is None
+        assert entry is not None
+        assert entry.track_id == 20
+        assert session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=20).count() == 1
+        assert session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=20).count() == 1
+
+    def test_dual_membership_both_orders(self, svc: SetWorkspaceService, session: Session):
+        """Add pool-then-tracklist and tracklist-then-pool for different tracks."""
+        s = svc.create_set("S")
+        session.commit()
+
+        svc.pool_add(s.id, 10)
+        session.commit()
+        tl_entry, tl_err = svc.tracklist_add(s.id, 10)
+        assert tl_err is None
+        assert tl_entry is not None
+
+        svc.tracklist_add(s.id, 20)
+        session.commit()
+        pool_entry, pool_err = svc.pool_add(s.id, 20)
+        assert pool_err is None
+        assert pool_entry is not None
+
+        assert session.query(SetPoolEntry).filter_by(set_id=s.id).count() == 2
+        assert session.query(SetTracklistEntry).filter_by(set_id=s.id).count() == 2
 
     def test_pool_move_to_tracklist(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
@@ -816,6 +842,140 @@ class TestExplorerTrees:
         assert null_tree_nodes == 0
 
 
+class TestSubgroupMembershipIntegrity:
+    """Cross-set mutation guard for subgroup member add/remove."""
+
+    def _two_sets_with_pool(self, svc, session):
+        s1 = svc.create_set("Set A")
+        s2 = svc.create_set("Set B")
+        session.commit()
+        e1, _ = svc.pool_add(s1.id, 10)
+        e2, _ = svc.pool_add(s2.id, 20)
+        session.commit()
+        sg1 = svc.subgroup_create(s1.id, "Group A")
+        sg2 = svc.subgroup_create(s2.id, "Group B")
+        session.commit()
+        return s1, s2, e1, e2, sg1, sg2
+
+    def test_add_member_valid(self, svc: SetWorkspaceService, session: Session):
+        s1, _, e1, _, sg1, _ = self._two_sets_with_pool(svc, session)
+        member, err = svc.subgroup_add_track(s1.id, sg1.id, e1.id)
+        assert err is None
+        assert member is not None
+
+    def test_add_member_cross_set_subgroup_rejected(self, svc: SetWorkspaceService, session: Session):
+        s1, s2, e1, _, _, sg2 = self._two_sets_with_pool(svc, session)
+        member, err = svc.subgroup_add_track(s1.id, sg2.id, e1.id)
+        assert member is None
+        assert err is not None
+        assert "does not belong" in err.lower()
+
+    def test_add_member_cross_set_pool_entry_rejected(self, svc: SetWorkspaceService, session: Session):
+        s1, s2, _, e2, sg1, _ = self._two_sets_with_pool(svc, session)
+        member, err = svc.subgroup_add_track(s1.id, sg1.id, e2.id)
+        assert member is None
+        assert err is not None
+        assert "pool entry" in err.lower()
+
+    def test_remove_member_valid(self, svc: SetWorkspaceService, session: Session):
+        s1, _, e1, _, sg1, _ = self._two_sets_with_pool(svc, session)
+        svc.subgroup_add_track(s1.id, sg1.id, e1.id)
+        session.commit()
+        removed, err = svc.subgroup_remove_track(s1.id, sg1.id, e1.id)
+        assert removed is True
+        assert err is None
+
+    def test_remove_member_wrong_set_rejected(self, svc: SetWorkspaceService, session: Session):
+        s1, s2, e1, _, sg1, _ = self._two_sets_with_pool(svc, session)
+        svc.subgroup_add_track(s1.id, sg1.id, e1.id)
+        session.commit()
+        removed, err = svc.subgroup_remove_track(s2.id, sg1.id, e1.id)
+        assert removed is False
+        assert err is not None
+        assert "does not belong" in err.lower()
+
+    def test_remove_member_nonexistent_set(self, svc: SetWorkspaceService, session: Session):
+        s1, _, e1, _, sg1, _ = self._two_sets_with_pool(svc, session)
+        svc.subgroup_add_track(s1.id, sg1.id, e1.id)
+        session.commit()
+        removed, err = svc.subgroup_remove_track(9999, sg1.id, e1.id)
+        assert removed is False
+        assert err is not None
+
+    def test_add_member_idempotent(self, svc: SetWorkspaceService, session: Session):
+        s1, _, e1, _, sg1, _ = self._two_sets_with_pool(svc, session)
+        m1, err1 = svc.subgroup_add_track(s1.id, sg1.id, e1.id)
+        session.commit()
+        m2, err2 = svc.subgroup_add_track(s1.id, sg1.id, e1.id)
+        assert err1 is None
+        assert err2 is None
+        assert m1.id == m2.id
+
+
+class TestSubgroupReorderValidation:
+    """Reorder must require exact match of current subgroup IDs."""
+
+    def test_reorder_valid_full_set(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        sg_a = svc.subgroup_create(s.id, "A")
+        sg_b = svc.subgroup_create(s.id, "B")
+        sg_c = svc.subgroup_create(s.id, "C")
+        session.commit()
+        ok, err = svc.subgroup_reorder(s.id, [sg_c.id, sg_a.id, sg_b.id])
+        assert ok is True
+        assert err is None
+        session.commit()
+        reloaded = (
+            session.query(SetPoolSubgroup)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolSubgroup.display_order)
+            .all()
+        )
+        assert [sg.id for sg in reloaded] == [sg_c.id, sg_a.id, sg_b.id]
+        assert [sg.display_order for sg in reloaded] == [0, 1, 2]
+
+    def test_reorder_partial_list_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        sg_a = svc.subgroup_create(s.id, "A")
+        svc.subgroup_create(s.id, "B")
+        session.commit()
+        ok, err = svc.subgroup_reorder(s.id, [sg_a.id])
+        assert ok is False
+        assert err is not None
+        assert "do not match" in err.lower()
+
+    def test_reorder_duplicate_ids_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        sg_a = svc.subgroup_create(s.id, "A")
+        session.commit()
+        ok, err = svc.subgroup_reorder(s.id, [sg_a.id, sg_a.id])
+        assert ok is False
+        assert err is not None
+        assert "duplicate" in err.lower()
+
+    def test_reorder_foreign_ids_rejected(self, svc: SetWorkspaceService, session: Session):
+        s1 = svc.create_set("S1")
+        s2 = svc.create_set("S2")
+        session.commit()
+        sg_1 = svc.subgroup_create(s1.id, "A")
+        sg_foreign = svc.subgroup_create(s2.id, "B")
+        session.commit()
+        ok, err = svc.subgroup_reorder(s1.id, [sg_1.id, sg_foreign.id])
+        assert ok is False
+        assert err is not None
+        assert "do not match" in err.lower()
+
+    def test_reorder_empty_set_with_empty_list(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.subgroup_reorder(s.id, [])
+        assert ok is True
+        assert err is None
+
+
 class TestExplorerExactSlotPlacement:
     def test_explicit_col_index_places_at_requested_slot(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
@@ -850,3 +1010,83 @@ class TestExplorerExactSlotPlacement:
         assert err is None
         session.commit()
         assert node.col_index == 1
+
+
+class TestSubgroupMembershipHydration:
+    """Regression tests for subgroup membership visibility through hydration.
+
+    Validates the bug fix: adding a track to a subgroup must persist and
+    appear in the hydrated payload so subgroup-tab filtering works.
+    """
+
+    def test_add_member_visible_in_hydration(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        pe, _ = svc.pool_add(s.id, 10)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+
+        member, err = svc.subgroup_add_track(s.id, sg.id, pe.id)
+        assert err is None
+        assert member is not None
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        assert h is not None
+        memberships = h["pool_subgroup_memberships"]
+        assert len(memberships) == 1
+        assert memberships[0].subgroup_id == sg.id
+        assert memberships[0].pool_entry_id == pe.id
+
+    def test_multi_subgroup_membership_survives_hydration(self, svc: SetWorkspaceService, session: Session):
+        """One pool entry in two subgroups must appear twice in hydration."""
+        s = svc.create_set("S")
+        session.commit()
+        pe, _ = svc.pool_add(s.id, 10)
+        sg_a = svc.subgroup_create(s.id, "A")
+        sg_b = svc.subgroup_create(s.id, "B")
+        session.commit()
+
+        m1, err1 = svc.subgroup_add_track(s.id, sg_a.id, pe.id)
+        m2, err2 = svc.subgroup_add_track(s.id, sg_b.id, pe.id)
+        assert err1 is None
+        assert err2 is None
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        memberships = h["pool_subgroup_memberships"]
+        assert len(memberships) == 2
+        sg_ids = {m.subgroup_id for m in memberships}
+        assert sg_ids == {sg_a.id, sg_b.id}
+        assert all(m.pool_entry_id == pe.id for m in memberships)
+
+    def test_hydrated_membership_has_correct_pool_entry_id(self, svc: SetWorkspaceService, session: Session):
+        """Membership pool_entry_id must match the pool entry row id
+        (not track_id) so frontend subgroup filtering works."""
+        s = svc.create_set("S")
+        session.commit()
+        pe, _ = svc.pool_add(s.id, 42)
+        sg = svc.subgroup_create(s.id, "Peak")
+        session.commit()
+
+        svc.subgroup_add_track(s.id, sg.id, pe.id)
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        pool_entry_ids = {e.id for e in h["pool"]}
+        membership_pe_ids = {m.pool_entry_id for m in h["pool_subgroup_memberships"]}
+        assert membership_pe_ids.issubset(pool_entry_ids)
+
+    def test_no_silent_failure_on_valid_add(self, svc: SetWorkspaceService, session: Session):
+        """A valid add must return the member object without error."""
+        s = svc.create_set("S")
+        session.commit()
+        pe, _ = svc.pool_add(s.id, 99)
+        sg = svc.subgroup_create(s.id, "Chill")
+        session.commit()
+
+        member, err = svc.subgroup_add_track(s.id, sg.id, pe.id)
+        assert member is not None
+        assert err is None
+        assert member.subgroup_id == sg.id
+        assert member.pool_entry_id == pe.id

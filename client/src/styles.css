@@ -2438,6 +2438,45 @@ body,
   color: var(--text);
 }
 
+.explorer-tree-tab-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.explorer-tree-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 3px);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+  transition: color var(--transition), background var(--transition);
+  flex-shrink: 0;
+}
+
+.explorer-tree-action:hover {
+  color: var(--text);
+  background: var(--surface-hover, #252540);
+}
+
+.explorer-tree-action:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.explorer-tree-action--danger:hover {
+  color: var(--danger);
+  background: var(--danger-dim);
+}
+
 .set-explorer-controls {
   display: flex;
   align-items: center;
@@ -2467,7 +2506,6 @@ body,
 
 .explorer-levels {
   position: relative;
-  z-index: 2;
 }
 
 .explorer-level {
@@ -2504,7 +2542,6 @@ body,
   flex-direction: column;
   align-items: center;
   padding: 0 11px;
-  z-index: 2;
 }
 
 .explorer-cell--empty {
@@ -2588,13 +2625,19 @@ body,
   min-height: 34px;
 }
 
-/* --- Explorer Cell Action Row --- */
+/* --- Explorer Cell Row (node + right-side controls) --- */
+.explorer-cell-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+/* --- Explorer Cell Action Row (right-side vertical) --- */
 .explorer-cell-action-row {
   display: flex;
-  gap: 4px;
-  justify-content: center;
-  margin-bottom: 4px;
-  min-height: 22px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 18px;
   opacity: 0;
   transition: opacity 150ms ease;
   pointer-events: none;
@@ -2603,11 +2646,15 @@ body,
 .explorer-cell-action-row--visible {
   opacity: 1;
   pointer-events: auto;
+  position: relative;
+  z-index: 4;
 }
 
 .explorer-cell:hover .explorer-cell-action-row {
   opacity: 1;
   pointer-events: auto;
+  position: relative;
+  z-index: 4;
 }
 
 .explorer-cell-action {
@@ -2631,17 +2678,15 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--control-min-height);
-  height: 15px;
-  margin-top: 2px;
+  padding: 2px 4px;
   background: var(--surface);
-  border: 1px dashed var(--border);
+  border: 0.5px dashed var(--border);
   border-radius: var(--radius-sm);
   color: var(--accent);
-  font-size: 12px;
+  font-size: 6px;
   font-weight: 700;
   cursor: pointer;
-  opacity: 0.45;
+  opacity: 0.7;
   transition: opacity var(--transition), border-color var(--transition);
 }
 
@@ -2929,7 +2974,7 @@ body,
 }
 
 .set-mode-left {
-  flex: 0 0 37%;
+  flex: 0 0 45%;
   height: 100%;
   min-width: 0;
   overflow: hidden;
@@ -2975,7 +3020,7 @@ body,
 .set-mode-left .set-ws-col-actions-pool { width: 80px; }
 
 .set-mode-right {
-  flex: 0 0 63%;
+  flex: 0 0 55%;
   min-width: 0;
   overflow: hidden;
   display: flex;
@@ -3292,6 +3337,52 @@ body,
 
 .row-dragging {
   opacity: 0.4;
+}
+
+.row-multiselected {
+  background: var(--accent-dim);
+}
+
+.row-multiselected:hover {
+  background: rgba(108, 140, 255, 0.18);
+}
+
+/* --- Tracklist multi-select --- */
+.tracklist-selection-count {
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* --- Tracklist confirm-delete modal --- */
+.tracklist-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.tracklist-confirm-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.tracklist-confirm-modal p {
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.tracklist-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .row-drop-target {
@@ -3653,4 +3744,123 @@ body,
 }
 .set-ws-cell-subgroups {
   padding: 2px 4px;
+}
+
+/* === Sort Tier Bar === */
+
+.sort-tier-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  flex-wrap: wrap;
+  min-height: 28px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sort-tier-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.sort-tier-label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.sort-tier-dir-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 9px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.sort-tier-dir-btn:hover {
+  color: var(--text-primary);
+}
+
+.sort-tier-controls {
+  display: inline-flex;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.sort-tier-pill:hover .sort-tier-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sort-tier-ctrl-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 3px;
+  line-height: 1;
+}
+.sort-tier-ctrl-btn:hover {
+  color: var(--text-primary);
+}
+.sort-tier-ctrl-btn--danger:hover {
+  color: var(--danger, #e25555);
+}
+
+.sort-tier-add-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.sort-tier-add-btn {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition), border-color var(--transition);
+}
+.sort-tier-add-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sort-tier-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 2px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 0;
+  list-style: none;
+  z-index: 20;
+  min-width: 80px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+}
+
+.sort-tier-menu-item {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sort-tier-menu-item:hover {
+  background: var(--accent-dim);
+  color: var(--text-primary);
 }

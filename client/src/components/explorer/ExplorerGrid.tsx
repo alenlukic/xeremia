@@ -11,7 +11,7 @@ const SLOT_W = 292;
 const MAX_COLS = 5;
 const TOP_PAD = 32;
 const LABEL_W = 32;
-const CELL_NODE_OFFSET_Y = 43;
+const CELL_NODE_OFFSET_Y = 0;
 const LEVEL_HEIGHT = NODE_H + V_GAP;
 
 export const GRID_TOTAL_WIDTH = LABEL_W + MAX_COLS * SLOT_W;
@@ -180,7 +180,7 @@ export const ExplorerGrid = memo(function ExplorerGrid({
           </svg>
         )}
 
-        <div className="explorer-levels" style={{ paddingTop: TOP_PAD, position: 'relative', zIndex: 2 }}>
+        <div className="explorer-levels" style={{ paddingTop: TOP_PAD, position: 'relative' }}>
           {viewModel.map((cells, levelIndex) => (
             <Level
               key={levelIndex}

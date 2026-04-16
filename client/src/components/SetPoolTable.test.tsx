@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { searchTracks } from '../api/http';
 import { DndContext } from '@dnd-kit/core';
 import { SetPoolTable } from './SetPoolTable';
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types';
@@ -207,6 +208,100 @@ describe('SetPoolTable multi-sort', () => {
   });
 });
 
+describe('SetPoolTable tiered sort bar', () => {
+  function makeEntries(): PoolEntry[] {
+    return [
+      makePoolEntry({
+        id: 1, track_id: 10, insertion_order: 0,
+        track: { id: 10, title: 'Charlie', artist_names: [], bpm: 140, key: 'C', camelot_code: '8A', genre: null, label: null, energy: null, date_added: null },
+      }),
+      makePoolEntry({
+        id: 2, track_id: 20, insertion_order: 1,
+        track: { id: 20, title: 'Alpha', artist_names: [], bpm: 120, key: 'D', camelot_code: '3B', genre: null, label: null, energy: null, date_added: null },
+      }),
+      makePoolEntry({
+        id: 3, track_id: 30, insertion_order: 2,
+        track: { id: 30, title: 'Alpha', artist_names: [], bpm: 130, key: 'E', camelot_code: '5A', genre: null, label: null, energy: null, date_added: null },
+      }),
+    ];
+  }
+
+  function getTitles(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll('.set-pool-table tbody .set-ws-cell-title'))
+      .map(el => el.textContent ?? '');
+  }
+
+  function clickMenuItem(container: HTMLElement, label: string) {
+    const items = container.querySelectorAll('.sort-tier-menu-item');
+    const target = Array.from(items).find(el => el.textContent === label);
+    if (!target) throw new Error(`Menu item "${label}" not found`);
+    fireEvent.mouseDown(target);
+  }
+
+  it('renders the sort tier bar', () => {
+    const { container } = renderPool(makeEntries());
+    expect(container.querySelector('.sort-tier-bar')).toBeTruthy();
+  });
+
+  it('shows default # sort tier on mount', () => {
+    const { container } = renderPool(makeEntries());
+    const pills = container.querySelectorAll('.sort-tier-pill');
+    expect(pills.length).toBe(1);
+    expect(pills[0].querySelector('.sort-tier-label')?.textContent).toBe('#');
+  });
+
+  it('adds a tier via +Sort and applies it as secondary sort', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /remove # sort/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }));
+    clickMenuItem(container, 'Title');
+    expect(getTitles(container)).toEqual(['Alpha', 'Alpha', 'Charlie']);
+  });
+
+  it('appends a second tier via +Sort for sub-sorting', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /remove # sort/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }));
+    clickMenuItem(container, 'Title');
+
+    fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }));
+    clickMenuItem(container, 'BPM');
+
+    const bpms = Array.from(container.querySelectorAll('.set-pool-table tbody .set-ws-cell-bpm'))
+      .map(el => el.textContent ?? '');
+    expect(getTitles(container)).toEqual(['Alpha', 'Alpha', 'Charlie']);
+    expect(bpms).toEqual(['120', '130', '140']);
+  });
+
+  it('removes a tier and updates sort', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /remove # sort/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }));
+    clickMenuItem(container, 'Title');
+    expect(getTitles(container)[0]).toBe('Alpha');
+
+    fireEvent.click(screen.getByRole('button', { name: /remove title sort/i }));
+    expect(getTitles(container)).toEqual(['Charlie', 'Alpha', 'Alpha']);
+  });
+
+  it('reorders tiers to change effective sort order', () => {
+    const { container } = renderPool(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /remove # sort/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }));
+    clickMenuItem(container, 'BPM');
+    fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }));
+    clickMenuItem(container, 'Title');
+
+    const bpmsBefore = Array.from(container.querySelectorAll('.set-pool-table tbody .set-ws-cell-bpm'))
+      .map(el => el.textContent ?? '');
+    expect(bpmsBefore).toEqual(['120', '130', '140']);
+
+    fireEvent.click(screen.getByRole('button', { name: /move title sort up/i }));
+    const titlesAfter = getTitles(container);
+    expect(titlesAfter).toEqual(['Alpha', 'Alpha', 'Charlie']);
+  });
+});
+
 describe('SetPoolTable subgroup features', () => {
   const subgroups: PoolSubgroup[] = [
     { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
@@ -321,5 +416,399 @@ describe('SetPoolTable subgroup features', () => {
     expect(cols.length).toBe(firstRowTds.length);
     expect(container.querySelector('.set-ws-col-subgroups')).toBeTruthy();
     expect(container.querySelector('.set-ws-cell-subgroups')).toBeTruthy();
+  });
+});
+
+describe('SetPoolTable subgroup auto-activate on create', () => {
+  const baseSubgroups: PoolSubgroup[] = [
+    { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+    { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
+  ];
+  const entries = [
+    makePoolEntry({ id: 10, track_id: 100, insertion_order: 0 }),
+    makePoolEntry({ id: 20, track_id: 200, insertion_order: 1 }),
+  ];
+
+  it('creating a subgroup sets it as the active filter', async () => {
+    const newSg: PoolSubgroup = { id: 3, set_id: 1, name: 'Cooldown', display_order: 2 };
+    const onCreateSubgroup = vi.fn().mockResolvedValue(newSg);
+
+    const { container, rerender } = render(
+      <DndContext>
+        <SetPoolTable
+          pool={entries}
+          subgroups={baseSubgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={noop}
+          onCreateSubgroup={onCreateSubgroup}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={noopAsync}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    fireEvent.click(container.querySelector('.subgroup-add-btn')!);
+    const input = container.querySelector('.subgroup-new-input')!;
+    fireEvent.change(input, { target: { value: 'Cooldown' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(onCreateSubgroup).toHaveBeenCalledWith('Cooldown');
+    });
+
+    rerender(
+      <DndContext>
+        <SetPoolTable
+          pool={entries}
+          subgroups={[...baseSubgroups, newSg]}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={noop}
+          onCreateSubgroup={onCreateSubgroup}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={noopAsync}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    const filterBtns = container.querySelectorAll('.subgroup-bar .subgroup-filter-btn');
+    const cooldownBtn = Array.from(filterBtns).find(b => b.textContent === 'Cooldown')!;
+    expect(cooldownBtn.classList.contains('active')).toBe(true);
+
+    const allBtn = Array.from(filterBtns).find(b => b.textContent === 'All')!;
+    expect(allBtn.classList.contains('active')).toBe(false);
+  });
+
+  it('active filter on new subgroup shows empty-subgroup message when no members assigned', async () => {
+    const newSg: PoolSubgroup = { id: 3, set_id: 1, name: 'Cooldown', display_order: 2 };
+    const onCreateSubgroup = vi.fn().mockResolvedValue(newSg);
+
+    const { container, rerender } = render(
+      <DndContext>
+        <SetPoolTable
+          pool={entries}
+          subgroups={baseSubgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={noop}
+          onCreateSubgroup={onCreateSubgroup}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={noopAsync}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    fireEvent.click(container.querySelector('.subgroup-add-btn')!);
+    const input = container.querySelector('.subgroup-new-input')!;
+    fireEvent.change(input, { target: { value: 'Cooldown' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(onCreateSubgroup).toHaveBeenCalledWith('Cooldown');
+    });
+
+    rerender(
+      <DndContext>
+        <SetPoolTable
+          pool={entries}
+          subgroups={[...baseSubgroups, newSg]}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={noop}
+          onCreateSubgroup={onCreateSubgroup}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={noopAsync}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    expect(screen.getByText(/no tracks in this subgroup/i)).toBeTruthy();
+  });
+
+  it('failed creation (null return) does not change the active filter', async () => {
+    const onCreateSubgroup = vi.fn().mockResolvedValue(null);
+
+    const { container } = render(
+      <DndContext>
+        <SetPoolTable
+          pool={entries}
+          subgroups={baseSubgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={noop}
+          onCreateSubgroup={onCreateSubgroup}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={noopAsync}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    fireEvent.click(container.querySelector('.subgroup-add-btn')!);
+    const input = container.querySelector('.subgroup-new-input')!;
+    fireEvent.change(input, { target: { value: 'Bad' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(onCreateSubgroup).toHaveBeenCalledWith('Bad');
+    });
+
+    const allBtn = Array.from(container.querySelectorAll('.subgroup-bar .subgroup-filter-btn'))
+      .find(b => b.textContent === 'All')!;
+    expect(allBtn.classList.contains('active')).toBe(true);
+    expect(container.querySelectorAll('.set-pool-table tbody tr').length).toBe(2);
+  });
+});
+
+describe('SetPoolTable subgroup auto-assign on search-add', () => {
+  const subgroups: PoolSubgroup[] = [
+    { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+    { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
+  ];
+  const entries = [
+    makePoolEntry({ id: 10, track_id: 100, insertion_order: 0 }),
+    makePoolEntry({ id: 20, track_id: 200, insertion_order: 1 }),
+  ];
+
+  it('search-added track is auto-assigned to the active subgroup', async () => {
+    const onAddTrack = vi.fn();
+    const onAddSubgroupMember = vi.fn().mockResolvedValue(true);
+    vi.mocked(searchTracks).mockResolvedValue([
+      { id: 300, title: 'New Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
+    ]);
+
+    const { container, rerender } = render(
+      <DndContext>
+        <SetPoolTable
+          pool={entries}
+          subgroups={subgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={onAddTrack}
+          onCreateSubgroup={noopAsyncNull}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={onAddSubgroupMember}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    const filterBtns = container.querySelectorAll('.subgroup-bar .subgroup-filter-btn');
+    fireEvent.click(filterBtns[1]); // Warmup
+
+    const searchInput = container.querySelector('.set-pool-search')!;
+    fireEvent.change(searchInput, { target: { value: 'New' } });
+
+    await waitFor(() => {
+      expect(container.querySelector('.set-pool-search-dropdown')).toBeTruthy();
+    });
+
+    fireEvent.mouseDown(container.querySelector('.set-pool-search-item')!);
+    expect(onAddTrack).toHaveBeenCalledWith(300, 'New Track');
+
+    const newEntry = makePoolEntry({ id: 30, track_id: 300, insertion_order: 2 });
+    rerender(
+      <DndContext>
+        <SetPoolTable
+          pool={[...entries, newEntry]}
+          subgroups={subgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={onAddTrack}
+          onCreateSubgroup={noopAsyncNull}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={onAddSubgroupMember}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    await waitFor(() => {
+      expect(onAddSubgroupMember).toHaveBeenCalledWith(1, 30);
+    });
+  });
+
+  it('auto-assigned track appears in filtered view after membership update', async () => {
+    const onAddTrack = vi.fn();
+    const onAddSubgroupMember = vi.fn().mockResolvedValue(true);
+    vi.mocked(searchTracks).mockResolvedValue([
+      { id: 300, title: 'New Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
+    ]);
+
+    const { container, rerender } = render(
+      <DndContext>
+        <SetPoolTable
+          pool={entries}
+          subgroups={subgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={onAddTrack}
+          onCreateSubgroup={noopAsyncNull}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={onAddSubgroupMember}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    const filterBtns = container.querySelectorAll('.subgroup-bar .subgroup-filter-btn');
+    fireEvent.click(filterBtns[1]); // Warmup
+
+    const searchInput = container.querySelector('.set-pool-search')!;
+    fireEvent.change(searchInput, { target: { value: 'New' } });
+
+    await waitFor(() => {
+      expect(container.querySelector('.set-pool-search-dropdown')).toBeTruthy();
+    });
+
+    fireEvent.mouseDown(container.querySelector('.set-pool-search-item')!);
+
+    const newEntry = makePoolEntry({ id: 30, track_id: 300, insertion_order: 2 });
+    rerender(
+      <DndContext>
+        <SetPoolTable
+          pool={[...entries, newEntry]}
+          subgroups={subgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={onAddTrack}
+          onCreateSubgroup={noopAsyncNull}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={onAddSubgroupMember}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    await waitFor(() => {
+      expect(onAddSubgroupMember).toHaveBeenCalledWith(1, 30);
+    });
+
+    const membership: PoolSubgroupMembership = { id: 1, subgroup_id: 1, pool_entry_id: 30 };
+    rerender(
+      <DndContext>
+        <SetPoolTable
+          pool={[...entries, newEntry]}
+          subgroups={subgroups}
+          subgroupMemberships={[membership]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={onAddTrack}
+          onCreateSubgroup={noopAsyncNull}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={onAddSubgroupMember}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    const rows = container.querySelectorAll('.set-pool-table tbody tr');
+    expect(rows.length).toBe(1);
+    const titleCell = rows[0].querySelector('.set-ws-cell-title');
+    expect(titleCell?.textContent).toContain('300');
+  });
+
+  it('search-added track is not assigned when no subgroup is active', async () => {
+    const onAddTrack = vi.fn();
+    const onAddSubgroupMember = vi.fn().mockResolvedValue(true);
+    vi.mocked(searchTracks).mockResolvedValue([
+      { id: 300, title: 'New Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
+    ]);
+
+    const { container, rerender } = render(
+      <DndContext>
+        <SetPoolTable
+          pool={entries}
+          subgroups={subgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={onAddTrack}
+          onCreateSubgroup={noopAsyncNull}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={onAddSubgroupMember}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    const searchInput = container.querySelector('.set-pool-search')!;
+    fireEvent.change(searchInput, { target: { value: 'New' } });
+
+    await waitFor(() => {
+      expect(container.querySelector('.set-pool-search-dropdown')).toBeTruthy();
+    });
+
+    fireEvent.mouseDown(container.querySelector('.set-pool-search-item')!);
+
+    const newEntry = makePoolEntry({ id: 30, track_id: 300, insertion_order: 2 });
+    rerender(
+      <DndContext>
+        <SetPoolTable
+          pool={[...entries, newEntry]}
+          subgroups={subgroups}
+          subgroupMemberships={[]}
+          onRemove={noop}
+          onMoveToTracklist={noop}
+          onToggleStar={noop}
+          onAddTrack={onAddTrack}
+          onCreateSubgroup={noopAsyncNull}
+          onRenameSubgroup={noopAsync}
+          onDeleteSubgroup={noopAsync}
+          onReorderSubgroups={noopAsync}
+          onAddSubgroupMember={onAddSubgroupMember}
+          onRemoveSubgroupMember={noopAsync}
+        />
+      </DndContext>,
+    );
+
+    expect(onAddSubgroupMember).not.toHaveBeenCalled();
   });
 });
