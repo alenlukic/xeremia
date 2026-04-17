@@ -11,6 +11,7 @@ import {
   type Updater,
   type Row,
 } from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { Track, SearchSuggestion, TransitionMatch } from '../types';
 import { formatScore, formatOverallScore } from '../utils';
@@ -172,11 +173,15 @@ interface Props {
   starredTrackIds?: Set<number>;
 }
 
-const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasColChooser, isStarred }: {
+const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasColChooser, isStarred, virtualTop, totalWidth, measureRef, virtualIndex }: {
   row: Row<TransitionMatch>;
   isLoading: boolean;
   hasColChooser?: boolean;
   isStarred?: boolean;
+  virtualTop?: number;
+  totalWidth?: number;
+  measureRef?: (node: HTMLElement | null) => void;
+  virtualIndex?: number;
 }) {
   const payload: DragPayload = {
     trackId: row.original.candidate_id,
@@ -188,6 +193,11 @@ const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasC
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
   });
+
+  const combinedRef = useCallback((node: HTMLElement | null) => {
+    setNodeRef(node);
+    measureRef?.(node);
+  }, [setNodeRef, measureRef]);
 
   const rowListeners = useMemo(() => {
     if (!listeners) return {};
@@ -201,10 +211,24 @@ const DraggableMatchRow = memo(function DraggableMatchRow({ row, isLoading, hasC
     };
   }, [listeners]);
 
+  const isVirtual = virtualTop !== undefined;
+  const style: React.CSSProperties = isVirtual
+    ? {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: totalWidth,
+        transform: `translateY(${virtualTop}px)`,
+        display: 'table-row',
+        ...(isLoading ? { opacity: 0.6, cursor: 'grab' } : isDragging ? { opacity: 0.4, cursor: 'grabbing' } : { cursor: 'grab' }),
+      }
+    : isLoading ? { opacity: 0.6, cursor: 'grab' } : isDragging ? { opacity: 0.4, cursor: 'grabbing' } : { cursor: 'grab' };
+
   return (
     <tr
-      ref={setNodeRef}
-      style={isLoading ? { opacity: 0.6, cursor: 'grab' } : isDragging ? { opacity: 0.4, cursor: 'grabbing' } : { cursor: 'grab' }}
+      ref={combinedRef}
+      data-index={virtualIndex}
+      style={style}
       {...rowListeners}
     >
       <td className="drag-handle-cell" style={{ width: DRAG_HANDLE_WIDTH }}>
@@ -229,10 +253,10 @@ export const MatchesPanel = memo(function MatchesPanel({
   selectedTrack, matches, loading, matchesError, onViewDetail, onUseAsSource, onAddToSet, starredTrackIds,
 }: Props) {
   const [bucketTab, setBucketTab] = useState<BucketKey>('same_key');
-  const [prevTrackId, setPrevTrackId] = useState<number | undefined>(selectedTrack?.id);
+  const prevTrackIdRef = useRef<number | undefined>(selectedTrack?.id);
 
-  if (selectedTrack?.id !== prevTrackId) {
-    setPrevTrackId(selectedTrack?.id);
+  if (selectedTrack?.id !== prevTrackIdRef.current) {
+    prevTrackIdRef.current = selectedTrack?.id;
     if (bucketTab !== 'same_key') {
       setBucketTab('same_key');
     }
@@ -243,9 +267,10 @@ export const MatchesPanel = memo(function MatchesPanel({
   const topScrollRef = useRef<HTMLDivElement>(null);
 
   const [containerWidth, setContainerWidth] = useState(0);
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => loadColumnConfig().columnSizing);
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => loadColumnConfig().columnOrder);
-  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadColumnConfig().columnVisibility);
+  const initConfig = useRef(loadColumnConfig());
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(initConfig.current.columnSizing);
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(initConfig.current.columnOrder);
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(initConfig.current.columnVisibility);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
   const [colConfigOpen, setColConfigOpen] = useState(false);
@@ -353,17 +378,27 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const fullColumnOrder = columnOrder;
 
-  const bucketCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const bt of BUCKET_TABS) counts[bt.key] = 0;
-    for (const m of matches) { if (m.bucket in counts) counts[m.bucket]++; }
-    return counts;
+  const bucketPartitions = useMemo(() => {
+    const partitions: Record<BucketKey, TransitionMatch[]> = {
+      same_key: [],
+      higher_key: [],
+      lower_key: [],
+    };
+    for (const m of matches) {
+      if (m.bucket in partitions) {
+        partitions[m.bucket as BucketKey].push(m);
+      }
+    }
+    return partitions;
   }, [matches]);
 
-  const bucketMatches = useMemo(
-    () => matches.filter((m) => m.bucket === bucketTab),
-    [matches, bucketTab],
-  );
+  const bucketCounts = useMemo(() => ({
+    same_key: bucketPartitions.same_key.length,
+    higher_key: bucketPartitions.higher_key.length,
+    lower_key: bucketPartitions.lower_key.length,
+  }), [bucketPartitions]);
+
+  const bucketMatches = bucketPartitions[bucketTab];
 
   useLayoutEffect(() => {
     const el = outerRef.current;
@@ -412,6 +447,17 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH + 32 + COL_CHOOSER_WIDTH;
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth;
+
+  const rows = table.getRowModel().rows;
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => wrapperRef.current,
+    estimateSize: () => 40,
+    overscan: 5,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
 
   const handleTopScroll = useCallback(() => {
     if (ignoreNextScroll.current === 'top') {
@@ -468,8 +514,6 @@ export const MatchesPanel = memo(function MatchesPanel({
   const handleDragEnd = useCallback(() => {
     setDraggedColumn(null);
   }, []);
-
-  const rows = table.getRowModel().rows;
 
   const { setNodeRef: setMatchesHeaderRef, isOver: isMatchesHeaderOver } = useDroppable({ id: 'drop-matches-header' });
 
@@ -590,7 +634,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                 </tr>
               ))}
             </thead>
-            <tbody>
+            <tbody style={virtualItems.length > 0 ? { height: rowVirtualizer.getTotalSize(), position: 'relative' } : undefined}>
               {loading && bucketMatches.length === 0 ? (
                 <tr>
                   <td colSpan={table.getVisibleLeafColumns().length + 2} className="table-status">
@@ -609,6 +653,23 @@ export const MatchesPanel = memo(function MatchesPanel({
                     No matches in this bucket
                   </td>
                 </tr>
+              ) : virtualItems.length > 0 ? (
+                virtualItems.map((virtualRow) => {
+                  const row = rows[virtualRow.index];
+                  return (
+                    <DraggableMatchRow
+                      key={row.id}
+                      row={row}
+                      isLoading={loading}
+                      hasColChooser
+                      isStarred={starredTrackIds?.has(row.original.candidate_id)}
+                      virtualTop={virtualRow.start}
+                      totalWidth={totalWidth}
+                      measureRef={rowVirtualizer.measureElement}
+                      virtualIndex={virtualRow.index}
+                    />
+                  );
+                })
               ) : (
                 rows.map((row) => (
                   <DraggableMatchRow
