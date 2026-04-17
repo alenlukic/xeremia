@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { SetSummary, HydratedSet, PoolSubgroup, PersistedEmptyRow } from '../types';
+import type { SetSummary, HydratedSet, PoolSubgroup } from '../types';
 import type { ExplorerTree } from '../types';
 import {
   fetchSets, createSet as apiCreateSet, fetchHydratedSet, deleteSet as apiDeleteSet,
   poolAdd, poolRemove, poolClear as apiPoolClear, poolMoveToTracklist,
+  poolReorder as apiPoolReorder,
   tracklistAdd, tracklistRemove, tracklistClear as apiTracklistClear,
   tracklistReorder, tracklistMoveToPool,
   updateTracklistNote as apiUpdateTracklistNote,
@@ -276,6 +277,16 @@ export function useSetBuilder() {
       await refreshActive();
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not move track to tracklist.'));
+    }
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
+
+  const reorderPool = useCallback(async (trackId: number, newPosition: number) => {
+    if (activeSetId === null || trackId <= 0) return;
+    try {
+      await apiPoolReorder(activeSetId, trackId, newPosition);
+      await refreshActive();
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not reorder pool.'));
     }
   }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
@@ -697,6 +708,7 @@ export function useSetBuilder() {
     clearTracklist,
     movePoolToTracklist,
     moveTracklistToPool,
+    reorderPool,
     reorderTracklist,
     addToTracklistAtPosition,
     updateTracklistNote,

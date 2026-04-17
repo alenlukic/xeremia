@@ -281,6 +281,11 @@ class PoolAddRequest(BaseModel):
     track_id: int
 
 
+class PoolReorderRequest(BaseModel):
+    track_id: int
+    new_position: int
+
+
 class TracklistAddRequest(BaseModel):
     track_id: int
 

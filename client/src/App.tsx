@@ -116,13 +116,15 @@ export const dndCollisionDetection: CollisionDetection = (args) => {
       if (rectRows.length > 0) return rectRows;
       const filtered = pointer.filter(c => {
         const id = String(c.id);
-        return id !== 'drop-tracklist' && id !== 'alt-drop-tracklist';
+        return id !== 'drop-tracklist' && id !== 'alt-drop-tracklist' && !isSelfDrop(id);
       });
       if (filtered.length > 0) return filtered;
     }
-    return pointer;
+    const nonSelf = pointer.filter(c => !isSelfDrop(String(c.id)));
+    return nonSelf.length > 0 ? nonSelf : pointer;
   }
-  return rect;
+  const nonSelfRect = rect.filter(c => !isSelfDrop(String(c.id)));
+  return nonSelfRect.length > 0 ? nonSelfRect : rect;
 };
 
 function isPlainObject(v: unknown): v is Record<string, boolean> {
@@ -301,6 +303,7 @@ export default function App() {
     clearTracklist,
     movePoolToTracklist,
     moveTracklistToPool,
+    reorderPool,
     reorderTracklist,
     addToTracklistAtPosition,
     updateTracklistNote,
@@ -726,6 +729,22 @@ export default function App() {
       return;
     }
 
+    if (payload.source === 'pool' && targetId.startsWith('drop-pool-row-')) {
+      const overData = event.over?.data?.current as { entryRank?: number } | undefined;
+      const targetRank = overData?.entryRank;
+      if (targetRank != null && sb.activeSet) {
+        const sourceRank = sb.activeSet.pool.findIndex(e => e.track_id === payload.trackId);
+        if (sourceRank !== -1 && sourceRank !== targetRank) {
+          reorderPool(payload.trackId, targetRank);
+        }
+      }
+      return;
+    }
+
+    if (payload.source === 'pool' && targetId === 'drop-pool') {
+      return;
+    }
+
     if (targetId === 'dock-matches') {
       const track = allTracks.find(t => t.id === payload.trackId);
       if (track) {
@@ -799,7 +818,7 @@ export default function App() {
         }
       }
     }
-  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, addToTracklistAtPosition, poolExpanded, handlePoolExpandedChange, reorderTracklist, reorderEmptyRow, deleteEmptyRow]);
+  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, addToTracklistAtPosition, poolExpanded, handlePoolExpandedChange, reorderTracklist, reorderPool, reorderEmptyRow, deleteEmptyRow]);
 
   return (
     <AudioPlayerProvider>
@@ -996,6 +1015,7 @@ export default function App() {
               removeFromPool={removeFromPool}
               clearPool={clearPool}
               movePoolToTracklist={movePoolToTracklist}
+              reorderPool={reorderPool}
               addToPool={sbAddToPool}
               removeFromTracklist={removeFromTracklist}
               clearTracklist={clearTracklist}
@@ -1040,6 +1060,7 @@ export default function App() {
                     removeFromPool={removeFromPool}
                     clearPool={clearPool}
                     movePoolToTracklist={movePoolToTracklist}
+                    reorderPool={reorderPool}
                     addToPool={sbAddToPool}
                     removeFromTracklist={removeFromTracklist}
                     clearTracklist={clearTracklist}

@@ -29,6 +29,7 @@ from src.api.schemas import (
     MatchDetailResponse,
     MoveRequest,
     PoolAddRequest,
+    PoolReorderRequest,
     PoolSubgroupResponse,
     SearchSuggestion,
     SetCreateRequest,
@@ -903,6 +904,30 @@ def api_pool_move_to_tracklist(set_id: int, body: MoveRequest):
         session.rollback()
         logger.exception("Pool move to tracklist failed")
         raise HTTPException(status_code=500, detail="Move failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/pool/reorder")
+def api_pool_reorder(set_id: int, body: PoolReorderRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        ok, error = svc.pool_reorder(set_id, body.track_id, body.new_position)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Pool reorder failed")
+        raise HTTPException(status_code=500, detail="Pool reorder failed")
     finally:
         session.close()
 
