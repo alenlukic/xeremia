@@ -1067,5 +1067,19 @@
     "build_status": "FAIL",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260417T083720Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Restated Task\n\nExecute the single normalized breaker follow-on DEVDSL-1 contract for this run by adding narrowly targeted automated coverage for mixe",
+    "published_at": "2026-04-17T09:36:09.141216+00:00",
+    "path": ".harness/history/ledgers/20260417T083720Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 2,
+    "eval_score": 92,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "LOW"
   }
 ]

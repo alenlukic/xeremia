@@ -859,3 +859,117 @@ describe('SetTracklist arrow move mixed-list', () => {
     expect(onReorderEmptyRow).toHaveBeenCalledWith(100, 2);
   });
 });
+
+describe('SetTracklist append-to-end with trailing empty rows', () => {
+  it('trailing empty rows remain after all tracks in rendered order', () => {
+    const entries = [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+      makeEntry({ id: 3, track_id: 30, position: 2 }),
+    ];
+    const emptyRows = [
+      makePersistedEmptyRow(100, 3),
+      makePersistedEmptyRow(101, 4),
+    ];
+    const { container } = renderTracklist(entries, { emptyRows });
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+
+    expect(rows.length).toBe(5);
+    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
+    expect(rows[1].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
+    expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 30');
+    expect(rows[3].classList.contains('empty-row')).toBe(true);
+    expect(rows[4].classList.contains('empty-row')).toBe(true);
+  });
+});
+
+describe('SetTracklist displayRows collision resolution', () => {
+  it('colliding empty-row positions each appear exactly once in a stable rendered order', () => {
+    const entries = [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+    ];
+    const emptyRows = [
+      makePersistedEmptyRow(100, 1),
+      makePersistedEmptyRow(101, 1),
+    ];
+    const { container } = renderTracklist(entries, { emptyRows });
+    const allRows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    const emptyRowElements = container.querySelectorAll('.set-tracklist-table tbody tr.empty-row');
+
+    expect(allRows.length).toBe(4);
+    expect(emptyRowElements.length).toBe(2);
+
+    const emptyIds = Array.from(emptyRowElements).map(el => el.getAttribute('data-persisted-id'));
+    expect(new Set(emptyIds).size).toBe(2);
+  });
+});
+
+describe('SetTracklist handleArrowMove track-to-track in track-only list', () => {
+  it('moving a track down reorders using adjacent track persisted position', () => {
+    const onReorder = vi.fn();
+    const entries = [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 10 }),
+      makeEntry({ id: 3, track_id: 30, position: 20 }),
+    ];
+    const { container } = renderTracklist(entries, { onReorder });
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+
+    const moveDownBtn = rows[0].querySelector('[title="Move down"]') as HTMLButtonElement;
+    fireEvent.click(moveDownBtn);
+
+    expect(onReorder).toHaveBeenCalledWith(10, 10);
+  });
+
+  it('moving a track up reorders using adjacent track persisted position', () => {
+    const onReorder = vi.fn();
+    const entries = [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 10 }),
+      makeEntry({ id: 3, track_id: 30, position: 20 }),
+    ];
+    const { container } = renderTracklist(entries, { onReorder });
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+
+    const moveUpBtn = rows[2].querySelector('[title="Move up"]') as HTMLButtonElement;
+    fireEvent.click(moveUpBtn);
+
+    expect(onReorder).toHaveBeenCalledWith(30, 10);
+  });
+});
+
+describe('SetTracklist indexed insertion boundary values', () => {
+  function makeEntries(): TracklistEntry[] {
+    return [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+    ];
+  }
+
+  it('index 1 (top boundary) maps to insert position 0', () => {
+    const onInsertEmptyRows = vi.fn();
+    const { container } = renderTracklist(makeEntries(), { onInsertEmptyRows });
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+
+    const indexInput = container.querySelector('.empty-row-insert-index') as HTMLInputElement;
+    fireEvent.change(indexInput, { target: { value: '1' } });
+
+    const atBtn = screen.getByTitle('Insert at index');
+    fireEvent.click(atBtn);
+    expect(onInsertEmptyRows).toHaveBeenCalledWith(1, 0);
+  });
+
+  it('index totalRows+1 (end boundary) maps to correct insert position', () => {
+    const onInsertEmptyRows = vi.fn();
+    const { container } = renderTracklist(makeEntries(), { onInsertEmptyRows });
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+
+    const indexInput = container.querySelector('.empty-row-insert-index') as HTMLInputElement;
+    fireEvent.change(indexInput, { target: { value: '3' } });
+
+    const atBtn = screen.getByTitle('Insert at index');
+    fireEvent.click(atBtn);
+    expect(onInsertEmptyRows).toHaveBeenCalledWith(1, 2);
+  });
+});

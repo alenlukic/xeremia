@@ -9,6 +9,10 @@ let capturedOnDragEnd: ((event: unknown) => void) | undefined;
 
 const mockPointerWithin = vi.fn().mockReturnValue([]);
 const mockRectIntersection = vi.fn().mockReturnValue([]);
+const mockUseDroppable = vi.fn(() => ({
+  setNodeRef: () => {},
+  isOver: false,
+}));
 
 vi.mock('@dnd-kit/core', () => ({
   DndContext: (props: { children: React.ReactNode; onDragEnd?: (e: unknown) => void }) => {
@@ -21,10 +25,7 @@ vi.mock('@dnd-kit/core', () => ({
     setNodeRef: () => {},
     isDragging: false,
   }),
-  useDroppable: () => ({
-    setNodeRef: () => {},
-    isOver: false,
-  }),
+  useDroppable: (opts: unknown) => mockUseDroppable(opts),
   useDndMonitor: () => {},
   useSensor: () => null,
   useSensors: () => [],
@@ -33,6 +34,15 @@ vi.mock('@dnd-kit/core', () => ({
   MeasuringStrategy: { WhileDragging: 'whileDragging' },
   pointerWithin: (...a: unknown[]) => mockPointerWithin(...a),
   rectIntersection: (...a: unknown[]) => mockRectIntersection(...a),
+}));
+
+vi.mock('./hooks/useAudioPlayer', () => ({
+  useAudioPlayer: () => ({
+    track: null, playing: false, loading: false, currentTime: 0, duration: 0,
+    volume: 0.8, error: null, play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+    togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
+  }),
+  AudioPlayerProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 vi.mock('./hooks/useCollectionCache', () => ({
@@ -192,6 +202,7 @@ beforeEach(() => {
   capturedOnDragEnd = undefined;
   mockPointerWithin.mockReset().mockReturnValue([]);
   mockRectIntersection.mockReset().mockReturnValue([]);
+  mockUseDroppable.mockClear();
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   vi.stubGlobal('IntersectionObserver', IntersectionObserverMock);
   localStorage.clear();
@@ -1435,5 +1446,136 @@ describe('DnD integration: collision detection → handleDragEnd for all three d
 
     const result = collisionDetection(args as never);
     expect(result).toEqual([col('drop-tracklist-empty-er-6')]);
+  });
+});
+
+describe('DnD: mixed-row track-to-track reorder with interspersed empty rows', () => {
+  it('uses target trackId-based position lookup, not display index, when empty rows shift indices', async () => {
+    const tracklist = [
+      { id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false, track: { id: 10, title: 'Track 10', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+      { id: 2, set_id: 1, track_id: 20, position: 10, note: '', starred: false, track: { id: 20, title: 'Track 20', artist_names: [], bpm: 130, key: 'D', camelot_code: '10B', genre: null, label: null, energy: null } },
+    ];
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [], tracklist, explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+        empty_rows: [
+          { id: 100, set_id: 1, surface: 'tracklist', position: 1, added_at: '2026-01-01T00:00:00Z' },
+        ],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    // Display order with the interspersed empty row:
+    //   index 0 → Track 10 (position 0)
+    //   index 1 → empty row  (position 1)
+    //   index 2 → Track 20 (position 10)
+    // The droppable ID carries the display index (2); the overData carries
+    // the trackId (20). The handler must resolve the target via trackId
+    // lookup (position 10), not by parsing the display index (2).
+    const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
+    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-2', { trackId: 20 });
+
+    expect(mockSB.reorderTracklist).toHaveBeenCalledWith(10, 10);
+  });
+});
+
+describe('DnD: graceful degradation — missing trackId in overData', () => {
+  beforeEach(() => {
+    const tracklist = [
+      { id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false, track: { id: 10, title: 'Track 10', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+      { id: 2, set_id: 1, track_id: 20, position: 1, note: '', starred: false, track: { id: 20, title: 'Track 20', artist_names: [], bpm: 130, key: 'D', camelot_code: '10B', genre: null, label: null, energy: null } },
+    ];
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [], tracklist, explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+  });
+
+  it('no-ops when over.data.current has no trackId property', async () => {
+    await renderApp();
+    const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
+    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-1', {});
+
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
+  });
+
+  it('no-ops when over.data is entirely absent', async () => {
+    await renderApp();
+    const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
+    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-1');
+
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
+  });
+});
+
+describe('DnD: droppable data contract coupling', () => {
+  it('inspects the real droppable data shape from the rendered component and uses it for reorder', async () => {
+    const tracklist = [
+      { id: 1, set_id: 1, track_id: 10, position: 0, note: '', starred: false, track: { id: 10, title: 'Track 10', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+      { id: 2, set_id: 1, track_id: 20, position: 1, note: '', starred: false, track: { id: 20, title: 'Track 20', artist_names: [], bpm: 130, key: 'D', camelot_code: '10B', genre: null, label: null, energy: null } },
+    ];
+
+    mockUseDroppable.mockClear();
+    const { SetTracklist } = await import('./components/SetTracklist');
+    const { DndContext: MockDndContext } = await import('@dnd-kit/core');
+    const noop = () => {};
+    const { unmount } = render(
+      <MockDndContext>
+        <SetTracklist
+          tracklist={tracklist as import('./types').TracklistEntry[]}
+          emptyRows={[]}
+          onRemove={noop}
+          onMoveToPool={noop}
+          onReorder={noop}
+          onUpdateNote={noop}
+          onToggleStar={noop}
+          onAddTrack={noop}
+          onInsertEmptyRows={noop}
+          onDeleteEmptyRow={noop}
+          onReorderEmptyRow={noop}
+        />
+      </MockDndContext>,
+    );
+
+    const rowCalls = mockUseDroppable.mock.calls
+      .filter((args: unknown[]) => {
+        const opts = args[0] as { id?: string } | undefined;
+        return String(opts?.id ?? '').startsWith('drop-tracklist-row-');
+      });
+    expect(rowCalls.length).toBeGreaterThan(0);
+
+    const targetOpts = rowCalls[rowCalls.length - 1][0] as { id: string; data: Record<string, unknown> };
+    expect(targetOpts.data).toEqual(expect.objectContaining({ trackId: expect.any(Number) }));
+
+    unmount();
+
+    mockSB = makeSetBuilderMock({
+      activeSetId: 1,
+      activeSet: {
+        set: { id: 1, name: 'Test' },
+        pool: [], tracklist, explorer_trees: [],
+        explorer_nodes: [], explorer_edges: [],
+      },
+    });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+    await renderApp();
+
+    const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
+    fireDragEnd('tracklist-track-10', reorderPayload, String(targetOpts.id), targetOpts.data);
+
+    expect(mockSB.reorderTracklist).toHaveBeenCalledWith(10, 1);
   });
 });
