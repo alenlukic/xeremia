@@ -224,18 +224,13 @@ export default function App() {
   } = useSelectedTrack(refreshCacheStats);
 
   const {
-    filters,
+    filterGroups,
     filteredTracks,
     filterCacheKey,
     activeFilterCount,
-    setCamelotCodes,
-    setBpmMin,
-    setBpmMax,
-    setArtist,
-    setLabel,
-    setGenre,
-    setDateAddedMin,
-    setDateAddedMax,
+    addFilterGroup,
+    removeFilterGroup,
+    updateFilterGroup,
     clearAllFilters,
   } = useTrackFilters(allTracks, effectiveSearchText);
 
@@ -857,22 +852,10 @@ export default function App() {
               expanded={filtersExpanded}
               onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
               activeFilterCount={activeFilterCount}
-              camelotCodes={filters.camelotCodes}
-              bpmMin={filters.bpmMin}
-              bpmMax={filters.bpmMax}
-              artist={filters.artist}
-              label={filters.label}
-              genre={filters.genre}
-              dateAddedMin={filters.dateAddedMin}
-              dateAddedMax={filters.dateAddedMax}
-              setCamelotCodes={setCamelotCodes}
-              setBpmMin={setBpmMin}
-              setBpmMax={setBpmMax}
-              setArtist={setArtist}
-              setLabel={setLabel}
-              setGenre={setGenre}
-              setDateAddedMin={setDateAddedMin}
-              setDateAddedMax={setDateAddedMax}
+              filterGroups={filterGroups}
+              addFilterGroup={addFilterGroup}
+              removeFilterGroup={removeFilterGroup}
+              updateFilterGroup={updateFilterGroup}
               onClearFilters={handleClearFilters}
             />
 

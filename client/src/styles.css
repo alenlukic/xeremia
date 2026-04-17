@@ -539,6 +539,80 @@ body,
   cursor: pointer;
 }
 
+/* === Filter Groups (OR-grouped key/BPM filters) === */
+.filter-groups-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.filter-groups-section--multi {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.filter-group-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.filter-groups-section--multi .filter-group-panel {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.filter-or-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  padding: 0 4px;
+}
+
+.filter-add-group-btn {
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: center;
+}
+
+.filter-add-group-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.filter-group-remove-btn {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  align-self: center;
+  line-height: 1;
+}
+
+.filter-group-remove-btn:hover {
+  color: #e74c3c;
+  border-color: #e74c3c;
+}
+
 /* === Tables (shared) === */
 .track-table-outer {
   display: flex;

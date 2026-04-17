@@ -352,6 +352,62 @@ describe('Browse infinite scroll', () => {
     }, { timeout: 10000 });
   }, 20000);
 
+  it('resets pagination when adding a second OR filter group and restores on removal', async () => {
+    await renderApp();
+    await expandFilterTray();
+
+    await act(async () => {
+      screen.getByRole('button', { name: /All keys/ }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: '01A' }).click();
+    });
+
+    await waitFor(() => {
+      expect(getRowCount()).toBeLessThanOrEqual(300);
+    });
+
+    await act(async () => {
+      triggerLoadMore();
+    });
+    const group1ExpandedCount = getRowCount();
+    expect(group1ExpandedCount).toBeGreaterThan(0);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Add filter group' }).click();
+    });
+
+    const groupPanels = document.querySelectorAll('.filter-group-panel');
+    expect(groupPanels.length).toBe(2);
+
+    const secondPanel = groupPanels[1];
+    const secondKeyBtn = secondPanel.querySelector('.filter-camelot-toggle') as HTMLElement;
+    expect(secondKeyBtn).not.toBeNull();
+    await act(async () => {
+      secondKeyBtn.click();
+    });
+
+    const allButtons02A = screen.getAllByRole('button', { name: '02A' });
+    const secondDropdown02A = allButtons02A[allButtons02A.length - 1];
+    await act(async () => {
+      secondDropdown02A.click();
+    });
+
+    await waitFor(() => {
+      const currentCount = getRowCount();
+      expect(currentCount).toBeLessThanOrEqual(250);
+    });
+
+    const removeButtons = screen.getAllByRole('button', { name: 'Remove filter group' });
+    await act(async () => {
+      removeButtons[removeButtons.length - 1].click();
+    });
+
+    await waitFor(() => {
+      expect(getRowCount()).toBe(group1ExpandedCount);
+    }, { timeout: 10000 });
+  }, 30000);
+
   it('shows sentinel when more pages are available', async () => {
     await renderApp();
     expect(screen.getByText('Loading more tracks…')).toBeInTheDocument();
@@ -1095,7 +1151,8 @@ describe('Clear Filters with BPM', () => {
     await act(async () => { clearBtn.click(); });
 
     await waitFor(() => {
-      expect(minInput).toHaveValue(null);
+      const freshMinInput = screen.getByPlaceholderText('Min');
+      expect(freshMinInput).toHaveValue(null);
     });
   });
 });
