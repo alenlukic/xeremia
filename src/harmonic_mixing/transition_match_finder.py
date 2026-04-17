@@ -1,10 +1,17 @@
 import logging
 
+from sqlalchemy import or_
+
 from src.db import database
 from src.models.track import Track
+from src.models.track_cosine_similarity import TrackCosineSimilarity
+from src.models.track_descriptor import TrackDescriptor
+from src.models.track_trait import TrackTrait
 from src.assistant.config import DASHED_LINE
 from src.data_management.config import TrackDBCols
 from src.data_management.mapping_registry import MappingRegistry
+from src.feature_extraction.compact_descriptor import compute_similarity, unpack_vector
+from src.feature_extraction.config import DESCRIPTOR_VERSION, TRAIT_VERSION
 from src.harmonic_mixing.config import (
     CamelotPriority,
     DOWN_KEY_LOWER_BOUND,
@@ -197,6 +204,161 @@ class TransitionMatchFinder:
 
         return results
 
+    def _prefetch_for_matches(self, source_id, all_matches):
+        """Batch-load all scoring data before sorting.
+
+        Populates TransitionMatch class-level caches so every per-match
+        lookup during get_score() becomes an O(1) cache hit.  Converts
+        the N+1 query pattern (5N queries for N matches) into a fixed
+        number of bulk queries regardless of match count.
+
+        Queries issued:
+          1. TrackTrait WHERE track_id IN (source + all candidates)
+          2. TrackCosineSimilarity WHERE (source, candidate) pairs
+          3. TrackDescriptor WHERE track_id IN (source + candidates
+             missing from cosine cache) — only when needed
+        """
+        if not all_matches or source_id is None:
+            return
+
+        candidate_ids = set()
+        for match in all_matches:
+            cid = match.metadata.get(TrackDBCols.ID)
+            if cid is not None:
+                candidate_ids.add(cid)
+
+        if not candidate_ids:
+            return
+
+        all_track_ids = list(candidate_ids | {source_id})
+
+        # --- Batch 1: TrackTrait for source + all candidates ---
+        try:
+            traits = (
+                self.session.query(TrackTrait)
+                .filter(
+                    TrackTrait.track_id.in_(all_track_ids),
+                    TrackTrait.trait_version == TRAIT_VERSION,
+                )
+                .all()
+            )
+            trait_by_id = {t.track_id: t for t in traits}
+
+            TransitionMatch._on_deck_trait_cache[source_id] = trait_by_id.get(source_id)
+            for cid in candidate_ids:
+                TransitionMatch._candidate_trait_cache[cid] = trait_by_id.get(cid)
+        except Exception:
+            logger.debug("Batch trait prefetch failed", exc_info=True)
+            try:
+                self.session.rollback()
+            except Exception:
+                pass
+
+        # --- Batch 2: TrackCosineSimilarity for all (source, candidate) pairs ---
+        cosine_cache = TransitionMatch.cosine_cache
+        found_pairs = set()
+
+        try:
+            cand_list = list(candidate_ids)
+            rows = (
+                self.session.query(TrackCosineSimilarity)
+                .filter(
+                    or_(
+                        (TrackCosineSimilarity.id1 == source_id)
+                        & TrackCosineSimilarity.id2.in_(cand_list),
+                        (TrackCosineSimilarity.id2 == source_id)
+                        & TrackCosineSimilarity.id1.in_(cand_list),
+                    ),
+                    TrackCosineSimilarity.descriptor_version == DESCRIPTOR_VERSION,
+                )
+                .all()
+            )
+            for row in rows:
+                if cosine_cache is not None:
+                    cosine_cache.put(row.id1, row.id2, row.cosine_similarity)
+                peer = row.id2 if row.id1 == source_id else row.id1
+                found_pairs.add(peer)
+        except Exception:
+            logger.debug("Batch similarity prefetch failed", exc_info=True)
+            try:
+                self.session.rollback()
+            except Exception:
+                pass
+
+        # --- Batch 3: Compute missing similarities from descriptors ---
+        missing_cids = candidate_ids - found_pairs
+        if cosine_cache is not None:
+            missing_cids = {
+                cid for cid in missing_cids if cosine_cache.get(cid, source_id) is None
+            }
+
+        if not missing_cids:
+            return
+
+        try:
+            desc_ids = list(missing_cids | {source_id})
+            descriptors = (
+                self.session.query(TrackDescriptor)
+                .filter(
+                    TrackDescriptor.track_id.in_(desc_ids),
+                    TrackDescriptor.descriptor_version == DESCRIPTOR_VERSION,
+                )
+                .all()
+            )
+            desc_by_id = {d.track_id: d for d in descriptors}
+
+            TransitionMatch._on_deck_descriptor_cache[source_id] = desc_by_id.get(source_id)
+            for cid in missing_cids:
+                TransitionMatch._candidate_descriptor_cache[cid] = desc_by_id.get(cid)
+
+            source_desc = desc_by_id.get(source_id)
+            if source_desc is None:
+                return
+
+            source_vec = unpack_vector(source_desc.global_vector)
+            new_rows = []
+
+            for cid in missing_cids:
+                cand_desc = desc_by_id.get(cid)
+                if cand_desc is None:
+                    if cosine_cache is not None:
+                        cosine_cache.put(source_id, cid, 0.0)
+                    continue
+
+                sim = compute_similarity(source_vec, unpack_vector(cand_desc.global_vector))
+                if cosine_cache is not None:
+                    cosine_cache.put(source_id, cid, sim)
+
+                lo, hi = min(source_id, cid), max(source_id, cid)
+                new_rows.append(
+                    TrackCosineSimilarity(
+                        id1=lo,
+                        id2=hi,
+                        cosine_similarity=sim,
+                        descriptor_version=DESCRIPTOR_VERSION,
+                    )
+                )
+
+            if new_rows:
+                persist_session = database.create_session()
+                try:
+                    persist_session.add_all(new_rows)
+                    persist_session.commit()
+                except Exception:
+                    persist_session.rollback()
+                    logger.debug(
+                        "Batch persist of %d similarities failed, values remain in cache",
+                        len(new_rows),
+                    )
+                finally:
+                    persist_session.close()
+        except Exception:
+            logger.debug("Batch descriptor/compute prefetch failed", exc_info=True)
+            try:
+                self.session.rollback()
+            except Exception:
+                pass
+
     def _get_matches_for_code(self, harmonic_codes, cur_track_md, sort_results):
         bpm = cur_track_md[TrackDBCols.BPM]
         source_id = cur_track_md.get(TrackDBCols.ID)
@@ -232,6 +394,9 @@ class TransitionMatchFinder:
                     continue
                 match = TransitionMatch(md, cur_track_md, priority)
                 lower_key.append(match)
+
+        all_matches = same_key + higher_key + lower_key
+        self._prefetch_for_matches(source_id, all_matches)
 
         if sort_results:
             same_key = sorted(same_key, reverse=True)

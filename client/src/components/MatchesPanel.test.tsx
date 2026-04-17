@@ -700,6 +700,83 @@ describe('MatchesPanel', () => {
     });
   });
 
+  describe('bucket reset on track change', () => {
+    it('resets to Same bucket when selected track changes while on Higher tab', async () => {
+      const matches = [
+        makeMatch({ candidate_id: 1, bucket: 'same_key' }),
+        makeMatch({ candidate_id: 2, bucket: 'higher_key' }),
+      ];
+      const track1 = { id: 1, title: 'Track 1', artist_names: ['A'], bpm: 128, key: 'C', camelot_code: '8B' };
+      const track2 = { id: 2, title: 'Track 2', artist_names: ['B'], bpm: 130, key: 'D', camelot_code: '9B' };
+
+      const { rerender } = renderWithDnd(
+        <MatchesPanel selectedTrack={track1} matches={matches} loading={false} />
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: /Higher/ }));
+      const higherBtn = screen.getByRole('button', { name: /Higher/ });
+      expect(higherBtn.className).toContain('active');
+
+      rerender(
+        <DndContext>
+          <MatchesPanel selectedTrack={track2} matches={matches} loading={false} />
+        </DndContext>
+      );
+
+      const sameBtn = screen.getByRole('button', { name: /Same/ });
+      expect(sameBtn.className).toContain('active');
+    });
+
+    it('stays on Same bucket when track changes while already on Same tab', async () => {
+      const matches = [makeMatch({ candidate_id: 1, bucket: 'same_key' })];
+      const track1 = { id: 1, title: 'Track 1', artist_names: ['A'], bpm: 128, key: 'C', camelot_code: '8B' };
+      const track2 = { id: 2, title: 'Track 2', artist_names: ['B'], bpm: 130, key: 'D', camelot_code: '9B' };
+
+      const { rerender } = renderWithDnd(
+        <MatchesPanel selectedTrack={track1} matches={matches} loading={false} />
+      );
+
+      const sameBtn = screen.getByRole('button', { name: /Same/ });
+      expect(sameBtn.className).toContain('active');
+
+      rerender(
+        <DndContext>
+          <MatchesPanel selectedTrack={track2} matches={matches} loading={false} />
+        </DndContext>
+      );
+
+      expect(sameBtn.className).toContain('active');
+    });
+  });
+
+  describe('bucket partition precomputation', () => {
+    it('shows correct matches for each bucket without refiltering', async () => {
+      const matches = [
+        makeMatch({ candidate_id: 1, bucket: 'same_key', title: 'Same A' }),
+        makeMatch({ candidate_id: 2, bucket: 'same_key', title: 'Same B' }),
+        makeMatch({ candidate_id: 3, bucket: 'higher_key', title: 'Higher A' }),
+        makeMatch({ candidate_id: 4, bucket: 'lower_key', title: 'Lower A' }),
+        makeMatch({ candidate_id: 5, bucket: 'lower_key', title: 'Lower B' }),
+      ];
+      renderWithDnd(
+        <MatchesPanel selectedTrack={selectedTrack} matches={matches} loading={false} />
+      );
+
+      const counts = document.querySelectorAll('.bucket-count');
+      expect(counts[0].textContent).toBe('2');
+      expect(counts[1].textContent).toBe('1');
+      expect(counts[2].textContent).toBe('2');
+
+      expect(document.querySelectorAll('.matches-table tbody tr').length).toBe(2);
+
+      await userEvent.click(screen.getByRole('button', { name: /Higher/ }));
+      expect(document.querySelectorAll('.matches-table tbody tr').length).toBe(1);
+
+      await userEvent.click(screen.getByRole('button', { name: /Lower/ }));
+      expect(document.querySelectorAll('.matches-table tbody tr').length).toBe(2);
+    });
+  });
+
   describe('multi-sort', () => {
     function makeMatches(): TransitionMatch[] {
       return [
