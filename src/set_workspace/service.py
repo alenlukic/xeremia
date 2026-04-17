@@ -9,6 +9,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.models.dj_set import DjSet
+from src.models.set_empty_row import SetEmptyRow
 from src.models.set_pool_entry import SetPoolEntry
 from src.models.set_pool_subgroup import SetPoolSubgroup
 from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
@@ -54,6 +55,7 @@ class SetWorkspaceService:
         self.session.query(SetExplorerEdge).filter_by(set_id=set_id).delete()
         self.session.query(SetExplorerNode).filter_by(set_id=set_id).delete()
         self.session.query(SetExplorerTree).filter_by(set_id=set_id).delete()
+        self.session.query(SetEmptyRow).filter_by(set_id=set_id).delete()
         self.session.query(SetTracklistEntry).filter_by(set_id=set_id).delete()
         subgroup_ids = [
             sg.id for sg in
@@ -112,6 +114,13 @@ class SetWorkspaceService:
                 .all()
             )
 
+        empty_rows = (
+            self.session.query(SetEmptyRow)
+            .filter_by(set_id=set_id)
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+
         return {
             "set": dj_set,
             "pool": pool,
@@ -121,7 +130,153 @@ class SetWorkspaceService:
             "explorer_edges": edges,
             "pool_subgroups": subgroups,
             "pool_subgroup_memberships": memberships,
+            "empty_rows": empty_rows,
         }
+
+    # --- Empty row operations ---
+
+    def empty_row_add(
+        self, set_id: int, surface: str, count: int = 1, position: int = -1,
+    ) -> List[SetEmptyRow]:
+        if surface not in ("tracklist", "pool"):
+            return []
+
+        existing = (
+            self.session.query(SetEmptyRow)
+            .filter_by(set_id=set_id, surface=surface)
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+
+        if surface == "tracklist":
+            real_count = (
+                self.session.query(SetTracklistEntry)
+                .filter_by(set_id=set_id)
+                .count()
+            )
+        else:
+            real_count = (
+                self.session.query(SetPoolEntry)
+                .filter_by(set_id=set_id)
+                .count()
+            )
+
+        total = real_count + len(existing)
+        base_pos = total if position < 0 else min(position, total)
+
+        for row in existing:
+            if row.position >= base_pos:
+                row.position += count
+
+        created = []
+        for i in range(count):
+            row = SetEmptyRow(
+                set_id=set_id, surface=surface, position=base_pos + i,
+            )
+            self.session.add(row)
+            created.append(row)
+
+        self.session.flush()
+        return created
+
+    def empty_row_delete(self, set_id: int, empty_row_id: int) -> bool:
+        row = (
+            self.session.query(SetEmptyRow)
+            .filter_by(id=empty_row_id, set_id=set_id)
+            .first()
+        )
+        if row is None:
+            return False
+        surface = row.surface
+        removed_pos = row.position
+        self.session.delete(row)
+        self.session.flush()
+
+        later = (
+            self.session.query(SetEmptyRow)
+            .filter(
+                SetEmptyRow.set_id == set_id,
+                SetEmptyRow.surface == surface,
+                SetEmptyRow.position > removed_pos,
+            )
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        for r in later:
+            r.position -= 1
+        self.session.flush()
+        return True
+
+    def empty_row_reorder(
+        self, set_id: int, empty_row_id: int, new_position: int,
+    ) -> Tuple[bool, Optional[str]]:
+        row = (
+            self.session.query(SetEmptyRow)
+            .filter_by(id=empty_row_id, set_id=set_id)
+            .first()
+        )
+        if row is None:
+            return False, "Empty row not found"
+
+        old_pos = row.position
+        if old_pos == new_position:
+            return True, None
+
+        surface = row.surface
+        if surface == "tracklist":
+            real_count = (
+                self.session.query(SetTracklistEntry)
+                .filter_by(set_id=set_id)
+                .count()
+            )
+        else:
+            real_count = (
+                self.session.query(SetPoolEntry)
+                .filter_by(set_id=set_id)
+                .count()
+            )
+        empty_count = (
+            self.session.query(SetEmptyRow)
+            .filter_by(set_id=set_id, surface=surface)
+            .count()
+        )
+        max_pos = real_count + empty_count - 1
+        new_position = max(0, min(new_position, max_pos))
+
+        if old_pos == new_position:
+            return True, None
+
+        siblings = (
+            self.session.query(SetEmptyRow)
+            .filter(
+                SetEmptyRow.set_id == set_id,
+                SetEmptyRow.surface == surface,
+                SetEmptyRow.id != row.id,
+            )
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        if old_pos < new_position:
+            for r in siblings:
+                if old_pos < r.position <= new_position:
+                    r.position -= 1
+        else:
+            for r in siblings:
+                if new_position <= r.position < old_pos:
+                    r.position += 1
+
+        row.position = new_position
+        self.session.flush()
+        return True, None
+
+    def empty_row_clear(self, set_id: int, surface: str) -> int:
+        count = (
+            self.session.query(SetEmptyRow)
+            .filter_by(set_id=set_id, surface=surface)
+            .delete()
+        )
+        self.session.flush()
+        return count
 
     # --- Pool operations ---
 

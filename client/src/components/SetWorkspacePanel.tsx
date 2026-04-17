@@ -24,6 +24,9 @@ interface Props {
   reorderSubgroups: (subgroupIds: number[]) => Promise<boolean>;
   addSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   removeSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  addEmptyRows: (surface: 'tracklist' | 'pool', count: number, position: number) => void;
+  deleteEmptyRow: (emptyRowId: number) => void;
+  reorderEmptyRow: (emptyRowId: number, newPosition: number) => void;
   poolExpanded: boolean;
   onPoolExpandedChange: (expanded: boolean) => void;
   dndDisabled?: boolean;
@@ -38,6 +41,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
   updateTracklistNote, togglePoolStar, toggleTracklistStar, addToTracklist,
   createSubgroup, renameSubgroup, deleteSubgroup,
   reorderSubgroups, addSubgroupMember, removeSubgroupMember,
+  addEmptyRows, deleteEmptyRow, reorderEmptyRow,
   poolExpanded, onPoolExpandedChange, dndDisabled, dndIdPrefix,
 }: Props) {
   const handlePoolAddTrack = useCallback((trackId: number, title?: string) => {
@@ -62,6 +66,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
     <div className="set-workspace-split">
       <SetTracklist
         tracklist={activeSet.tracklist}
+        emptyRows={(activeSet.empty_rows ?? []).filter(r => r.surface === 'tracklist')}
         onRemove={removeFromTracklist}
         onClearAll={clearTracklist}
         onMoveToPool={moveTracklistToPool}
@@ -70,6 +75,9 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
         onToggleStar={toggleTracklistStar}
         onAddTrack={addToTracklist}
         onFillEmptyRow={handleTracklistFillEmptyRow}
+        onInsertEmptyRows={(count, position) => addEmptyRows('tracklist', count, position)}
+        onDeleteEmptyRow={deleteEmptyRow}
+        onReorderEmptyRow={reorderEmptyRow}
         dndDisabled={dndDisabled}
         dndIdPrefix={dndIdPrefix}
       />
@@ -98,6 +106,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
           <div className="set-pool-accordion-content">
             <SetPoolTable
               pool={activeSet.pool}
+              emptyRows={(activeSet.empty_rows ?? []).filter(r => r.surface === 'pool')}
               subgroups={activeSet.pool_subgroups ?? []}
               subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
               onRemove={removeFromPool}
@@ -106,6 +115,9 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
               onToggleStar={togglePoolStar}
               onAddTrack={handlePoolAddTrack}
               onFillEmptyRow={handlePoolFillEmptyRow}
+              onInsertEmptyRows={(count, position) => addEmptyRows('pool', count, position)}
+              onDeleteEmptyRow={deleteEmptyRow}
+              onReorderEmptyRow={reorderEmptyRow}
               onCreateSubgroup={createSubgroup}
               onRenameSubgroup={renameSubgroup}
               onDeleteSubgroup={deleteSubgroup}

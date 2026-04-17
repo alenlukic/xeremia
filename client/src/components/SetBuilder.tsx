@@ -36,6 +36,9 @@ interface Props {
   reorderSubgroups: (subgroupIds: number[]) => Promise<boolean>;
   addSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   removeSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
+  addEmptyRows: (surface: 'tracklist' | 'pool', count: number, position: number) => void;
+  deleteEmptyRow: (emptyRowId: number) => void;
+  reorderEmptyRow: (emptyRowId: number, newPosition: number) => void;
   poolExpanded?: boolean;
   onPoolExpandedChange?: (expanded: boolean) => void;
   dndDisabled?: boolean;
@@ -50,6 +53,7 @@ export const SetBuilder = memo(function SetBuilder({
   resolvePendingAdd, clearPendingAdd, clearError,
   createSubgroup, renameSubgroup, deleteSubgroup,
   reorderSubgroups, addSubgroupMember, removeSubgroupMember,
+  addEmptyRows, deleteEmptyRow, reorderEmptyRow,
   poolExpanded: poolExpandedProp = false,
   onPoolExpandedChange,
   dndDisabled,
@@ -230,6 +234,9 @@ export const SetBuilder = memo(function SetBuilder({
           reorderSubgroups={reorderSubgroups}
           addSubgroupMember={addSubgroupMember}
           removeSubgroupMember={removeSubgroupMember}
+          addEmptyRows={addEmptyRows}
+          deleteEmptyRow={deleteEmptyRow}
+          reorderEmptyRow={reorderEmptyRow}
           poolExpanded={poolExpanded}
           onPoolExpandedChange={(expanded) => onPoolExpandedChange?.(expanded)}
           dndDisabled={dndDisabled}

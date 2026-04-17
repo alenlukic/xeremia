@@ -22,7 +22,7 @@ import { useWeights } from './hooks/useWeights';
 import { useSetBuilder } from './hooks/useSetBuilder';
 import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 import type { DragPayload } from './dnd';
-import { DragFillContext, type DragFillNotification } from './dnd';
+import { DragFillContext } from './dnd';
 import type { SortingState } from '@tanstack/react-table';
 
 const BROWSE_PAGE_SIZE = 250;
@@ -65,6 +65,12 @@ export const dndCollisionDetection: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
   const rect = rectIntersection(args);
 
+  const activeEmptyId = (args.active.data.current as Record<string, unknown> | undefined)?.__emptyId as string | undefined;
+  const isSelfDrop = (id: string) => {
+    if (!activeEmptyId) return false;
+    return id.endsWith('-' + activeEmptyId);
+  };
+
   if (pointer.length > 0) {
     const hasCell = pointer.some(c => String(c.id).startsWith('drop-explorer-cell-'));
     if (hasCell) {
@@ -73,13 +79,11 @@ export const dndCollisionDetection: CollisionDetection = (args) => {
     }
   }
 
-  const pointerEmpty = pointer.filter(c => isEmptyRowId(String(c.id)));
+  const pointerEmpty = pointer.filter(c => isEmptyRowId(String(c.id)) && !isSelfDrop(String(c.id)));
   if (pointerEmpty.length > 0) return pointerEmpty;
-  const rectEmpty = rect.filter(c => isEmptyRowId(String(c.id)));
+  const rectEmpty = rect.filter(c => isEmptyRowId(String(c.id)) && !isSelfDrop(String(c.id)));
   if (rectEmpty.length > 0) return rectEmpty;
 
-  // Fallback: use the real last-known pointer position and fresh
-  // getBoundingClientRect() to detect empty-row droppable hits.
   {
     const x = _lastPointerX;
     const y = _lastPointerY;
@@ -91,7 +95,7 @@ export const dndCollisionDetection: CollisionDetection = (args) => {
     for (const container of containers) {
       if (container.disabled) continue;
       const cid = String(container.id);
-      if (!isEmptyRowId(cid)) continue;
+      if (!isEmptyRowId(cid) || isSelfDrop(cid)) continue;
       const node = container.node.current;
       if (!node) continue;
       const r = node.getBoundingClientRect();
@@ -175,8 +179,7 @@ export default function App() {
   const [poolExpanded, setPoolExpanded] = useState(loadPoolExpanded);
   const [dragItem, setDragItem] = useState<DragPayload | null>(null);
   const [dndWarning, setDndWarning] = useState<string | null>(null);
-  const [dragFillNotification, setDragFillNotification] = useState<DragFillNotification | null>(null);
-  const dragFillNonceRef = useRef(0);
+  const dragFillNotification = null;
 
   const browseScrollRef = useRef<HTMLDivElement | null>(null);
   const browseContextRef = useRef<{ scrollTop: number; targetFilterKey: string } | null>(null);
@@ -327,6 +330,9 @@ export default function App() {
     reorderSubgroups,
     addSubgroupMember,
     removeSubgroupMember,
+    addEmptyRows,
+    deleteEmptyRow,
+    reorderEmptyRow,
   } = useSetBuilder();
 
   const starredTrackIds = useMemo(() => {
@@ -645,11 +651,24 @@ export default function App() {
     if (targetId.startsWith('drop-tracklist-empty-') || targetId.startsWith('drop-pool-empty-')) {
       if (!sb.activeSet) return;
       const isTracklist = targetId.startsWith('drop-tracklist-empty-');
-      const overData = over.data?.current as { __emptyId?: string; realPosition?: number } | undefined;
-      const emptyId = overData?.__emptyId;
+      const overData = over.data?.current as { __emptyId?: string; __persistedId?: number; realPosition?: number } | undefined;
+      const overPersistedId = overData?.__persistedId;
       const realPosition = overData?.realPosition;
       const validTrackIds = trackIds.filter(id => id > 0);
+
+      const dragData = active.data.current as DragPayload & { __persistedId?: number } | undefined;
+      const dragPersistedId = dragData?.__persistedId;
+
+      if (validTrackIds.length === 0 && dragPersistedId != null && overPersistedId != null) {
+        if (dragPersistedId === overPersistedId) return;
+        if (realPosition != null) {
+          reorderEmptyRow(dragPersistedId, realPosition);
+        }
+        return;
+      }
+
       if (validTrackIds.length === 0) return;
+
       for (const tid of validTrackIds) {
         const t = allTracks.find(tr => tr.id === tid);
         if (isTracklist) {
@@ -664,14 +683,35 @@ export default function App() {
           addToPoolFn(tid, t?.title ?? payload.title);
         }
       }
-      if (emptyId) {
-        dragFillNonceRef.current += 1;
-        setDragFillNotification({ emptyId, nonce: dragFillNonceRef.current });
+      if (overPersistedId != null) {
+        deleteEmptyRow(overPersistedId);
       }
       return;
     }
 
     if (payload.source === 'tracklist' && targetId.startsWith('drop-tracklist-row-')) {
+      const dragData = active.data.current as DragPayload & { __persistedId?: number } | undefined;
+      const dragPersistedId = dragData?.__persistedId;
+      if (payload.trackId <= 0 && dragPersistedId != null) {
+        const overRowData = over.data?.current as { trackId?: number } | undefined;
+        const targetTrackId = overRowData?.trackId;
+        if (targetTrackId != null && sb.activeSet) {
+          const targetEntry = sb.activeSet.tracklist.find(e => e.track_id === targetTrackId);
+          if (targetEntry) {
+            reorderEmptyRow(dragPersistedId, targetEntry.position);
+            return;
+          }
+        }
+        const displayIndex = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
+        if (!isNaN(displayIndex)) {
+          const emptyRowsBefore = (sb.activeSet?.empty_rows ?? [])
+            .filter(er => er.surface === 'tracklist' && er.position < displayIndex)
+            .length;
+          reorderEmptyRow(dragPersistedId, displayIndex - emptyRowsBefore);
+        }
+        return;
+      }
+
       const newPosition = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
       if (!isNaN(newPosition) && sb.activeSet) {
         const currentIndex = sb.activeSet.tracklist.findIndex(e => e.track_id === payload.trackId);
@@ -759,7 +799,7 @@ export default function App() {
         }
       }
     }
-  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, addToTracklistAtPosition, poolExpanded, handlePoolExpandedChange, reorderTracklist]);
+  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, addToTracklistAtPosition, poolExpanded, handlePoolExpandedChange, reorderTracklist, reorderEmptyRow, deleteEmptyRow]);
 
   return (
     <AudioPlayerProvider>
@@ -975,6 +1015,9 @@ export default function App() {
               reorderSubgroups={reorderSubgroups}
               addSubgroupMember={addSubgroupMember}
               removeSubgroupMember={removeSubgroupMember}
+              addEmptyRows={addEmptyRows}
+              deleteEmptyRow={deleteEmptyRow}
+              reorderEmptyRow={reorderEmptyRow}
               poolExpanded={poolExpanded}
               onPoolExpandedChange={handlePoolExpandedChange}
               dndDisabled={activePanel !== 'set'}
@@ -1013,6 +1056,9 @@ export default function App() {
                     reorderSubgroups={reorderSubgroups}
                     addSubgroupMember={addSubgroupMember}
                     removeSubgroupMember={removeSubgroupMember}
+                    addEmptyRows={addEmptyRows}
+                    deleteEmptyRow={deleteEmptyRow}
+                    reorderEmptyRow={reorderEmptyRow}
                     poolExpanded={true}
                     onPoolExpandedChange={handlePoolExpandedChange}
                     dndDisabled={activePanel !== 'explorer'}

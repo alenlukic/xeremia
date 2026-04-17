@@ -3982,3 +3982,73 @@ body,
   background: var(--accent-dim);
   color: var(--text-primary);
 }
+
+/* ─── Empty Row + Insert Controls ─── */
+
+tr.empty-row {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    rgba(255, 255, 255, 0.015) 6px,
+    rgba(255, 255, 255, 0.015) 12px
+  );
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
+}
+tr.empty-row td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+tr.empty-row .empty-row-label {
+  color: var(--text-muted, #666);
+  font-style: italic;
+  user-select: none;
+  font-size: 12px;
+}
+
+.empty-row-insert-btn {
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.empty-row-insert-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-dim);
+}
+.empty-row-insert-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.empty-row-insert-count {
+  width: 40px;
+  padding: 2px 4px;
+  font-size: 11px;
+  text-align: center;
+  background: var(--surface-input, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 3px;
+  color: var(--text-primary);
+}
+.empty-row-insert-action,
+.empty-row-insert-cancel {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 3px;
+  background: var(--surface-input, rgba(255, 255, 255, 0.05));
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.empty-row-insert-action:hover,
+.empty-row-insert-cancel:hover {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}

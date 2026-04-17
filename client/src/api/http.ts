@@ -1,4 +1,4 @@
-import type { Track, SearchSuggestion, TransitionMatch, MatchDetail, CacheStats, WeightsResponse, TrackTraitEntry, SetSummary, HydratedSet, ExplorerTree, PoolSubgroup } from '../types';
+import type { Track, SearchSuggestion, TransitionMatch, MatchDetail, CacheStats, WeightsResponse, TrackTraitEntry, SetSummary, HydratedSet, ExplorerTree, PoolSubgroup, PersistedEmptyRow } from '../types';
 
 export async function fetchTracks(params: {
   camelot_code?: string;
@@ -394,6 +394,40 @@ export async function explorerEdgeScores(
   });
   if (!res.ok) throw new Error(`Explorer edge scores failed: ${res.status}`);
   return res.json();
+}
+
+// --- Empty row API ---
+
+export async function emptyRowAdd(
+  setId: number, surface: string, count: number = 1, position: number = -1,
+): Promise<PersistedEmptyRow[]> {
+  const res = await fetch(`/api/sets/${setId}/empty-rows`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ surface, count, position }),
+  });
+  if (!res.ok) throw new Error(`Empty row add failed: ${res.status}`);
+  return res.json();
+}
+
+export async function emptyRowDelete(
+  setId: number, emptyRowId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/empty-rows/${emptyRowId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Empty row delete failed: ${res.status}`);
+}
+
+export async function emptyRowReorder(
+  setId: number, emptyRowId: number, newPosition: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/empty-rows/${emptyRowId}/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_position: newPosition }),
+  });
+  if (!res.ok) throw new Error(`Empty row reorder failed: ${res.status}`);
 }
 
 // --- Pool subgroup API ---

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { SetSummary, HydratedSet, PoolSubgroup } from '../types';
+import type { SetSummary, HydratedSet, PoolSubgroup, PersistedEmptyRow } from '../types';
 import type { ExplorerTree } from '../types';
 import {
   fetchSets, createSet as apiCreateSet, fetchHydratedSet, deleteSet as apiDeleteSet,
@@ -17,6 +17,9 @@ import {
   subgroupReorder as apiSubgroupReorder,
   subgroupAddMember as apiSubgroupAddMember,
   subgroupRemoveMember as apiSubgroupRemoveMember,
+  emptyRowAdd as apiEmptyRowAdd,
+  emptyRowDelete as apiEmptyRowDelete,
+  emptyRowReorder as apiEmptyRowReorder,
 } from '../api/http';
 
 export interface PendingAdd {
@@ -646,6 +649,36 @@ export function useSetBuilder() {
     }
   }, [activeSetId, refreshActive]);
 
+  const addEmptyRows = useCallback(async (surface: 'tracklist' | 'pool', count: number, position: number) => {
+    if (activeSetId === null) return;
+    try {
+      await apiEmptyRowAdd(activeSetId, surface, count, position);
+      await refreshActive();
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add empty rows.'));
+    }
+  }, [activeSetId, refreshActive]);
+
+  const deleteEmptyRow = useCallback(async (emptyRowId: number) => {
+    if (activeSetId === null) return;
+    try {
+      await apiEmptyRowDelete(activeSetId, emptyRowId);
+      await refreshActive();
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not delete empty row.'));
+    }
+  }, [activeSetId, refreshActive]);
+
+  const reorderEmptyRow = useCallback(async (emptyRowId: number, newPosition: number) => {
+    if (activeSetId === null) return;
+    try {
+      await apiEmptyRowReorder(activeSetId, emptyRowId, newPosition);
+      await refreshActive();
+    } catch (err) {
+      if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not reorder empty row.'));
+    }
+  }, [activeSetId, refreshActive]);
+
   return {
     sets,
     activeSetId,
@@ -694,5 +727,8 @@ export function useSetBuilder() {
     reorderSubgroups,
     addSubgroupMember,
     removeSubgroupMember,
+    addEmptyRows,
+    deleteEmptyRow,
+    reorderEmptyRow,
   };
 }
