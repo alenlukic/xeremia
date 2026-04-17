@@ -17,6 +17,7 @@ from src.models.set_explorer_node import SetExplorerNode
 from src.models.set_explorer_edge import SetExplorerEdge
 from src.models.set_pool_subgroup import SetPoolSubgroup
 from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
+from src.models.set_empty_row import SetEmptyRow
 from src.set_workspace.service import SetWorkspaceService
 
 
@@ -29,6 +30,7 @@ _TABLES = [
     SetExplorerEdge.__table__,
     SetPoolSubgroup.__table__,
     SetPoolSubgroupMember.__table__,
+    SetEmptyRow.__table__,
 ]
 
 
@@ -1090,3 +1092,278 @@ class TestSubgroupMembershipHydration:
         assert err is None
         assert member.subgroup_id == sg.id
         assert member.pool_entry_id == pe.id
+
+
+class TestEmptyRowAdd:
+    def test_add_single_to_tracklist(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        svc.tracklist_add(s.id, 20)
+        session.commit()
+
+        rows = svc.empty_row_add(s.id, "tracklist", count=1, position=-1)
+        session.commit()
+        assert len(rows) == 1
+        assert rows[0].surface == "tracklist"
+        assert rows[0].position == 2
+
+    def test_add_multiple_to_top(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        session.commit()
+
+        rows = svc.empty_row_add(s.id, "tracklist", count=3, position=0)
+        session.commit()
+        assert len(rows) == 3
+        positions = [r.position for r in rows]
+        assert positions == [0, 1, 2]
+
+    def test_add_shifts_existing_empty_rows(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        session.commit()
+
+        first = svc.empty_row_add(s.id, "tracklist", count=1, position=0)
+        session.commit()
+        assert first[0].position == 0
+
+        second = svc.empty_row_add(s.id, "tracklist", count=1, position=0)
+        session.commit()
+        assert second[0].position == 0
+
+        session.refresh(first[0])
+        assert first[0].position == 1
+
+    def test_add_to_pool(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        session.commit()
+
+        rows = svc.empty_row_add(s.id, "pool", count=2, position=-1)
+        session.commit()
+        assert len(rows) == 2
+        assert all(r.surface == "pool" for r in rows)
+
+    def test_add_invalid_surface(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        rows = svc.empty_row_add(s.id, "invalid", count=1)
+        assert rows == []
+
+    def test_add_visible_in_hydration(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.empty_row_add(s.id, "tracklist", count=2, position=0)
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        assert len(h["empty_rows"]) == 2
+
+
+class TestEmptyRowDelete:
+    def test_delete_single(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        rows = svc.empty_row_add(s.id, "tracklist", count=1, position=0)
+        session.commit()
+        rid = rows[0].id
+
+        ok = svc.empty_row_delete(s.id, rid)
+        session.commit()
+        assert ok is True
+        assert session.query(SetEmptyRow).filter_by(id=rid).count() == 0
+
+    def test_delete_compacts_positions(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        rows = svc.empty_row_add(s.id, "tracklist", count=3, position=0)
+        session.commit()
+        ids = [r.id for r in rows]
+
+        svc.empty_row_delete(s.id, ids[0])
+        session.commit()
+
+        remaining = (
+            session.query(SetEmptyRow)
+            .filter_by(set_id=s.id)
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        assert len(remaining) == 2
+        assert [r.position for r in remaining] == [0, 1]
+
+    def test_delete_last_row(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        rows = svc.empty_row_add(s.id, "tracklist", count=3, position=0)
+        session.commit()
+
+        svc.empty_row_delete(s.id, rows[2].id)
+        session.commit()
+
+        remaining = (
+            session.query(SetEmptyRow)
+            .filter_by(set_id=s.id)
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        assert len(remaining) == 2
+        assert [r.position for r in remaining] == [0, 1]
+
+    def test_delete_nonexistent(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok = svc.empty_row_delete(s.id, 9999)
+        assert ok is False
+
+
+class TestEmptyRowReorder:
+    def test_reorder_forward(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        rows = svc.empty_row_add(s.id, "tracklist", count=3, position=0)
+        session.commit()
+        ids = [r.id for r in rows]
+
+        ok, err = svc.empty_row_reorder(s.id, ids[0], 2)
+        assert ok is True
+        assert err is None
+        session.commit()
+
+        reloaded = (
+            session.query(SetEmptyRow)
+            .filter_by(set_id=s.id)
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        order = [(r.id, r.position) for r in reloaded]
+        assert order == [(ids[1], 0), (ids[2], 1), (ids[0], 2)]
+
+    def test_reorder_backward(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        rows = svc.empty_row_add(s.id, "tracklist", count=3, position=0)
+        session.commit()
+        ids = [r.id for r in rows]
+
+        ok, err = svc.empty_row_reorder(s.id, ids[2], 0)
+        assert ok is True
+        assert err is None
+        session.commit()
+
+        reloaded = (
+            session.query(SetEmptyRow)
+            .filter_by(set_id=s.id)
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        order = [(r.id, r.position) for r in reloaded]
+        assert order == [(ids[2], 0), (ids[0], 1), (ids[1], 2)]
+
+    def test_reorder_noop(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        rows = svc.empty_row_add(s.id, "tracklist", count=1, position=0)
+        session.commit()
+
+        ok, err = svc.empty_row_reorder(s.id, rows[0].id, 0)
+        assert ok is True
+        assert err is None
+
+    def test_reorder_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.empty_row_reorder(s.id, 9999, 0)
+        assert ok is False
+        assert "not found" in err.lower()
+
+    def test_reorder_clamps_to_max(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        session.commit()
+        rows = svc.empty_row_add(s.id, "tracklist", count=2, position=0)
+        session.commit()
+
+        ok, err = svc.empty_row_reorder(s.id, rows[0].id, 100)
+        assert ok is True
+        session.commit()
+
+        session.refresh(rows[0])
+        assert rows[0].position == 2
+
+    def test_multi_reorder_no_position_collision(self, svc: SetWorkspaceService, session: Session):
+        """Repeated reorders must never produce duplicate positions."""
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        svc.tracklist_add(s.id, 20)
+        session.commit()
+        rows = svc.empty_row_add(s.id, "tracklist", count=3, position=0)
+        session.commit()
+        ids = [r.id for r in rows]
+
+        svc.empty_row_reorder(s.id, ids[0], 4)
+        session.commit()
+        svc.empty_row_reorder(s.id, ids[2], 0)
+        session.commit()
+        svc.empty_row_reorder(s.id, ids[1], 3)
+        session.commit()
+
+        all_rows = (
+            session.query(SetEmptyRow)
+            .filter_by(set_id=s.id)
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        positions = [r.position for r in all_rows]
+        assert len(positions) == len(set(positions)), f"Duplicate positions found: {positions}"
+
+    def test_reorder_pool_surface(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        session.commit()
+        rows = svc.empty_row_add(s.id, "pool", count=2, position=0)
+        session.commit()
+
+        ok, err = svc.empty_row_reorder(s.id, rows[0].id, 2)
+        assert ok is True
+        session.commit()
+
+        reloaded = (
+            session.query(SetEmptyRow)
+            .filter_by(set_id=s.id)
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        assert [r.id for r in reloaded] == [rows[1].id, rows[0].id]
+
+
+class TestEmptyRowCascade:
+    def test_delete_set_cascades_empty_rows(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.empty_row_add(s.id, "tracklist", count=2, position=0)
+        session.commit()
+
+        svc.delete_set(s.id)
+        session.commit()
+        assert session.query(SetEmptyRow).filter_by(set_id=s.id).count() == 0
+
+    def test_empty_row_clear(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.empty_row_add(s.id, "tracklist", count=3, position=0)
+        svc.empty_row_add(s.id, "pool", count=2, position=0)
+        session.commit()
+
+        cleared = svc.empty_row_clear(s.id, "tracklist")
+        session.commit()
+        assert cleared == 3
+        assert session.query(SetEmptyRow).filter_by(set_id=s.id, surface="tracklist").count() == 0
+        assert session.query(SetEmptyRow).filter_by(set_id=s.id, surface="pool").count() == 2

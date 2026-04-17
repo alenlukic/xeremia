@@ -11,6 +11,9 @@ from fastapi.responses import FileResponse
 
 from src.api.schemas import (
     CacheStatsResponse,
+    EmptyRowAddRequest,
+    EmptyRowReorderRequest,
+    EmptyRowResponse,
     ExplorerAddEdgeRequest,
     ExplorerAddNodeRequest,
     ExplorerDeleteNodeRequest,
@@ -695,6 +698,15 @@ def _serialize_hydrated(hydration, session) -> dict:
             }
             for m in hydration.get("pool_subgroup_memberships", [])
         ],
+        "empty_rows": [
+            {
+                "id": er.id,
+                "set_id": er.set_id,
+                "surface": er.surface,
+                "position": er.position,
+            }
+            for er in hydration.get("empty_rows", [])
+        ],
     }
 
 
@@ -1031,6 +1043,79 @@ def api_subgroup_remove_member(set_id: int, subgroup_id: int, pool_entry_id: int
         session.rollback()
         logger.exception("Subgroup remove member failed")
         raise HTTPException(status_code=500, detail="Subgroup remove member failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Empty row endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sets/{set_id}/empty-rows", response_model=List[EmptyRowResponse], status_code=201)
+def api_empty_row_add(set_id: int, body: EmptyRowAddRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        rows = svc.empty_row_add(set_id, body.surface, body.count, body.position)
+        session.commit()
+        return [
+            {"id": r.id, "set_id": r.set_id, "surface": r.surface, "position": r.position}
+            for r in rows
+        ]
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Empty row add failed")
+        raise HTTPException(status_code=500, detail="Empty row add failed")
+    finally:
+        session.close()
+
+
+@router.delete("/sets/{set_id}/empty-rows/{empty_row_id}", status_code=204)
+def api_empty_row_delete(set_id: int, empty_row_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        deleted = svc.empty_row_delete(set_id, empty_row_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Empty row not found")
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Empty row delete failed")
+        raise HTTPException(status_code=500, detail="Empty row delete failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/empty-rows/{empty_row_id}/reorder")
+def api_empty_row_reorder(set_id: int, empty_row_id: int, body: EmptyRowReorderRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.empty_row_reorder(set_id, empty_row_id, body.new_position)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Empty row reorder failed")
+        raise HTTPException(status_code=500, detail="Empty row reorder failed")
     finally:
         session.close()
 

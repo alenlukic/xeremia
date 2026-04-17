@@ -1,19 +1,13 @@
-import { useState, useCallback, useRef, useEffect, useMemo, useContext } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import type { TracklistEntry, SearchSuggestion, EmptyRow, TracklistDisplayRow } from '../types';
+import type { TracklistEntry, SearchSuggestion, EmptyRow, TracklistDisplayRow, PersistedEmptyRow } from '../types';
 import { isEmptyRow } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
 import type { DragPayload } from '../dnd';
-import { DragFillContext } from '../dnd';
 import { PlayButton } from './PlayButton';
 import { SortTierBar } from './SortTierBar';
 import type { SortDescriptor, SortColumn } from './SortTierBar';
-
-let emptyRowCounter = 0;
-function makeEmptyRowId(): string {
-  return `empty-tl-${++emptyRowCounter}-${Date.now()}`;
-}
 
 const TRACKLIST_SORT_COLUMNS: SortColumn[] = [
   { id: 'position', label: '#' },
@@ -31,6 +25,7 @@ function compareTracklistByColumn(a: TracklistEntry, b: TracklistEntry, col: str
 
 interface Props {
   tracklist: TracklistEntry[];
+  emptyRows: PersistedEmptyRow[];
   onRemove: (trackId: number) => void;
   onMoveToPool: (trackId: number) => void;
   onReorder: (trackId: number, newPosition: number) => void;
@@ -38,80 +33,58 @@ interface Props {
   onToggleStar: (trackId: number, starred: boolean) => void;
   onAddTrack: (trackId: number, title?: string) => void;
   onClearAll?: () => void;
+  onInsertEmptyRows: (count: number, position: number) => void;
+  onDeleteEmptyRow: (emptyRowId: number) => void;
+  onReorderEmptyRow: (emptyRowId: number, newPosition: number) => void;
   dndDisabled?: boolean;
   dndIdPrefix?: string;
   onFillEmptyRow?: (emptyId: string, trackId: number, title?: string, position?: number) => void;
 }
 
-function InsertEmptyRowsControl({ onInsert, totalRows }: { onInsert: (count: number, position: number) => void; totalRows: number }) {
+function InsertEmptyRowsControl({ onInsert }: { onInsert: (count: number, position: number) => void }) {
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(1);
-  const [positionInput, setPositionInput] = useState('');
 
-  const handleInsert = useCallback((position: 'start' | 'end' | 'at') => {
+  const handleInsert = useCallback((position: 'start' | 'end') => {
     if (count < 1) return;
-    let pos: number;
-    if (position === 'start') {
-      pos = 0;
-    } else if (position === 'end') {
-      pos = -1;
-    } else {
-      const parsed = parseInt(positionInput, 10);
-      if (isNaN(parsed) || parsed < 1) return;
-      pos = Math.min(parsed - 1, totalRows);
-    }
+    const pos = position === 'start' ? 0 : -1;
     onInsert(count, pos);
     setOpen(false);
     setCount(1);
-    setPositionInput('');
-  }, [count, positionInput, totalRows, onInsert]);
+  }, [count, onInsert]);
 
   if (!open) {
     return (
       <button
-        className="set-action-btn insert-empty-btn"
+        className="set-action-btn empty-row-insert-btn"
         onClick={() => setOpen(true)}
         title="Insert empty placeholder rows"
         aria-label="Insert empty rows"
       >
-        + Empty Rows
+        + Slots
       </button>
     );
   }
 
   return (
-    <span className="insert-empty-inline">
+    <span className="empty-row-insert-control">
       <input
-        className="insert-empty-count"
+        className="empty-row-insert-count"
         type="number"
         min={1}
         max={50}
         value={count}
         onChange={e => setCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
         onKeyDown={e => {
-          if (e.key === 'Escape') { setOpen(false); setCount(1); setPositionInput(''); }
+          if (e.key === 'Escape') { setOpen(false); setCount(1); }
+          if (e.key === 'Enter') handleInsert('end');
         }}
         aria-label="Number of empty rows"
         autoFocus
       />
-      <button className="set-action-btn" onClick={() => handleInsert('start')} title="Insert at start">At Start</button>
-      <button className="set-action-btn" onClick={() => handleInsert('end')} title="Insert at end">At End</button>
-      <input
-        className="insert-empty-position"
-        type="number"
-        min={1}
-        max={totalRows + 1}
-        placeholder="Row #"
-        value={positionInput}
-        onChange={e => setPositionInput(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter') handleInsert('at');
-          if (e.key === 'Escape') { setOpen(false); setCount(1); setPositionInput(''); }
-        }}
-        aria-label="Insert position"
-      />
-      <button className="set-action-btn" onClick={() => handleInsert('at')} title="Insert at position" disabled={!positionInput || parseInt(positionInput, 10) < 1}>At Position</button>
-      <button className="set-action-btn" onClick={() => { setOpen(false); setCount(1); setPositionInput(''); }}>Cancel</button>
+      <button className="set-action-btn empty-row-insert-action" onClick={() => handleInsert('start')} title="Insert at start">Top</button>
+      <button className="set-action-btn empty-row-insert-action" onClick={() => handleInsert('end')} title="Insert at end">Bottom</button>
+      <button className="set-action-btn empty-row-insert-cancel" onClick={() => { setOpen(false); setCount(1); }}>×</button>
     </span>
   );
 }
@@ -120,8 +93,8 @@ function DraggableEmptyRow({ emptyRow, index, total, onDelete, onReorder, onFill
   emptyRow: EmptyRow;
   index: number;
   total: number;
-  onDelete: (emptyId: string) => void;
-  onReorder: (emptyId: string, direction: 'up' | 'down') => void;
+  onDelete: (persistedId: number) => void;
+  onReorder: (persistedId: number, direction: 'up' | 'down') => void;
   onFillSearch: (emptyId: string) => void;
   dndDisabled?: boolean;
   reorderDisabled?: boolean;
@@ -133,14 +106,14 @@ function DraggableEmptyRow({ emptyRow, index, total, onDelete, onReorder, onFill
   const payload: DragPayload = { trackId: -1, title: '', source: 'tracklist' };
   const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `${prefix}tracklist-empty-${emptyRow.emptyId}`,
-    data: { ...payload, __emptyId: emptyRow.emptyId },
+    data: { ...payload, __emptyId: emptyRow.emptyId, __persistedId: emptyRow.persistedId },
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
     disabled: effectiveDndDisabled,
   });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `${prefix}drop-tracklist-empty-${emptyRow.emptyId}`,
-    data: { index, __emptyId: emptyRow.emptyId, realPosition },
+    data: { index, __emptyId: emptyRow.emptyId, __persistedId: emptyRow.persistedId, realPosition },
     disabled: effectiveDndDisabled,
   });
 
@@ -170,6 +143,7 @@ function DraggableEmptyRow({ emptyRow, index, total, onDelete, onReorder, onFill
   ].filter(Boolean).join(' ');
 
   const rowCursor = effectiveDndDisabled ? 'default' : isDragging ? 'grabbing' : 'grab';
+  const pid = emptyRow.persistedId;
 
   return (
     <tr
@@ -177,6 +151,7 @@ function DraggableEmptyRow({ emptyRow, index, total, onDelete, onReorder, onFill
       style={{ cursor: rowCursor }}
       className={className}
       data-empty-id={emptyRow.emptyId}
+      data-persisted-id={pid}
       data-real-position={realPosition}
       {...rowListeners}
     >
@@ -184,17 +159,17 @@ function DraggableEmptyRow({ emptyRow, index, total, onDelete, onReorder, onFill
       <td className="play-cell" />
       <td className="mono set-ws-cell-num">{index + 1}</td>
       <td className="set-ws-cell-title empty-row-placeholder" colSpan={1}>
-        <span className="empty-row-label">Empty slot</span>
+        <span className="empty-row-label">—</span>
       </td>
       <td className="mono set-ws-cell-key">—</td>
       <td className="mono set-ws-cell-bpm">—</td>
       <td className="set-ws-cell-note" />
       <td className="set-ws-cell-actions">
         <div className="set-ws-actions-group">
-          <button className="set-move-btn" disabled={reorderDisabled || index === 0} onClick={() => onReorder(emptyRow.emptyId, 'up')} title="Move up">↑</button>
-          <button className="set-move-btn" disabled={reorderDisabled || index === total - 1} onClick={() => onReorder(emptyRow.emptyId, 'down')} title="Move down">↓</button>
+          <button className="set-move-btn" disabled={reorderDisabled || index === 0} onClick={() => pid != null && onReorder(pid, 'up')} title="Move up">↑</button>
+          <button className="set-move-btn" disabled={reorderDisabled || index === total - 1} onClick={() => pid != null && onReorder(pid, 'down')} title="Move down">↓</button>
           <button className="set-action-btn" onClick={() => onFillSearch(emptyRow.emptyId)} title="Fill with track">Fill</button>
-          <button className="set-action-btn set-action-btn--danger" onClick={() => onDelete(emptyRow.emptyId)} title="Delete empty row">×</button>
+          <button className="set-action-btn set-action-btn--danger" onClick={() => pid != null && onDelete(pid)} title="Delete empty row">×</button>
         </div>
       </td>
     </tr>
@@ -367,7 +342,7 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
   );
 }
 
-export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, onAddTrack, onClearAll, dndDisabled, dndIdPrefix, onFillEmptyRow }: Props) {
+export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, onAddTrack, onClearAll, onInsertEmptyRows, onDeleteEmptyRow, onReorderEmptyRow, dndDisabled, dndIdPrefix, onFillEmptyRow }: Props) {
   const prefix = dndIdPrefix ?? '';
   const { setNodeRef: setTracklistDropRef, isOver: isTracklistOver } = useDroppable({ id: `${prefix}drop-tracklist`, disabled: dndDisabled });
   const [searchQuery, setSearchQuery] = useState('');
@@ -376,7 +351,6 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
   const [sorting, setSorting] = useState<SortDescriptor[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [emptyRows, setEmptyRows] = useState<{ id: string; position: number }[]>([]);
   const [fillTargetId, setFillTargetId] = useState<string | null>(null);
 
   const tracklistIdsRef = useRef<string>('');
@@ -404,52 +378,27 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
   }, [tracklist, sorting]);
 
   const displayRows = useMemo((): TracklistDisplayRow[] => {
-    if (emptyRows.length === 0) return sortedTracklist;
+    if (persistedEmptyRows.length === 0) return sortedTracklist;
     const result: TracklistDisplayRow[] = [...sortedTracklist];
-    const sorted = [...emptyRows].sort((a, b) => a.position - b.position);
+    const sorted = [...persistedEmptyRows].sort((a, b) => a.position - b.position);
     for (let i = 0; i < sorted.length; i++) {
       const pos = Math.min(sorted[i].position + i, result.length);
-      result.splice(pos, 0, { __empty: true, emptyId: sorted[i].id } as EmptyRow);
+      result.splice(pos, 0, { __empty: true, emptyId: `er-${sorted[i].id}`, persistedId: sorted[i].id } as EmptyRow);
     }
     return result;
-  }, [sortedTracklist, emptyRows]);
+  }, [sortedTracklist, persistedEmptyRows]);
 
-  const handleInsertEmptyRows = useCallback((count: number, position: number) => {
-    setEmptyRows(prev => {
-      const basePos = position === -1 ? sortedTracklist.length + prev.length : position;
-      const newRows = Array.from({ length: count }, () => ({
-        id: makeEmptyRowId(),
-        position: basePos,
-      }));
-      return [...prev, ...newRows];
-    });
-  }, [sortedTracklist.length]);
+  const handleDeleteEmptyRow = useCallback((persistedId: number) => {
+    onDeleteEmptyRow(persistedId);
+  }, [onDeleteEmptyRow]);
 
-  const handleDeleteEmptyRow = useCallback((emptyId: string) => {
-    setEmptyRows(prev => prev.filter(r => r.id !== emptyId));
-  }, []);
-
-  const handleReorderEmptyRow = useCallback((emptyId: string, direction: 'up' | 'down') => {
-    setEmptyRows(prev => {
-      const idx = displayRows.findIndex(r => isEmptyRow(r) && r.emptyId === emptyId);
-      if (idx < 0) return prev;
-      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= displayRows.length) return prev;
-      const row = prev.find(r => r.id === emptyId);
-      if (!row) return prev;
-      const delta = direction === 'up' ? -1 : 1;
-      return prev.map(r => r.id === emptyId ? { ...r, position: Math.max(0, r.position + delta) } : r);
-    });
-  }, [displayRows]);
-
-  const dragFillNotification = useContext(DragFillContext);
-  useEffect(() => {
-    if (!dragFillNotification) return;
-    setEmptyRows(prev => {
-      const filtered = prev.filter(r => r.id !== dragFillNotification.emptyId);
-      return filtered.length === prev.length ? prev : filtered;
-    });
-  }, [dragFillNotification]);
+  const handleReorderEmptyRow = useCallback((persistedId: number, direction: 'up' | 'down') => {
+    const row = persistedEmptyRows.find(r => r.id === persistedId);
+    if (!row) return;
+    const delta = direction === 'up' ? -1 : 1;
+    const newPos = Math.max(0, row.position + delta);
+    onReorderEmptyRow(persistedId, newPos);
+  }, [persistedEmptyRows, onReorderEmptyRow]);
 
   const handleFillSearch = useCallback((emptyId: string) => {
     setFillTargetId(emptyId);
@@ -510,14 +459,15 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
 
   const handleSearchSelect = useCallback((s: SearchSuggestion) => {
     if (fillTargetId) {
-      const emptyRow = emptyRows.find(r => r.id === fillTargetId);
+      const persistedId = parseInt(fillTargetId.replace('er-', ''), 10);
+      const emptyRow = persistedEmptyRows.find(r => r.id === persistedId);
       const targetPosition = emptyRow?.position ?? sortedTracklist.length;
       if (onFillEmptyRow) {
         onFillEmptyRow(fillTargetId, s.id, s.title, targetPosition);
       } else {
         onAddTrack(s.id, s.title);
       }
-      setEmptyRows(prev => prev.filter(r => r.id !== fillTargetId));
+      if (!isNaN(persistedId)) onDeleteEmptyRow(persistedId);
       setFillTargetId(null);
     } else {
       onAddTrack(s.id, s.title);
@@ -525,7 +475,7 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
     setSearchQuery('');
     setSearchResults([]);
     setShowSearch(false);
-  }, [onAddTrack, onFillEmptyRow, fillTargetId, emptyRows, sortedTracklist.length]);
+  }, [onAddTrack, onFillEmptyRow, onDeleteEmptyRow, fillTargetId, persistedEmptyRows, sortedTracklist.length]);
 
   const totalDisplayRows = displayRows.length;
 
@@ -544,7 +494,7 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
             Delete Selected
           </button>
         )}
-        <InsertEmptyRowsControl onInsert={handleInsertEmptyRows} totalRows={totalDisplayRows} />
+        <InsertEmptyRowsControl onInsert={onInsertEmptyRows} />
         {tracklist.length > 0 && onClearAll && (
           <button
             className="set-action-btn set-action-btn--danger set-clear-all-btn"
@@ -634,7 +584,7 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
                     dndDisabled={dndDisabled}
                     reorderDisabled={sorting.length > 0}
                     dndIdPrefix={dndIdPrefix}
-                    realPosition={emptyRows.find(r => r.id === row.emptyId)?.position ?? i}
+                    realPosition={persistedEmptyRows.find(r => r.id === row.persistedId)?.position ?? i}
                   />
                 ) : (
                   <DraggableTracklistRow

@@ -2,9 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 import { SetTracklist } from './SetTracklist';
-import type { TracklistEntry } from '../types';
+import type { TracklistEntry, PersistedEmptyRow } from '../types';
 import { searchTracks } from '../api/http';
-import { DragFillContext, type DragFillNotification } from '../dnd';
 
 vi.mock('../hooks/useAudioPlayer', () => ({
   useAudioPlayer: () => ({
@@ -40,19 +39,28 @@ function makeEntry(overrides: Partial<TracklistEntry> & { id: number; track_id: 
   };
 }
 
+function makePersistedEmptyRow(id: number, position: number): PersistedEmptyRow {
+  return { id, set_id: 1, surface: 'tracklist', position, added_at: new Date().toISOString() };
+}
+
 const noop = () => {};
+const noopAsync = () => Promise.resolve();
 
 function renderTracklist(entries: TracklistEntry[], extra?: Partial<React.ComponentProps<typeof SetTracklist>>) {
   return render(
     <DndContext>
       <SetTracklist
         tracklist={entries}
+        emptyRows={extra?.emptyRows ?? []}
         onRemove={extra?.onRemove ?? noop}
         onMoveToPool={noop}
         onReorder={noop}
         onUpdateNote={noop}
         onToggleStar={noop}
         onAddTrack={noop}
+        onInsertEmptyRows={extra?.onInsertEmptyRows ?? noop}
+        onDeleteEmptyRow={extra?.onDeleteEmptyRow ?? noop}
+        onReorderEmptyRow={extra?.onReorderEmptyRow ?? noop}
         {...extra}
       />
     </DndContext>,
@@ -472,7 +480,7 @@ describe('SetTracklist confirm-delete modal', () => {
   });
 });
 
-describe('SetTracklist empty row insertion', () => {
+describe('SetTracklist empty row rendering', () => {
   function makeEntries(): TracklistEntry[] {
     return [
       makeEntry({ id: 1, track_id: 10, position: 0 }),
@@ -489,112 +497,78 @@ describe('SetTracklist empty row insertion', () => {
   it('opens insert controls when button is clicked', () => {
     const { container } = renderTracklist(makeEntries());
     fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    expect(container.querySelector('.insert-empty-inline')).toBeTruthy();
-    expect(container.querySelector('.insert-empty-count')).toBeTruthy();
+    expect(container.querySelector('.empty-row-insert-control')).toBeTruthy();
+    expect(container.querySelector('.empty-row-insert-count')).toBeTruthy();
   });
 
-  it('inserts 1 empty row at end', () => {
-    const { container } = renderTracklist(makeEntries());
+  it('calls onInsertEmptyRows with correct args when inserting at end', () => {
+    const onInsertEmptyRows = vi.fn();
+    renderTracklist(makeEntries(), { onInsertEmptyRows });
     fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
     fireEvent.click(screen.getByTitle('Insert at end'));
+    expect(onInsertEmptyRows).toHaveBeenCalledWith(1, -1);
+  });
 
+  it('calls onInsertEmptyRows with correct args when inserting at start', () => {
+    const onInsertEmptyRows = vi.fn();
+    renderTracklist(makeEntries(), { onInsertEmptyRows });
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    fireEvent.click(screen.getByTitle('Insert at start'));
+    expect(onInsertEmptyRows).toHaveBeenCalledWith(1, 0);
+  });
+
+  it('renders persisted empty rows from prop at end', () => {
+    const emptyRows = [makePersistedEmptyRow(100, 2)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
     const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
     expect(rows.length).toBe(3);
     expect(rows[2].classList.contains('empty-row')).toBe(true);
-    expect(rows[2].querySelector('.empty-row-label')?.textContent).toBe('Empty slot');
   });
 
-  it('inserts arbitrary count of empty rows', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    const countInput = container.querySelector('.insert-empty-count') as HTMLInputElement;
-    fireEvent.change(countInput, { target: { value: '3' } });
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
-    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(5);
-    const emptyRows = container.querySelectorAll('.set-tracklist-table tbody tr.empty-row');
-    expect(emptyRows.length).toBe(3);
-  });
-
-  it('inserts empty rows at start', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at start'));
-
+  it('renders persisted empty rows at start', () => {
+    const emptyRows = [makePersistedEmptyRow(100, 0)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
     const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
     expect(rows.length).toBe(3);
     expect(rows[0].classList.contains('empty-row')).toBe(true);
-    expect(rows[0].querySelector('.empty-row-label')).toBeTruthy();
   });
 
-  it('empty row renders placeholder content with em-dashes for key/bpm', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
+  it('empty row renders placeholder with em-dashes for key/bpm', () => {
+    const emptyRows = [makePersistedEmptyRow(100, 2)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
     const emptyRow = container.querySelector('.set-tracklist-table tbody tr.empty-row')!;
     expect(emptyRow.querySelector('.set-ws-cell-key')?.textContent).toBe('—');
     expect(emptyRow.querySelector('.set-ws-cell-bpm')?.textContent).toBe('—');
   });
 
-  it('empty row can be deleted', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
-    let emptyRows = container.querySelectorAll('.set-tracklist-table tbody tr.empty-row');
-    expect(emptyRows.length).toBe(1);
-
-    const deleteBtn = emptyRows[0].querySelector('.set-action-btn--danger') as HTMLButtonElement;
+  it('calls onDeleteEmptyRow when delete button is clicked', () => {
+    const onDeleteEmptyRow = vi.fn();
+    const emptyRows = [makePersistedEmptyRow(100, 2)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows, onDeleteEmptyRow });
+    const emptyRow = container.querySelector('.set-tracklist-table tbody tr.empty-row')!;
+    const deleteBtn = emptyRow.querySelector('.set-action-btn--danger') as HTMLButtonElement;
     fireEvent.click(deleteBtn);
-
-    emptyRows = container.querySelectorAll('.set-tracklist-table tbody tr.empty-row');
-    expect(emptyRows.length).toBe(0);
-    expect(container.querySelectorAll('.set-tracklist-table tbody tr').length).toBe(2);
-  });
-
-  it('deleting an empty row preserves surrounding real rows', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at start'));
-
-    const deleteBtn = container.querySelector('.set-tracklist-table tbody tr.empty-row .set-action-btn--danger') as HTMLButtonElement;
-    fireEvent.click(deleteBtn);
-
-    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(2);
-    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
-    expect(rows[1].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
+    expect(onDeleteEmptyRow).toHaveBeenCalledWith(100);
   });
 
   it('empty row has reorder (move up/down) buttons', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
+    const emptyRows = [makePersistedEmptyRow(100, 1)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
     const emptyRow = container.querySelector('.set-tracklist-table tbody tr.empty-row')!;
-    const moveUp = emptyRow.querySelector('[title="Move up"]');
-    const moveDown = emptyRow.querySelector('[title="Move down"]');
-    expect(moveUp).toBeTruthy();
-    expect(moveDown).toBeTruthy();
+    expect(emptyRow.querySelector('[title="Move up"]')).toBeTruthy();
+    expect(emptyRow.querySelector('[title="Move down"]')).toBeTruthy();
   });
 
   it('empty row has Fill button', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
+    const emptyRows = [makePersistedEmptyRow(100, 2)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
     const emptyRow = container.querySelector('.set-tracklist-table tbody tr.empty-row')!;
-    const fillBtn = emptyRow.querySelector('[title="Fill with track"]');
-    expect(fillBtn).toBeTruthy();
+    expect(emptyRow.querySelector('[title="Fill with track"]')).toBeTruthy();
   });
 
   it('clicking Fill activates fill mode on search', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
+    const emptyRows = [makePersistedEmptyRow(100, 2)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
     const fillBtn = container.querySelector('.set-tracklist-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
     fireEvent.click(fillBtn);
 
@@ -603,64 +577,9 @@ describe('SetTracklist empty row insertion', () => {
     expect(container.querySelector('.fill-cancel-btn')).toBeTruthy();
   });
 
-  it('search-fill removes the targeted empty row and calls onFillEmptyRow', async () => {
-    const onFillEmptyRow = vi.fn();
-    vi.mocked(searchTracks).mockResolvedValue([
-      { id: 99, title: 'Fill Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
-    ]);
-
-    const { container } = renderTracklist(makeEntries(), { onFillEmptyRow });
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
-    const fillBtn = container.querySelector('.set-tracklist-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
-    fireEvent.click(fillBtn);
-
-    const searchInput = container.querySelector('.set-tracklist-search') as HTMLInputElement;
-    fireEvent.change(searchInput, { target: { value: 'Fill' } });
-
-    await waitFor(() => {
-      expect(container.querySelector('.set-tracklist-search-dropdown')).toBeTruthy();
-    });
-
-    fireEvent.mouseDown(container.querySelector('.set-tracklist-search-item')!);
-
-    expect(onFillEmptyRow).toHaveBeenCalledWith(expect.any(String), 99, 'Fill Track', expect.any(Number));
-    expect(container.querySelectorAll('.set-tracklist-table tbody tr.empty-row').length).toBe(0);
-    expect(container.querySelectorAll('.set-tracklist-table tbody tr').length).toBe(2);
-  });
-
-  it('search-fill falls back to onAddTrack when onFillEmptyRow is not provided', async () => {
-    const onAddTrack = vi.fn();
-    vi.mocked(searchTracks).mockResolvedValue([
-      { id: 99, title: 'Fill Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
-    ]);
-
-    const { container } = renderTracklist(makeEntries(), { onAddTrack });
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
-    const fillBtn = container.querySelector('.set-tracklist-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
-    fireEvent.click(fillBtn);
-
-    const searchInput = container.querySelector('.set-tracklist-search') as HTMLInputElement;
-    fireEvent.change(searchInput, { target: { value: 'Fill' } });
-
-    await waitFor(() => {
-      expect(container.querySelector('.set-tracklist-search-dropdown')).toBeTruthy();
-    });
-
-    fireEvent.mouseDown(container.querySelector('.set-tracklist-search-item')!);
-
-    expect(onAddTrack).toHaveBeenCalledWith(99, 'Fill Track');
-    expect(container.querySelectorAll('.set-tracklist-table tbody tr.empty-row').length).toBe(0);
-  });
-
   it('cancel fill mode restores normal search', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
+    const emptyRows = [makePersistedEmptyRow(100, 2)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
     const fillBtn = container.querySelector('.set-tracklist-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
     fireEvent.click(fillBtn);
 
@@ -674,71 +593,24 @@ describe('SetTracklist empty row insertion', () => {
   });
 
   it('shows table when only empty rows exist and no real tracks', () => {
-    const { container } = renderTracklist([]);
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
+    const emptyRows = [makePersistedEmptyRow(100, 0)];
+    const { container } = renderTracklist([], { emptyRows });
     expect(container.querySelector('.set-tracklist-table')).toBeTruthy();
     expect(container.querySelector('.set-empty-tracks')).toBeNull();
-    const emptyRows = container.querySelectorAll('.set-tracklist-table tbody tr.empty-row');
-    expect(emptyRows.length).toBe(1);
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr.empty-row');
+    expect(rows.length).toBe(1);
   });
 
-  it('inserts empty rows at an arbitrary chosen position', () => {
-    const entries = makeEntries();
-    const { container } = renderTracklist(entries);
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-
-    const countInput = container.querySelector('.insert-empty-count') as HTMLInputElement;
-    fireEvent.change(countInput, { target: { value: '2' } });
-
-    const posInput = container.querySelector('.insert-empty-position') as HTMLInputElement;
-    fireEvent.change(posInput, { target: { value: '2' } });
-    fireEvent.click(screen.getByTitle('Insert at position'));
-
-    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(4);
-    expect(rows[0].classList.contains('empty-row')).toBe(false);
-    expect(rows[1].classList.contains('empty-row')).toBe(true);
-    expect(rows[2].classList.contains('empty-row')).toBe(true);
-    expect(rows[3].classList.contains('empty-row')).toBe(false);
-  });
-
-  it('shows position input and At Position button when insert controls are open', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-
-    expect(container.querySelector('.insert-empty-position')).toBeTruthy();
-    expect(screen.getByTitle('Insert at position')).toBeTruthy();
-  });
-
-  it('At Position button is disabled when no position is entered', () => {
-    renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-
-    const btn = screen.getByTitle('Insert at position') as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
-  });
-
-  it('search-fill passes position to onFillEmptyRow for at-position insertion', async () => {
+  it('search-fill calls onDeleteEmptyRow and onFillEmptyRow', async () => {
     const onFillEmptyRow = vi.fn();
-    const onReorder = vi.fn();
+    const onDeleteEmptyRow = vi.fn();
     vi.mocked(searchTracks).mockResolvedValue([
       { id: 99, title: 'Fill Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
     ]);
 
-    const entries = makeEntries();
-    const { container } = renderTracklist(entries, { onFillEmptyRow, onReorder });
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    const posInput = container.querySelector('.insert-empty-position') as HTMLInputElement;
-    fireEvent.change(posInput, { target: { value: '2' } });
-    fireEvent.click(screen.getByTitle('Insert at position'));
-
-    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows[1].classList.contains('empty-row')).toBe(true);
-
-    const fillBtn = rows[1].querySelector('[title="Fill with track"]') as HTMLButtonElement;
+    const emptyRows = [makePersistedEmptyRow(100, 2)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows, onFillEmptyRow, onDeleteEmptyRow });
+    const fillBtn = container.querySelector('.set-tracklist-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
     fireEvent.click(fillBtn);
 
     const searchInput = container.querySelector('.set-tracklist-search') as HTMLInputElement;
@@ -750,134 +622,8 @@ describe('SetTracklist empty row insertion', () => {
 
     fireEvent.mouseDown(container.querySelector('.set-tracklist-search-item')!);
 
-    expect(onFillEmptyRow).toHaveBeenCalledWith(expect.any(String), 99, 'Fill Track', 1);
-    expect(onReorder).not.toHaveBeenCalled();
-    expect(container.querySelectorAll('.set-tracklist-table tbody tr.empty-row').length).toBe(0);
-  });
-
-  it('search-fill at end position passes tracklist length as position to onFillEmptyRow', async () => {
-    const onFillEmptyRow = vi.fn();
-    const onReorder = vi.fn();
-    vi.mocked(searchTracks).mockResolvedValue([
-      { id: 99, title: 'Fill Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
-    ]);
-
-    const entries = makeEntries();
-    const { container } = renderTracklist(entries, { onFillEmptyRow, onReorder });
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
-    const emptyRow = container.querySelector('.set-tracklist-table tbody tr.empty-row')!;
-    const fillBtn = emptyRow.querySelector('[title="Fill with track"]') as HTMLButtonElement;
-    fireEvent.click(fillBtn);
-
-    const searchInput = container.querySelector('.set-tracklist-search') as HTMLInputElement;
-    fireEvent.change(searchInput, { target: { value: 'Fill' } });
-
-    await waitFor(() => {
-      expect(container.querySelector('.set-tracklist-search-dropdown')).toBeTruthy();
-    });
-
-    fireEvent.mouseDown(container.querySelector('.set-tracklist-search-item')!);
-
-    expect(onFillEmptyRow).toHaveBeenCalledWith(expect.any(String), 99, 'Fill Track', entries.length);
-    expect(onReorder).not.toHaveBeenCalled();
-  });
-
-  it('drag-fill via DragFillContext removes the targeted empty row', () => {
-    const entries = makeEntries();
-    const { container, rerender } = render(
-      <DragFillContext.Provider value={null}>
-        <DndContext>
-          <SetTracklist
-            tracklist={entries}
-            onRemove={noop}
-            onMoveToPool={noop}
-            onReorder={noop}
-            onUpdateNote={noop}
-            onToggleStar={noop}
-            onAddTrack={noop}
-          />
-        </DndContext>
-      </DragFillContext.Provider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
-    let emptyRows = container.querySelectorAll('.set-tracklist-table tbody tr.empty-row');
-    expect(emptyRows.length).toBe(1);
-    const emptyId = emptyRows[0].getAttribute('data-empty-id')!;
-
-    rerender(
-      <DragFillContext.Provider value={{ emptyId, nonce: 1 }}>
-        <DndContext>
-          <SetTracklist
-            tracklist={entries}
-            onRemove={noop}
-            onMoveToPool={noop}
-            onReorder={noop}
-            onUpdateNote={noop}
-            onToggleStar={noop}
-            onAddTrack={noop}
-          />
-        </DndContext>
-      </DragFillContext.Provider>,
-    );
-
-    emptyRows = container.querySelectorAll('.set-tracklist-table tbody tr.empty-row');
-    expect(emptyRows.length).toBe(0);
-    expect(container.querySelectorAll('.set-tracklist-table tbody tr').length).toBe(entries.length);
-  });
-
-  it('drag-fill preserves surrounding row order after empty row removal', () => {
-    const entries = makeEntries();
-    const { container, rerender } = render(
-      <DragFillContext.Provider value={null}>
-        <DndContext>
-          <SetTracklist
-            tracklist={entries}
-            onRemove={noop}
-            onMoveToPool={noop}
-            onReorder={noop}
-            onUpdateNote={noop}
-            onToggleStar={noop}
-            onAddTrack={noop}
-          />
-        </DndContext>
-      </DragFillContext.Provider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at start'));
-
-    let rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(3);
-    expect(rows[0].classList.contains('empty-row')).toBe(true);
-
-    const emptyId = rows[0].getAttribute('data-empty-id')!;
-
-    rerender(
-      <DragFillContext.Provider value={{ emptyId, nonce: 1 }}>
-        <DndContext>
-          <SetTracklist
-            tracklist={entries}
-            onRemove={noop}
-            onMoveToPool={noop}
-            onReorder={noop}
-            onUpdateNote={noop}
-            onToggleStar={noop}
-            onAddTrack={noop}
-          />
-        </DndContext>
-      </DragFillContext.Provider>,
-    );
-
-    rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(2);
-    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
-    expect(rows[1].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
+    expect(onFillEmptyRow).toHaveBeenCalledWith(expect.any(String), 99, 'Fill Track', expect.any(Number));
+    expect(onDeleteEmptyRow).toHaveBeenCalledWith(100);
   });
 });
 
@@ -890,44 +636,36 @@ describe('SetTracklist empty row reorder', () => {
     ];
   }
 
-  it('moves empty row up via arrow button', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
+  it('calls onReorderEmptyRow when move up is clicked', () => {
+    const onReorderEmptyRow = vi.fn();
+    const emptyRows = [makePersistedEmptyRow(100, 3)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows, onReorderEmptyRow });
 
-    let rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(4);
-    expect(rows[3].classList.contains('empty-row')).toBe(true);
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    const emptyRow = rows[3];
+    expect(emptyRow.classList.contains('empty-row')).toBe(true);
 
-    const moveUpBtn = rows[3].querySelector('[title="Move up"]') as HTMLButtonElement;
+    const moveUpBtn = emptyRow.querySelector('[title="Move up"]') as HTMLButtonElement;
     fireEvent.click(moveUpBtn);
-
-    rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows[2].classList.contains('empty-row')).toBe(true);
-    expect(rows[3].classList.contains('empty-row')).toBe(false);
+    expect(onReorderEmptyRow).toHaveBeenCalledWith(100, 2);
   });
 
-  it('moves empty row down via arrow button', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at start'));
+  it('calls onReorderEmptyRow when move down is clicked', () => {
+    const onReorderEmptyRow = vi.fn();
+    const emptyRows = [makePersistedEmptyRow(100, 0)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows, onReorderEmptyRow });
 
-    let rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(4);
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
     expect(rows[0].classList.contains('empty-row')).toBe(true);
 
     const moveDownBtn = rows[0].querySelector('[title="Move down"]') as HTMLButtonElement;
     fireEvent.click(moveDownBtn);
-
-    rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows[0].classList.contains('empty-row')).toBe(false);
-    expect(rows[1].classList.contains('empty-row')).toBe(true);
+    expect(onReorderEmptyRow).toHaveBeenCalledWith(100, 1);
   });
 
   it('disables Move up on first row and Move down on last row', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at start'));
+    const emptyRows = [makePersistedEmptyRow(100, 0)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
 
     const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
     const firstRow = rows[0];
@@ -937,30 +675,20 @@ describe('SetTracklist empty row reorder', () => {
     expect((lastRow.querySelector('[title="Move down"]') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('reordering empty row preserves surrounding real tracks', () => {
-    const { container } = renderTracklist(makeEntries());
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+  it('renders empty row between real tracks at correct position', () => {
+    const emptyRows = [makePersistedEmptyRow(100, 1)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
 
-    const posInput = container.querySelector('.insert-empty-position') as HTMLInputElement;
-    fireEvent.change(posInput, { target: { value: '2' } });
-    fireEvent.click(screen.getByTitle('Insert at position'));
-
-    let rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    expect(rows.length).toBe(4);
+    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
     expect(rows[1].classList.contains('empty-row')).toBe(true);
-    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
     expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
-
-    const moveDownBtn = rows[1].querySelector('[title="Move down"]') as HTMLButtonElement;
-    fireEvent.click(moveDownBtn);
-
-    rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
-    expect(rows[1].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
-    expect(rows[2].classList.contains('empty-row')).toBe(true);
+    expect(rows[3].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 30');
   });
 });
 
-describe('SetTracklist fill preserves order', () => {
+describe('SetTracklist empty row positioning', () => {
   function makeEntries(): TracklistEntry[] {
     return [
       makeEntry({ id: 1, track_id: 10, position: 0 }),
@@ -969,129 +697,28 @@ describe('SetTracklist fill preserves order', () => {
     ];
   }
 
-  it('filling middle empty row preserves surrounding tracks', async () => {
-    const onFillEmptyRow = vi.fn();
-    vi.mocked(searchTracks).mockResolvedValue([
-      { id: 99, title: 'Fill Track', artist_names: [], bpm: 128, key: 'Am', camelot_code: '1A' },
-    ]);
-
-    const { container } = renderTracklist(makeEntries(), { onFillEmptyRow });
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    const posInput = container.querySelector('.insert-empty-position') as HTMLInputElement;
-    fireEvent.change(posInput, { target: { value: '2' } });
-    fireEvent.click(screen.getByTitle('Insert at position'));
-
-    let rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(4);
-    expect(rows[1].classList.contains('empty-row')).toBe(true);
-
-    const fillBtn = rows[1].querySelector('[title="Fill with track"]') as HTMLButtonElement;
-    fireEvent.click(fillBtn);
-
-    const searchInput = container.querySelector('.set-tracklist-search') as HTMLInputElement;
-    fireEvent.change(searchInput, { target: { value: 'Fill' } });
-
-    await waitFor(() => {
-      expect(container.querySelector('.set-tracklist-search-dropdown')).toBeTruthy();
-    });
-
-    fireEvent.mouseDown(container.querySelector('.set-tracklist-search-item')!);
-
-    expect(onFillEmptyRow).toHaveBeenCalledWith(expect.any(String), 99, 'Fill Track', 1);
-
-    rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(3);
-    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
-    expect(rows[1].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
-    expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 30');
-  });
-
-  it('deleting empty row from middle preserves surrounding tracks', () => {
-    const { container } = renderTracklist(makeEntries());
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    const posInput = container.querySelector('.insert-empty-position') as HTMLInputElement;
-    fireEvent.change(posInput, { target: { value: '2' } });
-    fireEvent.click(screen.getByTitle('Insert at position'));
-
-    let rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(4);
-
-    const deleteBtn = rows[1].querySelector('.set-action-btn--danger') as HTMLButtonElement;
-    fireEvent.click(deleteBtn);
-
-    rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(3);
-    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
-    expect(rows[1].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
-    expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 30');
-  });
-
-  it('drag-fill of middle empty row preserves surrounding tracks', () => {
-    const entries = makeEntries();
-    const { container, rerender } = render(
-      <DragFillContext.Provider value={null}>
-        <DndContext>
-          <SetTracklist
-            tracklist={entries}
-            onRemove={noop}
-            onMoveToPool={noop}
-            onReorder={noop}
-            onUpdateNote={noop}
-            onToggleStar={noop}
-            onAddTrack={noop}
-          />
-        </DndContext>
-      </DragFillContext.Provider>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    const posInput = container.querySelector('.insert-empty-position') as HTMLInputElement;
-    fireEvent.change(posInput, { target: { value: '2' } });
-    fireEvent.click(screen.getByTitle('Insert at position'));
-
-    let rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(4);
-    const emptyId = rows[1].getAttribute('data-empty-id')!;
-
-    rerender(
-      <DragFillContext.Provider value={{ emptyId, nonce: 1 }}>
-        <DndContext>
-          <SetTracklist
-            tracklist={entries}
-            onRemove={noop}
-            onMoveToPool={noop}
-            onReorder={noop}
-            onUpdateNote={noop}
-            onToggleStar={noop}
-            onAddTrack={noop}
-          />
-        </DndContext>
-      </DragFillContext.Provider>,
-    );
-
-    rows = container.querySelectorAll('.set-tracklist-table tbody tr');
-    expect(rows.length).toBe(3);
-    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
-    expect(rows[1].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
-    expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 30');
-  });
-
-  it('inserting multiple empty rows at different positions', () => {
-    const { container } = renderTracklist(makeEntries());
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at start'));
-
-    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
-    fireEvent.click(screen.getByTitle('Insert at end'));
-
+  it('renders multiple empty rows at different positions', () => {
+    const emptyRows = [
+      makePersistedEmptyRow(100, 0),
+      makePersistedEmptyRow(101, 3),
+    ];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
     const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
     expect(rows.length).toBe(5);
     expect(rows[0].classList.contains('empty-row')).toBe(true);
     expect(rows[4].classList.contains('empty-row')).toBe(true);
     expect(rows[1].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
+    expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
+    expect(rows[3].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 30');
+  });
+
+  it('renders empty row in middle position correctly', () => {
+    const emptyRows = [makePersistedEmptyRow(100, 1)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    expect(rows.length).toBe(4);
+    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
+    expect(rows[1].classList.contains('empty-row')).toBe(true);
     expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
     expect(rows[3].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 30');
   });

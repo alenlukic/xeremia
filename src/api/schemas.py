@@ -258,6 +258,13 @@ class PoolSubgroupMemberResponse(BaseModel):
     pool_entry_id: int
 
 
+class EmptyRowResponse(BaseModel):
+    id: int
+    set_id: int
+    surface: str
+    position: int
+
+
 class HydratedSetResponse(BaseModel):
     set: SetSummary
     pool: List[PoolEntryResponse]
@@ -267,6 +274,7 @@ class HydratedSetResponse(BaseModel):
     explorer_edges: List[ExplorerEdgeResponse]
     pool_subgroups: List[PoolSubgroupResponse] = Field(default_factory=list)
     pool_subgroup_memberships: List[PoolSubgroupMemberResponse] = Field(default_factory=list)
+    empty_rows: List[EmptyRowResponse] = Field(default_factory=list)
 
 
 class PoolAddRequest(BaseModel):
@@ -367,3 +375,18 @@ class SubgroupReorderRequest(BaseModel):
 
 class SubgroupMemberRequest(BaseModel):
     pool_entry_id: int
+
+
+# ---------------------------------------------------------------------------
+# Empty row requests
+# ---------------------------------------------------------------------------
+
+
+class EmptyRowAddRequest(BaseModel):
+    surface: str = Field(..., pattern="^(tracklist|pool)$")
+    count: int = Field(1, ge=1, le=50)
+    position: int = -1
+
+
+class EmptyRowReorderRequest(BaseModel):
+    new_position: int

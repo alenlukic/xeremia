@@ -1,21 +1,15 @@
-import { useState, useCallback, useMemo, useEffect, useRef, useContext } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { DndContext, closestCenter, useDraggable, useDroppable } from '@dnd-kit/core';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership, EmptyRow, PoolDisplayRow } from '../types';
+import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership, EmptyRow, PoolDisplayRow, PersistedEmptyRow } from '../types';
 import { isEmptyRow } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
 import type { SearchSuggestion } from '../types';
 import type { DragPayload } from '../dnd';
-import { DragFillContext } from '../dnd';
 import { PlayButton } from './PlayButton';
 import { SortTierBar } from './SortTierBar';
 import type { SortDescriptor, SortColumn } from './SortTierBar';
-
-let poolEmptyRowCounter = 0;
-function makePoolEmptyRowId(): string {
-  return `empty-pool-${++poolEmptyRowCounter}-${Date.now()}`;
-}
 
 type PoolTab = 'all' | 'groups' | number;
 
@@ -28,6 +22,7 @@ const POOL_SORT_COLUMNS: SortColumn[] = [
 
 interface Props {
   pool: PoolEntry[];
+  emptyRows: PersistedEmptyRow[];
   subgroups: PoolSubgroup[];
   subgroupMemberships: PoolSubgroupMembership[];
   onRemove: (trackId: number) => void;
@@ -35,6 +30,9 @@ interface Props {
   onToggleStar: (trackId: number, starred: boolean) => void;
   onAddTrack: (trackId: number, title?: string) => void;
   onClearAll?: () => void;
+  onInsertEmptyRows: (count: number, position: number) => void;
+  onDeleteEmptyRow: (emptyRowId: number) => void;
+  onReorderEmptyRow: (emptyRowId: number, newPosition: number) => void;
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>;
   onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>;
   onDeleteSubgroup: (subgroupId: number) => Promise<boolean>;
@@ -46,82 +44,57 @@ interface Props {
   onFillEmptyRow?: (emptyId: string, trackId: number, title?: string) => void;
 }
 
-function PoolInsertEmptyRowsControl({ onInsert, totalRows }: { onInsert: (count: number, position: number) => void; totalRows: number }) {
+function PoolInsertEmptyRowsControl({ onInsert }: { onInsert: (count: number, position: number) => void }) {
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(1);
-  const [positionInput, setPositionInput] = useState('');
 
-  const handleInsert = useCallback((position: 'start' | 'end' | 'at') => {
+  const handleInsert = useCallback((position: 'start' | 'end') => {
     if (count < 1) return;
-    let pos: number;
-    if (position === 'start') {
-      pos = 0;
-    } else if (position === 'end') {
-      pos = -1;
-    } else {
-      const parsed = parseInt(positionInput, 10);
-      if (isNaN(parsed) || parsed < 1) return;
-      pos = Math.min(parsed - 1, totalRows);
-    }
+    const pos = position === 'start' ? 0 : -1;
     onInsert(count, pos);
     setOpen(false);
     setCount(1);
-    setPositionInput('');
-  }, [count, positionInput, totalRows, onInsert]);
+  }, [count, onInsert]);
 
   if (!open) {
     return (
       <button
-        className="set-action-btn insert-empty-btn"
+        className="set-action-btn empty-row-insert-btn"
         onClick={() => setOpen(true)}
         title="Insert empty placeholder rows"
         aria-label="Insert empty rows"
       >
-        + Empty Rows
+        + Slots
       </button>
     );
   }
 
   return (
-    <span className="insert-empty-inline">
+    <span className="empty-row-insert-control">
       <input
-        className="insert-empty-count"
+        className="empty-row-insert-count"
         type="number"
         min={1}
         max={50}
         value={count}
         onChange={e => setCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
         onKeyDown={e => {
-          if (e.key === 'Escape') { setOpen(false); setCount(1); setPositionInput(''); }
+          if (e.key === 'Escape') { setOpen(false); setCount(1); }
+          if (e.key === 'Enter') handleInsert('end');
         }}
         aria-label="Number of empty rows"
         autoFocus
       />
-      <button className="set-action-btn" onClick={() => handleInsert('start')} title="Insert at start">At Start</button>
-      <button className="set-action-btn" onClick={() => handleInsert('end')} title="Insert at end">At End</button>
-      <input
-        className="insert-empty-position"
-        type="number"
-        min={1}
-        max={totalRows + 1}
-        placeholder="Row #"
-        value={positionInput}
-        onChange={e => setPositionInput(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter') handleInsert('at');
-          if (e.key === 'Escape') { setOpen(false); setCount(1); setPositionInput(''); }
-        }}
-        aria-label="Insert position"
-      />
-      <button className="set-action-btn" onClick={() => handleInsert('at')} title="Insert at position" disabled={!positionInput || parseInt(positionInput, 10) < 1}>At Position</button>
-      <button className="set-action-btn" onClick={() => { setOpen(false); setCount(1); setPositionInput(''); }}>Cancel</button>
+      <button className="set-action-btn empty-row-insert-action" onClick={() => handleInsert('start')} title="Insert at start">Top</button>
+      <button className="set-action-btn empty-row-insert-action" onClick={() => handleInsert('end')} title="Insert at end">Bottom</button>
+      <button className="set-action-btn empty-row-insert-cancel" onClick={() => { setOpen(false); setCount(1); }}>×</button>
     </span>
   );
 }
 
 function DraggablePoolEmptyRow({ emptyRow, onDelete, onFillSearch, dndDisabled, subgroups, dndIdPrefix, realPosition }: {
   emptyRow: EmptyRow;
-  onDelete: (emptyId: string) => void;
+  onDelete: (persistedId: number) => void;
   onFillSearch: (emptyId: string) => void;
   dndDisabled?: boolean;
   subgroups: PoolSubgroup[];
@@ -132,14 +105,14 @@ function DraggablePoolEmptyRow({ emptyRow, onDelete, onFillSearch, dndDisabled, 
   const payload: DragPayload = { trackId: -1, title: '', source: 'pool' };
   const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `${prefix}pool-empty-${emptyRow.emptyId}`,
-    data: { ...payload, __emptyId: emptyRow.emptyId },
+    data: { ...payload, __emptyId: emptyRow.emptyId, __persistedId: emptyRow.persistedId },
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
     disabled: dndDisabled,
   });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `${prefix}drop-pool-empty-${emptyRow.emptyId}`,
-    data: { __emptyId: emptyRow.emptyId, realPosition },
+    data: { __emptyId: emptyRow.emptyId, __persistedId: emptyRow.persistedId, realPosition },
     disabled: dndDisabled,
   });
 
@@ -160,12 +133,15 @@ function DraggablePoolEmptyRow({ emptyRow, onDelete, onFillSearch, dndDisabled, 
     };
   }, [listeners]);
 
+  const pid = emptyRow.persistedId;
+
   return (
     <tr
       ref={mergedRef}
       style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
       className={`empty-row${isDragging ? ' row-dragging' : ''}${isOver && !isDragging ? ' row-drop-target' : ''}`}
       data-empty-id={emptyRow.emptyId}
+      data-persisted-id={pid}
       data-real-position={realPosition}
       {...rowListeners}
     >
@@ -173,7 +149,7 @@ function DraggablePoolEmptyRow({ emptyRow, onDelete, onFillSearch, dndDisabled, 
       <td className="play-cell" />
       <td className="mono set-ws-cell-num">—</td>
       <td className="set-ws-cell-title empty-row-placeholder">
-        <span className="empty-row-label">Empty slot</span>
+        <span className="empty-row-label">—</span>
       </td>
       <td className="mono set-ws-cell-key">—</td>
       <td className="mono set-ws-cell-bpm">—</td>
@@ -181,7 +157,7 @@ function DraggablePoolEmptyRow({ emptyRow, onDelete, onFillSearch, dndDisabled, 
       <td className="set-ws-cell-actions">
         <div className="set-ws-actions-group">
           <button className="set-action-btn" onClick={() => onFillSearch(emptyRow.emptyId)} title="Fill with track">Fill</button>
-          <button className="set-action-btn set-action-btn--danger" onClick={() => onDelete(emptyRow.emptyId)} title="Delete empty row">×</button>
+          <button className="set-action-btn set-action-btn--danger" onClick={() => pid != null && onDelete(pid)} title="Delete empty row">×</button>
         </div>
       </td>
     </tr>
@@ -612,8 +588,9 @@ function SubgroupSection({
 }
 
 export function SetPoolTable({
-  pool, subgroups, subgroupMemberships,
+  pool, emptyRows: persistedEmptyRows, subgroups, subgroupMemberships,
   onRemove, onMoveToTracklist, onToggleStar, onAddTrack, onClearAll,
+  onInsertEmptyRows, onDeleteEmptyRow, onReorderEmptyRow,
   onCreateSubgroup, onRenameSubgroup, onDeleteSubgroup, onReorderSubgroups,
   onAddSubgroupMember, onRemoveSubgroupMember,
   dndDisabled, dndIdPrefix, onFillEmptyRow,
@@ -626,17 +603,7 @@ export function SetPoolTable({
   const [sorting, setSorting] = useState<SortDescriptor[]>([{ id: 'insertion_order', desc: false }]);
   const [activeTab, setActiveTab] = useState<PoolTab>('all');
   const pendingSubgroupAssign = useRef<{ trackId: number; subgroupId: number } | null>(null);
-  const [emptyRows, setEmptyRows] = useState<{ id: string; position: number }[]>([]);
   const [fillTargetId, setFillTargetId] = useState<string | null>(null);
-
-  const dragFillNotification = useContext(DragFillContext);
-  useEffect(() => {
-    if (!dragFillNotification) return;
-    setEmptyRows(prev => {
-      const filtered = prev.filter(r => r.id !== dragFillNotification.emptyId);
-      return filtered.length === prev.length ? prev : filtered;
-    });
-  }, [dragFillNotification]);
 
   useEffect(() => {
     const pending = pendingSubgroupAssign.current;
@@ -668,20 +635,9 @@ export function SetPoolTable({
     return map;
   }, [subgroupMemberships]);
 
-  const handleInsertEmptyRows = useCallback((count: number, position: number) => {
-    setEmptyRows(prev => {
-      const basePos = position === -1 ? pool.length + prev.length : position;
-      const newRows = Array.from({ length: count }, () => ({
-        id: makePoolEmptyRowId(),
-        position: basePos,
-      }));
-      return [...prev, ...newRows];
-    });
-  }, [pool.length]);
-
-  const handleDeleteEmptyRow = useCallback((emptyId: string) => {
-    setEmptyRows(prev => prev.filter(r => r.id !== emptyId));
-  }, []);
+  const handleDeleteEmptyRow = useCallback((persistedId: number) => {
+    onDeleteEmptyRow(persistedId);
+  }, [onDeleteEmptyRow]);
 
   const handleFillSearch = useCallback((emptyId: string) => {
     setFillTargetId(emptyId);
@@ -710,7 +666,8 @@ export function SetPoolTable({
       } else {
         onAddTrack(s.id, s.title);
       }
-      setEmptyRows(prev => prev.filter(r => r.id !== fillTargetId));
+      const persistedId = parseInt(fillTargetId.replace('er-', ''), 10);
+      if (!isNaN(persistedId)) onDeleteEmptyRow(persistedId);
       setFillTargetId(null);
     } else {
       if (typeof activeTab === 'number') {
@@ -721,7 +678,7 @@ export function SetPoolTable({
     setSearchQuery('');
     setSearchResults([]);
     setShowSearch(false);
-  }, [onAddTrack, onFillEmptyRow, activeTab, fillTargetId]);
+  }, [onAddTrack, onFillEmptyRow, onDeleteEmptyRow, activeTab, fillTargetId]);
 
   const handleSort = useCallback((col: string, e: React.MouseEvent) => {
     setSorting(prev => {
@@ -773,15 +730,15 @@ export function SetPoolTable({
   }), [filteredPool, sorting]);
 
   const poolDisplayRows = useMemo((): PoolDisplayRow[] => {
-    if (emptyRows.length === 0) return sorted;
+    if (persistedEmptyRows.length === 0) return sorted;
     const result: PoolDisplayRow[] = [...sorted];
-    const sortedEmpty = [...emptyRows].sort((a, b) => a.position - b.position);
+    const sortedEmpty = [...persistedEmptyRows].sort((a, b) => a.position - b.position);
     for (let i = 0; i < sortedEmpty.length; i++) {
       const pos = Math.min(sortedEmpty[i].position + i, result.length);
-      result.splice(pos, 0, { __empty: true, emptyId: sortedEmpty[i].id } as EmptyRow);
+      result.splice(pos, 0, { __empty: true, emptyId: `er-${sortedEmpty[i].id}`, persistedId: sortedEmpty[i].id } as EmptyRow);
     }
     return result;
-  }, [sorted, emptyRows]);
+  }, [sorted, persistedEmptyRows]);
 
   const sortIndicator = (col: string) => {
     const idx = sorting.findIndex(s => s.id === col);
@@ -797,7 +754,7 @@ export function SetPoolTable({
     <div ref={setPoolDropRef} className={`set-pool${isPoolOver ? ' drop-zone--active' : ''}`}>
       <div className="set-pool-header">
         <h3 className="set-section-title">Pool ({pool.length})</h3>
-        <PoolInsertEmptyRowsControl onInsert={handleInsertEmptyRows} totalRows={poolDisplayRows.length} />
+        <PoolInsertEmptyRowsControl onInsert={onInsertEmptyRows} />
         {pool.length > 0 && onClearAll && (
           <button
             className="set-action-btn set-action-btn--danger set-clear-all-btn"
@@ -889,9 +846,9 @@ export function SetPoolTable({
               </div>
             </DndContext>
           )
-        ) : pool.length === 0 && emptyRows.length === 0 ? (
+        ) : pool.length === 0 && persistedEmptyRows.length === 0 ? (
           <p className="set-empty-tracks">Pool is empty. Search above or add tracks from other tabs.</p>
-        ) : sorted.length === 0 && emptyRows.length === 0 && typeof activeTab === 'number' ? (
+        ) : sorted.length === 0 && persistedEmptyRows.length === 0 && typeof activeTab === 'number' ? (
           <p className="set-empty-tracks">No tracks in this subgroup yet.</p>
         ) : (
           <table className="set-pool-table">
@@ -936,7 +893,7 @@ export function SetPoolTable({
                     dndDisabled={dndDisabled}
                     subgroups={subgroups}
                     dndIdPrefix={dndIdPrefix}
-                    realPosition={emptyRows.find(r => r.id === row.emptyId)?.position ?? 0}
+                    realPosition={persistedEmptyRows.find(r => r.id === row.persistedId)?.position ?? 0}
                   />
                 ) : (
                   <DraggablePoolRow

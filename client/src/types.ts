@@ -196,9 +196,18 @@ export interface PoolSubgroupMembership {
   pool_entry_id: number;
 }
 
+export interface PersistedEmptyRow {
+  id: number;
+  set_id: number;
+  surface: 'tracklist' | 'pool';
+  position: number;
+  added_at?: string;
+}
+
 export interface EmptyRow {
   __empty: true;
   emptyId: string;
+  persistedId?: number;
 }
 
 export type TracklistDisplayRow = TracklistEntry | EmptyRow;
@@ -217,4 +226,5 @@ export interface HydratedSet {
   explorer_edges: ExplorerEdge[];
   pool_subgroups?: PoolSubgroup[];
   pool_subgroup_memberships?: PoolSubgroupMembership[];
+  empty_rows?: PersistedEmptyRow[];
 }
