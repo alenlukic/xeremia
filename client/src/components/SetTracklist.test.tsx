@@ -700,7 +700,7 @@ describe('SetTracklist empty row positioning', () => {
   it('renders multiple empty rows at different positions', () => {
     const emptyRows = [
       makePersistedEmptyRow(100, 0),
-      makePersistedEmptyRow(101, 3),
+      makePersistedEmptyRow(101, 4),
     ];
     const { container } = renderTracklist(makeEntries(), { emptyRows });
     const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
@@ -721,5 +721,141 @@ describe('SetTracklist empty row positioning', () => {
     expect(rows[1].classList.contains('empty-row')).toBe(true);
     expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
     expect(rows[3].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 30');
+  });
+});
+
+describe('SetTracklist per-row insert button', () => {
+  function makeEntries(): TracklistEntry[] {
+    return [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+    ];
+  }
+
+  it('each track row has a + insert button', () => {
+    const { container } = renderTracklist(makeEntries());
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    for (const row of rows) {
+      expect(row.querySelector('[title="Insert empty row below"]')).toBeTruthy();
+    }
+  });
+
+  it('each empty row has a + insert button', () => {
+    const emptyRows = [makePersistedEmptyRow(100, 2)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows });
+    const emptyRow = container.querySelector('.set-tracklist-table tbody tr.empty-row')!;
+    expect(emptyRow.querySelector('[title="Insert empty row below"]')).toBeTruthy();
+  });
+
+  it('clicking + on a track row calls onInsertEmptyRows at displayIndex + 1', () => {
+    const onInsertEmptyRows = vi.fn();
+    const { container } = renderTracklist(makeEntries(), { onInsertEmptyRows });
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    const insertBtn = rows[0].querySelector('[title="Insert empty row below"]') as HTMLButtonElement;
+    fireEvent.click(insertBtn);
+    expect(onInsertEmptyRows).toHaveBeenCalledWith(1, 1);
+  });
+
+  it('clicking + on an empty row calls onInsertEmptyRows at displayIndex + 1', () => {
+    const onInsertEmptyRows = vi.fn();
+    const emptyRows = [makePersistedEmptyRow(100, 1)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows, onInsertEmptyRows });
+    const emptyRow = container.querySelector('.set-tracklist-table tbody tr.empty-row')!;
+    const insertBtn = emptyRow.querySelector('[title="Insert empty row below"]') as HTMLButtonElement;
+    fireEvent.click(insertBtn);
+    expect(onInsertEmptyRows).toHaveBeenCalledWith(1, 2);
+  });
+});
+
+describe('SetTracklist indexed insertion control', () => {
+  function makeEntries(): TracklistEntry[] {
+    return [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+    ];
+  }
+
+  it('shows index input in the insert controls', () => {
+    const { container } = renderTracklist(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+    expect(container.querySelector('.empty-row-insert-index')).toBeTruthy();
+  });
+
+  it('calls onInsertEmptyRows with 0-based position from 1-based index input', () => {
+    const onInsertEmptyRows = vi.fn();
+    const { container } = renderTracklist(makeEntries(), { onInsertEmptyRows });
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+
+    const indexInput = container.querySelector('.empty-row-insert-index') as HTMLInputElement;
+    fireEvent.change(indexInput, { target: { value: '2' } });
+
+    const atBtn = screen.getByTitle('Insert at index');
+    fireEvent.click(atBtn);
+    expect(onInsertEmptyRows).toHaveBeenCalledWith(1, 1);
+  });
+
+  it('disables "At" button for out-of-range index', () => {
+    const { container } = renderTracklist(makeEntries());
+    fireEvent.click(screen.getByRole('button', { name: /insert empty rows/i }));
+
+    const indexInput = container.querySelector('.empty-row-insert-index') as HTMLInputElement;
+    fireEvent.change(indexInput, { target: { value: '99' } });
+
+    const atBtn = screen.getByTitle('Insert at index');
+    expect(atBtn.hasAttribute('disabled') || (atBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('SetTracklist arrow move mixed-list', () => {
+  function makeEntries(): TracklistEntry[] {
+    return [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+      makeEntry({ id: 3, track_id: 30, position: 2 }),
+    ];
+  }
+
+  it('moving a track down past an empty row reorders the empty row up', () => {
+    const onReorderEmptyRow = vi.fn();
+    const emptyRows = [makePersistedEmptyRow(100, 1)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows, onReorderEmptyRow });
+
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    expect(rows[0].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 10');
+    expect(rows[1].classList.contains('empty-row')).toBe(true);
+
+    const moveDownBtn = rows[0].querySelector('[title="Move down"]') as HTMLButtonElement;
+    fireEvent.click(moveDownBtn);
+    expect(onReorderEmptyRow).toHaveBeenCalledWith(100, 0);
+  });
+
+  it('moving a track up past an empty row reorders the empty row down', () => {
+    const onReorderEmptyRow = vi.fn();
+    const emptyRows = [makePersistedEmptyRow(100, 1)];
+    const { container } = renderTracklist(makeEntries(), { emptyRows, onReorderEmptyRow });
+
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    expect(rows[2].querySelector('.set-ws-cell-title')?.textContent).toBe('Track 20');
+    expect(rows[1].classList.contains('empty-row')).toBe(true);
+
+    const moveUpBtn = rows[2].querySelector('[title="Move up"]') as HTMLButtonElement;
+    fireEvent.click(moveUpBtn);
+    expect(onReorderEmptyRow).toHaveBeenCalledWith(100, 2);
+  });
+
+  it('moving an empty row swaps with another empty row (no no-op)', () => {
+    const onReorderEmptyRow = vi.fn();
+    const emptyRows = [
+      makePersistedEmptyRow(100, 1),
+      makePersistedEmptyRow(101, 2),
+    ];
+    const { container } = renderTracklist(makeEntries(), { emptyRows, onReorderEmptyRow });
+
+    const rows = container.querySelectorAll('.set-tracklist-table tbody tr');
+    expect(rows[1].classList.contains('empty-row')).toBe(true);
+
+    const moveDownBtn = rows[1].querySelector('[title="Move down"]') as HTMLButtonElement;
+    fireEvent.click(moveDownBtn);
+    expect(onReorderEmptyRow).toHaveBeenCalledWith(100, 2);
   });
 });

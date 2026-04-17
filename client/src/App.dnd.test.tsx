@@ -661,7 +661,7 @@ describe('DnD: tracklist row-to-row reorder', () => {
     await renderApp();
 
     const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
-    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-2');
+    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-2', { trackId: 30 });
 
     expect(mockSB.reorderTracklist).toHaveBeenCalledWith(10, 2);
   });
@@ -683,7 +683,7 @@ describe('DnD: tracklist row-to-row reorder', () => {
     await renderApp();
 
     const reorderPayload: DragPayload = { trackId: 10, title: 'Track 10', source: 'tracklist' };
-    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-0');
+    fireDragEnd('tracklist-track-10', reorderPayload, 'drop-tracklist-row-0', { trackId: 10 });
 
     expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
   });
@@ -1250,6 +1250,51 @@ describe('DnD: empty-row drag guard (reorder 400 fix)', () => {
     );
 
     expect(mockSB.reorderEmptyRow).toHaveBeenCalledWith(5, 2);
+  });
+
+  it('empty row dropped onto a track row calls reorderEmptyRow with display index', async () => {
+    await renderApp();
+
+    const emptyPayload: DragPayload & { __persistedId?: number; __emptyId?: string } = {
+      trackId: -1,
+      title: '',
+      source: 'tracklist',
+      __emptyId: 'er-7',
+      __persistedId: 7,
+    };
+    fireDragEnd(
+      'tracklist-empty-er-7',
+      emptyPayload as DragPayload,
+      'drop-tracklist-row-3',
+      { index: 3, trackId: 30 },
+    );
+
+    expect(mockSB.reorderEmptyRow).toHaveBeenCalledWith(7, 3);
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.reorderTracklist).not.toHaveBeenCalled();
+  });
+
+  it('empty row dropped onto a different empty row reorders (not a no-op)', async () => {
+    await renderApp();
+
+    const emptyPayload: DragPayload & { __persistedId?: number; __emptyId?: string } = {
+      trackId: -1,
+      title: '',
+      source: 'tracklist',
+      __emptyId: 'er-10',
+      __persistedId: 10,
+    };
+    fireDragEnd(
+      'tracklist-empty-er-10',
+      emptyPayload as DragPayload,
+      'drop-tracklist-empty-er-11',
+      { __emptyId: 'er-11', __persistedId: 11, realPosition: 4 },
+    );
+
+    expect(mockSB.reorderEmptyRow).toHaveBeenCalledTimes(1);
+    expect(mockSB.reorderEmptyRow).toHaveBeenCalledWith(10, 4);
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToTracklistAtPosition).not.toHaveBeenCalled();
   });
 });
 

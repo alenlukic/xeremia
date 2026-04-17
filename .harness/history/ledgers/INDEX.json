@@ -1053,5 +1053,19 @@
     "build_status": "PASS",
     "breaker_verdict": "PASS",
     "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260417T041638Z-delivery-mixed-delivery-input-bundle",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Run\n- `20260417T041638Z-delivery-mixed-delivery-input-bundle`\n\n## Source Contracts\n- `CONTRACT_SET.md`\n- `DEVELOPMENT_CONTRACT.md`\n- `INPUT_BUNDLE.md",
+    "published_at": "2026-04-17T05:28:03.458236+00:00",
+    "path": ".harness/history/ledgers/20260417T041638Z-delivery-mixed-delivery-input-bundle.md",
+    "files_changed": 4,
+    "eval_score": 82,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS_WITH_NOTES",
+    "build_status": "FAIL",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "LOW"
   }
 ]

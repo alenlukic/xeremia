@@ -696,30 +696,20 @@ export default function App() {
       const dragData = active.data.current as DragPayload & { __persistedId?: number } | undefined;
       const dragPersistedId = dragData?.__persistedId;
       if (payload.trackId <= 0 && dragPersistedId != null) {
-        const overRowData = over.data?.current as { trackId?: number } | undefined;
-        const targetTrackId = overRowData?.trackId;
-        if (targetTrackId != null && sb.activeSet) {
-          const targetEntry = sb.activeSet.tracklist.find(e => e.track_id === targetTrackId);
-          if (targetEntry) {
-            reorderEmptyRow(dragPersistedId, targetEntry.position);
-            return;
-          }
-        }
         const displayIndex = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
         if (!isNaN(displayIndex)) {
-          const emptyRowsBefore = (sb.activeSet?.empty_rows ?? [])
-            .filter(er => er.surface === 'tracklist' && er.position < displayIndex)
-            .length;
-          reorderEmptyRow(dragPersistedId, displayIndex - emptyRowsBefore);
+          reorderEmptyRow(dragPersistedId, displayIndex);
         }
         return;
       }
 
-      const newPosition = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
-      if (!isNaN(newPosition) && sb.activeSet) {
-        const currentIndex = sb.activeSet.tracklist.findIndex(e => e.track_id === payload.trackId);
-        if (currentIndex !== -1 && currentIndex !== newPosition) {
-          reorderTracklist(payload.trackId, newPosition);
+      const overRowData = over.data?.current as { trackId?: number } | undefined;
+      const targetTrackId = overRowData?.trackId;
+      if (targetTrackId != null && sb.activeSet) {
+        const sourceEntry = sb.activeSet.tracklist.find(e => e.track_id === payload.trackId);
+        const targetEntry = sb.activeSet.tracklist.find(e => e.track_id === targetTrackId);
+        if (sourceEntry && targetEntry && sourceEntry.position !== targetEntry.position) {
+          reorderTracklist(payload.trackId, targetEntry.position);
         }
       }
       return;
