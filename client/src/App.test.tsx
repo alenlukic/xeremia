@@ -1,12 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import App from './App';
-import type { Track, TransitionMatch } from './types';
-import { useCollectionCache } from './hooks/useCollectionCache';
+import type { Track } from './types';
 
 vi.mock('./hooks/useCollectionCache', () => ({
   useCollectionCache: vi.fn().mockReturnValue({
@@ -60,77 +58,210 @@ vi.mock('./api/http', () => ({
   updateSet: vi.fn().mockResolvedValue({}),
 }));
 
-function makeTracks(count: number): Track[] {
-  return Array.from({ length: count }, (_, i) => {
-    const id = i + 1;
-    return {
-      id,
-      title: `Track ${id}`,
-      artist_names: [`Artist ${id}`],
-      bpm: id <= count / 2 ? 120 : 130,
-      key: 'C',
-      camelot_code: id <= count / 2 ? '01A' : '02A',
-      genre: 'Electronic',
-      label: 'Label',
-      energy: 0.5,
-    };
-  });
-}
-
 class ResizeObserverMock {
   observe = vi.fn();
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
 
-let latestIntersectionCb: IntersectionObserverCallback | null = null;
-
 class IntersectionObserverMock {
-  constructor(cb: IntersectionObserverCallback) {
-    latestIntersectionCb = cb;
-  }
   observe = vi.fn();
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
 
-function triggerLoadMore() {
-  if (latestIntersectionCb) {
-    latestIntersectionCb(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver,
-    );
-  }
-}
-
 beforeEach(() => {
-  latestIntersectionCb = null;
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   vi.stubGlobal('IntersectionObserver', IntersectionObserverMock);
   localStorage.clear();
-  vi.mocked(useCollectionCache).mockReturnValue({
-    allTracks: makeTracks(600),
-    traitMap: new Map(),
-    loading: false,
-    tracksError: null,
-    traitsError: null,
-  });
 });
-
-function getRowCount(): number {
-  return document.querySelectorAll('.track-table tbody tr:not(:has(.table-status))').length;
-}
 
 async function renderApp() {
   render(<App />);
   await act(async () => {});
 }
 
-async function expandFilterTray() {
-  await act(async () => {
-    screen.getByRole('button', { name: /toggle filters/i }).click();
+describe('Workspace header', () => {
+  it('renders workspace header on load', async () => {
+    await renderApp();
+    expect(screen.getByTestId('workspace-header')).toBeInTheDocument();
   });
-}
+
+  it('shows empty state when no sets exist', async () => {
+    await renderApp();
+    expect(screen.getByTestId('workspace-empty')).toBeInTheDocument();
+    expect(screen.getByText('Create a set to get started.')).toBeInTheDocument();
+  });
+
+  it('renders + New Set button in header', async () => {
+    await renderApp();
+    expect(screen.getByTestId('header-new-set')).toBeInTheDocument();
+  });
+
+  it('renders search trigger (disabled) in header', async () => {
+    await renderApp();
+    const trigger = screen.getByTestId('header-search-trigger');
+    expect(trigger).toBeInTheDocument();
+    expect(trigger).toBeDisabled();
+  });
+
+  it('renders weights toggle in header', async () => {
+    await renderApp();
+    expect(screen.getByRole('button', { name: 'Toggle weights' })).toBeInTheDocument();
+  });
+
+  it('renders admin toggle in header', async () => {
+    await renderApp();
+    expect(screen.getByRole('button', { name: 'Admin Dashboard' })).toBeInTheDocument();
+  });
+});
+
+describe('Workspace layout with active set', () => {
+  async function renderWithActiveSet() {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 2, tracklist_count: 1 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 2, tracklist_count: 1 },
+      pool: [
+        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Track 1', artist_names: [], bpm: 120, key: null, camelot_code: '01A', genre: null, label: null, energy: 0.5, date_added: null } },
+        { id: 11, track_id: 2, insertion_order: 1, starred: true, track: { id: 2, title: 'Track 2', artist_names: [], bpm: 128, key: null, camelot_code: '02A', genre: null, label: null, energy: 0.6, date_added: null } },
+      ],
+      tracklist: [
+        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track 3', artist_names: [], bpm: 125, key: null, camelot_code: '01B', genre: null, label: null, energy: 0.55, date_added: null } },
+      ],
+      explorer_trees: [], explorer_nodes: [], explorer_edges: [],
+    });
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: '1' } });
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
+    });
+  }
+
+  it('shows workspace body when set is selected', async () => {
+    await renderWithActiveSet();
+    expect(screen.getByTestId('workspace-body')).toBeInTheDocument();
+  });
+
+  it('shows tracklist zone header', async () => {
+    await renderWithActiveSet();
+    expect(screen.getByTestId('tracklist-zone-header')).toBeInTheDocument();
+  });
+
+  it('shows explorer toggle button', async () => {
+    await renderWithActiveSet();
+    expect(screen.getByTestId('explorer-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('explorer-toggle').textContent).toContain('Explorer');
+  });
+
+  it('pool is permanently visible (no accordion)', async () => {
+    await renderWithActiveSet();
+    const pool = document.querySelector('.set-pool');
+    expect(pool).toBeInTheDocument();
+  });
+
+  it('does not render DockBar', async () => {
+    await renderWithActiveSet();
+    expect(document.querySelector('.dock-bar-zone')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Panels' })).not.toBeInTheDocument();
+  });
+
+  it('does not render Browse table', async () => {
+    await renderWithActiveSet();
+    expect(document.querySelector('.track-table')).not.toBeInTheDocument();
+  });
+
+  it('does not render Matches panel', async () => {
+    await renderWithActiveSet();
+    expect(document.getElementById('panel-matches')).not.toBeInTheDocument();
+  });
+});
+
+describe('Explorer toggle', () => {
+  async function renderWithNodes() {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+      pool: [],
+      tracklist: [
+        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track 3', artist_names: [], bpm: 125, key: null, camelot_code: '01B', genre: null, label: null, energy: 0.55, date_added: null } },
+      ],
+      explorer_trees: [{ id: 1, set_id: 1, name: 'Tree 1' }],
+      explorer_nodes: [
+        { id: 1, set_id: 1, tree_id: 1, node_id: 'n1', track_id: 3, level: 0, col_index: 0, track: { id: 3, title: 'Track 3', artist_names: [], bpm: 125, key: null, camelot_code: '01B', genre: null, label: null, energy: 0.55, date_added: null } },
+      ],
+      explorer_edges: [],
+    });
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: '1' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('explorer-toggle')).toBeInTheDocument();
+    });
+  }
+
+  it('toggles to explorer nodes view and back', async () => {
+    await renderWithNodes();
+
+    expect(screen.queryByTestId('explorer-nodes-view')).not.toBeInTheDocument();
+    expect(screen.getByTestId('explorer-toggle').textContent).toContain('Explorer');
+
+    await act(async () => {
+      screen.getByTestId('explorer-toggle').click();
+    });
+
+    expect(screen.getByTestId('explorer-nodes-view')).toBeInTheDocument();
+    expect(screen.getByTestId('explorer-toggle').textContent).toContain('Tracklist');
+
+    await act(async () => {
+      screen.getByTestId('explorer-toggle').click();
+    });
+
+    expect(screen.queryByTestId('explorer-nodes-view')).not.toBeInTheDocument();
+  });
+
+  it('explorer nodes view uses Row and Position labels', async () => {
+    await renderWithNodes();
+
+    await act(async () => {
+      screen.getByTestId('explorer-toggle').click();
+    });
+
+    const table = screen.getByTestId('explorer-nodes-table');
+    const headers = table.querySelectorAll('th');
+    const headerTexts = Array.from(headers).map(h => h.textContent);
+    expect(headerTexts).toContain('Row');
+    expect(headerTexts).toContain('Position');
+  });
+});
 
 describe('Reset Weights', () => {
   it('renders a Reset Weights button inside weights overlay', async () => {
@@ -232,1353 +363,6 @@ describe('Reset Weights', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-describe('Browse infinite scroll', () => {
-  it('initially renders the first 250 tracks', async () => {
-    await renderApp();
-    expect(getRowCount()).toBe(250);
-  });
-
-  it('loads next chunk when sentinel intersection fires', async () => {
-    await renderApp();
-    expect(getRowCount()).toBe(250);
-
-    await act(async () => {
-      triggerLoadMore();
-    });
-    expect(getRowCount()).toBe(500);
-  });
-
-  it('resets to first chunk when key filter changes', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    await act(async () => {
-      triggerLoadMore();
-    });
-    expect(getRowCount()).toBe(500);
-
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click();
-    });
-    await act(async () => {
-      screen.getByRole('button', { name: '01A' }).click();
-    });
-
-    await waitFor(() => {
-      expect(getRowCount()).toBe(250);
-    });
-  }, 15000);
-
-  it('resets to first chunk when BPM filter changes', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    await act(async () => {
-      triggerLoadMore();
-    });
-    expect(getRowCount()).toBe(500);
-
-    const bpmInput = screen.getByPlaceholderText('Min');
-    await userEvent.type(bpmInput, '120');
-
-    await waitFor(() => {
-      expect(getRowCount()).toBe(250);
-    });
-  });
-
-  it('resets to first chunk when search text changes', async () => {
-    await renderApp();
-
-    await act(async () => {
-      triggerLoadMore();
-    });
-    expect(getRowCount()).toBe(500);
-
-    const searchInput = screen.getByPlaceholderText('Search tracks…');
-    await userEvent.type(searchInput, 'track');
-
-    await waitFor(() => {
-      expect(getRowCount()).toBe(250);
-    });
-  });
-
-  it('preserves loaded progress when interacting with dock panels', async () => {
-    await renderApp();
-
-    await act(async () => {
-      triggerLoadMore();
-    });
-    expect(getRowCount()).toBe(500);
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Matches' }).click();
-    });
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Matches' }).click();
-    });
-
-    expect(getRowCount()).toBe(500);
-  });
-
-  it('restores loaded progress when returning to a previous filter key', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    await act(async () => {
-      triggerLoadMore();
-    });
-    expect(getRowCount()).toBe(500);
-
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click();
-    });
-    await act(async () => {
-      screen.getByRole('button', { name: '01A' }).click();
-    });
-
-    await waitFor(() => {
-      expect(getRowCount()).toBe(250);
-    });
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Clear' }).click();
-    });
-
-    await waitFor(() => {
-      expect(getRowCount()).toBe(500);
-    }, { timeout: 10000 });
-  }, 20000);
-
-  it('resets pagination when adding a second OR filter group and restores on removal', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click();
-    });
-    await act(async () => {
-      screen.getByRole('button', { name: '01A' }).click();
-    });
-
-    await waitFor(() => {
-      expect(getRowCount()).toBeLessThanOrEqual(300);
-    });
-
-    await act(async () => {
-      triggerLoadMore();
-    });
-    const group1ExpandedCount = getRowCount();
-    expect(group1ExpandedCount).toBeGreaterThan(0);
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Add filter group' }).click();
-    });
-
-    const groupPanels = document.querySelectorAll('.filter-group-panel');
-    expect(groupPanels.length).toBe(2);
-
-    const secondPanel = groupPanels[1];
-    const secondKeyBtn = secondPanel.querySelector('.filter-camelot-toggle') as HTMLElement;
-    expect(secondKeyBtn).not.toBeNull();
-    await act(async () => {
-      secondKeyBtn.click();
-    });
-
-    const allButtons02A = screen.getAllByRole('button', { name: '02A' });
-    const secondDropdown02A = allButtons02A[allButtons02A.length - 1];
-    await act(async () => {
-      secondDropdown02A.click();
-    });
-
-    await waitFor(() => {
-      const currentCount = getRowCount();
-      expect(currentCount).toBeLessThanOrEqual(250);
-    });
-
-    const removeButtons = screen.getAllByRole('button', { name: 'Remove filter group' });
-    await act(async () => {
-      removeButtons[removeButtons.length - 1].click();
-    });
-
-    await waitFor(() => {
-      expect(getRowCount()).toBe(group1ExpandedCount);
-    }, { timeout: 10000 });
-  }, 30000);
-
-  it('shows sentinel when more pages are available', async () => {
-    await renderApp();
-    expect(screen.getByText('Loading more tracks…')).toBeInTheDocument();
-  });
-
-  it('hides sentinel when all pages are loaded', async () => {
-    await renderApp();
-    await act(async () => { triggerLoadMore(); });
-    await act(async () => { triggerLoadMore(); });
-    expect(getRowCount()).toBe(600);
-    expect(screen.queryByText('Loading more tracks…')).not.toBeInTheDocument();
-  });
-});
-
-describe('Browse context restore on search clear', () => {
-  function getScrollWrapper(): HTMLDivElement {
-    return document.querySelector('.track-table-wrapper') as HTMLDivElement;
-  }
-
-  it('captures scroll position before browse selection and restores it on clear', async () => {
-    await renderApp();
-
-    const wrapper = getScrollWrapper();
-    expect(wrapper).toBeTruthy();
-
-    Object.defineProperty(wrapper, 'scrollTop', { value: 480, writable: true, configurable: true });
-
-    const row = screen.getByText('Track 100').closest('tr')!;
-    await act(async () => { row.click(); });
-
-    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
-    expect(searchInput.value).toBe('Track 100');
-
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: '' } });
-    });
-
-    await waitFor(() => {
-      expect(searchInput.value).toBe('');
-    });
-
-    await act(async () => {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    });
-
-    expect(wrapper.scrollTop).toBe(480);
-  });
-
-  it('restores scroll after loadedPages are recovered from cache', async () => {
-    await renderApp();
-
-    await act(async () => { triggerLoadMore(); });
-    expect(getRowCount()).toBe(500);
-
-    const wrapper = getScrollWrapper();
-    Object.defineProperty(wrapper, 'scrollTop', { value: 1200, writable: true, configurable: true });
-
-    const row = screen.getByText('Track 300').closest('tr')!;
-    await act(async () => { row.click(); });
-
-    await waitFor(() => {
-      expect(getRowCount()).toBeLessThanOrEqual(250);
-    });
-
-    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: '' } });
-    });
-
-    await waitFor(() => {
-      expect(getRowCount()).toBe(500);
-    }, { timeout: 10000 });
-
-    await act(async () => {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    });
-
-    expect(wrapper.scrollTop).toBe(1200);
-  }, 20000);
-
-  it('does not restore scroll when track was selected via non-browse path', async () => {
-    const httpMod = await import('./api/http');
-    vi.mocked(httpMod.searchTracks).mockResolvedValue([
-      { id: 1, title: 'Track 1', artist_names: ['Artist 1'], bpm: 120, camelot_code: '01A' },
-    ]);
-
-    await renderApp();
-
-    const wrapper = getScrollWrapper();
-    Object.defineProperty(wrapper, 'scrollTop', { value: 300, writable: true, configurable: true });
-
-    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: 'Track 1' } });
-    });
-
-    await waitFor(() => {
-      const dropdown = document.querySelector('.search-dropdown');
-      expect(dropdown).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      const item = document.querySelector('.search-item')!;
-      fireEvent.mouseDown(item);
-    });
-
-    expect(searchInput.value).toBe('Track 1');
-
-    wrapper.scrollTop = 0;
-
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: '' } });
-    });
-
-    await act(async () => {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    });
-
-    expect(wrapper.scrollTop).toBe(0);
-  });
-
-  it('clears stale browse context when a new browse selection occurs', async () => {
-    await renderApp();
-
-    const wrapper = getScrollWrapper();
-    Object.defineProperty(wrapper, 'scrollTop', { value: 200, writable: true, configurable: true });
-
-    const row1 = screen.getByText('Track 50').closest('tr')!;
-    await act(async () => { row1.click(); });
-
-    wrapper.scrollTop = 0;
-
-    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: '' } });
-    });
-
-    await act(async () => {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    });
-
-    expect(wrapper.scrollTop).toBe(200);
-
-    wrapper.scrollTop = 600;
-    const row2 = screen.getByText('Track 150').closest('tr')!;
-    await act(async () => { row2.click(); });
-
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: '' } });
-    });
-
-    await act(async () => {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    });
-
-    expect(wrapper.scrollTop).toBe(600);
-  });
-});
-
-describe('Error state handling', () => {
-  it('shows match fetch failure instead of empty-bucket message', async () => {
-    const httpMod = await import('./api/http');
-    vi.mocked(httpMod.fetchMatches).mockRejectedValue(new Error('Failed to fetch matches: 500'));
-
-    vi.mocked(useCollectionCache).mockReturnValue({
-      allTracks: makeTracks(10),
-      traitMap: new Map(),
-      loading: false,
-      tracksError: null,
-      traitsError: null,
-    });
-
-    render(<App />);
-
-    const row = screen.getByText('Track 1').closest('tr')!;
-    await act(async () => {
-      row.click();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Failed to load matches/)).toBeInTheDocument();
-      expect(screen.getByText(/Failed to fetch matches: 500/)).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText('No matches in this bucket')).not.toBeInTheDocument();
-  });
-
-  it('shows successful zero-result message when match fetch returns empty', async () => {
-    const httpMod = await import('./api/http');
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([]);
-
-    vi.mocked(useCollectionCache).mockReturnValue({
-      allTracks: makeTracks(10),
-      traitMap: new Map(),
-      loading: false,
-      tracksError: null,
-      traitsError: null,
-    });
-
-    render(<App />);
-
-    const row = screen.getByText('Track 1').closest('tr')!;
-    await act(async () => {
-      row.click();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('No matches in this bucket')).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText(/Failed to load matches/)).not.toBeInTheDocument();
-  });
-
-  it('shows browse track fetch failure instead of No tracks found', async () => {
-    vi.mocked(useCollectionCache).mockReturnValue({
-      allTracks: [],
-      traitMap: new Map(),
-      loading: false,
-      tracksError: 'Failed to fetch tracks: 503',
-      traitsError: null,
-    });
-
-    render(<App />);
-    await act(async () => {});
-
-    expect(screen.getByText(/Failed to load tracks/)).toBeInTheDocument();
-    expect(screen.getByText(/Failed to fetch tracks: 503/)).toBeInTheDocument();
-    expect(screen.queryByText('No tracks found')).not.toBeInTheDocument();
-  });
-
-  it('shows No tracks found when browse fetch succeeds with zero tracks', async () => {
-    vi.mocked(useCollectionCache).mockReturnValue({
-      allTracks: [],
-      traitMap: new Map(),
-      loading: false,
-      tracksError: null,
-      traitsError: null,
-    });
-
-    render(<App />);
-    await act(async () => {});
-
-    expect(screen.getByText('No tracks found')).toBeInTheDocument();
-    expect(screen.queryByText(/Failed to load tracks/)).not.toBeInTheDocument();
-  });
-
-  it('shows traits fetch failure in Browse without hiding successfully loaded tracks', async () => {
-    vi.mocked(useCollectionCache).mockReturnValue({
-      allTracks: makeTracks(10),
-      traitMap: new Map(),
-      loading: false,
-      tracksError: null,
-      traitsError: 'Failed to fetch track traits: 502',
-    });
-
-    render(<App />);
-    await act(async () => {});
-
-    expect(screen.getByText(/Failed to load track traits/)).toBeInTheDocument();
-    expect(screen.getByText(/Failed to fetch track traits: 502/)).toBeInTheDocument();
-    expect(screen.getByText('Track 1')).toBeInTheDocument();
-    expect(screen.queryByText('No tracks found')).not.toBeInTheDocument();
-  });
-});
-
-describe('BPM unified filter', () => {
-  it('min and max inputs coexist without cross-clearing', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    const minInput = screen.getByPlaceholderText('Min');
-    const maxInput = screen.getByPlaceholderText('Max');
-
-    await userEvent.type(minInput, '100');
-    await act(async () => { minInput.blur(); });
-    await userEvent.type(maxInput, '140');
-    await act(async () => { maxInput.blur(); });
-
-    expect(minInput).toHaveValue(100);
-    expect(maxInput).toHaveValue(140);
-  });
-
-  it('equal min and max expresses exact matching', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    const minInput = screen.getByPlaceholderText('Min');
-    const maxInput = screen.getByPlaceholderText('Max');
-
-    await userEvent.type(minInput, '128');
-    await act(async () => { minInput.blur(); });
-    await userEvent.type(maxInput, '128');
-    await act(async () => { maxInput.blur(); });
-
-    expect(minInput).toHaveValue(128);
-    expect(maxInput).toHaveValue(128);
-  });
-});
-
-describe('Camelot multi-select', () => {
-  it('dropdown stays open after toggling a code', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click();
-    });
-
-    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument();
-
-    await act(async () => {
-      screen.getByRole('button', { name: '01A' }).click();
-    });
-
-    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument();
-  }, 15000);
-
-  it('allows selecting multiple codes in one session', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click();
-    });
-
-    await act(async () => {
-      screen.getByRole('button', { name: '01A' }).click();
-    });
-    await act(async () => {
-      screen.getByRole('button', { name: '02A' }).click();
-    });
-
-    const chip01 = screen.getByRole('button', { name: '01A' });
-    const chip02 = screen.getByRole('button', { name: '02A' });
-    expect(chip01.className).toContain('selected');
-    expect(chip02.className).toContain('selected');
-  }, 15000);
-
-  it('closes on Escape key', async () => {
-    await renderApp();
-    await expandFilterTray();
-
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click();
-    });
-
-    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument();
-
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    });
-
-    expect(screen.queryByRole('button', { name: '03A' })).not.toBeInTheDocument();
-  }, 15000);
-});
-
-function makeTransitionMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
-  return {
-    candidate_id: 2,
-    title: 'Match Track',
-    overall_score: 85,
-    bucket: 'same_key',
-    camelot_score: 0.9,
-    bpm_score: 0.85,
-    energy_score: 0.7,
-    similarity_score: 0.8,
-    freshness_score: 0.6,
-    genre_similarity_score: 0.75,
-    mood_continuity_score: 0.65,
-    vocal_clash_score: 0.5,
-    instrument_similarity_score: 0.55,
-    ...overrides,
-  };
-}
-
-async function selectTrackViaBrowse(trackTitle: string) {
-  const row = screen.getByText(trackTitle).closest('tr')!;
-  await act(async () => {
-    row.click();
-  });
-
-  await waitFor(() => {
-    expect(screen.getByText(`Matches for`)).toBeInTheDocument();
-  });
-}
-
-describe('Transition chaining', () => {
-  it('renders transition chain breadcrumb after Use as source', async () => {
-    const httpMod = await import('./api/http');
-    const matchForTrack2 = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([matchForTrack2]);
-
-    await act(async () => {
-      render(<App />);
-    });
-
-    await selectTrackViaBrowse('Track 1');
-
-    await waitFor(() => {
-      expect(screen.getByTitle('Use as source track')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      screen.getByTitle('Use as source track').click();
-    });
-
-    await waitFor(() => {
-      const chainEntries = document.querySelectorAll('.chain-entry');
-      expect(chainEntries.length).toBe(1);
-      expect(chainEntries[0].textContent).toBe('Track 1');
-    });
-  });
-
-  it('navigates back through chain when back button is clicked', async () => {
-    const httpMod = await import('./api/http');
-    const matchForTrack2 = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([matchForTrack2]);
-
-    await act(async () => {
-      render(<App />);
-    });
-
-    await selectTrackViaBrowse('Track 1');
-
-    await waitFor(() => {
-      expect(screen.getByTitle('Use as source track')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      screen.getByTitle('Use as source track').click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.chain-back-btn')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      document.querySelector<HTMLButtonElement>('.chain-back-btn')!.click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.chain-back-btn')).not.toBeInTheDocument();
-    });
-  });
-
-  it('clears chain on fresh track selection via browse', async () => {
-    const httpMod = await import('./api/http');
-    const matchForTrack2 = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([matchForTrack2]);
-
-    await act(async () => {
-      render(<App />);
-    });
-
-    await selectTrackViaBrowse('Track 1');
-
-    await waitFor(() => {
-      expect(screen.getByTitle('Use as source track')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      screen.getByTitle('Use as source track').click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelectorAll('.chain-entry').length).toBe(1);
-    });
-
-    const trackTable = document.querySelector('.track-table')!;
-    const track2Cell = Array.from(trackTable.querySelectorAll('td')).find(
-      (td) => td.textContent === 'Track 2',
-    )!;
-    const row2 = track2Cell.closest('tr')!;
-    await act(async () => {
-      row2.click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelectorAll('.chain-entry').length).toBe(0);
-      expect(document.querySelector('.chain-back-btn')).not.toBeInTheDocument();
-    });
-  });
-});
-
-describe('Browse column visibility localStorage round-trip', () => {
-  const COL_VIS_KEY = 'dj-tools-browse-col-visibility';
-
-  beforeEach(() => {
-    localStorage.removeItem(COL_VIS_KEY);
-  });
-
-  it('restores hidden column from localStorage, persists toggle, and survives remount', async () => {
-    const user = userEvent.setup();
-
-    localStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false }));
-
-    const { unmount } = render(<App />);
-    await act(async () => {});
-
-    const headers = () => screen.getAllByRole('columnheader').map(h => h.textContent);
-    expect(headers()).not.toContain('BPM');
-    expect(headers()).toContain('Title');
-
-    await user.click(screen.getByRole('button', { name: /columns/i }));
-    const bpmCheckbox = screen.getByLabelText('BPM') as HTMLInputElement;
-    expect(bpmCheckbox.checked).toBe(false);
-
-    await user.click(bpmCheckbox);
-
-    await waitFor(() => {
-      const stored = JSON.parse(localStorage.getItem(COL_VIS_KEY)!);
-      expect(stored.bpm).toBe(true);
-    });
-
-    expect(headers()).toContain('BPM');
-
-    unmount();
-
-    render(<App />);
-    await act(async () => {});
-
-    expect(headers()).toContain('BPM');
-
-    await user.click(screen.getByRole('button', { name: /columns/i }));
-    const restoredCheckbox = screen.getByLabelText('BPM') as HTMLInputElement;
-    expect(restoredCheckbox.checked).toBe(true);
-  });
-
-  it('starts with all columns visible when localStorage has no saved state', async () => {
-    render(<App />);
-    await act(async () => {});
-
-    const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
-    expect(headers).toContain('BPM');
-    expect(headers).toContain('Camelot');
-    expect(headers).toContain('Energy');
-  });
-});
-
-describe('Browse column visibility – invalid localStorage values', () => {
-  const COL_VIS_KEY = 'dj-tools-browse-col-visibility';
-
-  beforeEach(() => {
-    localStorage.removeItem(COL_VIS_KEY);
-  });
-
-  it.each([
-    ['number', '42'],
-    ['boolean', 'true'],
-    ['array', '[1]'],
-    ['string', '"hello"'],
-    ['null', 'null'],
-  ])('falls back to all columns visible when stored value is a %s', async (_label, stored) => {
-    localStorage.setItem(COL_VIS_KEY, stored);
-
-    render(<App />);
-    await act(async () => {});
-
-    const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
-    expect(headers).toContain('BPM');
-    expect(headers).toContain('Camelot');
-    expect(headers).toContain('Energy');
-  });
-
-  it('restores valid object visibility maps correctly', async () => {
-    localStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false, energy: false }));
-
-    render(<App />);
-    await act(async () => {});
-
-    const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
-    expect(headers).not.toContain('BPM');
-    expect(headers).not.toContain('Energy');
-    expect(headers).toContain('Camelot');
-  });
-});
-
-describe('Set tab', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  it('renders the Set dock tab', async () => {
-    await act(async () => {
-      render(<App />);
-    });
-    expect(screen.getByRole('tab', { name: 'Set' })).toBeInTheDocument();
-  });
-
-  it('shows set builder when Set dock tab is clicked', async () => {
-    await act(async () => {
-      render(<App />);
-    });
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Set' }).click();
-    });
-    const setPanel = document.getElementById('panel-set')!;
-    expect(setPanel.style.display).toBe('flex');
-    expect(setPanel.textContent).toMatch(/No sets yet/);
-  });
-
-});
-
-describe('DockBar keyboard navigation', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  it('ArrowRight cycles focus through Matches → Set → Explorer → Matches', async () => {
-    const user = userEvent.setup();
-    await renderApp();
-
-    const tabs = screen.getAllByRole('tab');
-    const [matchesTab, setTab, explorerTab] = tabs;
-
-    await user.click(matchesTab);
-    matchesTab.focus();
-
-    await user.keyboard('{ArrowRight}');
-    expect(document.activeElement).toBe(setTab);
-
-    await user.keyboard('{ArrowRight}');
-    expect(document.activeElement).toBe(explorerTab);
-
-    await user.keyboard('{ArrowRight}');
-    expect(document.activeElement).toBe(matchesTab);
-  });
-
-  it('ArrowLeft cycles focus through Matches → Explorer → Set → Matches', async () => {
-    const user = userEvent.setup();
-    await renderApp();
-
-    const tabs = screen.getAllByRole('tab');
-    const [matchesTab, setTab, explorerTab] = tabs;
-
-    await user.click(matchesTab);
-    matchesTab.focus();
-
-    await user.keyboard('{ArrowLeft}');
-    expect(document.activeElement).toBe(explorerTab);
-
-    await user.keyboard('{ArrowLeft}');
-    expect(document.activeElement).toBe(setTab);
-
-    await user.keyboard('{ArrowLeft}');
-    expect(document.activeElement).toBe(matchesTab);
-  });
-
-  it('Home jumps focus to first tab, End jumps to last tab', async () => {
-    const user = userEvent.setup();
-    await renderApp();
-
-    const tabs = screen.getAllByRole('tab');
-    const [matchesTab, , explorerTab] = tabs;
-
-    await user.click(explorerTab);
-    explorerTab.focus();
-
-    await user.keyboard('{Home}');
-    expect(document.activeElement).toBe(matchesTab);
-
-    await user.keyboard('{End}');
-    expect(document.activeElement).toBe(explorerTab);
-  });
-
-  it('roving tabindex: active tab has tabIndex 0, others have -1', async () => {
-    await renderApp();
-
-    const tabs = screen.getAllByRole('tab');
-    const [matchesTab, setTab, explorerTab] = tabs;
-
-    expect(matchesTab).toHaveAttribute('tabindex', '0');
-    expect(setTab).toHaveAttribute('tabindex', '-1');
-    expect(explorerTab).toHaveAttribute('tabindex', '-1');
-
-    await act(async () => { setTab.click(); });
-
-    expect(matchesTab).toHaveAttribute('tabindex', '-1');
-    expect(setTab).toHaveAttribute('tabindex', '0');
-    expect(explorerTab).toHaveAttribute('tabindex', '-1');
-  });
-
-  it('aria-selected reflects the active panel', async () => {
-    await renderApp();
-
-    const tabs = screen.getAllByRole('tab');
-    const [matchesTab, setTab, explorerTab] = tabs;
-
-    tabs.forEach(tab => expect(tab).toHaveAttribute('aria-selected', 'false'));
-
-    await act(async () => { matchesTab.click(); });
-    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
-    expect(setTab).toHaveAttribute('aria-selected', 'false');
-    expect(explorerTab).toHaveAttribute('aria-selected', 'false');
-
-    await act(async () => { explorerTab.click(); });
-    expect(matchesTab).toHaveAttribute('aria-selected', 'false');
-    expect(setTab).toHaveAttribute('aria-selected', 'false');
-    expect(explorerTab).toHaveAttribute('aria-selected', 'true');
-  });
-});
-
-describe('DockBar', () => {
-  it('shows Matches, Set, and Explorer tabs on load (no auto-hide)', async () => {
-    await act(async () => { render(<App />); });
-    expect(document.querySelector('.dock-bar-zone')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Matches' })).toBeVisible();
-    expect(screen.getByRole('tab', { name: 'Set' })).toBeVisible();
-    expect(screen.getByRole('tab', { name: 'Explorer' })).toBeVisible();
-  });
-
-  it('tab switching works', async () => {
-    await act(async () => { render(<App />); });
-    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
-    await act(async () => { matchesTab.click(); });
-    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
-
-    const setTab = screen.getByRole('tab', { name: 'Set' });
-    await act(async () => { setTab.click(); });
-    expect(setTab).toHaveAttribute('aria-selected', 'true');
-    expect(matchesTab).toHaveAttribute('aria-selected', 'false');
-  });
-});
-
-describe('Clear Filters with BPM', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  it('Clear Filters resets BPM min/max alongside other filters', async () => {
-    const user = userEvent.setup();
-    await renderApp();
-    await expandFilterTray();
-
-    const minInput = screen.getByPlaceholderText('Min');
-    await user.type(minInput, '128');
-    await act(async () => { minInput.blur(); });
-    expect(minInput).toHaveValue(128);
-
-    const clearBtn = screen.getByRole('button', { name: 'Clear Filters' });
-    await act(async () => { clearBtn.click(); });
-
-    await waitFor(() => {
-      const freshMinInput = screen.getByPlaceholderText('Min');
-      expect(freshMinInput).toHaveValue(null);
-    });
-  });
-});
-
-describe('Drag and Drop', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  it('registers droppable targets for dock tabs', async () => {
-    await renderApp();
-    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
-    const setTab = screen.getByRole('tab', { name: 'Set' });
-    const explorerTab = screen.getByRole('tab', { name: 'Explorer' });
-    expect(matchesTab).toBeInTheDocument();
-    expect(setTab).toBeInTheDocument();
-    expect(explorerTab).toBeInTheDocument();
-  });
-
-  it('renders drag handle affordance on browse table rows', async () => {
-    await renderApp();
-    const handles = document.querySelectorAll('.track-table .drag-handle');
-    expect(handles.length).toBeGreaterThan(0);
-  });
-
-  it('renders drag handle affordance on match rows when matches are loaded', async () => {
-    const httpMod = await import('./api/http');
-    const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
-
-    await act(async () => { render(<App />); });
-    await selectTrackViaBrowse('Track 1');
-
-    await waitFor(() => {
-      const handles = document.querySelectorAll('.matches-table .drag-handle');
-      expect(handles.length).toBeGreaterThan(0);
-    });
-  });
-
-  it('renders droppable tracklist zone when Set panel is open with active set', async () => {
-    const httpMod = await import('./api/http');
-    vi.mocked(httpMod.fetchSets).mockResolvedValue([
-      { id: 1, name: 'Test Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
-    ]);
-    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
-      set: { id: 1, name: 'Test Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
-      pool: [], tracklist: [], explorer_trees: [], explorer_nodes: [], explorer_edges: [],
-    });
-
-    await act(async () => { render(<App />); });
-
-    await act(async () => {
-      screen.getByRole('tab', { name: /Set/ }).click();
-    });
-
-    await waitFor(() => {
-      const setPanel = document.getElementById('panel-set')!;
-      expect(setPanel.style.display).toBe('flex');
-    });
-
-    const select = await waitFor(() => {
-      const el = document.querySelector('.set-select') as HTMLSelectElement;
-      expect(el).toBeInTheDocument();
-      return el;
-    });
-
-    await act(async () => {
-      fireEvent.change(select, { target: { value: '1' } });
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
-    });
-  });
-
-  it('renders droppable matches-header when matches panel is active', async () => {
-    const httpMod = await import('./api/http');
-    const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' });
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
-
-    await act(async () => { render(<App />); });
-    await selectTrackViaBrowse('Track 1');
-
-    await waitFor(() => {
-      const header = document.querySelector('.panel-title');
-      expect(header).toBeInTheDocument();
-      expect(header!.textContent).toContain('Matches for');
-    });
-  });
-
-  it('renders MatchDetail with drag capability including drag handle', async () => {
-    const httpMod = await import('./api/http');
-    const match = makeTransitionMatch({ candidate_id: 2 });
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match]);
-    vi.mocked(httpMod.fetchMatchDetail).mockResolvedValue({
-      on_deck: { id: 1, title: 'Track 1', bpm: 120, key: 'C', camelot_code: '01A', energy: 0.5, genre: 'Electronic', label: 'Label', traits: {} },
-      candidate: { id: 2, title: 'Track 2', bpm: 128, key: 'D', camelot_code: '02A', energy: 0.6, genre: 'House', label: 'Label', traits: {} },
-      factors: [{ name: 'BPM', score: 0.8, weight: 0.5 }],
-      overall_score: 85,
-    });
-
-    await act(async () => { render(<App />); });
-    await selectTrackViaBrowse('Track 1');
-
-    await waitFor(() => {
-      expect(screen.getByText('Match Track')).toBeInTheDocument();
-    });
-
-    const detailBtn = screen.getByLabelText('View match detail for Match Track');
-    await act(async () => { detailBtn.click(); });
-
-    await waitFor(() => {
-      const summary = document.querySelector('.detail-tracks-summary');
-      expect(summary).toBeInTheDocument();
-      const handle = summary!.querySelector('.drag-handle');
-      expect(handle).toBeInTheDocument();
-    });
-  });
-
-  it('real @dnd-kit wiring: DndContext creates accessibility structure and drag handles receive listeners', async () => {
-    await renderApp();
-
-    const liveRegion = document.querySelector('[role="status"][aria-live="assertive"]');
-    expect(liveRegion).toBeInTheDocument();
-    expect(liveRegion!.id).toMatch(/DndLiveRegion/);
-
-    const handles = document.querySelectorAll('.track-table .drag-handle');
-    expect(handles.length).toBeGreaterThan(0);
-    const handle = handles[0] as HTMLElement;
-    expect(handle.textContent).toBe('⠿');
-  });
-});
-
-describe('Shell state model', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  it('renders dock bar with exactly Matches, Set, and Explorer tabs', async () => {
-    await renderApp();
-    const tabs = screen.getAllByRole('tab');
-    const tabLabels = tabs.map(t => t.textContent);
-    expect(tabLabels).toEqual(['Matches', 'Set', 'Explorer']);
-  });
-
-  it('dock bar uses role=tablist with proper aria semantics', async () => {
-    await renderApp();
-    const tablist = screen.getByRole('tablist', { name: 'Panels' });
-    expect(tablist).toBeInTheDocument();
-    const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(3);
-    tabs.forEach(tab => {
-      expect(tab).toHaveAttribute('aria-selected');
-      expect(tab).toHaveAttribute('aria-controls');
-    });
-  });
-
-  it('all panels stay mounted when hidden', async () => {
-    await renderApp();
-    expect(document.getElementById('panel-matches')).toBeInTheDocument();
-    expect(document.getElementById('panel-set')).toBeInTheDocument();
-    expect(document.getElementById('panel-explorer')).toBeInTheDocument();
-  });
-
-  it('clicking active tab collapses the panel', async () => {
-    await renderApp();
-    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
-
-    await act(async () => { matchesTab.click(); });
-    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
-
-    await act(async () => { matchesTab.click(); });
-    expect(matchesTab).toHaveAttribute('aria-selected', 'false');
-    expect(document.getElementById('panel-matches')!.style.display).toBe('none');
-  });
-
-  it('auto-opens Matches when selecting a track with no panel active', async () => {
-    await renderApp();
-    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
-    expect(matchesTab).toHaveAttribute('aria-selected', 'false');
-
-    const row = screen.getByText('Track 1').closest('tr')!;
-    await act(async () => { row.click(); });
-
-    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
-    expect(document.getElementById('panel-matches')!.style.display).toBe('flex');
-  });
-
-  it('does not steal focus from Set when selecting a track', async () => {
-    await renderApp();
-    const setTab = screen.getByRole('tab', { name: 'Set' });
-    await act(async () => { setTab.click(); });
-    expect(setTab).toHaveAttribute('aria-selected', 'true');
-
-    const row = screen.getByText('Track 1').closest('tr')!;
-    await act(async () => { row.click(); });
-
-    expect(setTab).toHaveAttribute('aria-selected', 'true');
-    expect(document.getElementById('panel-set')!.style.display).toBe('flex');
-    expect(document.getElementById('panel-matches')!.style.display).toBe('none');
-  });
-
-  it('search input remains available after track selection', async () => {
-    await renderApp();
-    const searchInput = screen.getByPlaceholderText('Search tracks…');
-    expect(searchInput).toBeInTheDocument();
-
-    const row = screen.getByText('Track 1').closest('tr')!;
-    await act(async () => { row.click(); });
-
-    expect(searchInput).toBeInTheDocument();
-    expect((searchInput as HTMLInputElement).value).toBe('Track 1');
-  });
-
-  it('clearing selected track resets Matches to empty state without closing panel', async () => {
-    const httpMod = await import('./api/http');
-    vi.mocked(httpMod.fetchMatches).mockResolvedValue([makeTransitionMatch()]);
-
-    await act(async () => { render(<App />); });
-
-    await selectTrackViaBrowse('Track 1');
-
-    await waitFor(() => {
-      expect(screen.getByText('Match Track')).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
-    expect(searchInput.value).toBe('Track 1');
-
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: '' } });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('Select a track to see matches')).toBeInTheDocument();
-    });
-
-    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
-    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
-  });
-
-  it('persists and restores shared panel split height from localStorage', async () => {
-    localStorage.setItem('dj-tools-panel-split-shared', '400');
-
-    await renderApp();
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Matches' }).click();
-    });
-    const panelZone = document.querySelector('.panel-zone') as HTMLElement;
-    expect(panelZone.style.height).toBe('400px');
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Set' }).click();
-    });
-    expect(panelZone.style.height).toBe('400px');
-  });
-});
-
-describe('Set Mode DockBar hiding', () => {
-  async function renderWithActiveSet() {
-    const httpMod = await import('./api/http');
-    vi.mocked(httpMod.fetchSets).mockResolvedValue([
-      { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 2, tracklist_count: 1 },
-    ]);
-    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
-      set: { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 2, tracklist_count: 1 },
-      pool: [
-        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Track 1', artist_names: [], bpm: 120, key: null, camelot_code: '01A', genre: null, label: null, energy: 0.5, date_added: null } },
-        { id: 11, track_id: 2, insertion_order: 1, starred: true, track: { id: 2, title: 'Track 2', artist_names: [], bpm: 128, key: null, camelot_code: '02A', genre: null, label: null, energy: 0.6, date_added: null } },
-      ],
-      tracklist: [
-        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track 3', artist_names: [], bpm: 125, key: null, camelot_code: '01B', genre: null, label: null, energy: 0.55, date_added: null } },
-      ],
-      explorer_trees: [], explorer_nodes: [], explorer_edges: [],
-    });
-
-    await act(async () => { render(<App />); });
-    await act(async () => {});
-
-    await act(async () => {
-      screen.getByRole('tab', { name: /Set/ }).click();
-    });
-
-    const select = await waitFor(() => {
-      const el = document.querySelector('.set-select') as HTMLSelectElement;
-      expect(el).toBeInTheDocument();
-      return el;
-    });
-
-    await act(async () => {
-      fireEvent.change(select, { target: { value: '1' } });
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
-    });
-  }
-
-  it('keeps DockBar visible in Set Mode so user can switch back', async () => {
-    await renderWithActiveSet();
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByRole('tab', { name: 'Matches' })).toBeInTheDocument();
-    });
-  });
-
-  it('does not render old accordion tab or workspace in Set Mode', async () => {
-    await renderWithActiveSet();
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.set-mode-columns')).toBeInTheDocument();
-    });
-
-    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
-    expect(document.querySelector('.explorer-top-workspace')).not.toBeInTheDocument();
-  });
-
-  it('hides the search/browse panel in Set Mode and restores it outside Set Mode', async () => {
-    await renderWithActiveSet();
-
-    expect(document.querySelector('.top-anchor')).toBeInTheDocument();
-    expect(document.querySelector('.controls-strip')).toBeInTheDocument();
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.set-mode-columns')).toBeInTheDocument();
-    });
-
-    expect(document.querySelector('.top-anchor')).not.toBeInTheDocument();
-    expect(document.querySelector('.controls-strip')).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('Search tracks…')).not.toBeInTheDocument();
-  });
-});
-
-describe('Set Mode two-column layout', () => {
-  async function renderWithActiveSetOnExplorer() {
-    const httpMod = await import('./api/http');
-    vi.mocked(httpMod.fetchSets).mockResolvedValue([
-      { id: 1, name: 'Layout Set', created_at: '', updated_at: '', pool_count: 1, tracklist_count: 1 },
-    ]);
-    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
-      set: { id: 1, name: 'Layout Set', created_at: '', updated_at: '', pool_count: 1, tracklist_count: 1 },
-      pool: [
-        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Pool Track', artist_names: [], bpm: 120, key: null, camelot_code: '01A', genre: null, label: null, energy: 0.5, date_added: null } },
-      ],
-      tracklist: [
-        { id: 20, track_id: 2, position: 0, starred: false, note: '', track: { id: 2, title: 'TL Track', artist_names: [], bpm: 128, key: null, camelot_code: '02A', genre: null, label: null, energy: 0.6, date_added: null } },
-      ],
-      explorer_trees: [], explorer_nodes: [], explorer_edges: [],
-    });
-
-    await act(async () => { render(<App />); });
-    await act(async () => {});
-
-    await act(async () => {
-      screen.getByRole('tab', { name: /Set/ }).click();
-    });
-
-    const select = await waitFor(() => {
-      const el = document.querySelector('.set-select') as HTMLSelectElement;
-      expect(el).toBeInTheDocument();
-      return el;
-    });
-
-    await act(async () => {
-      fireEvent.change(select, { target: { value: '1' } });
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      screen.getByRole('tab', { name: 'Explorer' }).click();
-    });
-  }
-
-  it('renders two-column layout in explorer panel when set is active', async () => {
-    await renderWithActiveSetOnExplorer();
-
-    const columns = document.querySelector('.set-mode-columns');
-    expect(columns).toBeInTheDocument();
-
-    const left = columns!.querySelector('.set-mode-left');
-    const right = columns!.querySelector('.set-mode-right');
-    expect(left).toBeInTheDocument();
-    expect(right).toBeInTheDocument();
-  });
-
-  it('left column contains workspace panel (tracklist + pool)', async () => {
-    await renderWithActiveSetOnExplorer();
-
-    const left = document.querySelector('.set-mode-left');
-    expect(left).toBeInTheDocument();
-    expect(left!.querySelector('.set-workspace-split')).toBeInTheDocument();
-  });
-
-  it('right column contains explorer canvas', async () => {
-    await renderWithActiveSetOnExplorer();
-
-    const right = document.querySelector('.set-mode-right');
-    expect(right).toBeInTheDocument();
-    expect(right!.querySelector('.set-explorer')).toBeInTheDocument();
-  });
-
-  it('renders exactly one Tracklist and one Pool within the explorer panel (no duplicate top row)', async () => {
-    await renderWithActiveSetOnExplorer();
-
-    const explorerPanel = document.getElementById('panel-explorer')!;
-    expect(explorerPanel.querySelectorAll('.set-tracklist')).toHaveLength(1);
-    expect(explorerPanel.querySelectorAll('.set-pool-accordion')).toHaveLength(1);
-
-    expect(document.querySelector('.explorer-top-workspace')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('explorer-set-tab')).not.toBeInTheDocument();
   });
 });
 

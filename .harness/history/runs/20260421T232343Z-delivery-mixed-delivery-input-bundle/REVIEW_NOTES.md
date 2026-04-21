@@ -1,55 +1,76 @@
 # Review Notes
 
-## [Contract 5] Backend Phase C Version/Slot/Candidate CRUD API
+## [Contract 2] Phase A Single-Page Workspace Shell Rewrite
 
 ### What was implemented
 
-**Service layer** (`src/set_workspace/service.py`):
-- Version CRUD: `version_create`, `version_rename`, `version_delete`, `version_reorder`
-- Slot CRUD: `slot_create`, `slot_delete`, `slot_reorder`, `slot_update_note`
-- Candidate CRUD: `candidate_add`, `candidate_remove`, `candidate_select`
-- Branch: `version_branch` — deep-copies slots/candidates through branch point, creates linked explorer tree, sets `is_inherited=True`
-- `_clear_inherited` helper called by all slot mutation paths
+**Layout Architecture** — Replaced the DockBar-era multi-tab shell with a single-page layout:
+- Fixed 48px `WorkspaceHeader` containing set selector, + New Set, search trigger (disabled placeholder for Phase B), weights toggle, and admin toggle
+- Upper tracklist zone (~55vh) with its own header actions: + Slots, Clear All, column config, export, and a reversible explorer toggle
+- Lower pool zone (permanently visible, ~45vh) with independent scrolling
+- Vertical flex layout with a non-draggable zone divider
 
-**API routes** (`src/api/routes.py`):
-- `POST /sets/{set_id}/versions` — create version (409 on max-10)
-- `PATCH /sets/{set_id}/versions/{version_id}` — rename version
-- `DELETE /sets/{set_id}/versions/{version_id}` — delete version with cascade
-- `POST /sets/{set_id}/versions/reorder` — reorder versions
-- `POST /sets/{set_id}/versions/{version_id}/branch` — branch from slot position
-- `POST /sets/{set_id}/versions/{version_id}/slots` — create slot (409 on max-250)
-- `DELETE /sets/{set_id}/versions/{version_id}/slots/{slot_id}` — delete slot
-- `POST /sets/{set_id}/versions/{version_id}/slots/reorder` — reorder slot
-- `PATCH /sets/{set_id}/versions/{version_id}/slots/{slot_id}/note` — update note
-- `POST /sets/{set_id}/slots/{slot_id}/candidates` — add candidate (409 on max-5)
-- `DELETE /sets/{set_id}/slots/{slot_id}/candidates/{candidate_id}` — remove candidate
-- `PATCH /sets/{set_id}/slots/{slot_id}/candidates/{candidate_id}/select` — select candidate
+**New components:**
+- `WorkspaceHeader.tsx` — Global header bar with all top-level controls
+- `ExplorerNodesView.tsx` — Nodes-only explorer table (no edges), using Row/Position terminology instead of implementation-facing coordinates
 
-**Schemas** (`src/api/schemas.py`):
-- `VersionCreateRequest`, `VersionRenameRequest`, `VersionReorderRequest`, `VersionBranchRequest`
-- `SlotCreateRequest`, `SlotReorderRequest`, `SlotNoteUpdateRequest`
-- `CandidateAddRequest`
+**Modified components:**
+- `App.tsx` — Complete shell rewrite; removed DockBar, Browse table, Matches panel, FilterBar, SearchPanel mounts; simplified DnD logic (removed references to dock tabs, explorer cells); added explorer toggle and tracklist zone header actions
+- `SetWorkspacePanel.tsx` — Switched from accordion layout to vertical split; pool is always expanded
+- `SetPoolTable.tsx` — Implemented per-view sort isolation (`sortByView: Record<string, SortDescriptor[]>`); removed always-visible "Search to add" input (fill-mode search retained)
+- `SetTracklist.tsx` — Removed always-visible "Search to add" input (fill-mode search retained)
+- `styles.css` — Added layout tokens for workspace-header, workspace-body, tracklist-zone, pool-zone, zone-divider, explorer-nodes-view, explorer-nodes-table
 
-### Service-level constraints enforced
-- Max 10 versions per set → 409
-- Max 250 slots per version → 409
-- Max 5 candidates per slot → 409
-- Exactly one selected candidate per non-empty slot (auto-select first, promote on remove)
-- Auto-delete slot when last candidate removed (with position compaction)
-- Contiguous slot positions on insert/delete/reorder
-- Contiguous version display_order on delete
-- Branch deep-copy with `is_inherited=True`; all mutation paths clear `is_inherited`
+**Removed from shell (internals preserved for Phase B reuse):**
+- `DockBar.tsx` — No longer imported or rendered
+- Standalone Matches panel mount
+- Standalone Explorer canvas mount
+- Persistent Browse panel / TrackTable mount
+- FilterBar mount
+- SearchPanel mount
 
-### Test coverage (52 new tests)
-- Version: create, rename, delete (cascade), reorder, limit violations
-- Slot: create (position shifting), delete (cascade + compaction), reorder (forward/backward/noop/inherited clearing), note update
-- Candidate: add (auto-select first), remove (last-candidate-deletes-slot, selected-promotes-next, position compaction), select (exactly-one invariant)
-- Branch: slot copying, inherited flags, explorer tree creation, candidate copying, limit enforcement, duplicate name rejection
-- Inherited lifecycle: end-to-end branch → inherited → mutation clears
-- Transition score cache: write-on-compute, repeated-call cache hits, directional keys, clear invalidation
-- Hydration: full CRUD cycle → `hydrate_set` consistency
+### Test changes
 
-### Items for reviewer attention
-1. The `CandidateSelectRequest` schema was added but not used by the route (select uses path params only). Removed the unused import per lint.
-2. The `slot_reorder` noop path (same position) intentionally does NOT clear `is_inherited` — a noop is not a mutation.
-3. Route hydration for version rename and branch responses re-queries `_hydrate_versions` to return the full nested shape. This is consistent with the hydration contract but adds a read.
+**`App.test.tsx`** — Rewritten:
+- Removed all tests for Browse table, DockBar tabs, Matches panel, FilterBar, SearchPanel, old two-column explorer
+- Retained: Reset Weights, DragOverlay snapCenterToCursor modifier guard
+- Added: WorkspaceHeader rendering, workspace layout with active set, explorer toggle, pool permanent visibility, absence of removed UI
+
+**`App.dnd.test.tsx`** — Updated:
+- Removed tests for `dock-matches`, `dock-explorer`, `dock-set` tab targets
+- Removed `drop-matches-header` and `drop-explorer-cell-*` target tests
+- Added `alt-` prefix normalization handling in App.tsx and corresponding test coverage
+- Updated multi-select expectations to reflect that `payload.title` is used for all selections (no browse track lookup)
+
+**`SetBuilder.test.tsx`** — Updated:
+- Replaced 5 accordion expand/collapse tests with 4 tests asserting permanently visible pool zone
+- Scoped `#` header text query to tracklist table to avoid ambiguity with pool table
+
+**`SetPoolTable.test.tsx`** — Updated:
+- Removed `subgroup auto-assign on search-add` test block (always-visible search removed)
+- Updated cancel-fill-mode test to assert search input hides entirely
+
+**`SetTracklist.test.tsx`** — Updated cancel-fill-mode test similarly
+
+### Tradeoffs
+
+1. **Search trigger is a disabled placeholder.** The header includes a `[Search]` button but it's `disabled` since the universal search modal is Phase B scope. This preserves the header layout slot without implementing out-of-scope functionality.
+
+2. **Column config and export buttons are placeholders.** The tracklist zone header renders `[Columns]` and `[Export]` buttons that trigger `alert()` stubs. The contract requires these affordances to be present in the zone header, but their full implementation depends on downstream infrastructure.
+
+3. **Pool sort isolation uses a `Record<string, SortDescriptor[]>` keyed by view name.** The "all" view, each subgroup name, and group-level views each get independent sort state. This is stored in component state (not persisted to localStorage) — intentional, as sort preferences are session-scoped.
+
+4. **Explorer toggle is a simple boolean swap.** When toggled, the tracklist zone body switches between `SetWorkspacePanel` and `ExplorerNodesView`. The explorer view renders tree data as a flat table with Row/Position columns. No edges are rendered.
+
+5. **DnD simplification.** The `handleDragEnd` handler was simplified to only handle `drop-tracklist`, `drop-pool`, `drop-tracklist-empty-*`, and `alt-drop-*` targets. All explorer cell and dock tab targets were removed. The `alt-` prefix normalization ensures correct routing.
+
+### Deferred items
+
+| Item | Reason |
+|------|--------|
+| Universal search modal (Phase B) | Explicitly out of scope per contract |
+| Candidate-per-slot UI, version tabs (Phase C) | Explicitly out of scope per contract |
+| Explorer edges | Explicitly excluded from contract scope |
+| Draggable split between tracklist and pool | Explicitly excluded from contract scope |
+| localStorage persistence for column visibility | Not required by contract; can be added in a follow-up |
+| Removing `DockBar.tsx` file from disk | Component is no longer imported but file deletion was not required; keeping it preserves git history for reference |

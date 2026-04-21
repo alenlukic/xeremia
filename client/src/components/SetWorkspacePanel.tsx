@@ -62,71 +62,50 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
   }, [addToPool, poolExpanded, onPoolExpandedChange]);
 
   return (
-    <div className="set-workspace-split">
-      <SetTracklist
-        tracklist={activeSet.tracklist}
-        emptyRows={(activeSet.empty_rows ?? []).filter(r => r.surface === 'tracklist')}
-        onRemove={removeFromTracklist}
-        onClearAll={clearTracklist}
-        onMoveToPool={moveTracklistToPool}
-        onReorder={reorderTracklist}
-        onUpdateNote={updateTracklistNote}
-        onAddTrack={addToTracklist}
-        onFillEmptyRow={handleTracklistFillEmptyRow}
-        onInsertEmptyRows={(count, position) => addEmptyRows('tracklist', count, position)}
-        onDeleteEmptyRow={deleteEmptyRow}
-        onReorderEmptyRow={reorderEmptyRow}
-        dndDisabled={dndDisabled}
-        dndIdPrefix={dndIdPrefix}
-      />
-      <div className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}>
-        {poolExpanded && (
-          <button
-            className="set-pool-collapse-handle"
-            onClick={() => onPoolExpandedChange(false)}
-            aria-label="Collapse pool"
-            title="Collapse pool"
-          >
-            ‹
-          </button>
-        )}
-        {!poolExpanded ? (
-          <button
-            className="set-pool-expand-tab"
-            onClick={() => onPoolExpandedChange(true)}
-            aria-label="Expand pool"
-            title="Expand pool"
-          >
-            <span className="set-pool-expand-chevron" aria-hidden="true">›</span>
-            <span className="set-pool-expand-label">Pool ({activeSet.pool.length})</span>
-          </button>
-        ) : (
-          <div className="set-pool-accordion-content">
-            <SetPoolTable
-              pool={activeSet.pool}
-              emptyRows={(activeSet.empty_rows ?? []).filter(r => r.surface === 'pool')}
-              subgroups={activeSet.pool_subgroups ?? []}
-              subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
-              onRemove={removeFromPool}
-              onClearAll={clearPool}
-              onMoveToTracklist={movePoolToTracklist}
-              onReorder={reorderPool}
-              onAddTrack={handlePoolAddTrack}
-              onFillEmptyRow={handlePoolFillEmptyRow}
-              onInsertEmptyRows={(count, position) => addEmptyRows('pool', count, position)}
-              onDeleteEmptyRow={deleteEmptyRow}
-              onReorderEmptyRow={reorderEmptyRow}
-              onCreateSubgroup={createSubgroup}
-              onRenameSubgroup={renameSubgroup}
-              onDeleteSubgroup={deleteSubgroup}
-              onReorderSubgroups={reorderSubgroups}
-              onAddSubgroupMember={addSubgroupMember}
-              onRemoveSubgroupMember={removeSubgroupMember}
-              dndDisabled={dndDisabled}
-              dndIdPrefix={dndIdPrefix}
-            />
-          </div>
-        )}
+    <div className="set-workspace-split set-workspace-split--vertical">
+      <div className="tracklist-zone" data-testid="tracklist-zone">
+        <SetTracklist
+          tracklist={activeSet.tracklist}
+          emptyRows={(activeSet.empty_rows ?? []).filter(r => r.surface === 'tracklist')}
+          onRemove={removeFromTracklist}
+          onClearAll={clearTracklist}
+          onMoveToPool={moveTracklistToPool}
+          onReorder={reorderTracklist}
+          onUpdateNote={updateTracklistNote}
+          onAddTrack={addToTracklist}
+          onFillEmptyRow={handleTracklistFillEmptyRow}
+          onInsertEmptyRows={(count, position) => addEmptyRows('tracklist', count, position)}
+          onDeleteEmptyRow={deleteEmptyRow}
+          onReorderEmptyRow={reorderEmptyRow}
+          dndDisabled={dndDisabled}
+          dndIdPrefix={dndIdPrefix}
+        />
+      </div>
+      <div className="zone-divider" />
+      <div className="pool-zone" data-testid="pool-zone">
+        <SetPoolTable
+          pool={activeSet.pool}
+          emptyRows={(activeSet.empty_rows ?? []).filter(r => r.surface === 'pool')}
+          subgroups={activeSet.pool_subgroups ?? []}
+          subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
+          onRemove={removeFromPool}
+          onClearAll={clearPool}
+          onMoveToTracklist={movePoolToTracklist}
+          onReorder={reorderPool}
+          onAddTrack={handlePoolAddTrack}
+          onFillEmptyRow={handlePoolFillEmptyRow}
+          onInsertEmptyRows={(count, position) => addEmptyRows('pool', count, position)}
+          onDeleteEmptyRow={deleteEmptyRow}
+          onReorderEmptyRow={reorderEmptyRow}
+          onCreateSubgroup={createSubgroup}
+          onRenameSubgroup={renameSubgroup}
+          onDeleteSubgroup={deleteSubgroup}
+          onReorderSubgroups={reorderSubgroups}
+          onAddSubgroupMember={addSubgroupMember}
+          onRemoveSubgroupMember={removeSubgroupMember}
+          dndDisabled={dndDisabled}
+          dndIdPrefix={dndIdPrefix}
+        />
       </div>
     </div>
   );

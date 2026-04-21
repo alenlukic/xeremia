@@ -599,10 +599,21 @@ export function SetPoolTable({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
-  const [sorting, setSorting] = useState<SortDescriptor[]>([{ id: 'insertion_order', desc: false }]);
+  const defaultSort: SortDescriptor[] = [{ id: 'insertion_order', desc: false }];
+  const [sortByView, setSortByView] = useState<Record<string, SortDescriptor[]>>({ all: defaultSort });
   const [activeTab, setActiveTab] = useState<PoolTab>('all');
   const pendingSubgroupAssign = useRef<{ trackId: number; subgroupId: number } | null>(null);
   const [fillTargetId, setFillTargetId] = useState<string | null>(null);
+
+  const viewKey = String(activeTab);
+  const sorting = sortByView[viewKey] ?? defaultSort;
+  const setSorting = useCallback((next: SortDescriptor[] | ((prev: SortDescriptor[]) => SortDescriptor[])) => {
+    setSortByView(prev => {
+      const current = prev[viewKey] ?? defaultSort;
+      const resolved = typeof next === 'function' ? next(current) : next;
+      return { ...prev, [viewKey]: resolved };
+    });
+  }, [viewKey]);
 
   useEffect(() => {
     const pending = pendingSubgroupAssign.current;
@@ -778,36 +789,36 @@ export function SetPoolTable({
             Clear All
           </button>
         )}
-        <div className="set-pool-search-wrapper">
-          <input
-            className="set-pool-search"
-            placeholder={fillTargetId ? 'Search to fill empty row…' : 'Search to add…'}
-            value={searchQuery}
-            onChange={e => handleSearch(e.target.value)}
-          />
-          {fillTargetId && (
+        {fillTargetId && (
+          <div className="set-pool-search-wrapper">
+            <input
+              className="set-pool-search"
+              placeholder="Search to fill empty row…"
+              value={searchQuery}
+              onChange={e => handleSearch(e.target.value)}
+            />
             <button className="set-action-btn fill-cancel-btn" onClick={() => { setFillTargetId(null); setSearchQuery(''); setSearchResults([]); setShowSearch(false); }}>
               Cancel Fill
             </button>
-          )}
-          {showSearch && (
-            <ul className="set-pool-search-dropdown">
-              {searchResults.map(s => (
-                <li
-                  key={s.id}
-                  className="set-pool-search-item"
-                  onMouseDown={() => handleSearchSelect(s)}
-                >
-                  <span>{s.title}</span>
-                  <span className="text-muted">
-                    {s.camelot_code && <span className="mono"> {s.camelot_code}</span>}
-                    {s.bpm != null && <span className="mono"> · {s.bpm}</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            {showSearch && (
+              <ul className="set-pool-search-dropdown">
+                {searchResults.map(s => (
+                  <li
+                    key={s.id}
+                    className="set-pool-search-item"
+                    onMouseDown={() => handleSearchSelect(s)}
+                  >
+                    <span>{s.title}</span>
+                    <span className="text-muted">
+                      {s.camelot_code && <span className="mono"> {s.camelot_code}</span>}
+                      {s.bpm != null && <span className="mono"> · {s.bpm}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
       <PoolTabBar
         subgroups={subgroups}

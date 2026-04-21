@@ -248,16 +248,15 @@ describe('DnD: handleDragEnd guard paths', () => {
     act(() => {
       capturedOnDragEnd!({
         active: { id: 'browse-track-1', data: { current: undefined } },
-        over: { id: 'dock-matches' },
+        over: { id: 'drop-tracklist' },
       });
     });
 
-    screen.getAllByRole('tab').forEach(tab => {
-      expect(tab).toHaveAttribute('aria-selected', 'false');
-    });
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToPool).not.toHaveBeenCalled();
   });
 
-  it('no-ops for dock-matches when track is not found in allTracks', async () => {
+  it('no-ops for unrecognized target when track is not found', async () => {
     vi.mocked(useCollectionCache).mockReturnValue({
       allTracks: [],
       traitMap: new Map(),
@@ -268,69 +267,20 @@ describe('DnD: handleDragEnd guard paths', () => {
     await renderApp();
 
     const payload: DragPayload = { trackId: 999, title: 'Ghost', source: 'browse' };
-    fireDragEnd('browse-track-999', payload, 'dock-matches');
+    fireDragEnd('browse-track-999', payload, 'unknown-target');
 
     expect(screen.queryByText('Ghost')).not.toBeInTheDocument();
   });
-
-  it('shows warning when dropping on dock-explorer with no active set', async () => {
-    mockSB = makeSetBuilderMock({ activeSetId: null, activeSet: null });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('browse-track-1', browsePayload, 'dock-explorer');
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dnd-warning-toast')).toBeInTheDocument();
-      expect(screen.getByTestId('dnd-warning-toast').textContent).toContain('Select or create a set');
-    });
-
-    expect(mockSB.addExplorerNode).not.toHaveBeenCalled();
-  });
 });
 
-describe('DnD: dock-bar closed-panel drops', () => {
-  it('drop on dock-matches selects track and opens Matches panel', async () => {
-    await renderApp();
-
-    fireDragEnd('browse-track-1', browsePayload, 'dock-matches');
-
-    const matchesTab = screen.getByRole('tab', { name: 'Matches' });
-    expect(matchesTab).toHaveAttribute('aria-selected', 'true');
-  });
-
-  it('drop on dock-set adds to tracklist and opens Set panel', async () => {
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: { pool: [], tracklist: [], explorer_trees: [], explorer_nodes: [], explorer_edges: [] },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('browse-track-1', browsePayload, 'dock-set');
-
-    const setTab = screen.getByRole('tab', { name: /Set/ });
-    expect(setTab).toHaveAttribute('aria-selected', 'true');
-    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
-  });
-
-  it('drop on dock-explorer opens Explorer panel', async () => {
-    await renderApp();
-
-    fireDragEnd('browse-track-1', browsePayload, 'dock-explorer');
-
-    const explorerTab = screen.getByRole('tab', { name: 'Explorer' });
-    expect(explorerTab).toHaveAttribute('aria-selected', 'true');
-  });
-
+describe('DnD: null target', () => {
   it('no-op when drop target is null', async () => {
     await renderApp();
 
     fireDragEnd('browse-track-1', browsePayload, null);
 
-    screen.getAllByRole('tab').forEach(tab => {
-      expect(tab).toHaveAttribute('aria-selected', 'false');
-    });
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToPool).not.toHaveBeenCalled();
   });
 });
 
@@ -359,106 +309,17 @@ describe('DnD: open-panel drops', () => {
     expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
   });
 
-  it('drop on drop-matches-header selects track as source', async () => {
+  it('drop on unrecognized target is a no-op', async () => {
     await renderApp();
 
     fireDragEnd('browse-track-1', browsePayload, 'drop-matches-header');
 
-    await waitFor(() => {
-      const searchInput = screen.getByPlaceholderText('Search tracks…') as HTMLInputElement;
-      expect(searchInput.value).toBe('Track 1');
-    });
+    expect(mockSB.addToTracklist).not.toHaveBeenCalled();
+    expect(mockSB.addToPool).not.toHaveBeenCalled();
   });
 });
 
-describe('DnD: Explorer cell-based drops', () => {
-  const matchPayload: DragPayload = { trackId: 1, title: 'Track 1', source: 'matches' };
-
-  it('drop on empty cell calls addExplorerNode with exact slot', async () => {
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [],
-        tracklist: [],
-        explorer_trees: [],
-        explorer_nodes: [
-          { id: 1, set_id: 1, tree_id: 1, node_id: 'root1', track_id: 100, level: 0, col_index: 0, track: null },
-        ],
-        explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('match-track-1', matchPayload, 'drop-explorer-cell-1-2');
-
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 1, 2);
-  });
-
-  it('drop on occupied cell adds track as child of the occupant', async () => {
-    const explorerNodes = [
-      { id: 1, set_id: 1, tree_id: 1, node_id: 'n1', track_id: 100, level: 0, col_index: 0, track: null },
-      { id: 2, set_id: 1, tree_id: 1, node_id: 'n2', track_id: 101, level: 1, col_index: 2, track: null },
-    ];
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [], tracklist: [], explorer_trees: [],
-        explorer_nodes: explorerNodes,
-        explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('browse-track-1', browsePayload, 'drop-explorer-cell-1-2');
-
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, 'n2', 2);
-  });
-
-  it('dock-explorer places at first free slot on deepest level', async () => {
-    const explorerNodes = [
-      { id: 1, set_id: 1, tree_id: 1, node_id: 'root1', track_id: 100, level: 0, col_index: 0, track: null },
-      { id: 2, set_id: 1, tree_id: 1, node_id: 'n2', track_id: 101, level: 0, col_index: 1, track: null },
-    ];
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [], tracklist: [], explorer_trees: [],
-        explorer_nodes: explorerNodes,
-        explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('browse-track-1', browsePayload, 'dock-explorer');
-
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 0, 2);
-  });
-
-  it('dock-explorer moves to next level when deepest level is full', async () => {
-    const explorerNodes = Array.from({ length: 5 }, (_, i) => ({
-      id: i + 1, set_id: 1, tree_id: 1,
-      node_id: `n${i}`, track_id: 100 + i,
-      level: 0, col_index: i, track: null,
-    }));
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [], tracklist: [], explorer_trees: [],
-        explorer_nodes: explorerNodes,
-        explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('browse-track-1', browsePayload, 'dock-explorer');
-
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 1, 0);
-  });
-});
+/* Explorer cell-based drops removed — Phase A removes SetExplorerCanvas mount */
 
 describe('DnD: duplicate Pool drop no-op', () => {
   it('shows warning toast and does not call API for duplicate pool track', async () => {
@@ -531,92 +392,9 @@ describe('DnD: duplicate Pool drop no-op', () => {
   });
 });
 
-describe('DnD: tracklist source drops to explorer', () => {
-  it('tracklist drag to dock-explorer calls addExplorerNode', async () => {
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [], tracklist: [], explorer_trees: [],
-        explorer_nodes: [], explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
+/* Tracklist-to-explorer drops removed — Phase A removes SetExplorerCanvas mount */
 
-    fireDragEnd('tracklist-track-1', tracklistPayload, 'dock-explorer');
-
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 0, 0);
-  });
-
-  it('tracklist drag to empty explorer cell calls addExplorerNode with slot', async () => {
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [], tracklist: [], explorer_trees: [],
-        explorer_nodes: [
-          { id: 1, set_id: 1, tree_id: 1, node_id: 'root1', track_id: 100, level: 0, col_index: 0, track: null },
-        ],
-        explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('tracklist-track-1', tracklistPayload, 'drop-explorer-cell-0-2');
-
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 0, 2);
-  });
-});
-
-describe('DnD: pool source drops to explorer', () => {
-  it('pool drag to dock-explorer calls addExplorerNode', async () => {
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [], tracklist: [], explorer_trees: [],
-        explorer_nodes: [], explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('pool-track-1', poolPayload, 'dock-explorer');
-
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 0, 0);
-  });
-
-  it('pool drag to empty explorer cell calls addExplorerNode with slot', async () => {
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [], tracklist: [], explorer_trees: [],
-        explorer_nodes: [], explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('pool-track-1', poolPayload, 'drop-explorer-cell-1-3');
-
-    expect(mockSB.addExplorerNode).toHaveBeenCalledWith(1, undefined, 1, 3);
-  });
-
-  it('pool drag to dock-set adds to tracklist', async () => {
-    mockSB = makeSetBuilderMock({
-      activeSetId: 1,
-      activeSet: {
-        pool: [], tracklist: [], explorer_trees: [],
-        explorer_nodes: [], explorer_edges: [],
-      },
-    });
-    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
-    await renderApp();
-
-    fireDragEnd('pool-track-1', poolPayload, 'dock-set');
-
-    expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
-  });
-});
+/* Pool-to-explorer drops removed — Phase A removes SetExplorerCanvas mount and dock tabs */
 
 describe('DnD: pool row-to-row reorder', () => {
   it('reorders pool when dragging pool row to a different pool row position', async () => {
@@ -765,8 +543,8 @@ describe('DnD: multi-select payload handling', () => {
 
     expect(mockSB.addToPool).toHaveBeenCalledTimes(3);
     expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
-    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 2');
-    expect(mockSB.addToPool).toHaveBeenCalledWith(3, 'Track 3');
+    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 1');
+    expect(mockSB.addToPool).toHaveBeenCalledWith(3, 'Track 1');
   });
 
   it('multi-select drop on drop-tracklist adds all selected tracks', async () => {
@@ -782,8 +560,8 @@ describe('DnD: multi-select payload handling', () => {
 
     expect(mockSB.addToTracklist).toHaveBeenCalledTimes(3);
     expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
-    expect(mockSB.addToTracklist).toHaveBeenCalledWith(2, 'Track 2');
-    expect(mockSB.addToTracklist).toHaveBeenCalledWith(3, 'Track 3');
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(2, 'Track 1');
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(3, 'Track 1');
   });
 
   it('multi-select drop on drop-pool skips duplicates', async () => {
@@ -810,7 +588,7 @@ describe('DnD: multi-select payload handling', () => {
     fireDragEnd('tracklist-track-1', multiPayload, 'drop-pool');
 
     expect(mockSB.addToPool).toHaveBeenCalledTimes(1);
-    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 2');
+    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 1');
   });
 
   it('single-track payload without selectedTrackIds still works for drop-tracklist', async () => {
@@ -992,7 +770,7 @@ describe('DnD: drag-fill into empty rows', () => {
 
     expect(mockSB.addToTracklist).toHaveBeenCalledTimes(2);
     expect(mockSB.addToTracklist).toHaveBeenCalledWith(1, 'Track 1');
-    expect(mockSB.addToTracklist).toHaveBeenCalledWith(2, 'Track 2');
+    expect(mockSB.addToTracklist).toHaveBeenCalledWith(2, 'Track 1');
   });
 
   it('alt-prefixed empty row targets are normalized and handled', async () => {
@@ -1070,7 +848,7 @@ describe('DnD: alt-prefix normalization (Explorer panel droppable IDs)', () => {
 
     expect(mockSB.addToPool).toHaveBeenCalledTimes(2);
     expect(mockSB.addToPool).toHaveBeenCalledWith(1, 'Track 1');
-    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 2');
+    expect(mockSB.addToPool).toHaveBeenCalledWith(2, 'Track 1');
   });
 });
 

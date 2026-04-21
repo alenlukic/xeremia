@@ -1,76 +1,160 @@
 {
-  "contract": "DEVELOPMENT_CONTRACT_5",
-  "test_command": "python -m pytest src/tests/test_set_workspace_api.py -v",
-  "applicable": true,
-  "passed": true,
-  "total": 178,
-  "passed_count": 178,
-  "failed_count": 0,
-  "skipped_count": 0,
-  "full_suite": {
-    "command": "python -m pytest src/tests/ -v",
-    "passed": true,
-    "total": 809,
-    "passed_count": 809,
-    "failed_count": 0,
-    "skipped_count": 11
-  },
-  "lint": {
-    "command": "ruff check src/set_workspace/service.py src/api/routes.py src/api/schemas.py src/tests/test_set_workspace_api.py",
-    "passed": true
-  },
-  "new_tests": [
-    "TestVersionCreate::test_create_version",
-    "TestVersionCreate::test_create_second_version_increments_order",
-    "TestVersionCreate::test_duplicate_name_rejected",
-    "TestVersionCreate::test_max_10_versions",
-    "TestVersionRename::test_rename_version",
-    "TestVersionRename::test_rename_not_found",
-    "TestVersionRename::test_rename_duplicate_rejected",
-    "TestVersionDelete::test_delete_version",
-    "TestVersionDelete::test_delete_cascades_slots_and_candidates",
-    "TestVersionDelete::test_delete_shifts_later_display_orders",
-    "TestVersionDelete::test_delete_not_found",
-    "TestVersionReorder::test_reorder_versions",
-    "TestVersionReorder::test_reorder_mismatched_ids_rejected",
-    "TestVersionReorder::test_reorder_duplicate_ids_rejected",
-    "TestSlotCreate::test_create_slot_at_end",
-    "TestSlotCreate::test_create_slot_at_position_shifts_later",
-    "TestSlotCreate::test_max_250_slots",
-    "TestSlotCreate::test_create_slot_version_not_found",
-    "TestSlotDelete::test_delete_slot_shifts_positions",
-    "TestSlotDelete::test_delete_slot_cascades_candidates",
-    "TestSlotDelete::test_delete_slot_not_found",
-    "TestSlotReorder::test_reorder_forward",
-    "TestSlotReorder::test_reorder_backward",
-    "TestSlotReorder::test_reorder_noop",
-    "TestSlotReorder::test_reorder_clears_inherited",
-    "TestSlotNoteUpdate::test_update_note",
-    "TestSlotNoteUpdate::test_note_update_clears_inherited",
-    "TestCandidateAdd::test_add_first_candidate_auto_selected",
-    "TestCandidateAdd::test_add_second_candidate_not_selected",
-    "TestCandidateAdd::test_max_5_candidates",
-    "TestCandidateAdd::test_add_candidate_clears_inherited",
-    "TestCandidateRemove::test_remove_last_candidate_deletes_slot",
-    "TestCandidateRemove::test_remove_selected_candidate_promotes_next",
-    "TestCandidateRemove::test_remove_non_selected_keeps_selection",
-    "TestCandidateRemove::test_remove_last_candidate_shifts_later_slots",
-    "TestCandidateRemove::test_remove_candidate_clears_inherited",
-    "TestCandidateSelect::test_select_candidate",
-    "TestCandidateSelect::test_select_not_found",
-    "TestCandidateSelect::test_exactly_one_selected_invariant",
-    "TestCandidateSelect::test_select_clears_inherited",
-    "TestVersionBranch::test_branch_creates_version_with_copied_slots",
-    "TestVersionBranch::test_branch_slots_marked_inherited",
-    "TestVersionBranch::test_branch_creates_explorer_tree",
-    "TestVersionBranch::test_branch_copies_candidates",
-    "TestVersionBranch::test_branch_respects_max_versions",
-    "TestVersionBranch::test_branch_duplicate_name_rejected",
-    "TestInheritedLifecycle::test_full_inherited_lifecycle",
-    "TestTransitionScoreCacheWriteOnCompute::test_cache_populated_after_first_compute",
-    "TestTransitionScoreCacheWriteOnCompute::test_cache_not_bypassed_by_new_code_paths",
-    "TestTransitionScoreCacheWriteOnCompute::test_directional_keys_preserved",
-    "TestTransitionScoreCacheWriteOnCompute::test_clear_invalidates_all_cached_scores",
-    "TestVersionSlotCandidateHydration::test_hydrate_after_full_crud_cycle"
+  "timestamp": "2026-04-21T23:47:52Z",
+  "runner": "vitest 4.1.2",
+  "success": true,
+  "numTotalTestSuites": 21,
+  "numPassedTestSuites": 21,
+  "numFailedTestSuites": 0,
+  "numTotalTests": 706,
+  "numPassedTests": 706,
+  "numFailedTests": 0,
+  "testSuites": [
+    {
+      "file": "src/App.dnd.test.tsx",
+      "status": "passed",
+      "numTests": 71,
+      "numPassed": 71,
+      "numFailed": 0
+    },
+    {
+      "file": "src/App.test.tsx",
+      "status": "passed",
+      "numTests": 19,
+      "numPassed": 19,
+      "numFailed": 0
+    },
+    {
+      "file": "src/utils.test.ts",
+      "status": "passed",
+      "numTests": 44,
+      "numPassed": 44,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/FilterBar.test.tsx",
+      "status": "passed",
+      "numTests": 34,
+      "numPassed": 34,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/MatchDetail.test.tsx",
+      "status": "passed",
+      "numTests": 3,
+      "numPassed": 3,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/MatchesPanel.test.tsx",
+      "status": "passed",
+      "numTests": 46,
+      "numPassed": 46,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/PlayerBar.test.tsx",
+      "status": "passed",
+      "numTests": 5,
+      "numPassed": 5,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/SetBuilder.test.tsx",
+      "status": "passed",
+      "numTests": 21,
+      "numPassed": 21,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/SetExplorerCanvas.test.tsx",
+      "status": "passed",
+      "numTests": 91,
+      "numPassed": 91,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/SetPoolTable.test.tsx",
+      "status": "passed",
+      "numTests": 60,
+      "numPassed": 60,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/SetTracklist.test.tsx",
+      "status": "passed",
+      "numTests": 69,
+      "numPassed": 69,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/SortTierBar.test.tsx",
+      "status": "passed",
+      "numTests": 11,
+      "numPassed": 11,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/TrackTable.test.tsx",
+      "status": "passed",
+      "numTests": 52,
+      "numPassed": 52,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/WeightControls.test.tsx",
+      "status": "passed",
+      "numTests": 17,
+      "numPassed": 17,
+      "numFailed": 0
+    },
+    {
+      "file": "src/hooks/useAudioPlayer.test.tsx",
+      "status": "passed",
+      "numTests": 68,
+      "numPassed": 68,
+      "numFailed": 0
+    },
+    {
+      "file": "src/hooks/useEdgeAutoScroll.test.tsx",
+      "status": "passed",
+      "numTests": 8,
+      "numPassed": 8,
+      "numFailed": 0
+    },
+    {
+      "file": "src/hooks/useSetBuilder.test.ts",
+      "status": "passed",
+      "numTests": 16,
+      "numPassed": 16,
+      "numFailed": 0
+    },
+    {
+      "file": "src/hooks/useTrackFilters.test.ts",
+      "status": "passed",
+      "numTests": 30,
+      "numPassed": 30,
+      "numFailed": 0
+    },
+    {
+      "file": "src/utils/explorer.test.ts",
+      "status": "passed",
+      "numTests": 15,
+      "numPassed": 15,
+      "numFailed": 0
+    },
+    {
+      "file": "src/utils/trackTitle.test.ts",
+      "status": "passed",
+      "numTests": 16,
+      "numPassed": 16,
+      "numFailed": 0
+    },
+    {
+      "file": "src/components/explorer/ExplorerEdgeLayer.test.tsx",
+      "status": "passed",
+      "numTests": 10,
+      "numPassed": 10,
+      "numFailed": 0
+    }
   ]
 }

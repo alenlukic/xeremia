@@ -551,36 +551,36 @@ export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemov
             Clear All
           </button>
         )}
-        <div className="set-tracklist-search-wrapper">
-          <input
-            className="set-tracklist-search"
-            placeholder={fillTargetId ? 'Search to fill empty row…' : 'Search to add…'}
-            value={searchQuery}
-            onChange={e => handleSearch(e.target.value)}
-          />
-          {fillTargetId && (
+        {fillTargetId && (
+          <div className="set-tracklist-search-wrapper">
+            <input
+              className="set-tracklist-search"
+              placeholder="Search to fill empty row…"
+              value={searchQuery}
+              onChange={e => handleSearch(e.target.value)}
+            />
             <button className="set-action-btn fill-cancel-btn" onClick={() => { setFillTargetId(null); setSearchQuery(''); setSearchResults([]); setShowSearch(false); }}>
               Cancel Fill
             </button>
-          )}
-          {showSearch && (
-            <ul className="set-tracklist-search-dropdown">
-              {searchResults.map(s => (
-                <li
-                  key={s.id}
-                  className="set-tracklist-search-item"
-                  onMouseDown={() => handleSearchSelect(s)}
-                >
-                  <span>{s.title}</span>
-                  <span className="text-muted">
-                    {s.camelot_code && <span className="mono"> {s.camelot_code}</span>}
-                    {s.bpm != null && <span className="mono"> · {s.bpm}</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            {showSearch && (
+              <ul className="set-tracklist-search-dropdown">
+                {searchResults.map(s => (
+                  <li
+                    key={s.id}
+                    className="set-tracklist-search-item"
+                    onMouseDown={() => handleSearchSelect(s)}
+                  >
+                    <span>{s.title}</span>
+                    <span className="text-muted">
+                      {s.camelot_code && <span className="mono"> {s.camelot_code}</span>}
+                      {s.bpm != null && <span className="mono"> · {s.bpm}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
       <SortTierBar
         sorting={sorting}

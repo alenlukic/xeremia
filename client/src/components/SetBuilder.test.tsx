@@ -109,7 +109,7 @@ describe('SetBuilder', () => {
   });
 
   describe('workspace layout', () => {
-    it('shows tracklist and collapsed pool when a set is active', () => {
+    it('shows tracklist and pool zones when a set is active', () => {
       render(
         <SetBuilder
           {...defaultProps()}
@@ -118,11 +118,11 @@ describe('SetBuilder', () => {
           activeSet={makeHydratedSet()}
         />,
       );
-      expect(screen.getByText('Tracklist (0)')).toBeInTheDocument();
-      expect(screen.getByLabelText('Expand pool')).toBeInTheDocument();
+      expect(screen.getByTestId('tracklist-zone')).toBeInTheDocument();
+      expect(screen.getByTestId('pool-zone')).toBeInTheDocument();
     });
 
-    it('collapsed expand tab shows a directional chevron', () => {
+    it('pool zone is always visible (no accordion)', () => {
       render(
         <SetBuilder
           {...defaultProps()}
@@ -131,53 +131,51 @@ describe('SetBuilder', () => {
           activeSet={makeHydratedSet()}
         />,
       );
-      const expandBtn = screen.getByLabelText('Expand pool');
-      expect(expandBtn).toHaveAttribute('title', 'Expand pool');
-      expect(expandBtn.textContent).toContain('›');
+      expect(screen.getByTestId('pool-zone')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Expand pool')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Collapse pool')).not.toBeInTheDocument();
     });
 
-    it('expands pool accordion via prop', () => {
-      render(
+    it('renders workspace split layout', () => {
+      const { container } = render(
         <SetBuilder
           {...defaultProps()}
           sets={[makeSetSummary()]}
           activeSetId={1}
           activeSet={makeHydratedSet()}
-          poolExpanded={true}
         />,
       );
-      expect(screen.getByText('Pool (0)')).toBeInTheDocument();
-      expect(screen.getByLabelText('Collapse pool')).toBeInTheDocument();
+      expect(container.querySelector('.set-workspace-split')).toBeInTheDocument();
     });
 
-    it('calls onPoolExpandedChange when expand tab is clicked', async () => {
-      const onPoolExpandedChange = vi.fn();
-      render(
+    it('renders zone divider between tracklist and pool', () => {
+      const { container } = render(
         <SetBuilder
           {...defaultProps()}
           sets={[makeSetSummary()]}
           activeSetId={1}
           activeSet={makeHydratedSet()}
-          onPoolExpandedChange={onPoolExpandedChange}
         />,
       );
-      await userEvent.click(screen.getByLabelText('Expand pool'));
-      expect(onPoolExpandedChange).toHaveBeenCalledWith(true);
+      expect(container.querySelector('.zone-divider')).toBeInTheDocument();
     });
 
-    it('collapse handle has title text and visible chevron', () => {
-      render(
+    it('pool zone contains pool table', () => {
+      const hydrated = makeHydratedSet({
+        pool: [{
+          id: 1, set_id: 1, track_id: 10, insertion_order: 0, starred: false,
+          track: { id: 10, title: 'Pool Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
+        }],
+      });
+      const { container } = render(
         <SetBuilder
           {...defaultProps()}
           sets={[makeSetSummary()]}
           activeSetId={1}
-          activeSet={makeHydratedSet()}
-          poolExpanded={true}
+          activeSet={hydrated}
         />,
       );
-      const collapseBtn = screen.getByLabelText('Collapse pool');
-      expect(collapseBtn).toHaveAttribute('title', 'Collapse pool');
-      expect(collapseBtn.textContent).toContain('‹');
+      expect(container.querySelector('.set-pool-table')).toBeInTheDocument();
     });
   });
 
@@ -344,7 +342,7 @@ describe('SetBuilder', () => {
           track: { id: 10, title: 'Test Track', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
         }],
       });
-      render(
+      const { container } = render(
         <SetBuilder
           {...defaultProps()}
           sets={[makeSetSummary()]}
@@ -352,10 +350,12 @@ describe('SetBuilder', () => {
           activeSet={hydrated}
         />,
       );
-      expect(screen.getByText('#')).toBeInTheDocument();
-      expect(screen.getByText('Title')).toBeInTheDocument();
-      expect(screen.getByText('Note')).toBeInTheDocument();
-      expect(screen.getByText('Actions')).toBeInTheDocument();
+      const tracklistTable = container.querySelector('.set-tracklist-table')!;
+      const headers = Array.from(tracklistTable.querySelectorAll('th')).map(th => th.textContent);
+      expect(headers).toContain('#');
+      expect(headers).toContain('Title');
+      expect(headers).toContain('Note');
+      expect(headers).toContain('Actions');
     });
   });
 

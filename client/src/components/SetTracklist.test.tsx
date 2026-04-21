@@ -576,7 +576,7 @@ describe('SetTracklist empty row rendering', () => {
     expect(container.querySelector('.fill-cancel-btn')).toBeTruthy();
   });
 
-  it('cancel fill mode restores normal search', () => {
+  it('cancel fill mode hides the fill search', () => {
     const emptyRows = [makePersistedEmptyRow(100, 2)];
     const { container } = renderTracklist(makeEntries(), { emptyRows });
     const fillBtn = container.querySelector('.set-tracklist-table tbody tr.empty-row [title="Fill with track"]') as HTMLButtonElement;
@@ -585,8 +585,6 @@ describe('SetTracklist empty row rendering', () => {
     expect(container.querySelector('.fill-cancel-btn')).toBeTruthy();
     fireEvent.click(container.querySelector('.fill-cancel-btn')!);
 
-    const searchInput = container.querySelector('.set-tracklist-search') as HTMLInputElement;
-    expect(searchInput.placeholder).toBe('Search to add…');
     expect(container.querySelector('.fill-cancel-btn')).toBeNull();
     expect(container.querySelectorAll('.set-tracklist-table tbody tr.empty-row').length).toBe(1);
   });
