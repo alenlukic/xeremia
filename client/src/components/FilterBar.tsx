@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
 import type { FilterGroup } from '../hooks/useTrackFilters';
 import { isGroupActive } from '../hooks/useTrackFilters';
 
@@ -91,7 +91,10 @@ function FilterGroupPanel({
   useEffect(() => {
     if (!camelotOpen) return;
     function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setCamelotOpen(false);
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation();
+        setCamelotOpen(false);
+      }
     }
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
@@ -335,7 +338,7 @@ function FilterGroupPanel({
 
 export function FilterBar({
   expanded,
-  onToggleExpanded: _onToggleExpanded,
+  onToggleExpanded,
   activeFilterCount: _activeFilterCount,
   filterGroups,
   addFilterGroup,
@@ -347,46 +350,82 @@ export function FilterBar({
     filterGroups.length > 1 ||
     filterGroups.some(isGroupActive);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const close = useCallback(() => {
+    if (expanded) onToggleExpanded();
+  }, [expanded, onToggleExpanded]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') close();
+    }
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [expanded, close]);
+
   if (!expanded) return null;
 
   return (
-    <div className="filter-tray" data-testid="filter-tray">
+    <>
+      <div className="overlay-scrim" onClick={close} />
       <div
-        className={`filter-groups-section${filterGroups.length > 1 ? ' filter-groups-section--multi' : ''}`}
-        data-testid="filter-groups"
+        className="filter-modal"
+        ref={modalRef}
+        role="dialog"
+        aria-label="Filters"
+        data-testid="filter-tray"
       >
-        {filterGroups.map((group, index) => (
-          <Fragment key={group.id}>
-            {index > 0 && <span className="filter-or-divider" aria-hidden="true">OR</span>}
-            <FilterGroupPanel
-              group={group}
-              onUpdate={(updates) => updateFilterGroup(group.id, updates)}
-              onRemove={() => removeFilterGroup(group.id)}
-              showRemove={filterGroups.length > 1}
-            />
-          </Fragment>
-        ))}
-        <button
-          className="filter-add-group-btn"
-          onClick={addFilterGroup}
-          title="Add filter group (OR)"
-          aria-label="Add filter group"
-        >
-          + OR Group
-        </button>
-      </div>
-
-      {onClearFilters && (
-        <div className="filter-tray-row">
+        <div className="filter-modal__header">
+          <span className="filter-modal__title">Filters</span>
           <button
-            className="clear-filters-btn"
-            onClick={onClearFilters}
-            disabled={!hasAnyFilter}
+            className="filter-modal__close"
+            onClick={close}
+            aria-label="Close filters"
           >
-            Clear Filters
+            ×
           </button>
         </div>
-      )}
-    </div>
+        <div className="filter-modal__body">
+          <div
+            className={`filter-groups-section${filterGroups.length > 1 ? ' filter-groups-section--multi' : ''}`}
+            data-testid="filter-groups"
+          >
+            {filterGroups.map((group, index) => (
+              <Fragment key={group.id}>
+                {index > 0 && <span className="filter-or-divider" aria-hidden="true">OR</span>}
+                <FilterGroupPanel
+                  group={group}
+                  onUpdate={(updates) => updateFilterGroup(group.id, updates)}
+                  onRemove={() => removeFilterGroup(group.id)}
+                  showRemove={filterGroups.length > 1}
+                />
+              </Fragment>
+            ))}
+            <button
+              className="filter-add-group-btn"
+              onClick={addFilterGroup}
+              title="Add filter group (OR)"
+              aria-label="Add filter group"
+            >
+              + OR Group
+            </button>
+          </div>
+
+          {onClearFilters && (
+            <div className="filter-tray-row">
+              <button
+                className="clear-filters-btn"
+                onClick={onClearFilters}
+                disabled={!hasAnyFilter}
+              >
+                Clear Filters
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }

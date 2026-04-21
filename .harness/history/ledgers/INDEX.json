@@ -1095,5 +1095,19 @@
     "build_status": "PASS",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260417T214756Z-delivery-make-weight-gauge-control-style-",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Objective\n- Make the weight gauge controls visually and interaction-wise consistent with the app's existing flat control language.\n\n## In-scope files",
+    "published_at": "2026-04-17T22:36:59.661819+00:00",
+    "path": ".harness/history/ledgers/20260417T214756Z-delivery-make-weight-gauge-control-style-.md",
+    "files_changed": 1,
+    "eval_score": 100,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "LOW"
   }
 ]
