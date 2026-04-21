@@ -1334,3 +1334,520 @@ class SetWorkspaceService:
         self.session.add(entry)
         self.session.flush()
         return True, None
+
+    # --- Version CRUD ---
+
+    MAX_VERSIONS_PER_SET = 10
+    MAX_SLOTS_PER_VERSION = 250
+    MAX_CANDIDATES_PER_SLOT = 5
+
+    def version_create(
+        self, set_id: int, name: str,
+    ) -> Tuple[Optional[SetTracklistVersion], Optional[str]]:
+        count = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(set_id=set_id)
+            .count()
+        )
+        if count >= self.MAX_VERSIONS_PER_SET:
+            return None, f"Maximum {self.MAX_VERSIONS_PER_SET} versions per set"
+
+        existing = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(set_id=set_id, name=name)
+            .first()
+        )
+        if existing:
+            return None, f"A version named '{name}' already exists"
+
+        max_order = (
+            self.session.query(SetTracklistVersion.display_order)
+            .filter_by(set_id=set_id)
+            .order_by(SetTracklistVersion.display_order.desc())
+            .first()
+        )
+        next_order = (max_order[0] + 1) if max_order else 0
+
+        version = SetTracklistVersion(
+            set_id=set_id, name=name, display_order=next_order,
+        )
+        self.session.add(version)
+        self.session.flush()
+        return version, None
+
+    def version_rename(
+        self, set_id: int, version_id: int, name: str,
+    ) -> Tuple[Optional[SetTracklistVersion], Optional[str]]:
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return None, "Version not found"
+
+        dup = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(set_id=set_id, name=name)
+            .filter(SetTracklistVersion.id != version_id)
+            .first()
+        )
+        if dup:
+            return None, f"A version named '{name}' already exists"
+
+        version.name = name
+        self.session.flush()
+        return version, None
+
+    def version_delete(
+        self, set_id: int, version_id: int,
+    ) -> Tuple[bool, Optional[str]]:
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return False, "Version not found"
+
+        removed_order = version.display_order
+
+        slot_ids = [
+            s.id for s in
+            self.session.query(SetTracklistSlot.id)
+            .filter_by(version_id=version_id)
+            .all()
+        ]
+        if slot_ids:
+            self.session.query(SetTracklistCandidate).filter(
+                SetTracklistCandidate.slot_id.in_(slot_ids),
+            ).delete(synchronize_session="fetch")
+        self.session.query(SetTracklistSlot).filter_by(
+            version_id=version_id,
+        ).delete()
+
+        self.session.delete(version)
+
+        later = (
+            self.session.query(SetTracklistVersion)
+            .filter(
+                SetTracklistVersion.set_id == set_id,
+                SetTracklistVersion.display_order > removed_order,
+            )
+            .order_by(SetTracklistVersion.display_order)
+            .all()
+        )
+        for v in later:
+            v.display_order -= 1
+
+        self.session.flush()
+        return True, None
+
+    def version_reorder(
+        self, set_id: int, version_ids: List[int],
+    ) -> Tuple[bool, Optional[str]]:
+        if len(version_ids) != len(set(version_ids)):
+            return False, "Duplicate version IDs in reorder list"
+
+        current = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(set_id=set_id)
+            .all()
+        )
+        current_ids = {v.id for v in current}
+        if set(version_ids) != current_ids:
+            return False, "Submitted version IDs do not match current versions for this set"
+
+        v_map = {v.id: v for v in current}
+        for idx, vid in enumerate(version_ids):
+            v_map[vid].display_order = idx
+        self.session.flush()
+        return True, None
+
+    def version_branch(
+        self,
+        set_id: int,
+        source_version_id: int,
+        branch_point: int,
+        name: str,
+    ) -> Tuple[Optional[SetTracklistVersion], Optional[str]]:
+        count = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(set_id=set_id)
+            .count()
+        )
+        if count >= self.MAX_VERSIONS_PER_SET:
+            return None, f"Maximum {self.MAX_VERSIONS_PER_SET} versions per set"
+
+        source = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=source_version_id, set_id=set_id)
+            .first()
+        )
+        if source is None:
+            return None, "Source version not found"
+
+        existing_name = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(set_id=set_id, name=name)
+            .first()
+        )
+        if existing_name:
+            return None, f"A version named '{name}' already exists"
+
+        tree = SetExplorerTree(set_id=set_id, name=name)
+        self.session.add(tree)
+        self.session.flush()
+
+        max_order = (
+            self.session.query(SetTracklistVersion.display_order)
+            .filter_by(set_id=set_id)
+            .order_by(SetTracklistVersion.display_order.desc())
+            .first()
+        )
+        next_order = (max_order[0] + 1) if max_order else 0
+
+        new_version = SetTracklistVersion(
+            set_id=set_id,
+            name=name,
+            display_order=next_order,
+            explorer_tree_id=tree.id,
+        )
+        self.session.add(new_version)
+        self.session.flush()
+
+        source_slots = (
+            self.session.query(SetTracklistSlot)
+            .filter_by(version_id=source_version_id)
+            .filter(SetTracklistSlot.position <= branch_point)
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+
+        for src_slot in source_slots:
+            new_slot = SetTracklistSlot(
+                version_id=new_version.id,
+                position=src_slot.position,
+                note=src_slot.note,
+                is_inherited=True,
+            )
+            self.session.add(new_slot)
+            self.session.flush()
+
+            src_candidates = (
+                self.session.query(SetTracklistCandidate)
+                .filter_by(slot_id=src_slot.id)
+                .all()
+            )
+            for src_cand in src_candidates:
+                new_cand = SetTracklistCandidate(
+                    slot_id=new_slot.id,
+                    track_id=src_cand.track_id,
+                    is_selected=src_cand.is_selected,
+                )
+                self.session.add(new_cand)
+
+        self.session.flush()
+        return new_version, None
+
+    # --- Slot CRUD ---
+
+    def slot_create(
+        self, set_id: int, version_id: int, position: Optional[int] = None,
+    ) -> Tuple[Optional[SetTracklistSlot], Optional[str]]:
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return None, "Version not found"
+
+        slot_count = (
+            self.session.query(SetTracklistSlot)
+            .filter_by(version_id=version_id)
+            .count()
+        )
+        if slot_count >= self.MAX_SLOTS_PER_VERSION:
+            return None, f"Maximum {self.MAX_SLOTS_PER_VERSION} slots per version"
+
+        if position is None:
+            position = slot_count
+
+        position = max(0, min(position, slot_count))
+
+        later = (
+            self.session.query(SetTracklistSlot)
+            .filter(
+                SetTracklistSlot.version_id == version_id,
+                SetTracklistSlot.position >= position,
+            )
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        for s in later:
+            s.position += 1
+
+        slot = SetTracklistSlot(
+            version_id=version_id, position=position,
+        )
+        self.session.add(slot)
+        self.session.flush()
+        return slot, None
+
+    def slot_delete(
+        self, set_id: int, version_id: int, slot_id: int,
+    ) -> Tuple[bool, Optional[str]]:
+        slot = (
+            self.session.query(SetTracklistSlot)
+            .filter_by(id=slot_id, version_id=version_id)
+            .first()
+        )
+        if slot is None:
+            return False, "Slot not found"
+
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return False, "Version not found"
+
+        removed_pos = slot.position
+
+        self.session.query(SetTracklistCandidate).filter_by(
+            slot_id=slot_id,
+        ).delete()
+        self.session.delete(slot)
+
+        later = (
+            self.session.query(SetTracklistSlot)
+            .filter(
+                SetTracklistSlot.version_id == version_id,
+                SetTracklistSlot.position > removed_pos,
+            )
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        for s in later:
+            s.position -= 1
+
+        self.session.flush()
+        return True, None
+
+    def slot_reorder(
+        self, set_id: int, version_id: int, slot_id: int, new_position: int,
+    ) -> Tuple[bool, Optional[str]]:
+        slot = (
+            self.session.query(SetTracklistSlot)
+            .filter_by(id=slot_id, version_id=version_id)
+            .first()
+        )
+        if slot is None:
+            return False, "Slot not found"
+
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return False, "Version not found"
+
+        old_pos = slot.position
+
+        total = (
+            self.session.query(SetTracklistSlot)
+            .filter_by(version_id=version_id)
+            .count()
+        )
+        new_position = max(0, min(new_position, total - 1))
+
+        if old_pos == new_position:
+            return True, None
+
+        self._clear_inherited(slot)
+
+        siblings = (
+            self.session.query(SetTracklistSlot)
+            .filter(
+                SetTracklistSlot.version_id == version_id,
+                SetTracklistSlot.id != slot_id,
+            )
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        if old_pos < new_position:
+            for s in siblings:
+                if old_pos < s.position <= new_position:
+                    s.position -= 1
+        else:
+            for s in siblings:
+                if new_position <= s.position < old_pos:
+                    s.position += 1
+
+        slot.position = new_position
+        self.session.flush()
+        return True, None
+
+    def slot_update_note(
+        self, set_id: int, version_id: int, slot_id: int, note: str,
+    ) -> Tuple[bool, Optional[str]]:
+        slot = (
+            self.session.query(SetTracklistSlot)
+            .filter_by(id=slot_id, version_id=version_id)
+            .first()
+        )
+        if slot is None:
+            return False, "Slot not found"
+
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return False, "Version not found"
+
+        self._clear_inherited(slot)
+        slot.note = note
+        self.session.flush()
+        return True, None
+
+    # --- Candidate CRUD ---
+
+    def candidate_add(
+        self, set_id: int, slot_id: int, track_id: int,
+    ) -> Tuple[Optional[SetTracklistCandidate], Optional[str]]:
+        slot = self.session.query(SetTracklistSlot).filter_by(id=slot_id).first()
+        if slot is None:
+            return None, "Slot not found"
+
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=slot.version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return None, "Slot does not belong to this set"
+
+        cand_count = (
+            self.session.query(SetTracklistCandidate)
+            .filter_by(slot_id=slot_id)
+            .count()
+        )
+        if cand_count >= self.MAX_CANDIDATES_PER_SLOT:
+            return None, f"Maximum {self.MAX_CANDIDATES_PER_SLOT} candidates per slot"
+
+        self._clear_inherited(slot)
+
+        is_first = cand_count == 0
+        candidate = SetTracklistCandidate(
+            slot_id=slot_id,
+            track_id=track_id,
+            is_selected=is_first,
+        )
+        self.session.add(candidate)
+        self.session.flush()
+        return candidate, None
+
+    def candidate_remove(
+        self, set_id: int, slot_id: int, candidate_id: int,
+    ) -> Tuple[bool, Optional[str]]:
+        slot = self.session.query(SetTracklistSlot).filter_by(id=slot_id).first()
+        if slot is None:
+            return False, "Slot not found"
+
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=slot.version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return False, "Slot does not belong to this set"
+
+        candidate = (
+            self.session.query(SetTracklistCandidate)
+            .filter_by(id=candidate_id, slot_id=slot_id)
+            .first()
+        )
+        if candidate is None:
+            return False, "Candidate not found"
+
+        was_selected = candidate.is_selected
+        self._clear_inherited(slot)
+        self.session.delete(candidate)
+        self.session.flush()
+
+        remaining = (
+            self.session.query(SetTracklistCandidate)
+            .filter_by(slot_id=slot_id)
+            .all()
+        )
+
+        if not remaining:
+            version_id = slot.version_id
+            removed_pos = slot.position
+            self.session.delete(slot)
+
+            later = (
+                self.session.query(SetTracklistSlot)
+                .filter(
+                    SetTracklistSlot.version_id == version_id,
+                    SetTracklistSlot.position > removed_pos,
+                )
+                .order_by(SetTracklistSlot.position)
+                .all()
+            )
+            for s in later:
+                s.position -= 1
+
+            self.session.flush()
+            return True, None
+
+        if was_selected:
+            remaining[0].is_selected = True
+            self.session.flush()
+
+        return True, None
+
+    def candidate_select(
+        self, set_id: int, slot_id: int, candidate_id: int,
+    ) -> Tuple[bool, Optional[str]]:
+        slot = self.session.query(SetTracklistSlot).filter_by(id=slot_id).first()
+        if slot is None:
+            return False, "Slot not found"
+
+        version = (
+            self.session.query(SetTracklistVersion)
+            .filter_by(id=slot.version_id, set_id=set_id)
+            .first()
+        )
+        if version is None:
+            return False, "Slot does not belong to this set"
+
+        target = (
+            self.session.query(SetTracklistCandidate)
+            .filter_by(id=candidate_id, slot_id=slot_id)
+            .first()
+        )
+        if target is None:
+            return False, "Candidate not found"
+
+        self._clear_inherited(slot)
+
+        self.session.query(SetTracklistCandidate).filter(
+            SetTracklistCandidate.slot_id == slot_id,
+            SetTracklistCandidate.id != candidate_id,
+        ).update({"is_selected": False}, synchronize_session="fetch")
+
+        target.is_selected = True
+        self.session.flush()
+        return True, None
+
+    # --- is_inherited lifecycle ---
+
+    def _clear_inherited(self, slot: SetTracklistSlot) -> None:
+        if slot.is_inherited:
+            slot.is_inherited = False

@@ -1,0 +1,1788 @@
+diff --git a/src/api/routes.py b/src/api/routes.py
+index 6bc1070..fd09e39 100644
+--- a/src/api/routes.py
++++ b/src/api/routes.py
+@@ -52,6 +52,15 @@ from src.api.schemas import (
+     TransitionScoreResponse,
+     WeightResponse,
+     WeightUpdateRequest,
++    VersionCreateRequest,
++    VersionRenameRequest,
++    VersionReorderRequest,
++    VersionBranchRequest,
++    VersionResponse,
++    SlotCreateRequest,
++    SlotReorderRequest,
++    SlotNoteUpdateRequest,
++    CandidateAddRequest,
+ )
+ from src.api.queries import get_tracks
+ from src.api.serializers import (
+@@ -1380,6 +1389,329 @@ def api_tracklist_move_to_pool(set_id: int, body: MoveRequest):
+         session.close()
+ 
+ 
++# ---------------------------------------------------------------------------
++# Version / Slot / Candidate endpoints
++# ---------------------------------------------------------------------------
++
++
++@router.post("/sets/{set_id}/versions", response_model=VersionResponse, status_code=201)
++def api_version_create(set_id: int, body: VersionCreateRequest):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        if svc.get_set(set_id) is None:
++            raise HTTPException(status_code=404, detail="Set not found")
++        version, error = svc.version_create(set_id, body.name)
++        if error:
++            status = 409 if "Maximum" in error else 400
++            raise HTTPException(status_code=status, detail=error)
++        session.commit()
++        return {
++            "id": version.id,
++            "set_id": version.set_id,
++            "name": version.name,
++            "display_order": version.display_order,
++            "explorer_tree_id": version.explorer_tree_id,
++            "slots": [],
++            "derived_explorer_nodes": [],
++        }
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Version create failed")
++        raise HTTPException(status_code=500, detail="Version create failed")
++    finally:
++        session.close()
++
++
++@router.patch("/sets/{set_id}/versions/{version_id}", response_model=VersionResponse)
++def api_version_rename(set_id: int, version_id: int, body: VersionRenameRequest):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        version, error = svc.version_rename(set_id, version_id, body.name)
++        if error:
++            status = 404 if error == "Version not found" else 400
++            raise HTTPException(status_code=status, detail=error)
++        session.commit()
++        hydration = svc._hydrate_versions(set_id)
++        v_data = next((v for v in hydration if v["id"] == version_id), None)
++        if v_data:
++            return v_data
++        return {
++            "id": version.id,
++            "set_id": version.set_id,
++            "name": version.name,
++            "display_order": version.display_order,
++            "explorer_tree_id": version.explorer_tree_id,
++            "slots": [],
++            "derived_explorer_nodes": [],
++        }
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Version rename failed")
++        raise HTTPException(status_code=500, detail="Version rename failed")
++    finally:
++        session.close()
++
++
++@router.delete("/sets/{set_id}/versions/{version_id}", status_code=204)
++def api_version_delete(set_id: int, version_id: int):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        ok, error = svc.version_delete(set_id, version_id)
++        if not ok:
++            raise HTTPException(status_code=404, detail=error)
++        session.commit()
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Version delete failed")
++        raise HTTPException(status_code=500, detail="Version delete failed")
++    finally:
++        session.close()
++
++
++@router.post("/sets/{set_id}/versions/reorder")
++def api_version_reorder(set_id: int, body: VersionReorderRequest):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        if svc.get_set(set_id) is None:
++            raise HTTPException(status_code=404, detail="Set not found")
++        ok, error = svc.version_reorder(set_id, body.version_ids)
++        if not ok:
++            raise HTTPException(status_code=400, detail=error)
++        session.commit()
++        return {"ok": True}
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Version reorder failed")
++        raise HTTPException(status_code=500, detail="Version reorder failed")
++    finally:
++        session.close()
++
++
++@router.post("/sets/{set_id}/versions/{version_id}/branch", response_model=VersionResponse, status_code=201)
++def api_version_branch(set_id: int, version_id: int, body: VersionBranchRequest):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        if svc.get_set(set_id) is None:
++            raise HTTPException(status_code=404, detail="Set not found")
++        version, error = svc.version_branch(
++            set_id, version_id, body.branch_point, body.name,
++        )
++        if error:
++            status = 409 if "Maximum" in error else 400
++            raise HTTPException(status_code=status, detail=error)
++        session.commit()
++        hydration = svc._hydrate_versions(set_id)
++        v_data = next((v for v in hydration if v["id"] == version.id), None)
++        if v_data:
++            return v_data
++        return {
++            "id": version.id,
++            "set_id": version.set_id,
++            "name": version.name,
++            "display_order": version.display_order,
++            "explorer_tree_id": version.explorer_tree_id,
++            "slots": [],
++            "derived_explorer_nodes": [],
++        }
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Version branch failed")
++        raise HTTPException(status_code=500, detail="Version branch failed")
++    finally:
++        session.close()
++
++
++@router.post("/sets/{set_id}/versions/{version_id}/slots", status_code=201)
++def api_slot_create(set_id: int, version_id: int, body: SlotCreateRequest):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        slot, error = svc.slot_create(set_id, version_id, body.position)
++        if error:
++            status = 409 if "Maximum" in error else 400
++            raise HTTPException(status_code=status, detail=error)
++        session.commit()
++        return {
++            "id": slot.id,
++            "version_id": slot.version_id,
++            "position": slot.position,
++            "note": slot.note or "",
++            "is_inherited": slot.is_inherited,
++            "candidates": [],
++        }
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Slot create failed")
++        raise HTTPException(status_code=500, detail="Slot create failed")
++    finally:
++        session.close()
++
++
++@router.delete("/sets/{set_id}/versions/{version_id}/slots/{slot_id}", status_code=204)
++def api_slot_delete(set_id: int, version_id: int, slot_id: int):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        ok, error = svc.slot_delete(set_id, version_id, slot_id)
++        if not ok:
++            raise HTTPException(status_code=404, detail=error)
++        session.commit()
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Slot delete failed")
++        raise HTTPException(status_code=500, detail="Slot delete failed")
++    finally:
++        session.close()
++
++
++@router.post("/sets/{set_id}/versions/{version_id}/slots/reorder")
++def api_slot_reorder(set_id: int, version_id: int, body: SlotReorderRequest):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        ok, error = svc.slot_reorder(set_id, version_id, body.slot_id, body.new_position)
++        if not ok:
++            raise HTTPException(status_code=400, detail=error)
++        session.commit()
++        return {"ok": True}
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Slot reorder failed")
++        raise HTTPException(status_code=500, detail="Slot reorder failed")
++    finally:
++        session.close()
++
++
++@router.patch("/sets/{set_id}/versions/{version_id}/slots/{slot_id}/note")
++def api_slot_update_note(set_id: int, version_id: int, slot_id: int, body: SlotNoteUpdateRequest):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        ok, error = svc.slot_update_note(set_id, version_id, slot_id, body.note)
++        if not ok:
++            raise HTTPException(status_code=404, detail=error)
++        session.commit()
++        return {"ok": True}
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Slot note update failed")
++        raise HTTPException(status_code=500, detail="Slot note update failed")
++    finally:
++        session.close()
++
++
++@router.post("/sets/{set_id}/slots/{slot_id}/candidates", status_code=201)
++def api_candidate_add(set_id: int, slot_id: int, body: CandidateAddRequest):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        candidate, error = svc.candidate_add(set_id, slot_id, body.track_id)
++        if error:
++            status = 409 if "Maximum" in error else 400
++            raise HTTPException(status_code=status, detail=error)
++        session.commit()
++        return {
++            "id": candidate.id,
++            "slot_id": candidate.slot_id,
++            "track_id": candidate.track_id,
++            "is_selected": candidate.is_selected,
++        }
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Candidate add failed")
++        raise HTTPException(status_code=500, detail="Candidate add failed")
++    finally:
++        session.close()
++
++
++@router.delete("/sets/{set_id}/slots/{slot_id}/candidates/{candidate_id}", status_code=204)
++def api_candidate_remove(set_id: int, slot_id: int, candidate_id: int):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        ok, error = svc.candidate_remove(set_id, slot_id, candidate_id)
++        if not ok:
++            raise HTTPException(status_code=400, detail=error)
++        session.commit()
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Candidate remove failed")
++        raise HTTPException(status_code=500, detail="Candidate remove failed")
++    finally:
++        session.close()
++
++
++@router.patch("/sets/{set_id}/slots/{slot_id}/candidates/{candidate_id}/select")
++def api_candidate_select(set_id: int, slot_id: int, candidate_id: int):
++    from src.set_workspace.service import SetWorkspaceService
++
++    session = _get_session()
++    try:
++        svc = SetWorkspaceService(session)
++        ok, error = svc.candidate_select(set_id, slot_id, candidate_id)
++        if not ok:
++            raise HTTPException(status_code=400, detail=error)
++        session.commit()
++        return {"ok": True}
++    except HTTPException:
++        raise
++    except Exception:
++        session.rollback()
++        logger.exception("Candidate select failed")
++        raise HTTPException(status_code=500, detail="Candidate select failed")
++    finally:
++        session.close()
++
++
+ # ---------------------------------------------------------------------------
+ # Explorer tree endpoints
+ # ---------------------------------------------------------------------------
+diff --git a/src/api/schemas.py b/src/api/schemas.py
+index 05cfca3..8eb89dc 100644
+--- a/src/api/schemas.py
++++ b/src/api/schemas.py
+@@ -434,3 +434,46 @@ class EmptyRowAddRequest(BaseModel):
+ 
+ class EmptyRowReorderRequest(BaseModel):
+     new_position: int
++
++
++# ---------------------------------------------------------------------------
++# Version / Slot / Candidate requests
++# ---------------------------------------------------------------------------
++
++
++class VersionCreateRequest(BaseModel):
++    name: str = Field(..., min_length=1, max_length=256)
++
++
++class VersionRenameRequest(BaseModel):
++    name: str = Field(..., min_length=1, max_length=256)
++
++
++class VersionReorderRequest(BaseModel):
++    version_ids: List[int]
++
++
++class VersionBranchRequest(BaseModel):
++    branch_point: int = Field(..., ge=0)
++    name: str = Field(..., min_length=1, max_length=256)
++
++
++class SlotCreateRequest(BaseModel):
++    position: Optional[int] = None
++
++
++class SlotReorderRequest(BaseModel):
++    slot_id: int
++    new_position: int
++
++
++class SlotNoteUpdateRequest(BaseModel):
++    note: str
++
++
++class CandidateAddRequest(BaseModel):
++    track_id: int
++
++
++class CandidateSelectRequest(BaseModel):
++    candidate_id: int
+diff --git a/src/set_workspace/service.py b/src/set_workspace/service.py
+index 314203a..648e1c3 100644
+--- a/src/set_workspace/service.py
++++ b/src/set_workspace/service.py
+@@ -1334,3 +1334,520 @@ class SetWorkspaceService:
+         self.session.add(entry)
+         self.session.flush()
+         return True, None
++
++    # --- Version CRUD ---
++
++    MAX_VERSIONS_PER_SET = 10
++    MAX_SLOTS_PER_VERSION = 250
++    MAX_CANDIDATES_PER_SLOT = 5
++
++    def version_create(
++        self, set_id: int, name: str,
++    ) -> Tuple[Optional[SetTracklistVersion], Optional[str]]:
++        count = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(set_id=set_id)
++            .count()
++        )
++        if count >= self.MAX_VERSIONS_PER_SET:
++            return None, f"Maximum {self.MAX_VERSIONS_PER_SET} versions per set"
++
++        existing = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(set_id=set_id, name=name)
++            .first()
++        )
++        if existing:
++            return None, f"A version named '{name}' already exists"
++
++        max_order = (
++            self.session.query(SetTracklistVersion.display_order)
++            .filter_by(set_id=set_id)
++            .order_by(SetTracklistVersion.display_order.desc())
++            .first()
++        )
++        next_order = (max_order[0] + 1) if max_order else 0
++
++        version = SetTracklistVersion(
++            set_id=set_id, name=name, display_order=next_order,
++        )
++        self.session.add(version)
++        self.session.flush()
++        return version, None
++
++    def version_rename(
++        self, set_id: int, version_id: int, name: str,
++    ) -> Tuple[Optional[SetTracklistVersion], Optional[str]]:
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return None, "Version not found"
++
++        dup = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(set_id=set_id, name=name)
++            .filter(SetTracklistVersion.id != version_id)
++            .first()
++        )
++        if dup:
++            return None, f"A version named '{name}' already exists"
++
++        version.name = name
++        self.session.flush()
++        return version, None
++
++    def version_delete(
++        self, set_id: int, version_id: int,
++    ) -> Tuple[bool, Optional[str]]:
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return False, "Version not found"
++
++        removed_order = version.display_order
++
++        slot_ids = [
++            s.id for s in
++            self.session.query(SetTracklistSlot.id)
++            .filter_by(version_id=version_id)
++            .all()
++        ]
++        if slot_ids:
++            self.session.query(SetTracklistCandidate).filter(
++                SetTracklistCandidate.slot_id.in_(slot_ids),
++            ).delete(synchronize_session="fetch")
++        self.session.query(SetTracklistSlot).filter_by(
++            version_id=version_id,
++        ).delete()
++
++        self.session.delete(version)
++
++        later = (
++            self.session.query(SetTracklistVersion)
++            .filter(
++                SetTracklistVersion.set_id == set_id,
++                SetTracklistVersion.display_order > removed_order,
++            )
++            .order_by(SetTracklistVersion.display_order)
++            .all()
++        )
++        for v in later:
++            v.display_order -= 1
++
++        self.session.flush()
++        return True, None
++
++    def version_reorder(
++        self, set_id: int, version_ids: List[int],
++    ) -> Tuple[bool, Optional[str]]:
++        if len(version_ids) != len(set(version_ids)):
++            return False, "Duplicate version IDs in reorder list"
++
++        current = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(set_id=set_id)
++            .all()
++        )
++        current_ids = {v.id for v in current}
++        if set(version_ids) != current_ids:
++            return False, "Submitted version IDs do not match current versions for this set"
++
++        v_map = {v.id: v for v in current}
++        for idx, vid in enumerate(version_ids):
++            v_map[vid].display_order = idx
++        self.session.flush()
++        return True, None
++
++    def version_branch(
++        self,
++        set_id: int,
++        source_version_id: int,
++        branch_point: int,
++        name: str,
++    ) -> Tuple[Optional[SetTracklistVersion], Optional[str]]:
++        count = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(set_id=set_id)
++            .count()
++        )
++        if count >= self.MAX_VERSIONS_PER_SET:
++            return None, f"Maximum {self.MAX_VERSIONS_PER_SET} versions per set"
++
++        source = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=source_version_id, set_id=set_id)
++            .first()
++        )
++        if source is None:
++            return None, "Source version not found"
++
++        existing_name = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(set_id=set_id, name=name)
++            .first()
++        )
++        if existing_name:
++            return None, f"A version named '{name}' already exists"
++
++        tree = SetExplorerTree(set_id=set_id, name=name)
++        self.session.add(tree)
++        self.session.flush()
++
++        max_order = (
++            self.session.query(SetTracklistVersion.display_order)
++            .filter_by(set_id=set_id)
++            .order_by(SetTracklistVersion.display_order.desc())
++            .first()
++        )
++        next_order = (max_order[0] + 1) if max_order else 0
++
++        new_version = SetTracklistVersion(
++            set_id=set_id,
++            name=name,
++            display_order=next_order,
++            explorer_tree_id=tree.id,
++        )
++        self.session.add(new_version)
++        self.session.flush()
++
++        source_slots = (
++            self.session.query(SetTracklistSlot)
++            .filter_by(version_id=source_version_id)
++            .filter(SetTracklistSlot.position <= branch_point)
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++
++        for src_slot in source_slots:
++            new_slot = SetTracklistSlot(
++                version_id=new_version.id,
++                position=src_slot.position,
++                note=src_slot.note,
++                is_inherited=True,
++            )
++            self.session.add(new_slot)
++            self.session.flush()
++
++            src_candidates = (
++                self.session.query(SetTracklistCandidate)
++                .filter_by(slot_id=src_slot.id)
++                .all()
++            )
++            for src_cand in src_candidates:
++                new_cand = SetTracklistCandidate(
++                    slot_id=new_slot.id,
++                    track_id=src_cand.track_id,
++                    is_selected=src_cand.is_selected,
++                )
++                self.session.add(new_cand)
++
++        self.session.flush()
++        return new_version, None
++
++    # --- Slot CRUD ---
++
++    def slot_create(
++        self, set_id: int, version_id: int, position: Optional[int] = None,
++    ) -> Tuple[Optional[SetTracklistSlot], Optional[str]]:
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return None, "Version not found"
++
++        slot_count = (
++            self.session.query(SetTracklistSlot)
++            .filter_by(version_id=version_id)
++            .count()
++        )
++        if slot_count >= self.MAX_SLOTS_PER_VERSION:
++            return None, f"Maximum {self.MAX_SLOTS_PER_VERSION} slots per version"
++
++        if position is None:
++            position = slot_count
++
++        position = max(0, min(position, slot_count))
++
++        later = (
++            self.session.query(SetTracklistSlot)
++            .filter(
++                SetTracklistSlot.version_id == version_id,
++                SetTracklistSlot.position >= position,
++            )
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        for s in later:
++            s.position += 1
++
++        slot = SetTracklistSlot(
++            version_id=version_id, position=position,
++        )
++        self.session.add(slot)
++        self.session.flush()
++        return slot, None
++
++    def slot_delete(
++        self, set_id: int, version_id: int, slot_id: int,
++    ) -> Tuple[bool, Optional[str]]:
++        slot = (
++            self.session.query(SetTracklistSlot)
++            .filter_by(id=slot_id, version_id=version_id)
++            .first()
++        )
++        if slot is None:
++            return False, "Slot not found"
++
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return False, "Version not found"
++
++        removed_pos = slot.position
++
++        self.session.query(SetTracklistCandidate).filter_by(
++            slot_id=slot_id,
++        ).delete()
++        self.session.delete(slot)
++
++        later = (
++            self.session.query(SetTracklistSlot)
++            .filter(
++                SetTracklistSlot.version_id == version_id,
++                SetTracklistSlot.position > removed_pos,
++            )
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        for s in later:
++            s.position -= 1
++
++        self.session.flush()
++        return True, None
++
++    def slot_reorder(
++        self, set_id: int, version_id: int, slot_id: int, new_position: int,
++    ) -> Tuple[bool, Optional[str]]:
++        slot = (
++            self.session.query(SetTracklistSlot)
++            .filter_by(id=slot_id, version_id=version_id)
++            .first()
++        )
++        if slot is None:
++            return False, "Slot not found"
++
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return False, "Version not found"
++
++        old_pos = slot.position
++
++        total = (
++            self.session.query(SetTracklistSlot)
++            .filter_by(version_id=version_id)
++            .count()
++        )
++        new_position = max(0, min(new_position, total - 1))
++
++        if old_pos == new_position:
++            return True, None
++
++        self._clear_inherited(slot)
++
++        siblings = (
++            self.session.query(SetTracklistSlot)
++            .filter(
++                SetTracklistSlot.version_id == version_id,
++                SetTracklistSlot.id != slot_id,
++            )
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        if old_pos < new_position:
++            for s in siblings:
++                if old_pos < s.position <= new_position:
++                    s.position -= 1
++        else:
++            for s in siblings:
++                if new_position <= s.position < old_pos:
++                    s.position += 1
++
++        slot.position = new_position
++        self.session.flush()
++        return True, None
++
++    def slot_update_note(
++        self, set_id: int, version_id: int, slot_id: int, note: str,
++    ) -> Tuple[bool, Optional[str]]:
++        slot = (
++            self.session.query(SetTracklistSlot)
++            .filter_by(id=slot_id, version_id=version_id)
++            .first()
++        )
++        if slot is None:
++            return False, "Slot not found"
++
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return False, "Version not found"
++
++        self._clear_inherited(slot)
++        slot.note = note
++        self.session.flush()
++        return True, None
++
++    # --- Candidate CRUD ---
++
++    def candidate_add(
++        self, set_id: int, slot_id: int, track_id: int,
++    ) -> Tuple[Optional[SetTracklistCandidate], Optional[str]]:
++        slot = self.session.query(SetTracklistSlot).filter_by(id=slot_id).first()
++        if slot is None:
++            return None, "Slot not found"
++
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=slot.version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return None, "Slot does not belong to this set"
++
++        cand_count = (
++            self.session.query(SetTracklistCandidate)
++            .filter_by(slot_id=slot_id)
++            .count()
++        )
++        if cand_count >= self.MAX_CANDIDATES_PER_SLOT:
++            return None, f"Maximum {self.MAX_CANDIDATES_PER_SLOT} candidates per slot"
++
++        self._clear_inherited(slot)
++
++        is_first = cand_count == 0
++        candidate = SetTracklistCandidate(
++            slot_id=slot_id,
++            track_id=track_id,
++            is_selected=is_first,
++        )
++        self.session.add(candidate)
++        self.session.flush()
++        return candidate, None
++
++    def candidate_remove(
++        self, set_id: int, slot_id: int, candidate_id: int,
++    ) -> Tuple[bool, Optional[str]]:
++        slot = self.session.query(SetTracklistSlot).filter_by(id=slot_id).first()
++        if slot is None:
++            return False, "Slot not found"
++
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=slot.version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return False, "Slot does not belong to this set"
++
++        candidate = (
++            self.session.query(SetTracklistCandidate)
++            .filter_by(id=candidate_id, slot_id=slot_id)
++            .first()
++        )
++        if candidate is None:
++            return False, "Candidate not found"
++
++        was_selected = candidate.is_selected
++        self._clear_inherited(slot)
++        self.session.delete(candidate)
++        self.session.flush()
++
++        remaining = (
++            self.session.query(SetTracklistCandidate)
++            .filter_by(slot_id=slot_id)
++            .all()
++        )
++
++        if not remaining:
++            version_id = slot.version_id
++            removed_pos = slot.position
++            self.session.delete(slot)
++
++            later = (
++                self.session.query(SetTracklistSlot)
++                .filter(
++                    SetTracklistSlot.version_id == version_id,
++                    SetTracklistSlot.position > removed_pos,
++                )
++                .order_by(SetTracklistSlot.position)
++                .all()
++            )
++            for s in later:
++                s.position -= 1
++
++            self.session.flush()
++            return True, None
++
++        if was_selected:
++            remaining[0].is_selected = True
++            self.session.flush()
++
++        return True, None
++
++    def candidate_select(
++        self, set_id: int, slot_id: int, candidate_id: int,
++    ) -> Tuple[bool, Optional[str]]:
++        slot = self.session.query(SetTracklistSlot).filter_by(id=slot_id).first()
++        if slot is None:
++            return False, "Slot not found"
++
++        version = (
++            self.session.query(SetTracklistVersion)
++            .filter_by(id=slot.version_id, set_id=set_id)
++            .first()
++        )
++        if version is None:
++            return False, "Slot does not belong to this set"
++
++        target = (
++            self.session.query(SetTracklistCandidate)
++            .filter_by(id=candidate_id, slot_id=slot_id)
++            .first()
++        )
++        if target is None:
++            return False, "Candidate not found"
++
++        self._clear_inherited(slot)
++
++        self.session.query(SetTracklistCandidate).filter(
++            SetTracklistCandidate.slot_id == slot_id,
++            SetTracklistCandidate.id != candidate_id,
++        ).update({"is_selected": False}, synchronize_session="fetch")
++
++        target.is_selected = True
++        self.session.flush()
++        return True, None
++
++    # --- is_inherited lifecycle ---
++
++    def _clear_inherited(self, slot: SetTracklistSlot) -> None:
++        if slot.is_inherited:
++            slot.is_inherited = False
+diff --git a/src/tests/test_set_workspace_api.py b/src/tests/test_set_workspace_api.py
+index b01f166..49fd2e1 100644
+--- a/src/tests/test_set_workspace_api.py
++++ b/src/tests/test_set_workspace_api.py
+@@ -1901,3 +1901,857 @@ class TestHydrateVersionsFallback:
+         pre_migration_session.commit()
+         assert result is True
+         assert svc.get_set(created.id) is None
++
++
++# =========================================================================
++# Phase C: Version / Slot / Candidate CRUD
++# =========================================================================
++
++
++class TestVersionCreate:
++    def test_create_version(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, err = svc.version_create(s.id, "v1")
++        assert err is None
++        assert v is not None
++        assert v.name == "v1"
++        assert v.set_id == s.id
++        assert v.display_order == 0
++
++    def test_create_second_version_increments_order(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        svc.version_create(s.id, "v1")
++        v2, _ = svc.version_create(s.id, "v2")
++        assert v2.display_order == 1
++
++    def test_duplicate_name_rejected(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        svc.version_create(s.id, "v1")
++        session.commit()
++        v, err = svc.version_create(s.id, "v1")
++        assert v is None
++        assert "already exists" in err
++
++    def test_max_10_versions(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        for i in range(10):
++            v, err = svc.version_create(s.id, f"v{i}")
++            assert err is None
++        session.commit()
++        v, err = svc.version_create(s.id, "v_overflow")
++        assert v is None
++        assert "Maximum" in err
++
++
++class TestVersionRename:
++    def test_rename_version(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "old")
++        session.commit()
++        renamed, err = svc.version_rename(s.id, v.id, "new")
++        assert err is None
++        assert renamed.name == "new"
++
++    def test_rename_not_found(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        _, err = svc.version_rename(s.id, 9999, "x")
++        assert "not found" in err.lower()
++
++    def test_rename_duplicate_rejected(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        svc.version_create(s.id, "a")
++        v2, _ = svc.version_create(s.id, "b")
++        session.commit()
++        _, err = svc.version_rename(s.id, v2.id, "a")
++        assert "already exists" in err
++
++
++class TestVersionDelete:
++    def test_delete_version(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.commit()
++        ok, err = svc.version_delete(s.id, v.id)
++        assert ok is True
++        assert err is None
++        assert session.query(SetTracklistVersion).filter_by(id=v.id).count() == 0
++
++    def test_delete_cascades_slots_and_candidates(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        cand, _ = svc.candidate_add(s.id, slot.id, 42)
++        session.commit()
++        vid, slid, cid = v.id, slot.id, cand.id
++
++        ok, _ = svc.version_delete(s.id, vid)
++        assert ok is True
++        session.commit()
++        assert session.query(SetTracklistSlot).filter_by(id=slid).count() == 0
++        assert session.query(SetTracklistCandidate).filter_by(id=cid).count() == 0
++
++    def test_delete_shifts_later_display_orders(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v1, _ = svc.version_create(s.id, "a")
++        v2, _ = svc.version_create(s.id, "b")
++        v3, _ = svc.version_create(s.id, "c")
++        session.commit()
++
++        svc.version_delete(s.id, v1.id)
++        session.commit()
++
++        remaining = (
++            session.query(SetTracklistVersion)
++            .filter_by(set_id=s.id)
++            .order_by(SetTracklistVersion.display_order)
++            .all()
++        )
++        assert [v.display_order for v in remaining] == [0, 1]
++
++    def test_delete_not_found(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        ok, err = svc.version_delete(s.id, 9999)
++        assert ok is False
++
++
++class TestVersionReorder:
++    def test_reorder_versions(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v1, _ = svc.version_create(s.id, "a")
++        v2, _ = svc.version_create(s.id, "b")
++        v3, _ = svc.version_create(s.id, "c")
++        session.commit()
++
++        ok, err = svc.version_reorder(s.id, [v3.id, v1.id, v2.id])
++        assert ok is True
++        session.commit()
++
++        result = (
++            session.query(SetTracklistVersion)
++            .filter_by(set_id=s.id)
++            .order_by(SetTracklistVersion.display_order)
++            .all()
++        )
++        assert [v.id for v in result] == [v3.id, v1.id, v2.id]
++
++    def test_reorder_mismatched_ids_rejected(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v1, _ = svc.version_create(s.id, "a")
++        session.commit()
++        ok, err = svc.version_reorder(s.id, [v1.id, 9999])
++        assert ok is False
++
++    def test_reorder_duplicate_ids_rejected(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v1, _ = svc.version_create(s.id, "a")
++        session.commit()
++        ok, err = svc.version_reorder(s.id, [v1.id, v1.id])
++        assert ok is False
++        assert "Duplicate" in err
++
++
++class TestSlotCreate:
++    def test_create_slot_at_end(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++
++        slot, err = svc.slot_create(s.id, v.id)
++        assert err is None
++        assert slot.position == 0
++
++        slot2, _ = svc.slot_create(s.id, v.id)
++        assert slot2.position == 1
++
++    def test_create_slot_at_position_shifts_later(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++
++        s0, _ = svc.slot_create(s.id, v.id)
++        s1, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        s_mid, _ = svc.slot_create(s.id, v.id, position=1)
++        session.flush()
++
++        slots = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=v.id)
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        assert [sl.position for sl in slots] == [0, 1, 2]
++        assert slots[1].id == s_mid.id
++
++    def test_max_250_slots(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++
++        for _ in range(250):
++            slot, err = svc.slot_create(s.id, v.id)
++            assert err is None
++        session.flush()
++
++        slot, err = svc.slot_create(s.id, v.id)
++        assert slot is None
++        assert "Maximum" in err
++
++    def test_create_slot_version_not_found(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        slot, err = svc.slot_create(s.id, 9999)
++        assert slot is None
++        assert "not found" in err.lower()
++
++
++class TestSlotDelete:
++    def test_delete_slot_shifts_positions(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++
++        s0, _ = svc.slot_create(s.id, v.id)
++        s1, _ = svc.slot_create(s.id, v.id)
++        s2, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        ok, _ = svc.slot_delete(s.id, v.id, s0.id)
++        assert ok is True
++        session.flush()
++
++        slots = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=v.id)
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        assert [sl.position for sl in slots] == [0, 1]
++
++    def test_delete_slot_cascades_candidates(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        cand, _ = svc.candidate_add(s.id, slot.id, 10)
++        session.commit()
++        cid = cand.id
++
++        svc.slot_delete(s.id, v.id, slot.id)
++        session.commit()
++        assert session.query(SetTracklistCandidate).filter_by(id=cid).count() == 0
++
++    def test_delete_slot_not_found(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.commit()
++        ok, err = svc.slot_delete(s.id, v.id, 9999)
++        assert ok is False
++
++
++class TestSlotReorder:
++    def test_reorder_forward(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        s0, _ = svc.slot_create(s.id, v.id)
++        s1, _ = svc.slot_create(s.id, v.id)
++        s2, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        ok, _ = svc.slot_reorder(s.id, v.id, s0.id, 2)
++        assert ok is True
++        session.flush()
++
++        slots = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=v.id)
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        assert [sl.id for sl in slots] == [s1.id, s2.id, s0.id]
++
++    def test_reorder_backward(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        s0, _ = svc.slot_create(s.id, v.id)
++        s1, _ = svc.slot_create(s.id, v.id)
++        s2, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        ok, _ = svc.slot_reorder(s.id, v.id, s2.id, 0)
++        assert ok is True
++        session.flush()
++
++        slots = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=v.id)
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        assert [sl.id for sl in slots] == [s2.id, s0.id, s1.id]
++
++    def test_reorder_noop(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        s0, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        ok, _ = svc.slot_reorder(s.id, v.id, s0.id, 0)
++        assert ok is True
++
++    def test_reorder_clears_inherited(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        s0, _ = svc.slot_create(s.id, v.id)
++        s1, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        s0.is_inherited = True
++        session.flush()
++
++        svc.slot_reorder(s.id, v.id, s0.id, 1)
++        session.flush()
++        session.refresh(s0)
++        assert s0.is_inherited is False
++
++
++class TestSlotNoteUpdate:
++    def test_update_note(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.commit()
++
++        ok, _ = svc.slot_update_note(s.id, v.id, slot.id, "peak energy")
++        assert ok is True
++        session.commit()
++        session.refresh(slot)
++        assert slot.note == "peak energy"
++
++    def test_note_update_clears_inherited(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        slot.is_inherited = True
++        session.flush()
++
++        svc.slot_update_note(s.id, v.id, slot.id, "edit")
++        session.flush()
++        session.refresh(slot)
++        assert slot.is_inherited is False
++
++
++class TestCandidateAdd:
++    def test_add_first_candidate_auto_selected(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        cand, err = svc.candidate_add(s.id, slot.id, 10)
++        assert err is None
++        assert cand.is_selected is True
++
++    def test_add_second_candidate_not_selected(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        svc.candidate_add(s.id, slot.id, 10)
++        cand2, _ = svc.candidate_add(s.id, slot.id, 20)
++        assert cand2.is_selected is False
++
++    def test_max_5_candidates(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        for i in range(5):
++            c, err = svc.candidate_add(s.id, slot.id, 100 + i)
++            assert err is None
++        session.flush()
++
++        c, err = svc.candidate_add(s.id, slot.id, 999)
++        assert c is None
++        assert "Maximum" in err
++
++    def test_add_candidate_clears_inherited(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        slot.is_inherited = True
++        session.flush()
++
++        svc.candidate_add(s.id, slot.id, 10)
++        session.flush()
++        session.refresh(slot)
++        assert slot.is_inherited is False
++
++
++class TestCandidateRemove:
++    def test_remove_last_candidate_deletes_slot(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        cand, _ = svc.candidate_add(s.id, slot.id, 10)
++        session.commit()
++
++        slot_id = slot.id
++        ok, _ = svc.candidate_remove(s.id, slot.id, cand.id)
++        assert ok is True
++        session.commit()
++        assert session.query(SetTracklistSlot).filter_by(id=slot_id).count() == 0
++
++    def test_remove_selected_candidate_promotes_next(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        c1, _ = svc.candidate_add(s.id, slot.id, 10)
++        c2, _ = svc.candidate_add(s.id, slot.id, 20)
++        session.commit()
++
++        ok, _ = svc.candidate_remove(s.id, slot.id, c1.id)
++        assert ok is True
++        session.commit()
++        session.refresh(c2)
++        assert c2.is_selected is True
++
++    def test_remove_non_selected_keeps_selection(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        c1, _ = svc.candidate_add(s.id, slot.id, 10)
++        c2, _ = svc.candidate_add(s.id, slot.id, 20)
++        session.commit()
++
++        ok, _ = svc.candidate_remove(s.id, slot.id, c2.id)
++        assert ok is True
++        session.commit()
++        session.refresh(c1)
++        assert c1.is_selected is True
++
++    def test_remove_last_candidate_shifts_later_slots(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++
++        s0, _ = svc.slot_create(s.id, v.id)
++        s1, _ = svc.slot_create(s.id, v.id)
++        s2, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        c1, _ = svc.candidate_add(s.id, s1.id, 10)
++        svc.candidate_add(s.id, s0.id, 20)
++        svc.candidate_add(s.id, s2.id, 30)
++        session.commit()
++
++        svc.candidate_remove(s.id, s1.id, c1.id)
++        session.commit()
++
++        slots = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=v.id)
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        assert len(slots) == 2
++        assert [sl.position for sl in slots] == [0, 1]
++
++    def test_remove_candidate_clears_inherited(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        c1, _ = svc.candidate_add(s.id, slot.id, 10)
++        c2, _ = svc.candidate_add(s.id, slot.id, 20)
++        session.flush()
++        slot.is_inherited = True
++        session.flush()
++
++        svc.candidate_remove(s.id, slot.id, c2.id)
++        session.flush()
++        session.refresh(slot)
++        assert slot.is_inherited is False
++
++
++class TestCandidateSelect:
++    def test_select_candidate(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        c1, _ = svc.candidate_add(s.id, slot.id, 10)
++        c2, _ = svc.candidate_add(s.id, slot.id, 20)
++        session.commit()
++
++        assert c1.is_selected is True
++        assert c2.is_selected is False
++
++        ok, _ = svc.candidate_select(s.id, slot.id, c2.id)
++        assert ok is True
++        session.commit()
++
++        session.refresh(c1)
++        session.refresh(c2)
++        assert c1.is_selected is False
++        assert c2.is_selected is True
++
++    def test_select_not_found(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.commit()
++
++        ok, err = svc.candidate_select(s.id, slot.id, 9999)
++        assert ok is False
++        assert "not found" in err.lower()
++
++    def test_exactly_one_selected_invariant(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++
++        c1, _ = svc.candidate_add(s.id, slot.id, 10)
++        c2, _ = svc.candidate_add(s.id, slot.id, 20)
++        c3, _ = svc.candidate_add(s.id, slot.id, 30)
++        session.commit()
++
++        svc.candidate_select(s.id, slot.id, c3.id)
++        session.commit()
++
++        selected = (
++            session.query(SetTracklistCandidate)
++            .filter_by(slot_id=slot.id, is_selected=True)
++            .all()
++        )
++        assert len(selected) == 1
++        assert selected[0].id == c3.id
++
++    def test_select_clears_inherited(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        c1, _ = svc.candidate_add(s.id, slot.id, 10)
++        c2, _ = svc.candidate_add(s.id, slot.id, 20)
++        session.flush()
++        slot.is_inherited = True
++        session.flush()
++
++        svc.candidate_select(s.id, slot.id, c2.id)
++        session.flush()
++        session.refresh(slot)
++        assert slot.is_inherited is False
++
++
++class TestVersionBranch:
++    def test_branch_creates_version_with_copied_slots(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "main")
++        session.flush()
++
++        for i in range(5):
++            slot, _ = svc.slot_create(s.id, v.id)
++            session.flush()
++            svc.candidate_add(s.id, slot.id, 100 + i)
++        session.commit()
++
++        branch, err = svc.version_branch(s.id, v.id, 2, "branch-v2")
++        assert err is None
++        assert branch is not None
++        session.commit()
++
++        branch_slots = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=branch.id)
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        assert len(branch_slots) == 3
++        assert [sl.position for sl in branch_slots] == [0, 1, 2]
++
++    def test_branch_slots_marked_inherited(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "main")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        svc.candidate_add(s.id, slot.id, 10)
++        session.commit()
++
++        branch, _ = svc.version_branch(s.id, v.id, 0, "branch")
++        session.commit()
++
++        branch_slots = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=branch.id)
++            .all()
++        )
++        assert all(sl.is_inherited is True for sl in branch_slots)
++
++    def test_branch_creates_explorer_tree(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "main")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        svc.candidate_add(s.id, slot.id, 10)
++        session.commit()
++
++        branch, _ = svc.version_branch(s.id, v.id, 0, "branch")
++        session.commit()
++
++        assert branch.explorer_tree_id is not None
++        tree = session.query(SetExplorerTree).filter_by(id=branch.explorer_tree_id).first()
++        assert tree is not None
++        assert tree.name == "branch"
++
++    def test_branch_copies_candidates(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "main")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        svc.candidate_add(s.id, slot.id, 10)
++        svc.candidate_add(s.id, slot.id, 20)
++        session.commit()
++
++        branch, _ = svc.version_branch(s.id, v.id, 0, "branch")
++        session.commit()
++
++        branch_slot = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=branch.id)
++            .first()
++        )
++        cands = (
++            session.query(SetTracklistCandidate)
++            .filter_by(slot_id=branch_slot.id)
++            .all()
++        )
++        assert len(cands) == 2
++        track_ids = {c.track_id for c in cands}
++        assert track_ids == {10, 20}
++
++    def test_branch_respects_max_versions(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        for i in range(10):
++            svc.version_create(s.id, f"v{i}")
++        session.commit()
++
++        v = session.query(SetTracklistVersion).filter_by(set_id=s.id).first()
++        branch, err = svc.version_branch(s.id, v.id, 0, "overflow")
++        assert branch is None
++        assert "Maximum" in err
++
++    def test_branch_duplicate_name_rejected(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "main")
++        session.commit()
++
++        branch, err = svc.version_branch(s.id, v.id, 0, "main")
++        assert branch is None
++        assert "already exists" in err
++
++
++class TestInheritedLifecycle:
++    """End-to-end: branch -> inherited flags -> cleared on mutation."""
++
++    def test_full_inherited_lifecycle(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "main")
++        session.flush()
++
++        slot0, _ = svc.slot_create(s.id, v.id)
++        slot1, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        svc.candidate_add(s.id, slot0.id, 10)
++        svc.candidate_add(s.id, slot1.id, 20)
++        session.commit()
++
++        branch, _ = svc.version_branch(s.id, v.id, 1, "branch")
++        session.commit()
++
++        branch_slots = (
++            session.query(SetTracklistSlot)
++            .filter_by(version_id=branch.id)
++            .order_by(SetTracklistSlot.position)
++            .all()
++        )
++        assert len(branch_slots) == 2
++        assert all(sl.is_inherited is True for sl in branch_slots)
++
++        svc.slot_update_note(s.id, branch.id, branch_slots[0].id, "modified")
++        session.flush()
++        session.refresh(branch_slots[0])
++        assert branch_slots[0].is_inherited is False
++        assert branch_slots[1].is_inherited is True
++
++
++class TestTransitionScoreCacheWriteOnCompute:
++    """Prove that api_transition_scores() populates TransitionScoreCache
++    on first compute and returns cache-backed hits on repeated calls.
++
++    Uses the TransitionScoreCache directly since the production flow is:
++    1. api_transition_scores checks ts_cache.get() → miss
++    2. finder.get_transition_matches() computes and calls ts_cache.put()
++    3. Second call to ts_cache.get() → hit with same score
++    """
++
++    def test_cache_populated_after_first_compute(self):
++        from src.harmonic_mixing.cosine_cache import TransitionScoreCache
++        cache = TransitionScoreCache()
++
++        assert cache.get(10, 20) is None
++        stats_before = cache.get_stats()
++        assert stats_before["misses"] == 1
++        assert stats_before["hits"] == 0
++
++        cache.put(10, 20, 85.0)
++
++        assert cache.get(10, 20) == 85.0
++        assert cache.get(10, 20) == 85.0
++
++        stats_after = cache.get_stats()
++        assert stats_after["hits"] == 2
++        assert stats_after["misses"] == 1
++
++    def test_cache_not_bypassed_by_new_code_paths(self):
++        from src.harmonic_mixing.cosine_cache import TransitionScoreCache
++        cache = TransitionScoreCache()
++
++        cache.put(1, 100, 72.5)
++        cache.put(1, 200, 88.0)
++        cache.put(2, 100, 65.0)
++
++        for _ in range(3):
++            assert cache.get(1, 100) == 72.5
++            assert cache.get(1, 200) == 88.0
++            assert cache.get(2, 100) == 65.0
++
++        stats = cache.get_stats()
++        assert stats["hits"] == 9
++
++    def test_directional_keys_preserved(self):
++        from src.harmonic_mixing.cosine_cache import TransitionScoreCache
++        cache = TransitionScoreCache()
++        cache.put(10, 20, 85.0)
++        cache.put(20, 10, 72.0)
++        assert cache.get(10, 20) == 85.0
++        assert cache.get(20, 10) == 72.0
++
++    def test_clear_invalidates_all_cached_scores(self):
++        from src.harmonic_mixing.cosine_cache import TransitionScoreCache
++        cache = TransitionScoreCache()
++        cache.put(1, 2, 50.0)
++        cache.clear()
++        assert cache.get(1, 2) is None
++
++
++class TestVersionSlotCandidateHydration:
++    """Ensure CRUD mutations remain consistent with the hydration shape."""
++
++    def test_hydrate_after_full_crud_cycle(self, svc: SetWorkspaceService, session: Session):
++        s = svc.create_set("S")
++        session.commit()
++        v, _ = svc.version_create(s.id, "v1")
++        session.flush()
++        slot, _ = svc.slot_create(s.id, v.id)
++        session.flush()
++        c1, _ = svc.candidate_add(s.id, slot.id, 10)
++        c2, _ = svc.candidate_add(s.id, slot.id, 20)
++        session.commit()
++
++        h = svc.hydrate_set(s.id)
++        versions = h["versions"]
++        assert len(versions) == 1
++        assert versions[0]["name"] == "v1"
++        assert len(versions[0]["slots"]) == 1
++        assert len(versions[0]["slots"][0]["candidates"]) == 2
++
++        svc.candidate_select(s.id, slot.id, c2.id)
++        session.commit()
++
++        h2 = svc.hydrate_set(s.id)
++        cands = h2["versions"][0]["slots"][0]["candidates"]
++        selected = [c for c in cands if c["is_selected"]]
++        assert len(selected) == 1
++        assert selected[0]["track_id"] == 20

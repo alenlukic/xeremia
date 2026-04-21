@@ -434,3 +434,46 @@ class EmptyRowAddRequest(BaseModel):
 
 class EmptyRowReorderRequest(BaseModel):
     new_position: int
+
+
+# ---------------------------------------------------------------------------
+# Version / Slot / Candidate requests
+# ---------------------------------------------------------------------------
+
+
+class VersionCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class VersionRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class VersionReorderRequest(BaseModel):
+    version_ids: List[int]
+
+
+class VersionBranchRequest(BaseModel):
+    branch_point: int = Field(..., ge=0)
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class SlotCreateRequest(BaseModel):
+    position: Optional[int] = None
+
+
+class SlotReorderRequest(BaseModel):
+    slot_id: int
+    new_position: int
+
+
+class SlotNoteUpdateRequest(BaseModel):
+    note: str
+
+
+class CandidateAddRequest(BaseModel):
+    track_id: int
+
+
+class CandidateSelectRequest(BaseModel):
+    candidate_id: int

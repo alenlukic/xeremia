@@ -52,6 +52,15 @@ from src.api.schemas import (
     TransitionScoreResponse,
     WeightResponse,
     WeightUpdateRequest,
+    VersionCreateRequest,
+    VersionRenameRequest,
+    VersionReorderRequest,
+    VersionBranchRequest,
+    VersionResponse,
+    SlotCreateRequest,
+    SlotReorderRequest,
+    SlotNoteUpdateRequest,
+    CandidateAddRequest,
 )
 from src.api.queries import get_tracks
 from src.api.serializers import (
@@ -1376,6 +1385,329 @@ def api_tracklist_move_to_pool(set_id: int, body: MoveRequest):
         session.rollback()
         logger.exception("Tracklist move to pool failed")
         raise HTTPException(status_code=500, detail="Move failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Version / Slot / Candidate endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sets/{set_id}/versions", response_model=VersionResponse, status_code=201)
+def api_version_create(set_id: int, body: VersionCreateRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        version, error = svc.version_create(set_id, body.name)
+        if error:
+            status = 409 if "Maximum" in error else 400
+            raise HTTPException(status_code=status, detail=error)
+        session.commit()
+        return {
+            "id": version.id,
+            "set_id": version.set_id,
+            "name": version.name,
+            "display_order": version.display_order,
+            "explorer_tree_id": version.explorer_tree_id,
+            "slots": [],
+            "derived_explorer_nodes": [],
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Version create failed")
+        raise HTTPException(status_code=500, detail="Version create failed")
+    finally:
+        session.close()
+
+
+@router.patch("/sets/{set_id}/versions/{version_id}", response_model=VersionResponse)
+def api_version_rename(set_id: int, version_id: int, body: VersionRenameRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        version, error = svc.version_rename(set_id, version_id, body.name)
+        if error:
+            status = 404 if error == "Version not found" else 400
+            raise HTTPException(status_code=status, detail=error)
+        session.commit()
+        hydration = svc._hydrate_versions(set_id)
+        v_data = next((v for v in hydration if v["id"] == version_id), None)
+        if v_data:
+            return v_data
+        return {
+            "id": version.id,
+            "set_id": version.set_id,
+            "name": version.name,
+            "display_order": version.display_order,
+            "explorer_tree_id": version.explorer_tree_id,
+            "slots": [],
+            "derived_explorer_nodes": [],
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Version rename failed")
+        raise HTTPException(status_code=500, detail="Version rename failed")
+    finally:
+        session.close()
+
+
+@router.delete("/sets/{set_id}/versions/{version_id}", status_code=204)
+def api_version_delete(set_id: int, version_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.version_delete(set_id, version_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Version delete failed")
+        raise HTTPException(status_code=500, detail="Version delete failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/versions/reorder")
+def api_version_reorder(set_id: int, body: VersionReorderRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        ok, error = svc.version_reorder(set_id, body.version_ids)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Version reorder failed")
+        raise HTTPException(status_code=500, detail="Version reorder failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/versions/{version_id}/branch", response_model=VersionResponse, status_code=201)
+def api_version_branch(set_id: int, version_id: int, body: VersionBranchRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        version, error = svc.version_branch(
+            set_id, version_id, body.branch_point, body.name,
+        )
+        if error:
+            status = 409 if "Maximum" in error else 400
+            raise HTTPException(status_code=status, detail=error)
+        session.commit()
+        hydration = svc._hydrate_versions(set_id)
+        v_data = next((v for v in hydration if v["id"] == version.id), None)
+        if v_data:
+            return v_data
+        return {
+            "id": version.id,
+            "set_id": version.set_id,
+            "name": version.name,
+            "display_order": version.display_order,
+            "explorer_tree_id": version.explorer_tree_id,
+            "slots": [],
+            "derived_explorer_nodes": [],
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Version branch failed")
+        raise HTTPException(status_code=500, detail="Version branch failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/versions/{version_id}/slots", status_code=201)
+def api_slot_create(set_id: int, version_id: int, body: SlotCreateRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        slot, error = svc.slot_create(set_id, version_id, body.position)
+        if error:
+            status = 409 if "Maximum" in error else 400
+            raise HTTPException(status_code=status, detail=error)
+        session.commit()
+        return {
+            "id": slot.id,
+            "version_id": slot.version_id,
+            "position": slot.position,
+            "note": slot.note or "",
+            "is_inherited": slot.is_inherited,
+            "candidates": [],
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Slot create failed")
+        raise HTTPException(status_code=500, detail="Slot create failed")
+    finally:
+        session.close()
+
+
+@router.delete("/sets/{set_id}/versions/{version_id}/slots/{slot_id}", status_code=204)
+def api_slot_delete(set_id: int, version_id: int, slot_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.slot_delete(set_id, version_id, slot_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Slot delete failed")
+        raise HTTPException(status_code=500, detail="Slot delete failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/versions/{version_id}/slots/reorder")
+def api_slot_reorder(set_id: int, version_id: int, body: SlotReorderRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.slot_reorder(set_id, version_id, body.slot_id, body.new_position)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Slot reorder failed")
+        raise HTTPException(status_code=500, detail="Slot reorder failed")
+    finally:
+        session.close()
+
+
+@router.patch("/sets/{set_id}/versions/{version_id}/slots/{slot_id}/note")
+def api_slot_update_note(set_id: int, version_id: int, slot_id: int, body: SlotNoteUpdateRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.slot_update_note(set_id, version_id, slot_id, body.note)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Slot note update failed")
+        raise HTTPException(status_code=500, detail="Slot note update failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/slots/{slot_id}/candidates", status_code=201)
+def api_candidate_add(set_id: int, slot_id: int, body: CandidateAddRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        candidate, error = svc.candidate_add(set_id, slot_id, body.track_id)
+        if error:
+            status = 409 if "Maximum" in error else 400
+            raise HTTPException(status_code=status, detail=error)
+        session.commit()
+        return {
+            "id": candidate.id,
+            "slot_id": candidate.slot_id,
+            "track_id": candidate.track_id,
+            "is_selected": candidate.is_selected,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Candidate add failed")
+        raise HTTPException(status_code=500, detail="Candidate add failed")
+    finally:
+        session.close()
+
+
+@router.delete("/sets/{set_id}/slots/{slot_id}/candidates/{candidate_id}", status_code=204)
+def api_candidate_remove(set_id: int, slot_id: int, candidate_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.candidate_remove(set_id, slot_id, candidate_id)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Candidate remove failed")
+        raise HTTPException(status_code=500, detail="Candidate remove failed")
+    finally:
+        session.close()
+
+
+@router.patch("/sets/{set_id}/slots/{slot_id}/candidates/{candidate_id}/select")
+def api_candidate_select(set_id: int, slot_id: int, candidate_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.candidate_select(set_id, slot_id, candidate_id)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Candidate select failed")
+        raise HTTPException(status_code=500, detail="Candidate select failed")
     finally:
         session.close()
 

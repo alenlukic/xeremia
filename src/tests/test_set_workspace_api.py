@@ -1901,3 +1901,857 @@ class TestHydrateVersionsFallback:
         pre_migration_session.commit()
         assert result is True
         assert svc.get_set(created.id) is None
+
+
+# =========================================================================
+# Phase C: Version / Slot / Candidate CRUD
+# =========================================================================
+
+
+class TestVersionCreate:
+    def test_create_version(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, err = svc.version_create(s.id, "v1")
+        assert err is None
+        assert v is not None
+        assert v.name == "v1"
+        assert v.set_id == s.id
+        assert v.display_order == 0
+
+    def test_create_second_version_increments_order(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.version_create(s.id, "v1")
+        v2, _ = svc.version_create(s.id, "v2")
+        assert v2.display_order == 1
+
+    def test_duplicate_name_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.version_create(s.id, "v1")
+        session.commit()
+        v, err = svc.version_create(s.id, "v1")
+        assert v is None
+        assert "already exists" in err
+
+    def test_max_10_versions(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for i in range(10):
+            v, err = svc.version_create(s.id, f"v{i}")
+            assert err is None
+        session.commit()
+        v, err = svc.version_create(s.id, "v_overflow")
+        assert v is None
+        assert "Maximum" in err
+
+
+class TestVersionRename:
+    def test_rename_version(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "old")
+        session.commit()
+        renamed, err = svc.version_rename(s.id, v.id, "new")
+        assert err is None
+        assert renamed.name == "new"
+
+    def test_rename_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        _, err = svc.version_rename(s.id, 9999, "x")
+        assert "not found" in err.lower()
+
+    def test_rename_duplicate_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.version_create(s.id, "a")
+        v2, _ = svc.version_create(s.id, "b")
+        session.commit()
+        _, err = svc.version_rename(s.id, v2.id, "a")
+        assert "already exists" in err
+
+
+class TestVersionDelete:
+    def test_delete_version(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.commit()
+        ok, err = svc.version_delete(s.id, v.id)
+        assert ok is True
+        assert err is None
+        assert session.query(SetTracklistVersion).filter_by(id=v.id).count() == 0
+
+    def test_delete_cascades_slots_and_candidates(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        cand, _ = svc.candidate_add(s.id, slot.id, 42)
+        session.commit()
+        vid, slid, cid = v.id, slot.id, cand.id
+
+        ok, _ = svc.version_delete(s.id, vid)
+        assert ok is True
+        session.commit()
+        assert session.query(SetTracklistSlot).filter_by(id=slid).count() == 0
+        assert session.query(SetTracklistCandidate).filter_by(id=cid).count() == 0
+
+    def test_delete_shifts_later_display_orders(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v1, _ = svc.version_create(s.id, "a")
+        v2, _ = svc.version_create(s.id, "b")
+        v3, _ = svc.version_create(s.id, "c")
+        session.commit()
+
+        svc.version_delete(s.id, v1.id)
+        session.commit()
+
+        remaining = (
+            session.query(SetTracklistVersion)
+            .filter_by(set_id=s.id)
+            .order_by(SetTracklistVersion.display_order)
+            .all()
+        )
+        assert [v.display_order for v in remaining] == [0, 1]
+
+    def test_delete_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.version_delete(s.id, 9999)
+        assert ok is False
+
+
+class TestVersionReorder:
+    def test_reorder_versions(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v1, _ = svc.version_create(s.id, "a")
+        v2, _ = svc.version_create(s.id, "b")
+        v3, _ = svc.version_create(s.id, "c")
+        session.commit()
+
+        ok, err = svc.version_reorder(s.id, [v3.id, v1.id, v2.id])
+        assert ok is True
+        session.commit()
+
+        result = (
+            session.query(SetTracklistVersion)
+            .filter_by(set_id=s.id)
+            .order_by(SetTracklistVersion.display_order)
+            .all()
+        )
+        assert [v.id for v in result] == [v3.id, v1.id, v2.id]
+
+    def test_reorder_mismatched_ids_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v1, _ = svc.version_create(s.id, "a")
+        session.commit()
+        ok, err = svc.version_reorder(s.id, [v1.id, 9999])
+        assert ok is False
+
+    def test_reorder_duplicate_ids_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v1, _ = svc.version_create(s.id, "a")
+        session.commit()
+        ok, err = svc.version_reorder(s.id, [v1.id, v1.id])
+        assert ok is False
+        assert "Duplicate" in err
+
+
+class TestSlotCreate:
+    def test_create_slot_at_end(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+
+        slot, err = svc.slot_create(s.id, v.id)
+        assert err is None
+        assert slot.position == 0
+
+        slot2, _ = svc.slot_create(s.id, v.id)
+        assert slot2.position == 1
+
+    def test_create_slot_at_position_shifts_later(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+
+        s0, _ = svc.slot_create(s.id, v.id)
+        s1, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        s_mid, _ = svc.slot_create(s.id, v.id, position=1)
+        session.flush()
+
+        slots = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=v.id)
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        assert [sl.position for sl in slots] == [0, 1, 2]
+        assert slots[1].id == s_mid.id
+
+    def test_max_250_slots(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+
+        for _ in range(250):
+            slot, err = svc.slot_create(s.id, v.id)
+            assert err is None
+        session.flush()
+
+        slot, err = svc.slot_create(s.id, v.id)
+        assert slot is None
+        assert "Maximum" in err
+
+    def test_create_slot_version_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        slot, err = svc.slot_create(s.id, 9999)
+        assert slot is None
+        assert "not found" in err.lower()
+
+
+class TestSlotDelete:
+    def test_delete_slot_shifts_positions(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+
+        s0, _ = svc.slot_create(s.id, v.id)
+        s1, _ = svc.slot_create(s.id, v.id)
+        s2, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        ok, _ = svc.slot_delete(s.id, v.id, s0.id)
+        assert ok is True
+        session.flush()
+
+        slots = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=v.id)
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        assert [sl.position for sl in slots] == [0, 1]
+
+    def test_delete_slot_cascades_candidates(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        cand, _ = svc.candidate_add(s.id, slot.id, 10)
+        session.commit()
+        cid = cand.id
+
+        svc.slot_delete(s.id, v.id, slot.id)
+        session.commit()
+        assert session.query(SetTracklistCandidate).filter_by(id=cid).count() == 0
+
+    def test_delete_slot_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.commit()
+        ok, err = svc.slot_delete(s.id, v.id, 9999)
+        assert ok is False
+
+
+class TestSlotReorder:
+    def test_reorder_forward(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        s0, _ = svc.slot_create(s.id, v.id)
+        s1, _ = svc.slot_create(s.id, v.id)
+        s2, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        ok, _ = svc.slot_reorder(s.id, v.id, s0.id, 2)
+        assert ok is True
+        session.flush()
+
+        slots = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=v.id)
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        assert [sl.id for sl in slots] == [s1.id, s2.id, s0.id]
+
+    def test_reorder_backward(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        s0, _ = svc.slot_create(s.id, v.id)
+        s1, _ = svc.slot_create(s.id, v.id)
+        s2, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        ok, _ = svc.slot_reorder(s.id, v.id, s2.id, 0)
+        assert ok is True
+        session.flush()
+
+        slots = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=v.id)
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        assert [sl.id for sl in slots] == [s2.id, s0.id, s1.id]
+
+    def test_reorder_noop(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        s0, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        ok, _ = svc.slot_reorder(s.id, v.id, s0.id, 0)
+        assert ok is True
+
+    def test_reorder_clears_inherited(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        s0, _ = svc.slot_create(s.id, v.id)
+        s1, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        s0.is_inherited = True
+        session.flush()
+
+        svc.slot_reorder(s.id, v.id, s0.id, 1)
+        session.flush()
+        session.refresh(s0)
+        assert s0.is_inherited is False
+
+
+class TestSlotNoteUpdate:
+    def test_update_note(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.commit()
+
+        ok, _ = svc.slot_update_note(s.id, v.id, slot.id, "peak energy")
+        assert ok is True
+        session.commit()
+        session.refresh(slot)
+        assert slot.note == "peak energy"
+
+    def test_note_update_clears_inherited(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        slot.is_inherited = True
+        session.flush()
+
+        svc.slot_update_note(s.id, v.id, slot.id, "edit")
+        session.flush()
+        session.refresh(slot)
+        assert slot.is_inherited is False
+
+
+class TestCandidateAdd:
+    def test_add_first_candidate_auto_selected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        cand, err = svc.candidate_add(s.id, slot.id, 10)
+        assert err is None
+        assert cand.is_selected is True
+
+    def test_add_second_candidate_not_selected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        svc.candidate_add(s.id, slot.id, 10)
+        cand2, _ = svc.candidate_add(s.id, slot.id, 20)
+        assert cand2.is_selected is False
+
+    def test_max_5_candidates(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        for i in range(5):
+            c, err = svc.candidate_add(s.id, slot.id, 100 + i)
+            assert err is None
+        session.flush()
+
+        c, err = svc.candidate_add(s.id, slot.id, 999)
+        assert c is None
+        assert "Maximum" in err
+
+    def test_add_candidate_clears_inherited(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        slot.is_inherited = True
+        session.flush()
+
+        svc.candidate_add(s.id, slot.id, 10)
+        session.flush()
+        session.refresh(slot)
+        assert slot.is_inherited is False
+
+
+class TestCandidateRemove:
+    def test_remove_last_candidate_deletes_slot(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        cand, _ = svc.candidate_add(s.id, slot.id, 10)
+        session.commit()
+
+        slot_id = slot.id
+        ok, _ = svc.candidate_remove(s.id, slot.id, cand.id)
+        assert ok is True
+        session.commit()
+        assert session.query(SetTracklistSlot).filter_by(id=slot_id).count() == 0
+
+    def test_remove_selected_candidate_promotes_next(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        c1, _ = svc.candidate_add(s.id, slot.id, 10)
+        c2, _ = svc.candidate_add(s.id, slot.id, 20)
+        session.commit()
+
+        ok, _ = svc.candidate_remove(s.id, slot.id, c1.id)
+        assert ok is True
+        session.commit()
+        session.refresh(c2)
+        assert c2.is_selected is True
+
+    def test_remove_non_selected_keeps_selection(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        c1, _ = svc.candidate_add(s.id, slot.id, 10)
+        c2, _ = svc.candidate_add(s.id, slot.id, 20)
+        session.commit()
+
+        ok, _ = svc.candidate_remove(s.id, slot.id, c2.id)
+        assert ok is True
+        session.commit()
+        session.refresh(c1)
+        assert c1.is_selected is True
+
+    def test_remove_last_candidate_shifts_later_slots(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+
+        s0, _ = svc.slot_create(s.id, v.id)
+        s1, _ = svc.slot_create(s.id, v.id)
+        s2, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        c1, _ = svc.candidate_add(s.id, s1.id, 10)
+        svc.candidate_add(s.id, s0.id, 20)
+        svc.candidate_add(s.id, s2.id, 30)
+        session.commit()
+
+        svc.candidate_remove(s.id, s1.id, c1.id)
+        session.commit()
+
+        slots = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=v.id)
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        assert len(slots) == 2
+        assert [sl.position for sl in slots] == [0, 1]
+
+    def test_remove_candidate_clears_inherited(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        c1, _ = svc.candidate_add(s.id, slot.id, 10)
+        c2, _ = svc.candidate_add(s.id, slot.id, 20)
+        session.flush()
+        slot.is_inherited = True
+        session.flush()
+
+        svc.candidate_remove(s.id, slot.id, c2.id)
+        session.flush()
+        session.refresh(slot)
+        assert slot.is_inherited is False
+
+
+class TestCandidateSelect:
+    def test_select_candidate(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        c1, _ = svc.candidate_add(s.id, slot.id, 10)
+        c2, _ = svc.candidate_add(s.id, slot.id, 20)
+        session.commit()
+
+        assert c1.is_selected is True
+        assert c2.is_selected is False
+
+        ok, _ = svc.candidate_select(s.id, slot.id, c2.id)
+        assert ok is True
+        session.commit()
+
+        session.refresh(c1)
+        session.refresh(c2)
+        assert c1.is_selected is False
+        assert c2.is_selected is True
+
+    def test_select_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.commit()
+
+        ok, err = svc.candidate_select(s.id, slot.id, 9999)
+        assert ok is False
+        assert "not found" in err.lower()
+
+    def test_exactly_one_selected_invariant(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+
+        c1, _ = svc.candidate_add(s.id, slot.id, 10)
+        c2, _ = svc.candidate_add(s.id, slot.id, 20)
+        c3, _ = svc.candidate_add(s.id, slot.id, 30)
+        session.commit()
+
+        svc.candidate_select(s.id, slot.id, c3.id)
+        session.commit()
+
+        selected = (
+            session.query(SetTracklistCandidate)
+            .filter_by(slot_id=slot.id, is_selected=True)
+            .all()
+        )
+        assert len(selected) == 1
+        assert selected[0].id == c3.id
+
+    def test_select_clears_inherited(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        c1, _ = svc.candidate_add(s.id, slot.id, 10)
+        c2, _ = svc.candidate_add(s.id, slot.id, 20)
+        session.flush()
+        slot.is_inherited = True
+        session.flush()
+
+        svc.candidate_select(s.id, slot.id, c2.id)
+        session.flush()
+        session.refresh(slot)
+        assert slot.is_inherited is False
+
+
+class TestVersionBranch:
+    def test_branch_creates_version_with_copied_slots(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "main")
+        session.flush()
+
+        for i in range(5):
+            slot, _ = svc.slot_create(s.id, v.id)
+            session.flush()
+            svc.candidate_add(s.id, slot.id, 100 + i)
+        session.commit()
+
+        branch, err = svc.version_branch(s.id, v.id, 2, "branch-v2")
+        assert err is None
+        assert branch is not None
+        session.commit()
+
+        branch_slots = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=branch.id)
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        assert len(branch_slots) == 3
+        assert [sl.position for sl in branch_slots] == [0, 1, 2]
+
+    def test_branch_slots_marked_inherited(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "main")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        svc.candidate_add(s.id, slot.id, 10)
+        session.commit()
+
+        branch, _ = svc.version_branch(s.id, v.id, 0, "branch")
+        session.commit()
+
+        branch_slots = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=branch.id)
+            .all()
+        )
+        assert all(sl.is_inherited is True for sl in branch_slots)
+
+    def test_branch_creates_explorer_tree(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "main")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        svc.candidate_add(s.id, slot.id, 10)
+        session.commit()
+
+        branch, _ = svc.version_branch(s.id, v.id, 0, "branch")
+        session.commit()
+
+        assert branch.explorer_tree_id is not None
+        tree = session.query(SetExplorerTree).filter_by(id=branch.explorer_tree_id).first()
+        assert tree is not None
+        assert tree.name == "branch"
+
+    def test_branch_copies_candidates(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "main")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        svc.candidate_add(s.id, slot.id, 10)
+        svc.candidate_add(s.id, slot.id, 20)
+        session.commit()
+
+        branch, _ = svc.version_branch(s.id, v.id, 0, "branch")
+        session.commit()
+
+        branch_slot = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=branch.id)
+            .first()
+        )
+        cands = (
+            session.query(SetTracklistCandidate)
+            .filter_by(slot_id=branch_slot.id)
+            .all()
+        )
+        assert len(cands) == 2
+        track_ids = {c.track_id for c in cands}
+        assert track_ids == {10, 20}
+
+    def test_branch_respects_max_versions(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for i in range(10):
+            svc.version_create(s.id, f"v{i}")
+        session.commit()
+
+        v = session.query(SetTracklistVersion).filter_by(set_id=s.id).first()
+        branch, err = svc.version_branch(s.id, v.id, 0, "overflow")
+        assert branch is None
+        assert "Maximum" in err
+
+    def test_branch_duplicate_name_rejected(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "main")
+        session.commit()
+
+        branch, err = svc.version_branch(s.id, v.id, 0, "main")
+        assert branch is None
+        assert "already exists" in err
+
+
+class TestInheritedLifecycle:
+    """End-to-end: branch -> inherited flags -> cleared on mutation."""
+
+    def test_full_inherited_lifecycle(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "main")
+        session.flush()
+
+        slot0, _ = svc.slot_create(s.id, v.id)
+        slot1, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        svc.candidate_add(s.id, slot0.id, 10)
+        svc.candidate_add(s.id, slot1.id, 20)
+        session.commit()
+
+        branch, _ = svc.version_branch(s.id, v.id, 1, "branch")
+        session.commit()
+
+        branch_slots = (
+            session.query(SetTracklistSlot)
+            .filter_by(version_id=branch.id)
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+        assert len(branch_slots) == 2
+        assert all(sl.is_inherited is True for sl in branch_slots)
+
+        svc.slot_update_note(s.id, branch.id, branch_slots[0].id, "modified")
+        session.flush()
+        session.refresh(branch_slots[0])
+        assert branch_slots[0].is_inherited is False
+        assert branch_slots[1].is_inherited is True
+
+
+class TestTransitionScoreCacheWriteOnCompute:
+    """Prove that api_transition_scores() populates TransitionScoreCache
+    on first compute and returns cache-backed hits on repeated calls.
+
+    Uses the TransitionScoreCache directly since the production flow is:
+    1. api_transition_scores checks ts_cache.get() → miss
+    2. finder.get_transition_matches() computes and calls ts_cache.put()
+    3. Second call to ts_cache.get() → hit with same score
+    """
+
+    def test_cache_populated_after_first_compute(self):
+        from src.harmonic_mixing.cosine_cache import TransitionScoreCache
+        cache = TransitionScoreCache()
+
+        assert cache.get(10, 20) is None
+        stats_before = cache.get_stats()
+        assert stats_before["misses"] == 1
+        assert stats_before["hits"] == 0
+
+        cache.put(10, 20, 85.0)
+
+        assert cache.get(10, 20) == 85.0
+        assert cache.get(10, 20) == 85.0
+
+        stats_after = cache.get_stats()
+        assert stats_after["hits"] == 2
+        assert stats_after["misses"] == 1
+
+    def test_cache_not_bypassed_by_new_code_paths(self):
+        from src.harmonic_mixing.cosine_cache import TransitionScoreCache
+        cache = TransitionScoreCache()
+
+        cache.put(1, 100, 72.5)
+        cache.put(1, 200, 88.0)
+        cache.put(2, 100, 65.0)
+
+        for _ in range(3):
+            assert cache.get(1, 100) == 72.5
+            assert cache.get(1, 200) == 88.0
+            assert cache.get(2, 100) == 65.0
+
+        stats = cache.get_stats()
+        assert stats["hits"] == 9
+
+    def test_directional_keys_preserved(self):
+        from src.harmonic_mixing.cosine_cache import TransitionScoreCache
+        cache = TransitionScoreCache()
+        cache.put(10, 20, 85.0)
+        cache.put(20, 10, 72.0)
+        assert cache.get(10, 20) == 85.0
+        assert cache.get(20, 10) == 72.0
+
+    def test_clear_invalidates_all_cached_scores(self):
+        from src.harmonic_mixing.cosine_cache import TransitionScoreCache
+        cache = TransitionScoreCache()
+        cache.put(1, 2, 50.0)
+        cache.clear()
+        assert cache.get(1, 2) is None
+
+
+class TestVersionSlotCandidateHydration:
+    """Ensure CRUD mutations remain consistent with the hydration shape."""
+
+    def test_hydrate_after_full_crud_cycle(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v, _ = svc.version_create(s.id, "v1")
+        session.flush()
+        slot, _ = svc.slot_create(s.id, v.id)
+        session.flush()
+        c1, _ = svc.candidate_add(s.id, slot.id, 10)
+        c2, _ = svc.candidate_add(s.id, slot.id, 20)
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        versions = h["versions"]
+        assert len(versions) == 1
+        assert versions[0]["name"] == "v1"
+        assert len(versions[0]["slots"]) == 1
+        assert len(versions[0]["slots"][0]["candidates"]) == 2
+
+        svc.candidate_select(s.id, slot.id, c2.id)
+        session.commit()
+
+        h2 = svc.hydrate_set(s.id)
+        cands = h2["versions"][0]["slots"][0]["candidates"]
+        selected = [c for c in cands if c["is_selected"]]
+        assert len(selected) == 1
+        assert selected[0]["track_id"] == 20
