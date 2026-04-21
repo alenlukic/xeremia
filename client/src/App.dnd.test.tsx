@@ -1664,7 +1664,10 @@ describe('DnD: empty-row insertion vs fill (BUG-02)', () => {
       realPosition: 2,
     });
 
+    // insertDisplayPos=3, emptysBefore=1, tracklistPos=2
     expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(2, 2, 'Track 2');
+    // Lower empty row (id 201 at position 3) shifts to 4 to open gap between the two empties
+    expect(mockSB.reorderEmptyRow).toHaveBeenCalledWith(201, 4);
     expect(mockSB.deleteEmptyRow).not.toHaveBeenCalled();
 
     const trackAdds = mockSB.addToTracklistAtPosition.mock.calls.length + mockSB.addToTracklist.mock.calls.length;
@@ -1704,7 +1707,10 @@ describe('DnD: empty-row insertion vs fill (BUG-02)', () => {
       realPosition: 2,
     });
 
+    // insertDisplayPos=3, emptysBefore=1, tracklistPos=2
     expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(2, 2, 'Track 2');
+    // Lower empty row (id 201 at position 3) shifts to 4 to open gap between the two empties
+    expect(mockSB.reorderEmptyRow).toHaveBeenCalledWith(201, 4);
     expect(mockSB.deleteEmptyRow).not.toHaveBeenCalled();
 
     const trackAdds = mockSB.addToTracklistAtPosition.mock.calls.length + mockSB.addToTracklist.mock.calls.length;

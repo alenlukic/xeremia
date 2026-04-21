@@ -678,16 +678,32 @@ export default function App() {
       const targetRow = overPersistedId != null
         ? sameRows.find(r => r.id === overPersistedId)
         : undefined;
-      const hasAdjacentEmpty = targetRow != null && sameRows.some(
-        r => r.id !== targetRow.id && Math.abs(r.position - targetRow.position) === 1,
-      );
-
+      const adjacentRow = targetRow != null
+        ? sameRows.find(r => r.id !== targetRow.id && Math.abs(r.position - targetRow.position) === 1)
+        : undefined;
+      const hasAdjacentEmpty = adjacentRow != null;
       const shouldFill = !hasAdjacentEmpty;
 
       for (const tid of validTrackIds) {
         const t = allTracks.find(tr => tr.id === tid);
         if (isTracklist) {
-          if (payload.source === 'tracklist' && realPosition != null) {
+          if (hasAdjacentEmpty && targetRow && adjacentRow) {
+            // Insert the track BETWEEN the two adjacent empty rows.
+            // insertDisplayPos is the display slot between them (after the lower-positioned one).
+            const insertDisplayPos = Math.min(targetRow.position, adjacentRow.position) + 1;
+            // Convert display position → tracklist-only index by subtracting empty rows that
+            // precede the insertion point. (empty_rows.position is a display index)
+            const emptysBefore = sameRows.filter(r => r.position < insertDisplayPos).length;
+            const tracklistPos = insertDisplayPos - emptysBefore;
+            // Shift the lower (higher-position) empty row down by 1 to open a gap for the track.
+            const lowerRow = adjacentRow.position > targetRow.position ? adjacentRow : targetRow;
+            reorderEmptyRow(lowerRow.id, lowerRow.position + 1);
+            if (payload.source === 'tracklist') {
+              reorderTracklist(tid, tracklistPos);
+            } else {
+              addToTracklistAtPosition(tid, tracklistPos, t?.title ?? payload.title);
+            }
+          } else if (payload.source === 'tracklist' && realPosition != null) {
             reorderTracklist(tid, realPosition);
           } else if (realPosition != null) {
             addToTracklistAtPosition(tid, realPosition, t?.title ?? payload.title);
