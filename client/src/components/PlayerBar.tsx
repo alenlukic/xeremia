@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useState, useCallback, useEffect } from 'react';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 
 function formatTime(seconds: number): string {
@@ -8,11 +8,23 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export const PlayerBar = memo(function PlayerBar() {
+export const PlayerBar = memo(function PlayerBar({ onVisibilityChange }: { onVisibilityChange?: (visible: boolean) => void }) {
   const {
     track, playing, currentTime, duration, volume, error, loading,
     pause, resume, seek, setVolume, stop,
   } = useAudioPlayer();
+
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (track || error) setDismissed(false);
+  }, [track, error]);
+
+  const visible = !dismissed && !!(track || error);
+
+  useEffect(() => {
+    onVisibilityChange?.(visible);
+  }, [visible, onVisibilityChange]);
 
   const handleSeek = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => seek(parseFloat(e.target.value)),
@@ -24,7 +36,12 @@ export const PlayerBar = memo(function PlayerBar() {
     [setVolume],
   );
 
-  if (!track && !error) return null;
+  const handleDismiss = useCallback(() => {
+    stop();
+    setDismissed(true);
+  }, [stop]);
+
+  if (!visible) return null;
 
   return (
     <div className="player-bar" data-testid="player-bar">
@@ -91,6 +108,16 @@ export const PlayerBar = memo(function PlayerBar() {
           data-testid="player-bar-volume"
         />
       </div>
+
+      <button
+        className="player-bar__dismiss"
+        onClick={handleDismiss}
+        aria-label="Close player"
+        data-testid="player-bar-dismiss"
+        title="Close player"
+      >
+        ×
+      </button>
     </div>
   );
 });

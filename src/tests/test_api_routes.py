@@ -758,12 +758,18 @@ class TestPoolSubgroupEndpoints:
         meta = MetaData()
         Table("track", meta, Column("id", Integer, primary_key=True), Column("title", String))
         meta.create_all(engine)
+        from src.models.set_tracklist_version import SetTracklistVersion
+        from src.models.set_tracklist_slot import SetTracklistSlot
+        from src.models.set_tracklist_candidate import SetTracklistCandidate
+
         tables = [
             DjSet.__table__, SetPoolEntry.__table__,
             SetPoolSubgroup.__table__, SetPoolSubgroupMember.__table__,
             SetTracklistEntry.__table__, SetExplorerTree.__table__,
             SetExplorerNode.__table__, SetExplorerEdge.__table__,
             SetEmptyRow.__table__,
+            SetTracklistVersion.__table__, SetTracklistSlot.__table__,
+            SetTracklistCandidate.__table__,
         ]
         for t in tables:
             t.create(engine, checkfirst=True)
@@ -1057,6 +1063,9 @@ class TestPoolReorderEndpoint:
         from src.models.set_pool_subgroup import SetPoolSubgroup
         from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
         from src.models.set_empty_row import SetEmptyRow
+        from src.models.set_tracklist_version import SetTracklistVersion
+        from src.models.set_tracklist_slot import SetTracklistSlot
+        from src.models.set_tracklist_candidate import SetTracklistCandidate
 
         engine = create_engine(
             "sqlite:///:memory:",
@@ -1072,6 +1081,8 @@ class TestPoolReorderEndpoint:
             SetExplorerNode.__table__, SetExplorerEdge.__table__,
             SetPoolSubgroup.__table__, SetPoolSubgroupMember.__table__,
             SetEmptyRow.__table__,
+            SetTracklistVersion.__table__, SetTracklistSlot.__table__,
+            SetTracklistCandidate.__table__,
         ]
         for t in tables:
             t.create(engine, checkfirst=True)

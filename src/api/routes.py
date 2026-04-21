@@ -626,13 +626,23 @@ def _serialize_hydrated(hydration, session) -> dict:
 
     dj_set = hydration["set"]
 
+    candidate_track_ids: set = set()
+    for v in hydration.get("versions", []):
+        for s in v.get("slots", []):
+            for c in s.get("candidates", []):
+                if c["track_id"] is not None:
+                    candidate_track_ids.add(c["track_id"])
+        for dn in v.get("derived_explorer_nodes", []):
+            if dn["track_id"] is not None:
+                candidate_track_ids.add(dn["track_id"])
+
     all_track_ids = list({
         e.track_id for e in hydration["pool"]
     } | {
         e.track_id for e in hydration["tracklist"]
     } | {
         n.track_id for n in hydration["explorer_nodes"]
-    })
+    } | candidate_track_ids)
 
     track_map: dict = {}
     if all_track_ids:
@@ -707,6 +717,49 @@ def _serialize_hydrated(hydration, session) -> dict:
                 "position": er.position,
             }
             for er in hydration.get("empty_rows", [])
+        ],
+        "versions": [
+            {
+                "id": v["id"],
+                "set_id": v["set_id"],
+                "name": v["name"],
+                "display_order": v["display_order"],
+                "explorer_tree_id": v["explorer_tree_id"],
+                "slots": [
+                    {
+                        "id": s["id"],
+                        "version_id": s["version_id"],
+                        "position": s["position"],
+                        "note": s["note"],
+                        "is_inherited": s["is_inherited"],
+                        "candidates": [
+                            {
+                                "id": c["id"],
+                                "slot_id": c["slot_id"],
+                                "track_id": c["track_id"],
+                                "is_selected": c["is_selected"],
+                                "track": track_map.get(c["track_id"]) if c["track_id"] is not None else None,
+                            }
+                            for c in s["candidates"]
+                        ],
+                    }
+                    for s in v["slots"]
+                ],
+                "derived_explorer_nodes": [
+                    {
+                        "slot_id": dn["slot_id"],
+                        "candidate_id": dn["candidate_id"],
+                        "track_id": dn["track_id"],
+                        "level": dn["level"],
+                        "position": dn["position"],
+                        "col_index": dn["col_index"],
+                        "is_selected": dn["is_selected"],
+                        "track": track_map.get(dn["track_id"]) if dn["track_id"] is not None else None,
+                    }
+                    for dn in v["derived_explorer_nodes"]
+                ],
+            }
+            for v in hydration.get("versions", [])
         ],
     }
 

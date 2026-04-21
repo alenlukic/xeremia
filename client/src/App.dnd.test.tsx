@@ -6,6 +6,7 @@ import { useCollectionCache } from './hooks/useCollectionCache';
 import { useSetBuilder } from './hooks/useSetBuilder';
 
 let capturedOnDragEnd: ((event: unknown) => void) | undefined;
+let capturedOnDragMove: ((event: unknown) => void) | undefined;
 
 const mockPointerWithin = vi.fn().mockReturnValue([]);
 const mockRectIntersection = vi.fn().mockReturnValue([]);
@@ -15,8 +16,9 @@ const mockUseDroppable = vi.fn(() => ({
 }));
 
 vi.mock('@dnd-kit/core', () => ({
-  DndContext: (props: { children: React.ReactNode; onDragEnd?: (e: unknown) => void }) => {
+  DndContext: (props: { children: React.ReactNode; onDragEnd?: (e: unknown) => void; onDragMove?: (e: unknown) => void }) => {
     capturedOnDragEnd = props.onDragEnd;
+    capturedOnDragMove = props.onDragMove;
     return props.children;
   },
   useDraggable: () => ({
@@ -116,11 +118,22 @@ function makeTracks(count: number): Track[] {
   }));
 }
 
-function makeDragEnd(activeId: string, payload: DragPayload, overId: string | null, overData?: Record<string, unknown>) {
+function makeDragEnd(activeId: string, payload: DragPayload, overId: string | null, overData?: Record<string, unknown>, overRect?: { top: number; left: number; width: number; height: number }) {
   return {
     active: { id: activeId, data: { current: payload } },
-    over: overId ? { id: overId, data: overData ? { current: overData } : undefined } : null,
+    over: overId ? { id: overId, data: overData ? { current: overData } : undefined, ...(overRect ? { rect: overRect } : {}) } : null,
   };
+}
+
+function fireDragMove(pointerY: number, pointerX = 100) {
+  if (!capturedOnDragMove) return;
+  act(() => {
+    capturedOnDragMove!({
+      activatorEvent: { clientY: 0, clientX: 0 },
+      delta: { x: pointerX, y: pointerY },
+      over: null,
+    });
+  });
 }
 
 const browsePayload: DragPayload = { trackId: 1, title: 'Track 1', source: 'browse' };
@@ -181,8 +194,6 @@ function makeSetBuilderMock(overrides: Record<string, unknown> = {}) {
     createTree: vi.fn(),
     renameTree: vi.fn(),
     deleteTree: vi.fn(),
-    togglePoolStar: vi.fn(),
-    toggleTracklistStar: vi.fn(),
     createSubgroup: vi.fn().mockResolvedValue(null),
     renameSubgroup: vi.fn().mockResolvedValue(true),
     deleteSubgroup: vi.fn().mockResolvedValue(true),
@@ -200,6 +211,7 @@ let mockSB: ReturnType<typeof makeSetBuilderMock>;
 
 beforeEach(() => {
   capturedOnDragEnd = undefined;
+  capturedOnDragMove = undefined;
   mockPointerWithin.mockReset().mockReturnValue([]);
   mockRectIntersection.mockReset().mockReturnValue([]);
   mockUseDroppable.mockClear();
@@ -223,9 +235,9 @@ async function renderApp() {
   expect(capturedOnDragEnd).toBeDefined();
 }
 
-function fireDragEnd(activeId: string, payload: DragPayload, overId: string | null, overData?: Record<string, unknown>) {
+function fireDragEnd(activeId: string, payload: DragPayload, overId: string | null, overData?: Record<string, unknown>, overRect?: { top: number; left: number; width: number; height: number }) {
   act(() => {
-    capturedOnDragEnd!(makeDragEnd(activeId, payload, overId, overData));
+    capturedOnDragEnd!(makeDragEnd(activeId, payload, overId, overData, overRect));
   });
 }
 
@@ -1541,7 +1553,6 @@ describe('DnD: droppable data contract coupling', () => {
           onMoveToPool={noop}
           onReorder={noop}
           onUpdateNote={noop}
-          onToggleStar={noop}
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -1577,5 +1588,173 @@ describe('DnD: droppable data contract coupling', () => {
     fireDragEnd('tracklist-track-10', reorderPayload, String(targetOpts.id), targetOpts.data);
 
     expect(mockSB.reorderTracklist).toHaveBeenCalledWith(10, 1);
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
+describe('DnD: empty-row insertion vs fill (BUG-02)', () => {
+  it('fills an isolated empty row (deletes it after inserting the track)', async () => {
+    const activeSet = {
+      set: { id: 1, name: 'S' },
+      pool: [],
+      tracklist: [
+        { track_id: 5, position: 0, starred: false },
+      ],
+      explorer_trees: [],
+      explorer_nodes: [],
+      explorer_edges: [],
+      empty_rows: [
+        { id: 100, set_id: 1, surface: 'tracklist', position: 1 },
+      ],
+    };
+    mockSB = makeSetBuilderMock({ activeSetId: 1, activeSet });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+
+    const tracklistLengthBefore = activeSet.tracklist.length;
+    const emptyRowCountBefore = activeSet.empty_rows.filter(r => r.surface === 'tracklist').length;
+    expect(tracklistLengthBefore).toBe(1);
+    expect(emptyRowCountBefore).toBe(1);
+
+    await renderApp();
+
+    fireDragEnd('browse-track-1', browsePayload, 'drop-tracklist-empty-e100', {
+      __emptyId: 'e100',
+      __persistedId: 100,
+      realPosition: 1,
+    });
+
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(1, 1, 'Track 1');
+    expect(mockSB.deleteEmptyRow).toHaveBeenCalledWith(100);
+
+    const trackAdds = mockSB.addToTracklistAtPosition.mock.calls.length + mockSB.addToTracklist.mock.calls.length;
+    const emptyDeletes = mockSB.deleteEmptyRow.mock.calls.length;
+    const tracklistLengthAfter = tracklistLengthBefore + trackAdds;
+    const emptyRowCountAfter = emptyRowCountBefore - emptyDeletes;
+    expect(tracklistLengthAfter).toBe(2);
+    expect(emptyRowCountAfter).toBe(0);
+  });
+
+  it('inserts between adjacent empty rows (preserves both placeholders, no deleteEmptyRow)', async () => {
+    const activeSet = {
+      set: { id: 1, name: 'S' },
+      pool: [],
+      tracklist: [] as { track_id: number; position: number; starred: boolean }[],
+      explorer_trees: [],
+      explorer_nodes: [],
+      explorer_edges: [],
+      empty_rows: [
+        { id: 200, set_id: 1, surface: 'tracklist', position: 2 },
+        { id: 201, set_id: 1, surface: 'tracklist', position: 3 },
+      ],
+    };
+    mockSB = makeSetBuilderMock({ activeSetId: 1, activeSet });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+
+    const tracklistLengthBefore = activeSet.tracklist.length;
+    const emptyRowCountBefore = activeSet.empty_rows.filter(r => r.surface === 'tracklist').length;
+    expect(tracklistLengthBefore).toBe(0);
+    expect(emptyRowCountBefore).toBe(2);
+
+    await renderApp();
+
+    fireDragEnd('browse-track-2', { trackId: 2, title: 'Track 2', source: 'browse' }, 'drop-tracklist-empty-e200', {
+      __emptyId: 'e200',
+      __persistedId: 200,
+      realPosition: 2,
+    });
+
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(2, 2, 'Track 2');
+    expect(mockSB.deleteEmptyRow).not.toHaveBeenCalled();
+
+    const trackAdds = mockSB.addToTracklistAtPosition.mock.calls.length + mockSB.addToTracklist.mock.calls.length;
+    const emptyDeletes = mockSB.deleteEmptyRow.mock.calls.length;
+    const tracklistLengthAfter = tracklistLengthBefore + trackAdds;
+    const emptyRowCountAfter = emptyRowCountBefore - emptyDeletes;
+    expect(tracklistLengthAfter).toBe(1);
+    expect(emptyRowCountAfter).toBe(2);
+  });
+
+  it('adjacent empty rows always insert (never fill), regardless of pointer position', async () => {
+    const activeSet = {
+      set: { id: 1, name: 'S' },
+      pool: [],
+      tracklist: [] as { track_id: number; position: number; starred: boolean }[],
+      explorer_trees: [],
+      explorer_nodes: [],
+      explorer_edges: [],
+      empty_rows: [
+        { id: 200, set_id: 1, surface: 'tracklist', position: 2 },
+        { id: 201, set_id: 1, surface: 'tracklist', position: 3 },
+      ],
+    };
+    mockSB = makeSetBuilderMock({ activeSetId: 1, activeSet });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+
+    const tracklistLengthBefore = activeSet.tracklist.length;
+    const emptyRowCountBefore = activeSet.empty_rows.filter(r => r.surface === 'tracklist').length;
+    expect(tracklistLengthBefore).toBe(0);
+    expect(emptyRowCountBefore).toBe(2);
+
+    await renderApp();
+
+    fireDragEnd('browse-track-2', { trackId: 2, title: 'Track 2', source: 'browse' }, 'drop-tracklist-empty-e200', {
+      __emptyId: 'e200',
+      __persistedId: 200,
+      realPosition: 2,
+    });
+
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(2, 2, 'Track 2');
+    expect(mockSB.deleteEmptyRow).not.toHaveBeenCalled();
+
+    const trackAdds = mockSB.addToTracklistAtPosition.mock.calls.length + mockSB.addToTracklist.mock.calls.length;
+    const emptyDeletes = mockSB.deleteEmptyRow.mock.calls.length;
+    const tracklistLengthAfter = tracklistLengthBefore + trackAdds;
+    const emptyRowCountAfter = emptyRowCountBefore - emptyDeletes;
+    expect(tracklistLengthAfter).toBe(1);
+    expect(emptyRowCountAfter).toBe(2);
+  });
+
+  it('fills an empty row when no adjacent empty neighbours exist on the same surface', async () => {
+    const activeSet = {
+      set: { id: 1, name: 'S' },
+      pool: [],
+      tracklist: [
+        { track_id: 5, position: 0, starred: false },
+        { track_id: 6, position: 2, starred: false },
+      ],
+      explorer_trees: [],
+      explorer_nodes: [],
+      explorer_edges: [],
+      empty_rows: [
+        { id: 300, set_id: 1, surface: 'tracklist', position: 1 },
+        { id: 301, set_id: 1, surface: 'pool', position: 0 },
+      ],
+    };
+    mockSB = makeSetBuilderMock({ activeSetId: 1, activeSet });
+    vi.mocked(useSetBuilder).mockReturnValue(mockSB as ReturnType<typeof useSetBuilder>);
+
+    const tracklistLengthBefore = activeSet.tracklist.length;
+    const emptyRowCountBefore = activeSet.empty_rows.filter(r => r.surface === 'tracklist').length;
+    expect(tracklistLengthBefore).toBe(2);
+    expect(emptyRowCountBefore).toBe(1);
+
+    await renderApp();
+
+    fireDragEnd('browse-track-3', { trackId: 3, title: 'Track 3', source: 'browse' }, 'drop-tracklist-empty-e300', {
+      __emptyId: 'e300',
+      __persistedId: 300,
+      realPosition: 1,
+    });
+
+    expect(mockSB.addToTracklistAtPosition).toHaveBeenCalledWith(3, 1, 'Track 3');
+    expect(mockSB.deleteEmptyRow).toHaveBeenCalledWith(300);
+
+    const trackAdds = mockSB.addToTracklistAtPosition.mock.calls.length + mockSB.addToTracklist.mock.calls.length;
+    const emptyDeletes = mockSB.deleteEmptyRow.mock.calls.length;
+    const tracklistLengthAfter = tracklistLengthBefore + trackAdds;
+    const emptyRowCountAfter = emptyRowCountBefore - emptyDeletes;
+    expect(tracklistLengthAfter).toBe(3);
+    expect(emptyRowCountAfter).toBe(0);
   });
 });

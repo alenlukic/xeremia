@@ -56,7 +56,6 @@ function renderTracklist(entries: TracklistEntry[], extra?: Partial<React.Compon
         onMoveToPool={noop}
         onReorder={noop}
         onUpdateNote={noop}
-        onToggleStar={noop}
         onAddTrack={noop}
         onInsertEmptyRows={extra?.onInsertEmptyRows ?? noop}
         onDeleteEmptyRow={extra?.onDeleteEmptyRow ?? noop}

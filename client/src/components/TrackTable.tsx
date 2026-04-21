@@ -27,15 +27,35 @@ const FLEX_MINS = [280, 100, 100, 110];
 const TOTAL_FLEX = FLEX_MINS.reduce((a, b) => a + b, 0);
 const TOTAL_FIXED = FIXED_COUNT * FIXED_PX;
 const DRAG_HANDLE_WIDTH = 24;
+const PLAY_COL_WIDTH = 32;
 
-function computeColWidths(container: number): number[] {
+export function computeColWidths(container: number, hasColChooser: boolean): number[] {
+  const utilityWidth = DRAG_HANDLE_WIDTH + PLAY_COL_WIDTH + (hasColChooser ? COL_CHOOSER_WIDTH : 0);
+
   if (container <= 0) {
-    return Array(FIXED_COUNT).fill(FIXED_PX).concat(FLEX_MINS);
+    return [
+      DRAG_HANDLE_WIDTH,
+      PLAY_COL_WIDTH,
+      ...Array(FIXED_COUNT).fill(FIXED_PX),
+      ...FLEX_MINS,
+      ...(hasColChooser ? [COL_CHOOSER_WIDTH] : []),
+    ];
   }
-  const flexBudget = Math.max(container - TOTAL_FIXED, TOTAL_FLEX);
+
+  const flexBudget = Math.round(Math.max(container - TOTAL_FIXED - utilityWidth, TOTAL_FLEX));
+  const rawFlexWidths = FLEX_MINS.map((m) => (m / TOTAL_FLEX) * flexBudget);
+  const flooredWidths = rawFlexWidths.map(Math.floor);
+  const remainder = flexBudget - flooredWidths.reduce((a, b) => a + b, 0);
+  const flexWidths = flooredWidths.map((w, i) =>
+    i === flooredWidths.length - 1 ? w + remainder : w,
+  );
+
   return [
+    DRAG_HANDLE_WIDTH,
+    PLAY_COL_WIDTH,
     ...Array<number>(FIXED_COUNT).fill(FIXED_PX),
-    ...FLEX_MINS.map((m) => (m / TOTAL_FLEX) * flexBudget),
+    ...flexWidths,
+    ...(hasColChooser ? [COL_CHOOSER_WIDTH] : []),
   ];
 }
 
@@ -300,11 +320,11 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
 
   const responsiveSizing = useMemo(() => {
     if (containerWidth <= 0) return {};
-    const widths = computeColWidths(containerWidth);
+    const allWidths = computeColWidths(containerWidth, hasColChooser);
     const sizing: ColumnSizingState = {};
-    COLUMN_IDS.forEach((id, i) => { sizing[id] = widths[i]; });
+    COLUMN_IDS.forEach((id, i) => { sizing[id] = allWidths[i + 2]; });
     return sizing;
-  }, [containerWidth]);
+  }, [containerWidth, hasColChooser]);
 
   const effectiveSizing = useMemo(() => {
     if (Object.keys(columnSizing).length > 0) return columnSizing;
@@ -357,7 +377,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     ...(sortedRowModel ? { getSortedRowModel: sortedRowModel } : {}),
   });
 
-  const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH + (hasColChooser ? COL_CHOOSER_WIDTH : 0);
+  const totalWidth = table.getTotalSize() + DRAG_HANDLE_WIDTH + PLAY_COL_WIDTH + (hasColChooser ? COL_CHOOSER_WIDTH : 0);
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth;
 
   useLayoutEffect(() => {
@@ -487,6 +507,14 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
           className="track-table"
           style={containerWidth > 0 ? { width: totalWidth } : undefined}
         >
+          <colgroup>
+            <col style={{ width: DRAG_HANDLE_WIDTH }} />
+            <col style={{ width: PLAY_COL_WIDTH }} />
+            {table.getVisibleLeafColumns().map((col) => (
+              <col key={col.id} style={{ width: col.getSize() }} />
+            ))}
+            {hasColChooser && <col style={{ width: COL_CHOOSER_WIDTH }} />}
+          </colgroup>
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
@@ -561,19 +589,19 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
           <tbody style={virtualItems.length > 0 ? { height: rowVirtualizer.getTotalSize(), position: 'relative' } : undefined}>
             {loading ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length + 1 + (hasColChooser ? 1 : 0)} className="table-status">
+                <td colSpan={table.getVisibleLeafColumns().length + 2 + (hasColChooser ? 1 : 0)} className="table-status">
                   Loading tracks…
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length + 1 + (hasColChooser ? 1 : 0)} className="table-status table-status--error">
+                <td colSpan={table.getVisibleLeafColumns().length + 2 + (hasColChooser ? 1 : 0)} className="table-status table-status--error">
                   Failed to load tracks — {error}
                 </td>
               </tr>
             ) : tracks.length === 0 ? (
               <tr>
-                <td colSpan={table.getVisibleLeafColumns().length + 1 + (hasColChooser ? 1 : 0)} className="table-status">
+                <td colSpan={table.getVisibleLeafColumns().length + 2 + (hasColChooser ? 1 : 0)} className="table-status">
                   No tracks found
                 </td>
               </tr>
@@ -611,7 +639,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
                 ))}
                 {hasMore && onLoadMore && (
                   <tr ref={sentinelRef}>
-                    <td colSpan={table.getVisibleLeafColumns().length + 1 + (hasColChooser ? 1 : 0)} className="table-status">
+                    <td colSpan={table.getVisibleLeafColumns().length + 2 + (hasColChooser ? 1 : 0)} className="table-status">
                       Loading more tracks…
                     </td>
                   </tr>

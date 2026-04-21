@@ -302,8 +302,6 @@ export default function App() {
     reorderTracklist,
     addToTracklistAtPosition,
     updateTracklistNote,
-    togglePoolStar,
-    toggleTracklistStar,
     addExplorerNode,
     deleteExplorerNode,
     addExplorerEdge,
@@ -568,6 +566,12 @@ export default function App() {
   }, []);
 
   const handleDragMove = useCallback((event: DragMoveEvent) => {
+    if (event.activatorEvent && 'clientY' in event.activatorEvent) {
+      const baseY = (event.activatorEvent as PointerEvent).clientY;
+      _lastPointerY = baseY + (event.delta?.y ?? 0);
+      _lastPointerX = (event.activatorEvent as PointerEvent).clientX + (event.delta?.x ?? 0);
+    }
+
     const overId = event.over ? String(event.over.id) : null;
     const panelKey: PanelKey | null =
       overId === 'dock-matches' ? 'matches' :
@@ -667,6 +671,19 @@ export default function App() {
 
       if (validTrackIds.length === 0) return;
 
+      const surfaceEmptyRows = (sb.activeSet as Record<string, unknown>).empty_rows as Array<{ id: number; set_id: number; surface: string; position: number }> | undefined;
+      const sameRows = surfaceEmptyRows?.filter(
+        r => r.surface === (isTracklist ? 'tracklist' : 'pool'),
+      ) ?? [];
+      const targetRow = overPersistedId != null
+        ? sameRows.find(r => r.id === overPersistedId)
+        : undefined;
+      const hasAdjacentEmpty = targetRow != null && sameRows.some(
+        r => r.id !== targetRow.id && Math.abs(r.position - targetRow.position) === 1,
+      );
+
+      const shouldFill = !hasAdjacentEmpty;
+
       for (const tid of validTrackIds) {
         const t = allTracks.find(tr => tr.id === tid);
         if (isTracklist) {
@@ -681,7 +698,7 @@ export default function App() {
           addToPoolFn(tid, t?.title ?? payload.title);
         }
       }
-      if (overPersistedId != null) {
+      if (overPersistedId != null && shouldFill) {
         deleteEmptyRow(overPersistedId);
       }
       return;
@@ -812,7 +829,7 @@ export default function App() {
       <div className="app-shell-v2">
         {/* ─── Top Anchor Zone (hidden in Set Mode) ─── */}
         {!isSetMode && (
-          <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: '28vh' }}>
+          <div className="top-anchor" style={{ flex: '1 1 0%', minHeight: 0 }}>
             {/* ─── Search row with filter toggle ─── */}
             <div className="controls-strip">
               <SearchPanel
@@ -996,8 +1013,6 @@ export default function App() {
               reorderTracklist={reorderTracklist}
               addToTracklistAtPosition={addToTracklistAtPosition}
               updateTracklistNote={updateTracklistNote}
-              togglePoolStar={togglePoolStar}
-              toggleTracklistStar={toggleTracklistStar}
               addToTracklist={sbAddToTracklist}
               resolvePendingAdd={resolvePendingAdd}
               clearPendingAdd={clearPendingAdd}
@@ -1041,8 +1056,6 @@ export default function App() {
                     reorderTracklist={reorderTracklist}
                     addToTracklistAtPosition={addToTracklistAtPosition}
                     updateTracklistNote={updateTracklistNote}
-                    togglePoolStar={togglePoolStar}
-                    toggleTracklistStar={toggleTracklistStar}
                     addToTracklist={sbAddToTracklist}
                     createSubgroup={createSubgroup}
                     renameSubgroup={renameSubgroup}

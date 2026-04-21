@@ -265,6 +265,44 @@ class EmptyRowResponse(BaseModel):
     position: int
 
 
+class VersionCandidateResponse(BaseModel):
+    id: int
+    slot_id: int
+    track_id: Optional[int] = None
+    is_selected: bool = False
+    track: Optional[TrackResponse] = None
+
+
+class VersionSlotResponse(BaseModel):
+    id: int
+    version_id: int
+    position: int
+    note: str = ""
+    is_inherited: bool = False
+    candidates: List[VersionCandidateResponse] = Field(default_factory=list)
+
+
+class DerivedExplorerNodeResponse(BaseModel):
+    slot_id: int
+    candidate_id: int
+    track_id: Optional[int] = None
+    level: int
+    position: int
+    col_index: int
+    is_selected: bool = False
+    track: Optional[TrackResponse] = None
+
+
+class VersionResponse(BaseModel):
+    id: int
+    set_id: int
+    name: str
+    display_order: int = 0
+    explorer_tree_id: Optional[int] = None
+    slots: List[VersionSlotResponse] = Field(default_factory=list)
+    derived_explorer_nodes: List[DerivedExplorerNodeResponse] = Field(default_factory=list)
+
+
 class HydratedSetResponse(BaseModel):
     set: SetSummary
     pool: List[PoolEntryResponse]
@@ -275,6 +313,7 @@ class HydratedSetResponse(BaseModel):
     pool_subgroups: List[PoolSubgroupResponse] = Field(default_factory=list)
     pool_subgroup_memberships: List[PoolSubgroupMemberResponse] = Field(default_factory=list)
     empty_rows: List[EmptyRowResponse] = Field(default_factory=list)
+    versions: List[VersionResponse] = Field(default_factory=list)
 
 
 class PoolAddRequest(BaseModel):

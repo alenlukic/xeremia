@@ -1109,5 +1109,47 @@
     "build_status": "PASS",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "LOW"
+  },
+  {
+    "run_id": "20260421T153806Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Contract Set\n\n- Normalized contract set for this run: `DEVELOPMENT_CONTRACT_1.md` only.\n- Source bundle: `INPUT_BUNDLE.md` contains no remaining pros",
+    "published_at": "2026-04-21T17:00:28.998742+00:00",
+    "path": ".harness/history/ledgers/20260421T153806Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 17,
+    "eval_score": 77,
+    "eval_verdict": "FAIL",
+    "qa_verdict": "FAIL",
+    "build_status": "FAIL",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "MEDIUM"
+  },
+  {
+    "run_id": "20260421T153817Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Normalized Contract\n- Source contract: `.harness/history/runs/product-thought-partner-ux-rework-20260421/DEVELOPMENT_CONTRACT_4.md`\n- Normalization s",
+    "published_at": "2026-04-21T17:00:29.115845+00:00",
+    "path": ".harness/history/ledgers/20260421T153817Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 17,
+    "eval_score": 50,
+    "eval_verdict": "FAIL",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "HIGH"
+  },
+  {
+    "run_id": "20260421T194156Z-delivery-bug-batch-remediation-column-ali",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\nbug-batch-remediation-column-alignment-dnd-player-bar\n\n## Scope Lock\n- Execute exactly one normalized contract: `DEVELOPMENT_CONTRACT.md` from this run.",
+    "published_at": "2026-04-21T20:42:27.660000+00:00",
+    "path": ".harness/history/ledgers/20260421T194156Z-delivery-bug-batch-remediation-column-ali.md",
+    "files_changed": 26,
+    "eval_score": 65,
+    "eval_verdict": "FAIL",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "HIGH"
   }
 ]

@@ -30,7 +30,6 @@ interface Props {
   onMoveToPool: (trackId: number) => void;
   onReorder: (trackId: number, newPosition: number) => void;
   onUpdateNote: (trackId: number, note: string) => void;
-  onToggleStar: (trackId: number, starred: boolean) => void;
   onAddTrack: (trackId: number, title?: string) => void;
   onClearAll?: () => void;
   onInsertEmptyRows: (count: number, position: number) => void;
@@ -181,7 +180,6 @@ function DraggableEmptyRow({ emptyRow, index, total, onDelete, onArrowMove, onFi
       data-real-position={realPosition}
       {...rowListeners}
     >
-      <td className="set-ws-cell-star" />
       <td className="play-cell" />
       <td className="mono set-ws-cell-num">{index + 1}</td>
       <td className="set-ws-cell-title empty-row-placeholder" colSpan={1}>
@@ -255,7 +253,7 @@ function ConfirmDeleteModal({ count, onConfirm, onCancel }: {
   );
 }
 
-function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onArrowMove, onUpdateNote, onToggleStar, onInsertBelow, dndDisabled, reorderDisabled, isSelected, onToggleSelect, selectedIds, dndIdPrefix }: {
+function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onArrowMove, onUpdateNote, onInsertBelow, dndDisabled, reorderDisabled, isSelected, onToggleSelect, selectedIds, dndIdPrefix }: {
   entry: TracklistEntry;
   index: number;
   total: number;
@@ -263,7 +261,6 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
   onMoveToPool: (trackId: number) => void;
   onArrowMove: (displayIndex: number, direction: 'up' | 'down') => void;
   onUpdateNote: (trackId: number, note: string) => void;
-  onToggleStar: (trackId: number, starred: boolean) => void;
   onInsertBelow: (displayIndex: number) => void;
   dndDisabled?: boolean;
   reorderDisabled?: boolean;
@@ -333,16 +330,6 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
       onClick={handleClick}
       {...rowListeners}
     >
-      <td className="set-ws-cell-star">
-        <button
-          className={`star-toggle${entry.starred ? ' starred' : ''}`}
-          onClick={() => onToggleStar(entry.track_id, !entry.starred)}
-          title={entry.starred ? 'Unstar' : 'Star'}
-          aria-label={entry.starred ? 'Unstar track' : 'Star track'}
-        >
-          {entry.starred ? '★' : '☆'}
-        </button>
-      </td>
       <td className="play-cell">
         <PlayButton trackId={entry.track_id} title={title} />
       </td>
@@ -371,7 +358,7 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
   );
 }
 
-export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, onAddTrack, onClearAll, onInsertEmptyRows, onDeleteEmptyRow, onReorderEmptyRow, dndDisabled, dndIdPrefix, onFillEmptyRow }: Props) {
+export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemove, onMoveToPool, onReorder, onUpdateNote, onAddTrack, onClearAll, onInsertEmptyRows, onDeleteEmptyRow, onReorderEmptyRow, dndDisabled, dndIdPrefix, onFillEmptyRow }: Props) {
   const prefix = dndIdPrefix ?? '';
   const { setNodeRef: setTracklistDropRef, isOver: isTracklistOver } = useDroppable({ id: `${prefix}drop-tracklist`, disabled: dndDisabled });
   const [searchQuery, setSearchQuery] = useState('');
@@ -606,7 +593,6 @@ export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemov
         ) : (
           <table className="set-tracklist-table">
             <colgroup>
-              <col className="set-ws-col-star" />
               <col className="set-ws-col-play" />
               <col className="set-ws-col-num" />
               <col className="set-ws-col-title" />
@@ -617,7 +603,6 @@ export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemov
             </colgroup>
             <thead>
               <tr>
-                <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
                 <th className="set-ws-th" style={{ width: 32 }} />
                 <th className="set-ws-th">#</th>
                 <th className="set-ws-th">Title</th>
@@ -654,7 +639,6 @@ export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemov
                     onMoveToPool={onMoveToPool}
                     onArrowMove={handleArrowMove}
                     onUpdateNote={onUpdateNote}
-                    onToggleStar={onToggleStar}
                     onInsertBelow={handleInsertBelow}
                     dndDisabled={dndDisabled}
                     reorderDisabled={sorting.length > 0}

@@ -65,8 +65,6 @@ function defaultProps() {
     reorderTracklist: noop,
     addToTracklistAtPosition: noop,
     updateTracklistNote: noop,
-    togglePoolStar: noop,
-    toggleTracklistStar: noop,
     addToTracklist: noop,
     resolvePendingAdd: noop,
     clearPendingAdd: noop,

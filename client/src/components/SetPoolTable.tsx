@@ -27,7 +27,6 @@ interface Props {
   subgroupMemberships: PoolSubgroupMembership[];
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
-  onToggleStar: (trackId: number, starred: boolean) => void;
   onReorder: (trackId: number, newPosition: number) => void;
   onAddTrack: (trackId: number, title?: string) => void;
   onClearAll?: () => void;
@@ -146,7 +145,6 @@ function DraggablePoolEmptyRow({ emptyRow, onDelete, onFillSearch, dndDisabled, 
       data-real-position={realPosition}
       {...rowListeners}
     >
-      <td className="set-ws-cell-star" />
       <td className="play-cell" />
       <td className="mono set-ws-cell-num">—</td>
       <td className="set-ws-cell-title empty-row-placeholder">
@@ -172,13 +170,12 @@ function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
   return a.insertion_order - b.insertion_order;
 }
 
-function DraggablePoolRow({ entry, entryRank, totalEntries, onRemove, onMoveToTracklist, onToggleStar, onReorder, dndDisabled, reorderDisabled, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember, dndIdPrefix }: {
+function DraggablePoolRow({ entry, entryRank, totalEntries, onRemove, onMoveToTracklist, onReorder, dndDisabled, reorderDisabled, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember, dndIdPrefix }: {
   entry: PoolEntry;
   entryRank: number;
   totalEntries: number;
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
-  onToggleStar: (trackId: number, starred: boolean) => void;
   onReorder: (trackId: number, newPosition: number) => void;
   dndDisabled?: boolean;
   reorderDisabled?: boolean;
@@ -246,16 +243,6 @@ function DraggablePoolRow({ entry, entryRank, totalEntries, onRemove, onMoveToTr
       className={className}
       {...rowListeners}
     >
-      <td className="set-ws-cell-star">
-        <button
-          className={`star-toggle${entry.starred ? ' starred' : ''}`}
-          onClick={() => onToggleStar(entry.track_id, !entry.starred)}
-          title={entry.starred ? 'Unstar' : 'Star'}
-          aria-label={entry.starred ? 'Unstar track' : 'Star track'}
-        >
-          {entry.starred ? '★' : '☆'}
-        </button>
-      </td>
       <td className="play-cell">
         <PlayButton trackId={entry.track_id} title={title} />
       </td>
@@ -291,11 +278,10 @@ function DraggablePoolRow({ entry, entryRank, totalEntries, onRemove, onMoveToTr
   );
 }
 
-function PoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember }: {
+function PoolRow({ entry, onRemove, onMoveToTracklist, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember }: {
   entry: PoolEntry;
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
-  onToggleStar: (trackId: number, starred: boolean) => void;
   subgroups: PoolSubgroup[];
   memberSubgroupIds: Set<number>;
   onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
@@ -313,16 +299,6 @@ function PoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, subgroups, 
 
   return (
     <tr>
-      <td className="set-ws-cell-star">
-        <button
-          className={`star-toggle${entry.starred ? ' starred' : ''}`}
-          onClick={() => onToggleStar(entry.track_id, !entry.starred)}
-          title={entry.starred ? 'Unstar' : 'Star'}
-          aria-label={entry.starred ? 'Unstar track' : 'Star track'}
-        >
-          {entry.starred ? '★' : '☆'}
-        </button>
-      </td>
       <td className="play-cell">
         <PlayButton trackId={entry.track_id} title={title} />
       </td>
@@ -514,7 +490,6 @@ function SubgroupSection({
   index,
   onRemove,
   onMoveToTracklist,
-  onToggleStar,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
 }: {
@@ -526,7 +501,6 @@ function SubgroupSection({
   index: number;
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
-  onToggleStar: (trackId: number, starred: boolean) => void;
   onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
   onRemoveSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
 }) {
@@ -573,7 +547,6 @@ function SubgroupSection({
       ) : (
         <table className="set-pool-table">
           <colgroup>
-            <col className="set-ws-col-star" />
             <col className="set-ws-col-play" />
             <col className="set-ws-col-num" />
             <col className="set-ws-col-title" />
@@ -584,7 +557,6 @@ function SubgroupSection({
           </colgroup>
           <thead>
             <tr>
-              <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
               <th className="set-ws-th" style={{ width: 32 }} />
               <th className="set-ws-th">#</th>
               <th className="set-ws-th">Title</th>
@@ -601,7 +573,6 @@ function SubgroupSection({
                 entry={entry}
                 onRemove={onRemove}
                 onMoveToTracklist={onMoveToTracklist}
-                onToggleStar={onToggleStar}
                 subgroups={subgroups}
                 memberSubgroupIds={membershipByEntry.get(entry.id) ?? new Set()}
                 onAddSubgroupMember={onAddSubgroupMember}
@@ -617,7 +588,7 @@ function SubgroupSection({
 
 export function SetPoolTable({
   pool, emptyRows: persistedEmptyRows, subgroups, subgroupMemberships,
-  onRemove, onMoveToTracklist, onToggleStar, onReorder, onAddTrack, onClearAll,
+  onRemove, onMoveToTracklist, onReorder, onAddTrack, onClearAll,
   onInsertEmptyRows, onDeleteEmptyRow, onReorderEmptyRow: _onReorderEmptyRow,
   onCreateSubgroup, onRenameSubgroup, onDeleteSubgroup, onReorderSubgroups,
   onAddSubgroupMember, onRemoveSubgroupMember,
@@ -877,7 +848,6 @@ export function SetPoolTable({
                       index={idx}
                       onRemove={onRemove}
                       onMoveToTracklist={onMoveToTracklist}
-                      onToggleStar={onToggleStar}
                       onAddSubgroupMember={onAddSubgroupMember}
                       onRemoveSubgroupMember={onRemoveSubgroupMember}
                     />
@@ -893,7 +863,6 @@ export function SetPoolTable({
         ) : (
           <table className="set-pool-table">
             <colgroup>
-              <col className="set-ws-col-star" />
               <col className="set-ws-col-play" />
               <col className="set-ws-col-num" />
               <col className="set-ws-col-title" />
@@ -904,7 +873,6 @@ export function SetPoolTable({
             </colgroup>
             <thead>
               <tr>
-                <th className="set-ws-th set-ws-th-star" aria-label="Starred" />
                 <th className="set-ws-th" style={{ width: 32 }} />
                 <th className="set-ws-th set-ws-th-sortable" onClick={(e) => handleSort('insertion_order', e)}>
                   #{sortIndicator('insertion_order')}
@@ -943,7 +911,6 @@ export function SetPoolTable({
                     totalEntries={pool.length}
                     onRemove={onRemove}
                     onMoveToTracklist={onMoveToTracklist}
-                    onToggleStar={onToggleStar}
                     onReorder={onReorder}
                     dndDisabled={dndDisabled}
                     reorderDisabled={reorderDisabled}

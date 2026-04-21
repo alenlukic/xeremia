@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 import type { ReactElement } from 'react';
-import { TrackTable } from './TrackTable';
+import { TrackTable, computeColWidths } from './TrackTable';
 import type { Track } from '../types';
 
 let mockAudioPlayerState = {
@@ -1298,5 +1298,129 @@ describe('TrackTable in-header column chooser', () => {
     await user.click(checkboxes[0]);
 
     expect(onToggle).toHaveBeenCalledWith('bpm');
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
+describe('TrackTable colgroup width contract (BUG-01)', () => {
+  let containerDiv: HTMLDivElement;
+
+  afterEach(() => {
+    if (containerDiv?.parentNode) containerDiv.parentNode.removeChild(containerDiv);
+  });
+
+  function renderAtWidth(width: number) {
+    containerDiv = document.createElement('div');
+    Object.defineProperty(containerDiv, 'clientWidth', { value: width, configurable: true });
+    document.body.appendChild(containerDiv);
+
+    mockRange = { startIndex: 0, endIndex: 4 };
+
+    render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(5)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+        />,
+      ),
+      { container: containerDiv },
+    );
+
+    return containerDiv;
+  }
+
+  it.each([1024, 1280, 1440])('col widths are integer, non-zero, and match header cells at %dpx', (width) => {
+    const el = renderAtWidth(width);
+
+    const colgroup = el.querySelector('.track-table colgroup');
+    expect(colgroup).toBeTruthy();
+
+    const cols = colgroup!.querySelectorAll('col');
+    expect(cols.length).toBeGreaterThanOrEqual(2);
+
+    const colWidths = Array.from(cols).map(c => {
+      const w = (c as HTMLElement).style.width;
+      return parseFloat(w);
+    });
+    for (const w of colWidths) {
+      expect(w).toBeGreaterThan(0);
+    }
+
+    expect(colWidths.every(w => w === Math.floor(w))).toBe(true);
+
+    const headerCells = el.querySelectorAll('.track-table thead th');
+    expect(headerCells.length).toBe(cols.length);
+
+    const headerWidths = Array.from(headerCells).map(th => {
+      const w = (th as HTMLElement).style.width;
+      return w ? parseFloat(w) : NaN;
+    });
+
+    for (let i = 0; i < colWidths.length; i++) {
+      if (!isNaN(headerWidths[i])) {
+        expect(colWidths[i]).toBeCloseTo(headerWidths[i], 0);
+      }
+    }
+
+    const colSum = colWidths.reduce((a, b) => a + b, 0);
+    const thSum = headerWidths.filter(w => !isNaN(w)).reduce((a, b) => a + b, 0);
+    expect(colSum).toBeCloseTo(thSum, 0);
+
+    if (containerDiv?.parentNode) containerDiv.parentNode.removeChild(containerDiv);
+  });
+
+  it('colgroup col count matches header th count with col chooser present', () => {
+    containerDiv = document.createElement('div');
+    Object.defineProperty(containerDiv, 'clientWidth', { value: 1024, configurable: true });
+    document.body.appendChild(containerDiv);
+
+    mockRange = { startIndex: 0, endIndex: 0 };
+
+    render(
+      wrap(
+        <TrackTable
+          tracks={makeTracks(1)}
+          loading={false}
+          selectedTrack={null}
+          selectTrack={selectTrack}
+          hasMore={false}
+          configurableColumns={[{ id: 'bpm', label: 'BPM' }]}
+          onToggleColumn={vi.fn()}
+        />,
+      ),
+      { container: containerDiv },
+    );
+
+    const cols = containerDiv.querySelectorAll('.track-table colgroup col');
+    const ths = containerDiv.querySelectorAll('.track-table thead th');
+    expect(cols.length).toBe(ths.length);
+  });
+});
+
+/* ─────────────────────────────────────────────── */
+
+describe('computeColWidths integer contract', () => {
+  it.each([800, 1024, 1280, 1440, 1920])('returns all integer widths at %dpx', (width) => {
+    const widths = computeColWidths(width, false);
+    for (const w of widths) {
+      expect(w).toBe(Math.floor(w));
+    }
+  });
+
+  it.each([1024, 1280, 1440])('width sum equals containerWidth within 1px at %dpx', (width) => {
+    const widths = computeColWidths(width, false);
+    const sum = widths.reduce((a, b) => a + b, 0);
+    expect(Math.abs(sum - width)).toBeLessThanOrEqual(1);
+  });
+
+  it('returns all integer widths with col chooser enabled', () => {
+    const widths = computeColWidths(1280, true);
+    for (const w of widths) {
+      expect(w).toBe(Math.floor(w));
+    }
   });
 });

@@ -14,6 +14,9 @@ from src.models.set_pool_entry import SetPoolEntry
 from src.models.set_pool_subgroup import SetPoolSubgroup
 from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
 from src.models.set_tracklist_entry import SetTracklistEntry
+from src.models.set_tracklist_version import SetTracklistVersion
+from src.models.set_tracklist_slot import SetTracklistSlot
+from src.models.set_tracklist_candidate import SetTracklistCandidate
 from src.models.set_explorer_tree import SetExplorerTree
 from src.models.set_explorer_node import SetExplorerNode
 from src.models.set_explorer_edge import SetExplorerEdge
@@ -52,6 +55,31 @@ class SetWorkspaceService:
         dj_set = self.get_set(set_id)
         if dj_set is None:
             return False
+        try:
+            version_ids = [
+                v.id for v in
+                self.session.query(SetTracklistVersion.id).filter_by(set_id=set_id).all()
+            ]
+            if version_ids:
+                slot_ids = [
+                    s.id for s in
+                    self.session.query(SetTracklistSlot.id)
+                    .filter(SetTracklistSlot.version_id.in_(version_ids))
+                    .all()
+                ]
+                if slot_ids:
+                    self.session.query(SetTracklistCandidate).filter(
+                        SetTracklistCandidate.slot_id.in_(slot_ids),
+                    ).delete(synchronize_session="fetch")
+                self.session.query(SetTracklistSlot).filter(
+                    SetTracklistSlot.version_id.in_(version_ids),
+                ).delete(synchronize_session="fetch")
+                self.session.query(SetTracklistVersion).filter_by(set_id=set_id).delete()
+        except Exception as e:
+            if "no such table" in str(e).lower() or "doesn't exist" in str(e).lower() or "does not exist" in str(e).lower():
+                logger.warning("Version tables not yet migrated, skipping version cleanup: %s", e)
+            else:
+                raise
         self.session.query(SetExplorerEdge).filter_by(set_id=set_id).delete()
         self.session.query(SetExplorerNode).filter_by(set_id=set_id).delete()
         self.session.query(SetExplorerTree).filter_by(set_id=set_id).delete()
@@ -121,6 +149,8 @@ class SetWorkspaceService:
             .all()
         )
 
+        versions = self._hydrate_versions(set_id)
+
         return {
             "set": dj_set,
             "pool": pool,
@@ -131,7 +161,97 @@ class SetWorkspaceService:
             "pool_subgroups": subgroups,
             "pool_subgroup_memberships": memberships,
             "empty_rows": empty_rows,
+            "versions": versions,
         }
+
+    def _hydrate_versions(self, set_id: int) -> List[Dict[str, Any]]:
+        try:
+            versions = (
+                self.session.query(SetTracklistVersion)
+                .filter_by(set_id=set_id)
+                .order_by(SetTracklistVersion.display_order)
+                .all()
+            )
+        except Exception as e:
+            if "no such table" in str(e).lower() or "doesn't exist" in str(e).lower() or "does not exist" in str(e).lower():
+                logger.warning("Version tables not yet migrated, returning empty versions: %s", e)
+                return []
+            raise
+        if not versions:
+            return []
+
+        version_ids = [v.id for v in versions]
+        slots = (
+            self.session.query(SetTracklistSlot)
+            .filter(SetTracklistSlot.version_id.in_(version_ids))
+            .order_by(SetTracklistSlot.position)
+            .all()
+        )
+
+        slot_ids = [s.id for s in slots]
+        candidates: List[SetTracklistCandidate] = []
+        if slot_ids:
+            candidates = (
+                self.session.query(SetTracklistCandidate)
+                .filter(SetTracklistCandidate.slot_id.in_(slot_ids))
+                .all()
+            )
+
+        slots_by_version: Dict[int, List[SetTracklistSlot]] = {}
+        for s in slots:
+            slots_by_version.setdefault(s.version_id, []).append(s)
+
+        candidates_by_slot: Dict[int, List[SetTracklistCandidate]] = {}
+        for c in candidates:
+            candidates_by_slot.setdefault(c.slot_id, []).append(c)
+
+        result = []
+        for v in versions:
+            v_slots = slots_by_version.get(v.id, [])
+            slots_out = []
+            derived_nodes = []
+            for s in v_slots:
+                s_candidates = candidates_by_slot.get(s.id, [])
+                cands_out = [
+                    {
+                        "id": c.id,
+                        "slot_id": c.slot_id,
+                        "track_id": c.track_id,
+                        "is_selected": c.is_selected,
+                    }
+                    for c in s_candidates
+                ]
+                slots_out.append({
+                    "id": s.id,
+                    "version_id": s.version_id,
+                    "position": s.position,
+                    "note": s.note or "",
+                    "is_inherited": s.is_inherited,
+                    "candidates": cands_out,
+                })
+                if v.explorer_tree_id is not None:
+                    for col_idx, c in enumerate(s_candidates):
+                        derived_nodes.append({
+                            "slot_id": s.id,
+                            "candidate_id": c.id,
+                            "track_id": c.track_id,
+                            "level": s.position,
+                            "position": s.position,
+                            "col_index": col_idx,
+                            "is_selected": c.is_selected,
+                        })
+
+            result.append({
+                "id": v.id,
+                "set_id": v.set_id,
+                "name": v.name,
+                "display_order": v.display_order,
+                "explorer_tree_id": v.explorer_tree_id,
+                "slots": slots_out,
+                "derived_explorer_nodes": derived_nodes,
+            })
+
+        return result
 
     # --- Empty row operations ---
 

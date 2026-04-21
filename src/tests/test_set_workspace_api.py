@@ -18,6 +18,9 @@ from src.models.set_explorer_edge import SetExplorerEdge
 from src.models.set_pool_subgroup import SetPoolSubgroup
 from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
 from src.models.set_empty_row import SetEmptyRow
+from src.models.set_tracklist_version import SetTracklistVersion
+from src.models.set_tracklist_slot import SetTracklistSlot
+from src.models.set_tracklist_candidate import SetTracklistCandidate
 from src.set_workspace.service import SetWorkspaceService
 
 
@@ -31,6 +34,9 @@ _TABLES = [
     SetPoolSubgroup.__table__,
     SetPoolSubgroupMember.__table__,
     SetEmptyRow.__table__,
+    SetTracklistVersion.__table__,
+    SetTracklistSlot.__table__,
+    SetTracklistCandidate.__table__,
 ]
 
 
@@ -1723,3 +1729,175 @@ class TestPoolReorder:
         )
         assert [e.track_id for e in result] == [20, 10]
         assert [e.insertion_order for e in result] == [0, 1]
+
+
+class TestVersionHydration:
+    def test_hydrate_empty_set_returns_empty_versions(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("Empty")
+        session.commit()
+        h = svc.hydrate_set(s.id)
+        assert h["versions"] == []
+
+    def test_hydrate_returns_versions_after_manual_creation(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v = SetTracklistVersion(set_id=s.id, name="v1", display_order=0)
+        session.add(v)
+        session.flush()
+        slot = SetTracklistSlot(version_id=v.id, position=0, note="opener")
+        session.add(slot)
+        session.flush()
+        cand = SetTracklistCandidate(slot_id=slot.id, track_id=42, is_selected=True)
+        session.add(cand)
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        versions = h["versions"]
+        assert len(versions) == 1
+        assert versions[0]["name"] == "v1"
+        assert versions[0]["set_id"] == s.id
+        assert versions[0]["display_order"] == 0
+        assert versions[0]["explorer_tree_id"] is None
+        assert len(versions[0]["slots"]) == 1
+        assert versions[0]["slots"][0]["position"] == 0
+        assert versions[0]["slots"][0]["note"] == "opener"
+        assert versions[0]["slots"][0]["is_inherited"] is False
+        assert len(versions[0]["slots"][0]["candidates"]) == 1
+        assert versions[0]["slots"][0]["candidates"][0]["track_id"] == 42
+        assert versions[0]["slots"][0]["candidates"][0]["is_selected"] is True
+
+    def test_derived_explorer_nodes_only_for_bound_version(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        tree = SetExplorerTree(set_id=s.id, name="Main")
+        session.add(tree)
+        session.flush()
+
+        v_bound = SetTracklistVersion(
+            set_id=s.id, name="v1", display_order=0, explorer_tree_id=tree.id,
+        )
+        session.add(v_bound)
+        session.flush()
+        slot = SetTracklistSlot(version_id=v_bound.id, position=0)
+        session.add(slot)
+        session.flush()
+        c1 = SetTracklistCandidate(slot_id=slot.id, track_id=10, is_selected=True)
+        c2 = SetTracklistCandidate(slot_id=slot.id, track_id=20, is_selected=False)
+        session.add_all([c1, c2])
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        versions = h["versions"]
+        assert len(versions) == 1
+        dn = versions[0]["derived_explorer_nodes"]
+        assert len(dn) == 2
+        assert dn[0]["level"] == 0
+        assert dn[0]["position"] == 0
+        assert dn[0]["col_index"] == 0
+        assert dn[1]["col_index"] == 1
+
+    def test_unbound_version_has_no_derived_nodes(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v = SetTracklistVersion(set_id=s.id, name="v1", display_order=0)
+        session.add(v)
+        session.flush()
+        slot = SetTracklistSlot(version_id=v.id, position=0)
+        session.add(slot)
+        session.flush()
+        cand = SetTracklistCandidate(slot_id=slot.id, track_id=10, is_selected=True)
+        session.add(cand)
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        assert h["versions"][0]["derived_explorer_nodes"] == []
+
+    def test_version_cascade_on_set_delete(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v = SetTracklistVersion(set_id=s.id, name="v1", display_order=0)
+        session.add(v)
+        session.flush()
+        slot = SetTracklistSlot(version_id=v.id, position=0)
+        session.add(slot)
+        session.flush()
+        cand = SetTracklistCandidate(slot_id=slot.id, track_id=10, is_selected=True)
+        session.add(cand)
+        session.commit()
+        sid = s.id
+
+        svc.delete_set(sid)
+        session.commit()
+        assert session.query(SetTracklistVersion).filter_by(set_id=sid).count() == 0
+        assert session.query(SetTracklistSlot).count() == 0
+        assert session.query(SetTracklistCandidate).count() == 0
+
+    def test_multiple_slots_ordered_by_position(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        v = SetTracklistVersion(set_id=s.id, name="v1", display_order=0)
+        session.add(v)
+        session.flush()
+        for pos in [2, 0, 1]:
+            slot = SetTracklistSlot(version_id=v.id, position=pos)
+            session.add(slot)
+            session.flush()
+            cand = SetTracklistCandidate(slot_id=slot.id, track_id=pos * 10, is_selected=True)
+            session.add(cand)
+        session.commit()
+
+        h = svc.hydrate_set(s.id)
+        positions = [sl["position"] for sl in h["versions"][0]["slots"]]
+        assert positions == [0, 1, 2]
+
+
+class TestHydrateVersionsFallback:
+    """Forward-compatibility: hydration must not crash when version tables
+    have not been created yet (code ships before migration runs)."""
+
+    _PRE_MIGRATION_TABLES = [
+        DjSet.__table__,
+        SetPoolEntry.__table__,
+        SetTracklistEntry.__table__,
+        SetExplorerTree.__table__,
+        SetExplorerNode.__table__,
+        SetExplorerEdge.__table__,
+        SetPoolSubgroup.__table__,
+        SetPoolSubgroupMember.__table__,
+        SetEmptyRow.__table__,
+    ]
+
+    @pytest.fixture
+    def pre_migration_session(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine, tables=self._PRE_MIGRATION_TABLES)
+        _Session = sessionmaker(bind=engine)
+        s = _Session()
+        yield s
+        s.close()
+
+    def test_hydrate_versions_falls_back_to_empty_when_table_absent(
+        self, pre_migration_session: Session,
+    ):
+        svc = SetWorkspaceService(pre_migration_session)
+        created = svc.create_set("Pre-Migration Set")
+        pre_migration_session.commit()
+
+        h = svc.hydrate_set(created.id)
+        assert h is not None
+        assert h["versions"] == []
+        assert h["set"].id == created.id
+        assert h["pool"] == []
+        assert h["tracklist"] == []
+
+    def test_delete_set_succeeds_when_version_tables_absent(
+        self, pre_migration_session: Session,
+    ):
+        svc = SetWorkspaceService(pre_migration_session)
+        created = svc.create_set("Pre-Migration Delete")
+        pre_migration_session.commit()
+
+        result = svc.delete_set(created.id)
+        pre_migration_session.commit()
+        assert result is True
+        assert svc.get_set(created.id) is None

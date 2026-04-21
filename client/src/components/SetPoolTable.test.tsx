@@ -61,7 +61,7 @@ function renderPool(
         subgroupMemberships={memberships}
         onRemove={noop}
         onMoveToTracklist={noop}
-        onToggleStar={noop}
+
         onAddTrack={noop}
         onInsertEmptyRows={extra?.onInsertEmptyRows ?? noop}
         onDeleteEmptyRow={extra?.onDeleteEmptyRow ?? noop}
@@ -472,7 +472,7 @@ describe('SetPoolTable subgroup creation insertion behavior', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -505,7 +505,7 @@ describe('SetPoolTable subgroup creation insertion behavior', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -542,7 +542,7 @@ describe('SetPoolTable subgroup creation insertion behavior', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -575,7 +575,7 @@ describe('SetPoolTable subgroup creation insertion behavior', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -607,7 +607,7 @@ describe('SetPoolTable subgroup creation insertion behavior', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -640,7 +640,7 @@ describe('SetPoolTable subgroup creation insertion behavior', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -670,7 +670,7 @@ describe('SetPoolTable subgroup creation insertion behavior', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -727,7 +727,7 @@ describe('SetPoolTable subgroup auto-assign on search-add', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={onAddTrack}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -765,7 +765,7 @@ describe('SetPoolTable subgroup auto-assign on search-add', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={onAddTrack}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -801,7 +801,7 @@ describe('SetPoolTable subgroup auto-assign on search-add', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={onAddTrack}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -838,7 +838,7 @@ describe('SetPoolTable subgroup auto-assign on search-add', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={onAddTrack}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -867,7 +867,7 @@ describe('SetPoolTable subgroup auto-assign on search-add', () => {
           subgroupMemberships={[membership]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={onAddTrack}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -904,7 +904,7 @@ describe('SetPoolTable subgroup auto-assign on search-add', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={onAddTrack}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -938,7 +938,7 @@ describe('SetPoolTable subgroup auto-assign on search-add', () => {
           subgroupMemberships={[]}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={onAddTrack}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -1223,7 +1223,7 @@ describe('SetPoolTable Groups view reorder', () => {
           subgroupMemberships={memberships}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}
@@ -1259,7 +1259,7 @@ describe('SetPoolTable Groups view reorder', () => {
           subgroupMemberships={memberships}
           onRemove={noop}
           onMoveToTracklist={noop}
-          onToggleStar={noop}
+  
           onAddTrack={noop}
           onInsertEmptyRows={noop}
           onDeleteEmptyRow={noop}

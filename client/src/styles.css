@@ -216,6 +216,7 @@ body,
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   margin: 0 var(--content-gutter);
   border-left: 1px solid var(--border);
@@ -679,6 +680,7 @@ body,
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   margin-top: 8px;
 }
@@ -692,6 +694,7 @@ body,
 .track-table-wrapper {
   overflow: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .matches-table-wrapper {
@@ -705,6 +708,7 @@ body,
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
+  min-width: 0;
 }
 
 .track-table thead,
@@ -2238,7 +2242,7 @@ body,
 .set-workspace-split {
   display: flex;
   gap: 0;
-  min-height: 300px;
+  min-height: 0;
   flex: 1;
   overflow: hidden;
 }
@@ -2335,7 +2339,6 @@ body,
   min-width: 500px;
 }
 
-.set-ws-col-star { width: 28px; }
 .set-ws-col-num { width: 32px; }
 .set-ws-col-title { /* flex fill — no explicit width */ }
 .set-ws-col-key { width: 48px; }
@@ -2410,43 +2413,6 @@ body,
 
 .set-ws-cell-note {
   padding: 2px 4px;
-}
-
-.set-ws-cell-star {
-  text-align: center;
-  padding: 0 2px;
-  width: 28px;
-}
-
-.star-toggle {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  padding: 2px;
-  color: var(--text-muted);
-  transition: color 0.15s;
-}
-
-.star-toggle:hover {
-  color: #f5c518;
-}
-
-.star-toggle.starred {
-  color: #f5c518;
-}
-
-.set-ws-th-star {
-  width: 28px;
-}
-
-.star-indicator-cell {
-  color: #f5c518;
-  text-align: center;
-  width: 20px;
-  font-size: 14px;
-  padding: 0 2px;
 }
 
 .set-ws-cell-actions {
@@ -3111,7 +3077,7 @@ body,
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 200px;
+  min-height: 0;
   position: relative;
 }
 
@@ -3119,6 +3085,7 @@ body,
 .browse-zone-body {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
@@ -3573,10 +3540,7 @@ body,
 
 /* === Global Player Bar === */
 .player-bar {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;
   z-index: 900;
   display: flex;
   align-items: center;
@@ -3584,8 +3548,7 @@ body,
   padding: 6px 16px;
   background: var(--surface);
   border-top: 1px solid var(--border);
-  flex-shrink: 0;
-  min-height: 44px;
+  height: 56px;
 }
 
 .player-bar__controls {
@@ -3733,9 +3696,32 @@ body,
   cursor: pointer;
 }
 
+.player-bar__dismiss {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.player-bar__dismiss:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
 /* === Play Button (inline, all surfaces) === */
 .play-cell {
   width: 32px;
+  min-width: 32px;
+  max-width: 32px;
   text-align: center;
   padding: 0 2px !important;
 }

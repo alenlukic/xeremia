@@ -16,8 +16,6 @@ interface Props {
   reorderTracklist: (trackId: number, newPosition: number) => void;
   addToTracklistAtPosition: (trackId: number, position: number, title?: string) => void;
   updateTracklistNote: (trackId: number, note: string) => void;
-  togglePoolStar: (trackId: number, starred: boolean) => void;
-  toggleTracklistStar: (trackId: number, starred: boolean) => void;
   addToTracklist: (trackId: number, title?: string) => void;
   createSubgroup: (name: string) => Promise<PoolSubgroup | null>;
   renameSubgroup: (subgroupId: number, name: string) => Promise<boolean>;
@@ -39,7 +37,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
   removeFromPool, clearPool, movePoolToTracklist, reorderPool, addToPool,
   removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist,
   addToTracklistAtPosition,
-  updateTracklistNote, togglePoolStar, toggleTracklistStar, addToTracklist,
+  updateTracklistNote, addToTracklist,
   createSubgroup, renameSubgroup, deleteSubgroup,
   reorderSubgroups, addSubgroupMember, removeSubgroupMember,
   addEmptyRows, deleteEmptyRow, reorderEmptyRow,
@@ -73,7 +71,6 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
         onMoveToPool={moveTracklistToPool}
         onReorder={reorderTracklist}
         onUpdateNote={updateTracklistNote}
-        onToggleStar={toggleTracklistStar}
         onAddTrack={addToTracklist}
         onFillEmptyRow={handleTracklistFillEmptyRow}
         onInsertEmptyRows={(count, position) => addEmptyRows('tracklist', count, position)}
@@ -114,7 +111,6 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
               onClearAll={clearPool}
               onMoveToTracklist={movePoolToTracklist}
               onReorder={reorderPool}
-              onToggleStar={togglePoolStar}
               onAddTrack={handlePoolAddTrack}
               onFillEmptyRow={handlePoolFillEmptyRow}
               onInsertEmptyRows={(count, position) => addEmptyRows('pool', count, position)}
