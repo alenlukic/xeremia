@@ -116,13 +116,15 @@ export const dndCollisionDetection: CollisionDetection = (args) => {
       if (rectRows.length > 0) return rectRows;
       const filtered = pointer.filter(c => {
         const id = String(c.id);
-        return id !== 'drop-tracklist' && id !== 'alt-drop-tracklist';
+        return id !== 'drop-tracklist' && id !== 'alt-drop-tracklist' && !isSelfDrop(id);
       });
       if (filtered.length > 0) return filtered;
     }
-    return pointer;
+    const nonSelf = pointer.filter(c => !isSelfDrop(String(c.id)));
+    return nonSelf.length > 0 ? nonSelf : pointer;
   }
-  return rect;
+  const nonSelfRect = rect.filter(c => !isSelfDrop(String(c.id)));
+  return nonSelfRect.length > 0 ? nonSelfRect : rect;
 };
 
 function isPlainObject(v: unknown): v is Record<string, boolean> {
@@ -222,18 +224,13 @@ export default function App() {
   } = useSelectedTrack(refreshCacheStats);
 
   const {
-    filters,
+    filterGroups,
     filteredTracks,
     filterCacheKey,
     activeFilterCount,
-    setCamelotCodes,
-    setBpmMin,
-    setBpmMax,
-    setArtist,
-    setLabel,
-    setGenre,
-    setDateAddedMin,
-    setDateAddedMax,
+    addFilterGroup,
+    removeFilterGroup,
+    updateFilterGroup,
     clearAllFilters,
   } = useTrackFilters(allTracks, effectiveSearchText);
 
@@ -301,6 +298,7 @@ export default function App() {
     clearTracklist,
     movePoolToTracklist,
     moveTracklistToPool,
+    reorderPool,
     reorderTracklist,
     addToTracklistAtPosition,
     updateTracklistNote,
@@ -693,36 +691,42 @@ export default function App() {
       const dragData = active.data.current as DragPayload & { __persistedId?: number } | undefined;
       const dragPersistedId = dragData?.__persistedId;
       if (payload.trackId <= 0 && dragPersistedId != null) {
-        const overRowData = over.data?.current as { trackId?: number } | undefined;
-        const targetTrackId = overRowData?.trackId;
-        if (targetTrackId != null && sb.activeSet) {
-          const targetEntry = sb.activeSet.tracklist.find(e => e.track_id === targetTrackId);
-          if (targetEntry) {
-            reorderEmptyRow(dragPersistedId, targetEntry.position);
-            return;
-          }
-        }
         const displayIndex = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
         if (!isNaN(displayIndex)) {
-          const emptyRowsBefore = (sb.activeSet?.empty_rows ?? [])
-            .filter(er => er.surface === 'tracklist' && er.position < displayIndex)
-            .length;
-          reorderEmptyRow(dragPersistedId, displayIndex - emptyRowsBefore);
+          reorderEmptyRow(dragPersistedId, displayIndex);
         }
         return;
       }
 
-      const newPosition = parseInt(targetId.replace('drop-tracklist-row-', ''), 10);
-      if (!isNaN(newPosition) && sb.activeSet) {
-        const currentIndex = sb.activeSet.tracklist.findIndex(e => e.track_id === payload.trackId);
-        if (currentIndex !== -1 && currentIndex !== newPosition) {
-          reorderTracklist(payload.trackId, newPosition);
+      const overRowData = over.data?.current as { trackId?: number } | undefined;
+      const targetTrackId = overRowData?.trackId;
+      if (targetTrackId != null && sb.activeSet) {
+        const sourceEntry = sb.activeSet.tracklist.find(e => e.track_id === payload.trackId);
+        const targetEntry = sb.activeSet.tracklist.find(e => e.track_id === targetTrackId);
+        if (sourceEntry && targetEntry && sourceEntry.position !== targetEntry.position) {
+          reorderTracklist(payload.trackId, targetEntry.position);
         }
       }
       return;
     }
 
     if (payload.source === 'tracklist' && targetId === 'drop-tracklist') {
+      return;
+    }
+
+    if (payload.source === 'pool' && targetId.startsWith('drop-pool-row-')) {
+      const overData = event.over?.data?.current as { entryRank?: number } | undefined;
+      const targetRank = overData?.entryRank;
+      if (targetRank != null && sb.activeSet) {
+        const sourceRank = sb.activeSet.pool.findIndex(e => e.track_id === payload.trackId);
+        if (sourceRank !== -1 && sourceRank !== targetRank) {
+          reorderPool(payload.trackId, targetRank);
+        }
+      }
+      return;
+    }
+
+    if (payload.source === 'pool' && targetId === 'drop-pool') {
       return;
     }
 
@@ -799,7 +803,7 @@ export default function App() {
         }
       }
     }
-  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, addToTracklistAtPosition, poolExpanded, handlePoolExpandedChange, reorderTracklist, reorderEmptyRow, deleteEmptyRow]);
+  }, [allTracks, handleSelectTrack, addToTracklistFn, addToPoolFn, addToTracklistAtPosition, poolExpanded, handlePoolExpandedChange, reorderTracklist, reorderPool, reorderEmptyRow, deleteEmptyRow]);
 
   return (
     <AudioPlayerProvider>
@@ -848,22 +852,10 @@ export default function App() {
               expanded={filtersExpanded}
               onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
               activeFilterCount={activeFilterCount}
-              camelotCodes={filters.camelotCodes}
-              bpmMin={filters.bpmMin}
-              bpmMax={filters.bpmMax}
-              artist={filters.artist}
-              label={filters.label}
-              genre={filters.genre}
-              dateAddedMin={filters.dateAddedMin}
-              dateAddedMax={filters.dateAddedMax}
-              setCamelotCodes={setCamelotCodes}
-              setBpmMin={setBpmMin}
-              setBpmMax={setBpmMax}
-              setArtist={setArtist}
-              setLabel={setLabel}
-              setGenre={setGenre}
-              setDateAddedMin={setDateAddedMin}
-              setDateAddedMax={setDateAddedMax}
+              filterGroups={filterGroups}
+              addFilterGroup={addFilterGroup}
+              removeFilterGroup={removeFilterGroup}
+              updateFilterGroup={updateFilterGroup}
               onClearFilters={handleClearFilters}
             />
 
@@ -996,6 +988,7 @@ export default function App() {
               removeFromPool={removeFromPool}
               clearPool={clearPool}
               movePoolToTracklist={movePoolToTracklist}
+              reorderPool={reorderPool}
               addToPool={sbAddToPool}
               removeFromTracklist={removeFromTracklist}
               clearTracklist={clearTracklist}
@@ -1040,6 +1033,7 @@ export default function App() {
                     removeFromPool={removeFromPool}
                     clearPool={clearPool}
                     movePoolToTracklist={movePoolToTracklist}
+                    reorderPool={reorderPool}
                     addToPool={sbAddToPool}
                     removeFromTracklist={removeFromTracklist}
                     clearTracklist={clearTracklist}

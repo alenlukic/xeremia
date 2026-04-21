@@ -342,6 +342,36 @@ class SetWorkspaceService:
         self.session.flush()
         return count
 
+    def pool_reorder(self, set_id: int, track_id: int, new_position: int) -> Tuple[bool, Optional[str]]:
+        """Reorder a pool entry to a new rank (0-based index in the ordered list).
+
+        Operates on rank, not raw insertion_order values, so gaps in persisted
+        order are irrelevant. After the move, insertion_order is normalized to
+        contiguous 0..N-1.
+        """
+        entries = (
+            self.session.query(SetPoolEntry)
+            .filter_by(set_id=set_id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+
+        old_rank = next((i for i, e in enumerate(entries) if e.track_id == track_id), None)
+        if old_rank is None:
+            return False, "Track not found in pool"
+
+        new_position = max(0, min(new_position, len(entries) - 1))
+        if old_rank == new_position:
+            return True, None
+
+        moved = entries.pop(old_rank)
+        entries.insert(new_position, moved)
+
+        for rank, e in enumerate(entries):
+            e.insertion_order = rank
+        self.session.flush()
+        return True, None
+
     def pool_move_to_tracklist(self, set_id: int, track_id: int) -> Tuple[bool, Optional[str]]:
         pool_entry = (
             self.session.query(SetPoolEntry)

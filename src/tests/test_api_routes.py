@@ -752,6 +752,7 @@ class TestPoolSubgroupEndpoints:
         from src.models.set_explorer_tree import SetExplorerTree
         from src.models.set_explorer_node import SetExplorerNode
         from src.models.set_explorer_edge import SetExplorerEdge
+        from src.models.set_empty_row import SetEmptyRow
 
         engine = create_engine("sqlite:///:memory:")
         meta = MetaData()
@@ -762,6 +763,7 @@ class TestPoolSubgroupEndpoints:
             SetPoolSubgroup.__table__, SetPoolSubgroupMember.__table__,
             SetTracklistEntry.__table__, SetExplorerTree.__table__,
             SetExplorerNode.__table__, SetExplorerEdge.__table__,
+            SetEmptyRow.__table__,
         ]
         for t in tables:
             t.create(engine, checkfirst=True)
@@ -1031,3 +1033,89 @@ class TestDateAddedSerialization:
         data = resp.json()
         assert len(data) == 1
         assert data[0]["date_added"] == "2025-03-20"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sets/{set_id}/pool/reorder
+# ---------------------------------------------------------------------------
+
+
+class TestPoolReorderEndpoint:
+    """Route-level tests for pool reorder endpoint."""
+
+    @pytest.fixture()
+    def _db(self):
+        from sqlalchemy import Column, Integer, String, Table, MetaData, create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from src.models.dj_set import DjSet
+        from src.models.set_pool_entry import SetPoolEntry
+        from src.models.set_tracklist_entry import SetTracklistEntry
+        from src.models.set_explorer_tree import SetExplorerTree
+        from src.models.set_explorer_node import SetExplorerNode
+        from src.models.set_explorer_edge import SetExplorerEdge
+        from src.models.set_pool_subgroup import SetPoolSubgroup
+        from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
+        from src.models.set_empty_row import SetEmptyRow
+
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        meta = MetaData()
+        Table("track", meta, Column("id", Integer, primary_key=True), Column("title", String))
+        meta.create_all(engine)
+        tables = [
+            DjSet.__table__, SetPoolEntry.__table__,
+            SetTracklistEntry.__table__, SetExplorerTree.__table__,
+            SetExplorerNode.__table__, SetExplorerEdge.__table__,
+            SetPoolSubgroup.__table__, SetPoolSubgroupMember.__table__,
+            SetEmptyRow.__table__,
+        ]
+        for t in tables:
+            t.create(engine, checkfirst=True)
+        return sessionmaker(bind=engine)
+
+    @pytest.fixture()
+    def _tc(self, _db):
+        with patch("src.api.routes._get_match_finder", return_value=MagicMock(cosine_cache=None, transition_score_cache=None)), \
+             patch("src.api.routes._get_session", side_effect=lambda: _db()), \
+             patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
+             patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+            from src.api.app import create_app
+            yield TestClient(create_app())
+
+    def _seed_set_with_pool(self, _db, track_ids=(10, 20, 30)):
+        from src.set_workspace.service import SetWorkspaceService
+        s = _db()
+        s.expire_on_commit = False
+        svc = SetWorkspaceService(s)
+        dj_set = svc.create_set("Reorder Set")
+        for tid in track_ids:
+            svc.pool_add(dj_set.id, tid)
+        s.commit()
+        set_id = dj_set.id
+        s.close()
+        return set_id
+
+    def test_happy_path_returns_ok(self, _db, _tc):
+        set_id = self._seed_set_with_pool(_db)
+        resp = _tc.post(f"/api/sets/{set_id}/pool/reorder", json={"track_id": 10, "new_position": 2})
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+
+    def test_malformed_body_returns_422(self, _db, _tc):
+        set_id = self._seed_set_with_pool(_db)
+        resp = _tc.post(f"/api/sets/{set_id}/pool/reorder", json={"bad_field": 1})
+        assert resp.status_code == 422
+
+    def test_nonexistent_set_returns_404(self, _db, _tc):
+        resp = _tc.post("/api/sets/99999/pool/reorder", json={"track_id": 10, "new_position": 0})
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Set not found"
+
+    def test_nonexistent_track_returns_400(self, _db, _tc):
+        set_id = self._seed_set_with_pool(_db)
+        resp = _tc.post(f"/api/sets/{set_id}/pool/reorder", json={"track_id": 999, "new_position": 0})
+        assert resp.status_code == 400

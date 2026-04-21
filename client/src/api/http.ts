@@ -212,6 +212,17 @@ export async function tracklistReorder(
   if (!res.ok) throw new Error(`Tracklist reorder failed: ${res.status}`);
 }
 
+export async function poolReorder(
+  setId: number, trackId: number, newPosition: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_id: trackId, new_position: newPosition }),
+  });
+  if (!res.ok) throw new Error(`Pool reorder failed: ${res.status}`);
+}
+
 export async function togglePoolStar(setId: number, trackId: number, starred: boolean): Promise<void> {
   const res = await fetch(`/api/sets/${setId}/pool/${trackId}/star`, {
     method: 'PATCH',

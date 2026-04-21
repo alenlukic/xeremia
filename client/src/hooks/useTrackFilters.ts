@@ -1,9 +1,9 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import type { Track } from '../types';
 
-interface FilterState {
+export interface FilterGroup {
+  id: string;
   camelotCodes: string[];
-  bpm: number | undefined;
   bpmMin: number | undefined;
   bpmMax: number | undefined;
   artist: string;
@@ -14,72 +14,96 @@ interface FilterState {
 }
 
 interface TrackFiltersResult {
-  filters: FilterState;
+  filterGroups: FilterGroup[];
   filteredTracks: Track[];
   filterCacheKey: string;
   activeFilterCount: number;
-  setCamelotCodes: (codes: string[]) => void;
-  setBpm: (bpm: number | undefined) => void;
-  setBpmMin: (min: number | undefined) => void;
-  setBpmMax: (max: number | undefined) => void;
-  setArtist: (artist: string) => void;
-  setLabel: (label: string) => void;
-  setGenre: (genre: string) => void;
-  setDateAddedMin: (date: string) => void;
-  setDateAddedMax: (date: string) => void;
+  addFilterGroup: () => void;
+  removeFilterGroup: (id: string) => void;
+  updateFilterGroup: (id: string, updates: Partial<Omit<FilterGroup, 'id'>>) => void;
   clearAllFilters: () => void;
+}
+
+export function isGroupActive(group: FilterGroup): boolean {
+  return (
+    group.camelotCodes.length > 0 ||
+    group.bpmMin != null ||
+    group.bpmMax != null ||
+    group.artist.trim() !== '' ||
+    group.label.trim() !== '' ||
+    group.genre.trim() !== '' ||
+    group.dateAddedMin !== '' ||
+    group.dateAddedMax !== ''
+  );
+}
+
+function makeEmptyGroup(id: string): FilterGroup {
+  return {
+    id,
+    camelotCodes: [],
+    bpmMin: undefined,
+    bpmMax: undefined,
+    artist: '',
+    label: '',
+    genre: '',
+    dateAddedMin: '',
+    dateAddedMax: '',
+  };
 }
 
 /**
  * Client-side filtering over the session-cached collection.
- * No server round-trips on filter change — all computation is local.
+ * Each group owns all per-track browse dimensions (key, BPM, artist,
+ * label, genre, date-added) with internal AND semantics.  Groups are
+ * ORed together.  Free-text search remains the only global AND filter.
  */
-const EMPTY_FILTERS: FilterState = {
-  camelotCodes: [],
-  bpm: undefined,
-  bpmMin: undefined,
-  bpmMax: undefined,
-  artist: '',
-  label: '',
-  genre: '',
-  dateAddedMin: '',
-  dateAddedMax: '',
-};
-
 export function useTrackFilters(allTracks: Track[], searchText: string = ''): TrackFiltersResult {
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const nextIdRef = useRef(1);
+  const [filterGroups, setFilterGroups] = useState<FilterGroup[]>(
+    () => [makeEmptyGroup(`g${nextIdRef.current++}`)],
+  );
 
   const normalizedSearch = searchText.trim().toLowerCase();
 
   const filteredTracks = useMemo(() => {
-    const artistLower = filters.artist.trim().toLowerCase();
-    const labelLower = filters.label.trim().toLowerCase();
-    const genreLower = filters.genre.trim().toLowerCase();
-    const dateMin = filters.dateAddedMin || null;
-    const dateMax = filters.dateAddedMax || null;
+    const activeGroups = filterGroups.filter(isGroupActive);
 
     return allTracks.filter((track) => {
-      if (
-        filters.camelotCodes.length > 0 &&
-        !filters.camelotCodes.includes(track.camelot_code ?? '')
-      ) {
-        return false;
+      if (activeGroups.length > 0) {
+        const matchesAnyGroup = activeGroups.some((group) => {
+          if (
+            group.camelotCodes.length > 0 &&
+            !group.camelotCodes.includes(track.camelot_code ?? '')
+          ) {
+            return false;
+          }
+          if (group.bpmMin != null && (track.bpm == null || track.bpm < group.bpmMin))
+            return false;
+          if (group.bpmMax != null && (track.bpm == null || track.bpm > group.bpmMax))
+            return false;
+
+          const artistLower = group.artist.trim().toLowerCase();
+          if (artistLower && !track.artist_names.some((a) => a.toLowerCase().includes(artistLower)))
+            return false;
+
+          const labelLower = group.label.trim().toLowerCase();
+          if (labelLower && !(track.label ?? '').toLowerCase().includes(labelLower))
+            return false;
+
+          const genreLower = group.genre.trim().toLowerCase();
+          if (genreLower && !(track.genre ?? '').toLowerCase().includes(genreLower))
+            return false;
+
+          if (group.dateAddedMin && (track.date_added == null || track.date_added.slice(0, 10) < group.dateAddedMin))
+            return false;
+          if (group.dateAddedMax && (track.date_added == null || track.date_added.slice(0, 10) > group.dateAddedMax))
+            return false;
+
+          return true;
+        });
+        if (!matchesAnyGroup) return false;
       }
-      if (filters.bpm != null && track.bpm !== filters.bpm) return false;
-      if (filters.bpmMin != null && (track.bpm == null || track.bpm < filters.bpmMin))
-        return false;
-      if (filters.bpmMax != null && (track.bpm == null || track.bpm > filters.bpmMax))
-        return false;
-      if (artistLower && !track.artist_names.some(a => a.toLowerCase().includes(artistLower)))
-        return false;
-      if (labelLower && !(track.label ?? '').toLowerCase().includes(labelLower))
-        return false;
-      if (genreLower && !(track.genre ?? '').toLowerCase().includes(genreLower))
-        return false;
-      if (dateMin && (track.date_added == null || track.date_added.slice(0, 10) < dateMin))
-        return false;
-      if (dateMax && (track.date_added == null || track.date_added.slice(0, 10) > dateMax))
-        return false;
+
       if (normalizedSearch) {
         const title = track.title.toLowerCase();
         const artists = track.artist_names.join(' ').toLowerCase();
@@ -89,91 +113,70 @@ export function useTrackFilters(allTracks: Track[], searchText: string = ''): Tr
       }
       return true;
     });
-  }, [allTracks, filters, normalizedSearch]);
+  }, [allTracks, filterGroups, normalizedSearch]);
 
   const filterCacheKey = useMemo(() => {
+    const activeGroups = filterGroups.filter(isGroupActive);
     return JSON.stringify({
       searchText: normalizedSearch,
-      camelotCodes: [...filters.camelotCodes].sort(),
-      bpm: filters.bpm ?? null,
-      bpmMin: filters.bpmMin ?? null,
-      bpmMax: filters.bpmMax ?? null,
-      artist: filters.artist,
-      label: filters.label,
-      genre: filters.genre,
-      dateAddedMin: filters.dateAddedMin,
-      dateAddedMax: filters.dateAddedMax,
+      groups: activeGroups
+        .map((g) => ({
+          camelotCodes: [...g.camelotCodes].sort(),
+          bpmMin: g.bpmMin ?? null,
+          bpmMax: g.bpmMax ?? null,
+          artist: g.artist,
+          label: g.label,
+          genre: g.genre,
+          dateAddedMin: g.dateAddedMin,
+          dateAddedMax: g.dateAddedMax,
+        }))
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
     });
-  }, [normalizedSearch, filters]);
+  }, [normalizedSearch, filterGroups]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (filters.camelotCodes.length > 0) count++;
-    if (filters.bpm != null) count++;
-    if (filters.bpmMin != null || filters.bpmMax != null) count++;
-    if (filters.artist.trim()) count++;
-    if (filters.label.trim()) count++;
-    if (filters.genre.trim()) count++;
-    if (filters.dateAddedMin || filters.dateAddedMax) count++;
+    for (const g of filterGroups) {
+      if (g.camelotCodes.length > 0) count++;
+      if (g.bpmMin != null || g.bpmMax != null) count++;
+      if (g.artist.trim()) count++;
+      if (g.label.trim()) count++;
+      if (g.genre.trim()) count++;
+      if (g.dateAddedMin || g.dateAddedMax) count++;
+    }
     return count;
-  }, [filters]);
+  }, [filterGroups]);
 
-  const setCamelotCodes = useCallback((codes: string[]) => {
-    setFilters((prev) => ({ ...prev, camelotCodes: codes }));
+  const addFilterGroup = useCallback(() => {
+    setFilterGroups((prev) => [...prev, makeEmptyGroup(`g${nextIdRef.current++}`)]);
   }, []);
 
-  const setBpm = useCallback((bpm: number | undefined) => {
-    setFilters((prev) => ({
-      ...prev,
-      bpm,
-      ...(bpm != null ? { bpmMin: undefined, bpmMax: undefined } : {}),
-    }));
+  const removeFilterGroup = useCallback((id: string) => {
+    setFilterGroups((prev) => {
+      const updated = prev.filter((g) => g.id !== id);
+      return updated.length > 0 ? updated : [makeEmptyGroup(`g${nextIdRef.current++}`)];
+    });
   }, []);
 
-  const setBpmMin = useCallback((min: number | undefined) => {
-    setFilters((prev) => ({
-      ...prev,
-      bpmMin: min,
-      ...(min != null ? { bpm: undefined } : {}),
-    }));
-  }, []);
-
-  const setBpmMax = useCallback((max: number | undefined) => {
-    setFilters((prev) => ({
-      ...prev,
-      bpmMax: max,
-      ...(max != null ? { bpm: undefined } : {}),
-    }));
-  }, []);
-
-  const setArtist = useCallback((artist: string) => {
-    setFilters((prev) => ({ ...prev, artist }));
-  }, []);
-
-  const setLabel = useCallback((label: string) => {
-    setFilters((prev) => ({ ...prev, label }));
-  }, []);
-
-  const setGenre = useCallback((genre: string) => {
-    setFilters((prev) => ({ ...prev, genre }));
-  }, []);
-
-  const setDateAddedMin = useCallback((dateAddedMin: string) => {
-    setFilters((prev) => ({ ...prev, dateAddedMin }));
-  }, []);
-
-  const setDateAddedMax = useCallback((dateAddedMax: string) => {
-    setFilters((prev) => ({ ...prev, dateAddedMax }));
-  }, []);
+  const updateFilterGroup = useCallback(
+    (id: string, updates: Partial<Omit<FilterGroup, 'id'>>) => {
+      setFilterGroups((prev) => prev.map((g) => (g.id === id ? { ...g, ...updates } : g)));
+    },
+    [],
+  );
 
   const clearAllFilters = useCallback(() => {
-    setFilters(EMPTY_FILTERS);
+    setFilterGroups(() => [makeEmptyGroup(`g${nextIdRef.current++}`)]);
   }, []);
 
   return {
-    filters, filteredTracks, filterCacheKey, activeFilterCount,
-    setCamelotCodes, setBpm, setBpmMin, setBpmMax,
-    setArtist, setLabel, setGenre, setDateAddedMin, setDateAddedMax,
+    filterGroups,
+    filteredTracks,
+    filterCacheKey,
+    activeFilterCount,
+    addFilterGroup,
+    removeFilterGroup,
+    updateFilterGroup,
     clearAllFilters,
   };
 }

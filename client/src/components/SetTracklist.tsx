@@ -41,16 +41,18 @@ interface Props {
   onFillEmptyRow?: (emptyId: string, trackId: number, title?: string, position?: number) => void;
 }
 
-function InsertEmptyRowsControl({ onInsert }: { onInsert: (count: number, position: number) => void }) {
+function InsertEmptyRowsControl({ onInsert, totalRows }: { onInsert: (count: number, position: number) => void; totalRows: number }) {
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(1);
+  const [insertIndex, setInsertIndex] = useState('');
 
-  const handleInsert = useCallback((position: 'start' | 'end') => {
+  const handleInsert = useCallback((position: 'start' | 'end' | number) => {
     if (count < 1) return;
-    const pos = position === 'start' ? 0 : -1;
+    const pos = position === 'start' ? 0 : position === 'end' ? -1 : position;
     onInsert(count, pos);
     setOpen(false);
     setCount(1);
+    setInsertIndex('');
   }, [count, onInsert]);
 
   if (!open) {
@@ -66,6 +68,9 @@ function InsertEmptyRowsControl({ onInsert }: { onInsert: (count: number, positi
     );
   }
 
+  const parsedIndex = parseInt(insertIndex, 10);
+  const indexValid = !isNaN(parsedIndex) && parsedIndex >= 1 && parsedIndex <= totalRows + 1;
+
   return (
     <span className="empty-row-insert-control">
       <input
@@ -76,7 +81,7 @@ function InsertEmptyRowsControl({ onInsert }: { onInsert: (count: number, positi
         value={count}
         onChange={e => setCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
         onKeyDown={e => {
-          if (e.key === 'Escape') { setOpen(false); setCount(1); }
+          if (e.key === 'Escape') { setOpen(false); setCount(1); setInsertIndex(''); }
           if (e.key === 'Enter') handleInsert('end');
         }}
         aria-label="Number of empty rows"
@@ -84,18 +89,39 @@ function InsertEmptyRowsControl({ onInsert }: { onInsert: (count: number, positi
       />
       <button className="set-action-btn empty-row-insert-action" onClick={() => handleInsert('start')} title="Insert at start">Top</button>
       <button className="set-action-btn empty-row-insert-action" onClick={() => handleInsert('end')} title="Insert at end">Bottom</button>
-      <button className="set-action-btn empty-row-insert-cancel" onClick={() => { setOpen(false); setCount(1); }}>×</button>
+      <input
+        className="empty-row-insert-index"
+        type="number"
+        min={1}
+        max={totalRows + 1}
+        placeholder="idx"
+        value={insertIndex}
+        onChange={e => setInsertIndex(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { setOpen(false); setCount(1); setInsertIndex(''); }
+          if (e.key === 'Enter' && indexValid) handleInsert(parsedIndex - 1);
+        }}
+        aria-label="Insertion index"
+      />
+      <button
+        className="set-action-btn empty-row-insert-action"
+        onClick={() => { if (indexValid) handleInsert(parsedIndex - 1); }}
+        disabled={!indexValid}
+        title="Insert at index"
+      >At</button>
+      <button className="set-action-btn empty-row-insert-cancel" onClick={() => { setOpen(false); setCount(1); setInsertIndex(''); }}>×</button>
     </span>
   );
 }
 
-function DraggableEmptyRow({ emptyRow, index, total, onDelete, onReorder, onFillSearch, dndDisabled, reorderDisabled, dndIdPrefix, realPosition }: {
+function DraggableEmptyRow({ emptyRow, index, total, onDelete, onArrowMove, onFillSearch, onInsertBelow, dndDisabled, reorderDisabled, dndIdPrefix, realPosition }: {
   emptyRow: EmptyRow;
   index: number;
   total: number;
   onDelete: (persistedId: number) => void;
-  onReorder: (persistedId: number, direction: 'up' | 'down') => void;
+  onArrowMove: (displayIndex: number, direction: 'up' | 'down') => void;
   onFillSearch: (emptyId: string) => void;
+  onInsertBelow: (displayIndex: number) => void;
   dndDisabled?: boolean;
   reorderDisabled?: boolean;
   dndIdPrefix?: string;
@@ -166,10 +192,11 @@ function DraggableEmptyRow({ emptyRow, index, total, onDelete, onReorder, onFill
       <td className="set-ws-cell-note" />
       <td className="set-ws-cell-actions">
         <div className="set-ws-actions-group">
-          <button className="set-move-btn" disabled={reorderDisabled || index === 0} onClick={() => pid != null && onReorder(pid, 'up')} title="Move up">↑</button>
-          <button className="set-move-btn" disabled={reorderDisabled || index === total - 1} onClick={() => pid != null && onReorder(pid, 'down')} title="Move down">↓</button>
+          <button className="set-move-btn" disabled={reorderDisabled || index === 0} onClick={() => onArrowMove(index, 'up')} title="Move up">↑</button>
+          <button className="set-move-btn" disabled={reorderDisabled || index === total - 1} onClick={() => onArrowMove(index, 'down')} title="Move down">↓</button>
           <button className="set-action-btn" onClick={() => onFillSearch(emptyRow.emptyId)} title="Fill with track">Fill</button>
           <button className="set-action-btn set-action-btn--danger" onClick={() => pid != null && onDelete(pid)} title="Delete empty row">×</button>
+          <button className="set-action-btn" onClick={() => onInsertBelow(index)} title="Insert empty row below">+</button>
         </div>
       </td>
     </tr>
@@ -228,15 +255,16 @@ function ConfirmDeleteModal({ count, onConfirm, onCancel }: {
   );
 }
 
-function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onReorder, onUpdateNote, onToggleStar, dndDisabled, reorderDisabled, isSelected, onToggleSelect, selectedIds, dndIdPrefix }: {
+function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, onArrowMove, onUpdateNote, onToggleStar, onInsertBelow, dndDisabled, reorderDisabled, isSelected, onToggleSelect, selectedIds, dndIdPrefix }: {
   entry: TracklistEntry;
   index: number;
   total: number;
   onRemove: (trackId: number) => void;
   onMoveToPool: (trackId: number) => void;
-  onReorder: (trackId: number, newPosition: number) => void;
+  onArrowMove: (displayIndex: number, direction: 'up' | 'down') => void;
   onUpdateNote: (trackId: number, note: string) => void;
   onToggleStar: (trackId: number, starred: boolean) => void;
+  onInsertBelow: (displayIndex: number) => void;
   dndDisabled?: boolean;
   reorderDisabled?: boolean;
   isSelected: boolean;
@@ -332,10 +360,11 @@ function DraggableTracklistRow({ entry, index, total, onRemove, onMoveToPool, on
       </td>
       <td className="set-ws-cell-actions">
         <div className="set-ws-actions-group">
-          <button className="set-move-btn" disabled={reorderDisabled || index === 0} onClick={() => onReorder(entry.track_id, index - 1)} title="Move up">↑</button>
-          <button className="set-move-btn" disabled={reorderDisabled || index === total - 1} onClick={() => onReorder(entry.track_id, index + 1)} title="Move down">↓</button>
+          <button className="set-move-btn" disabled={reorderDisabled || index === 0} onClick={() => onArrowMove(index, 'up')} title="Move up">↑</button>
+          <button className="set-move-btn" disabled={reorderDisabled || index === total - 1} onClick={() => onArrowMove(index, 'down')} title="Move down">↓</button>
           <button className="set-action-btn" onClick={() => onMoveToPool(entry.track_id)} title="Move to pool">To Pool</button>
           <button className="set-action-btn set-action-btn--danger" onClick={() => onRemove(entry.track_id)} title="Delete from tracklist">×</button>
+          <button className="set-action-btn" onClick={() => onInsertBelow(index)} title="Insert empty row below">+</button>
         </div>
       </td>
     </tr>
@@ -379,26 +408,54 @@ export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemov
 
   const displayRows = useMemo((): TracklistDisplayRow[] => {
     if (persistedEmptyRows.length === 0) return sortedTracklist;
-    const result: TracklistDisplayRow[] = [...sortedTracklist];
+    const totalLength = sortedTracklist.length + persistedEmptyRows.length;
+    const result: (TracklistDisplayRow | null)[] = new Array(totalLength).fill(null);
     const sorted = [...persistedEmptyRows].sort((a, b) => a.position - b.position);
-    for (let i = 0; i < sorted.length; i++) {
-      const pos = Math.min(sorted[i].position + i, result.length);
-      result.splice(pos, 0, { __empty: true, emptyId: `er-${sorted[i].id}`, persistedId: sorted[i].id } as EmptyRow);
+    const claimed = new Set<number>();
+    for (const er of sorted) {
+      let pos = Math.max(0, Math.min(er.position, totalLength - 1));
+      while (claimed.has(pos) && pos < totalLength - 1) pos++;
+      if (claimed.has(pos)) {
+        pos = Math.max(0, Math.min(er.position, totalLength - 1));
+        while (claimed.has(pos) && pos > 0) pos--;
+      }
+      claimed.add(pos);
+      result[pos] = { __empty: true, emptyId: `er-${er.id}`, persistedId: er.id } as EmptyRow;
     }
-    return result;
+    let trackIdx = 0;
+    for (let i = 0; i < totalLength; i++) {
+      if (result[i] === null && trackIdx < sortedTracklist.length) {
+        result[i] = sortedTracklist[trackIdx++];
+      }
+    }
+    return result.filter(Boolean) as TracklistDisplayRow[];
   }, [sortedTracklist, persistedEmptyRows]);
 
   const handleDeleteEmptyRow = useCallback((persistedId: number) => {
     onDeleteEmptyRow(persistedId);
   }, [onDeleteEmptyRow]);
 
-  const handleReorderEmptyRow = useCallback((persistedId: number, direction: 'up' | 'down') => {
-    const row = persistedEmptyRows.find(r => r.id === persistedId);
-    if (!row) return;
-    const delta = direction === 'up' ? -1 : 1;
-    const newPos = Math.max(0, row.position + delta);
-    onReorderEmptyRow(persistedId, newPos);
-  }, [persistedEmptyRows, onReorderEmptyRow]);
+  const handleArrowMove = useCallback((displayIndex: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? displayIndex - 1 : displayIndex + 1;
+    if (targetIndex < 0 || targetIndex >= displayRows.length) return;
+    const currentRow = displayRows[displayIndex];
+    const targetRow = displayRows[targetIndex];
+    if (isEmptyRow(currentRow)) {
+      if (currentRow.persistedId != null) {
+        onReorderEmptyRow(currentRow.persistedId, targetIndex);
+      }
+    } else if (isEmptyRow(targetRow)) {
+      if (targetRow.persistedId != null) {
+        onReorderEmptyRow(targetRow.persistedId, displayIndex);
+      }
+    } else {
+      onReorder(currentRow.track_id, targetRow.position);
+    }
+  }, [displayRows, onReorder, onReorderEmptyRow]);
+
+  const handleInsertBelow = useCallback((displayIndex: number) => {
+    onInsertEmptyRows(1, displayIndex + 1);
+  }, [onInsertEmptyRows]);
 
   const handleFillSearch = useCallback((emptyId: string) => {
     setFillTargetId(emptyId);
@@ -494,7 +551,7 @@ export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemov
             Delete Selected
           </button>
         )}
-        <InsertEmptyRowsControl onInsert={onInsertEmptyRows} />
+        <InsertEmptyRowsControl onInsert={onInsertEmptyRows} totalRows={totalDisplayRows} />
         {tracklist.length > 0 && onClearAll && (
           <button
             className="set-action-btn set-action-btn--danger set-clear-all-btn"
@@ -579,8 +636,9 @@ export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemov
                     index={i}
                     total={totalDisplayRows}
                     onDelete={handleDeleteEmptyRow}
-                    onReorder={handleReorderEmptyRow}
+                    onArrowMove={handleArrowMove}
                     onFillSearch={handleFillSearch}
+                    onInsertBelow={handleInsertBelow}
                     dndDisabled={dndDisabled}
                     reorderDisabled={sorting.length > 0}
                     dndIdPrefix={dndIdPrefix}
@@ -594,9 +652,10 @@ export function SetTracklist({ tracklist, emptyRows: persistedEmptyRows, onRemov
                     total={totalDisplayRows}
                     onRemove={handleRowDelete}
                     onMoveToPool={onMoveToPool}
-                    onReorder={onReorder}
+                    onArrowMove={handleArrowMove}
                     onUpdateNote={onUpdateNote}
                     onToggleStar={onToggleStar}
+                    onInsertBelow={handleInsertBelow}
                     dndDisabled={dndDisabled}
                     reorderDisabled={sorting.length > 0}
                     isSelected={selectedIds.has(row.track_id)}

@@ -8,6 +8,7 @@ interface Props {
   removeFromPool: (trackId: number) => void;
   clearPool: () => void;
   movePoolToTracklist: (trackId: number) => void;
+  reorderPool: (trackId: number, newPosition: number) => void;
   addToPool: (trackId: number, title?: string) => void;
   removeFromTracklist: (trackId: number) => void;
   clearTracklist: () => void;
@@ -35,7 +36,7 @@ interface Props {
 
 export const SetWorkspacePanel = memo(function SetWorkspacePanel({
   activeSet,
-  removeFromPool, clearPool, movePoolToTracklist, addToPool,
+  removeFromPool, clearPool, movePoolToTracklist, reorderPool, addToPool,
   removeFromTracklist, clearTracklist, moveTracklistToPool, reorderTracklist,
   addToTracklistAtPosition,
   updateTracklistNote, togglePoolStar, toggleTracklistStar, addToTracklist,
@@ -112,6 +113,7 @@ export const SetWorkspacePanel = memo(function SetWorkspacePanel({
               onRemove={removeFromPool}
               onClearAll={clearPool}
               onMoveToTracklist={movePoolToTracklist}
+              onReorder={reorderPool}
               onToggleStar={togglePoolStar}
               onAddTrack={handlePoolAddTrack}
               onFillEmptyRow={handlePoolFillEmptyRow}

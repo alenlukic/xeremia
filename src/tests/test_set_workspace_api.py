@@ -1367,3 +1367,359 @@ class TestEmptyRowCascade:
         assert cleared == 3
         assert session.query(SetEmptyRow).filter_by(set_id=s.id, surface="tracklist").count() == 0
         assert session.query(SetEmptyRow).filter_by(set_id=s.id, surface="pool").count() == 2
+
+
+class TestPoolReorder:
+    def test_reorder_forward(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        ok, err = svc.pool_reorder(s.id, 10, 2)
+        assert ok is True
+        assert err is None
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        track_order = [e.track_id for e in entries]
+        assert track_order == [20, 30, 10]
+
+    def test_reorder_backward(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        ok, err = svc.pool_reorder(s.id, 30, 0)
+        assert ok is True
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        track_order = [e.track_id for e in entries]
+        assert track_order == [30, 10, 20]
+
+    def test_reorder_noop(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        session.commit()
+        ok, err = svc.pool_reorder(s.id, 10, 0)
+        assert ok is True
+
+    def test_reorder_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.pool_reorder(s.id, 999, 0)
+        assert ok is False
+
+    def test_reorder_preserves_starred(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+        svc.toggle_pool_star(s.id, 20, True)
+        session.commit()
+
+        ok, _ = svc.pool_reorder(s.id, 20, 0)
+        assert ok is True
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        assert entries[0].track_id == 20
+        assert entries[0].starred is True
+
+    def test_reorder_preserves_subgroup_membership(
+        self, svc: SetWorkspaceService, session: Session,
+    ):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        sg = svc.subgroup_create(s.id, "Group A")
+        session.commit()
+        entry_20 = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id, track_id=20)
+            .first()
+        )
+        svc.subgroup_add_track(s.id, sg.id, entry_20.id)
+        session.commit()
+
+        ok, _ = svc.pool_reorder(s.id, 20, 2)
+        assert ok is True
+        session.commit()
+
+        member = (
+            session.query(SetPoolSubgroupMember)
+            .filter_by(subgroup_id=sg.id, pool_entry_id=entry_20.id)
+            .first()
+        )
+        assert member is not None
+
+    def test_reorder_clamps_position(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        ok, _ = svc.pool_reorder(s.id, 10, 100)
+        assert ok is True
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        assert entries[-1].track_id == 10
+
+    def test_reorder_with_interleaved_empty_rows(
+        self, svc: SetWorkspaceService, session: Session,
+    ):
+        """Pool reorder must operate only on entries (insertion_order domain),
+        completely independent of any empty rows in the same pool."""
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30, 40]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        svc.empty_row_add(s.id, "pool", count=2, position=1)
+        session.commit()
+
+        empty_before = (
+            session.query(SetEmptyRow)
+            .filter_by(set_id=s.id, surface="pool")
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        empty_positions_before = [(r.id, r.position) for r in empty_before]
+
+        ok, err = svc.pool_reorder(s.id, 10, 3)
+        assert ok is True
+        assert err is None
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        assert [e.track_id for e in entries] == [20, 30, 40, 10]
+        assert [e.insertion_order for e in entries] == [0, 1, 2, 3]
+
+        empty_after = (
+            session.query(SetEmptyRow)
+            .filter_by(set_id=s.id, surface="pool")
+            .order_by(SetEmptyRow.position)
+            .all()
+        )
+        assert [(r.id, r.position) for r in empty_after] == empty_positions_before
+
+    def test_reorder_with_gapped_insertion_order(
+        self, svc: SetWorkspaceService, session: Session,
+    ):
+        """Reorder must work correctly when insertion_order has gaps."""
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30, 40]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        entries[0].insertion_order = 2
+        entries[1].insertion_order = 5
+        entries[2].insertion_order = 9
+        entries[3].insertion_order = 14
+        session.flush()
+
+        ok, err = svc.pool_reorder(s.id, 10, 2)
+        assert ok is True
+        assert err is None
+        session.commit()
+
+        result = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        assert [e.track_id for e in result] == [20, 30, 10, 40]
+        assert [e.insertion_order for e in result] == [0, 1, 2, 3]
+
+    def test_reorder_gapped_boundary_move_to_first(
+        self, svc: SetWorkspaceService, session: Session,
+    ):
+        """Move last entry to first with gapped orders; verify normalization."""
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        entries[0].insertion_order = 3
+        entries[1].insertion_order = 7
+        entries[2].insertion_order = 11
+        session.flush()
+
+        ok, _ = svc.pool_reorder(s.id, 30, 0)
+        assert ok is True
+        session.commit()
+
+        result = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        assert [e.track_id for e in result] == [30, 10, 20]
+        assert [e.insertion_order for e in result] == [0, 1, 2]
+
+    def test_reorder_gapped_noop_same_rank(
+        self, svc: SetWorkspaceService, session: Session,
+    ):
+        """Reorder to same rank with gapped orders is a no-op (gaps preserved)."""
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        entries[0].insertion_order = 5
+        entries[1].insertion_order = 10
+        session.flush()
+
+        ok, _ = svc.pool_reorder(s.id, 10, 0)
+        assert ok is True
+        session.commit()
+
+        result = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        assert [e.track_id for e in result] == [10, 20]
+
+    def test_multi_reorder_no_position_collision(
+        self, svc: SetWorkspaceService, session: Session,
+    ):
+        """Repeated pool reorders must never produce duplicate insertion_order values."""
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30, 40]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        svc.pool_reorder(s.id, 10, 3)
+        session.commit()
+        svc.pool_reorder(s.id, 40, 0)
+        session.commit()
+        svc.pool_reorder(s.id, 30, 2)
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        orders = [e.insertion_order for e in entries]
+        assert len(orders) == len(set(orders)), f"Duplicate insertion_order: {orders}"
+        assert orders == list(range(len(orders))), f"Non-contiguous orders: {orders}"
+
+    def test_reorder_clamps_negative_position(
+        self, svc: SetWorkspaceService, session: Session,
+    ):
+        """Negative new_position must clamp to 0, not crash or produce invalid state."""
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        ok, err = svc.pool_reorder(s.id, 30, -5)
+        assert ok is True
+        assert err is None
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        assert entries[0].track_id == 30
+        assert [e.insertion_order for e in entries] == [0, 1, 2]
+
+    def test_reorder_gapped_normalizes_on_move(
+        self, svc: SetWorkspaceService, session: Session,
+    ):
+        """Any actual move with gapped orders normalizes to contiguous 0..N-1."""
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        entries[0].insertion_order = 5
+        entries[1].insertion_order = 10
+        session.flush()
+
+        ok, _ = svc.pool_reorder(s.id, 10, 1)
+        assert ok is True
+        session.commit()
+
+        result = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        assert [e.track_id for e in result] == [20, 10]
+        assert [e.insertion_order for e in result] == [0, 1]

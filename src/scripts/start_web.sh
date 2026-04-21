@@ -11,9 +11,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-# Source local port overrides if present
-if [[ -f "$REPO_ROOT/override_env.sh" ]]; then
-  source "$REPO_ROOT/override_env.sh"
+# Load port config from .env (selective to avoid shell-unsafe values)
+if [[ -f ".env" ]]; then
+  while IFS='=' read -r key value; do
+    case "$key" in
+      API_PORT|CLIENT_PORT) export "$key=$value" ;;
+    esac
+  done < <(grep -E '^(API_PORT|CLIENT_PORT)=' .env)
 fi
 
 # Prevent dual-OpenBLAS thread pool corruption: NumPy ships libopenblas64_

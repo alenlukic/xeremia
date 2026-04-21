@@ -28,6 +28,7 @@ interface Props {
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
   onToggleStar: (trackId: number, starred: boolean) => void;
+  onReorder: (trackId: number, newPosition: number) => void;
   onAddTrack: (trackId: number, title?: string) => void;
   onClearAll?: () => void;
   onInsertEmptyRows: (count: number, position: number) => void;
@@ -171,12 +172,16 @@ function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
   return a.insertion_order - b.insertion_order;
 }
 
-function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dndDisabled, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember, dndIdPrefix }: {
+function DraggablePoolRow({ entry, entryRank, totalEntries, onRemove, onMoveToTracklist, onToggleStar, onReorder, dndDisabled, reorderDisabled, subgroups, memberSubgroupIds, onAddSubgroupMember, onRemoveSubgroupMember, dndIdPrefix }: {
   entry: PoolEntry;
+  entryRank: number;
+  totalEntries: number;
   onRemove: (trackId: number) => void;
   onMoveToTracklist: (trackId: number) => void;
   onToggleStar: (trackId: number, starred: boolean) => void;
+  onReorder: (trackId: number, newPosition: number) => void;
   dndDisabled?: boolean;
+  reorderDisabled?: boolean;
   subgroups: PoolSubgroup[];
   memberSubgroupIds: Set<number>;
   onAddSubgroupMember: (subgroupId: number, poolEntryId: number) => Promise<boolean>;
@@ -184,14 +189,26 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dn
   dndIdPrefix?: string;
 }) {
   const prefix = dndIdPrefix ?? '';
+  const effectiveDndDisabled = dndDisabled || reorderDisabled;
   const title = cleanTitle(entry.track, entry.track_id);
   const payload: DragPayload = { trackId: entry.track_id, title, source: 'pool' };
-  const { listeners, setNodeRef, isDragging } = useDraggable({
+  const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `${prefix}pool-track-${entry.track_id}`,
     data: payload,
     attributes: { role: undefined as unknown as string, tabIndex: undefined as unknown as number },
-    disabled: dndDisabled,
+    disabled: effectiveDndDisabled,
   });
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `${prefix}drop-pool-row-${entryRank}`,
+    data: { entryRank, trackId: entry.track_id },
+    disabled: effectiveDndDisabled,
+  });
+
+  const mergedRef = useCallback((node: HTMLTableRowElement | null) => {
+    setDragRef(node);
+    setDropRef(node);
+  }, [setDragRef, setDropRef]);
 
   const rowListeners = useMemo(() => {
     if (!listeners) return {};
@@ -200,6 +217,8 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dn
       ...rest,
       onPointerDown: (e: React.PointerEvent) => {
         if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        if (e.metaKey || e.ctrlKey) return;
+        e.stopPropagation();
         (onPointerDown as (e: React.PointerEvent) => void)?.(e);
       },
     };
@@ -213,11 +232,18 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dn
     }
   }, [memberSubgroupIds, entry.id, onAddSubgroupMember, onRemoveSubgroupMember]);
 
+  const rowCursor = effectiveDndDisabled ? 'default' : isDragging ? 'grabbing' : 'grab';
+
+  const className = [
+    isDragging && 'row-dragging',
+    isOver && !isDragging && 'row-drop-target',
+  ].filter(Boolean).join(' ') || undefined;
+
   return (
     <tr
-      ref={setNodeRef}
-      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
-      className={isDragging ? 'row-dragging' : undefined}
+      ref={mergedRef}
+      style={{ cursor: rowCursor }}
+      className={className}
       {...rowListeners}
     >
       <td className="set-ws-cell-star">
@@ -255,6 +281,8 @@ function DraggablePoolRow({ entry, onRemove, onMoveToTracklist, onToggleStar, dn
       )}
       <td className="set-ws-cell-actions">
         <div className="set-ws-actions-group">
+          <button className="set-move-btn" disabled={reorderDisabled || entryRank === 0} onClick={() => onReorder(entry.track_id, entryRank - 1)} title="Move up" aria-label="Move up">↑</button>
+          <button className="set-move-btn" disabled={reorderDisabled || entryRank >= totalEntries - 1} onClick={() => onReorder(entry.track_id, entryRank + 1)} title="Move down" aria-label="Move down">↓</button>
           <button className="set-action-btn" onClick={() => onMoveToTracklist(entry.track_id)} title="Move to tracklist">To Tracklist</button>
           <button className="set-action-btn set-action-btn--danger" onClick={() => onRemove(entry.track_id)} title="Remove from pool">×</button>
         </div>
@@ -589,8 +617,8 @@ function SubgroupSection({
 
 export function SetPoolTable({
   pool, emptyRows: persistedEmptyRows, subgroups, subgroupMemberships,
-  onRemove, onMoveToTracklist, onToggleStar, onAddTrack, onClearAll,
-  onInsertEmptyRows, onDeleteEmptyRow, onReorderEmptyRow,
+  onRemove, onMoveToTracklist, onToggleStar, onReorder, onAddTrack, onClearAll,
+  onInsertEmptyRows, onDeleteEmptyRow, onReorderEmptyRow: _onReorderEmptyRow,
   onCreateSubgroup, onRenameSubgroup, onDeleteSubgroup, onReorderSubgroups,
   onAddSubgroupMember, onRemoveSubgroupMember,
   dndDisabled, dndIdPrefix, onFillEmptyRow,
@@ -634,6 +662,18 @@ export function SetPoolTable({
     }
     return map;
   }, [subgroupMemberships]);
+
+  const poolRankByTrackId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (let i = 0; i < pool.length; i++) {
+      map.set(pool[i].track_id, i);
+    }
+    return map;
+  }, [pool]);
+
+  const isUserOrder = sorting.length === 0 ||
+    (sorting.length === 1 && sorting[0].id === 'insertion_order' && !sorting[0].desc);
+  const reorderDisabled = !isUserOrder;
 
   const handleDeleteEmptyRow = useCallback((persistedId: number) => {
     onDeleteEmptyRow(persistedId);
@@ -899,10 +939,14 @@ export function SetPoolTable({
                   <DraggablePoolRow
                     key={row.id}
                     entry={row}
+                    entryRank={poolRankByTrackId.get(row.track_id) ?? 0}
+                    totalEntries={pool.length}
                     onRemove={onRemove}
                     onMoveToTracklist={onMoveToTracklist}
                     onToggleStar={onToggleStar}
+                    onReorder={onReorder}
                     dndDisabled={dndDisabled}
+                    reorderDisabled={reorderDisabled}
                     subgroups={subgroups}
                     memberSubgroupIds={membershipByEntry.get(row.id) ?? new Set()}
                     onAddSubgroupMember={onAddSubgroupMember}
