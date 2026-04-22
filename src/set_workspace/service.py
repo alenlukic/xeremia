@@ -1411,6 +1411,7 @@ class SetWorkspaceService:
             return False, "Version not found"
 
         removed_order = version.display_order
+        linked_tree_id = version.explorer_tree_id
 
         slot_ids = [
             s.id for s in
@@ -1427,6 +1428,9 @@ class SetWorkspaceService:
         ).delete()
 
         self.session.delete(version)
+
+        if linked_tree_id is not None:
+            self.delete_explorer_tree(set_id, linked_tree_id)
 
         later = (
             self.session.query(SetTracklistVersion)
@@ -1720,6 +1724,8 @@ class SetWorkspaceService:
     def candidate_add(
         self, set_id: int, slot_id: int, track_id: int,
     ) -> Tuple[Optional[SetTracklistCandidate], Optional[str]]:
+        from src.models.track import Track
+
         slot = self.session.query(SetTracklistSlot).filter_by(id=slot_id).first()
         if slot is None:
             return None, "Slot not found"
@@ -1731,6 +1737,18 @@ class SetWorkspaceService:
         )
         if version is None:
             return None, "Slot does not belong to this set"
+
+        track = self.session.query(Track).filter_by(id=track_id).first()
+        if track is None:
+            return None, "Track not found"
+
+        existing_dup = (
+            self.session.query(SetTracklistCandidate)
+            .filter_by(slot_id=slot_id, track_id=track_id)
+            .first()
+        )
+        if existing_dup is not None:
+            return None, "Candidate already exists"
 
         cand_count = (
             self.session.query(SetTracklistCandidate)

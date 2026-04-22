@@ -22,10 +22,6 @@ export const ExplorerNodesView = memo(function ExplorerNodesView({
     return [...target].sort((a, b) => a.level !== b.level ? a.level - b.level : a.col_index - b.col_index);
   }, [nodes, activeTreeId]);
 
-  const maxRow = filteredNodes.length > 0
-    ? Math.max(...filteredNodes.map(n => n.level))
-    : -1;
-
   return (
     <div className="explorer-nodes-view" data-testid="explorer-nodes-view">
       {trees && trees.length > 1 && (

@@ -213,7 +213,7 @@ class TracklistEntryResponse(BaseModel):
 
 
 class TracklistNoteUpdateRequest(BaseModel):
-    note: str = ""
+    note: str = Field("", max_length=10000)
 
 
 class StarToggleRequest(BaseModel):
@@ -468,7 +468,7 @@ class SlotReorderRequest(BaseModel):
 
 
 class SlotNoteUpdateRequest(BaseModel):
-    note: str
+    note: str = Field(..., max_length=10000)
 
 
 class CandidateAddRequest(BaseModel):

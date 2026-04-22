@@ -5,11 +5,12 @@ delete-node resolution, and edge-score request shape.
 """
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 
 from src.db import Base
 from src.models.dj_set import DjSet
+from src.models.track import Track
 from src.models.set_pool_entry import SetPoolEntry
 from src.models.set_tracklist_entry import SetTracklistEntry
 from src.models.set_explorer_tree import SetExplorerTree
@@ -40,12 +41,41 @@ _TABLES = [
 ]
 
 
+_TRACK_DDL = """
+CREATE TABLE IF NOT EXISTS track (
+    id INTEGER PRIMARY KEY,
+    file_name VARCHAR(256) NOT NULL UNIQUE,
+    title VARCHAR(256) NOT NULL,
+    bpm NUMERIC(5,2),
+    key VARCHAR(4),
+    camelot_code VARCHAR(4),
+    energy INTEGER,
+    genre VARCHAR(64),
+    label VARCHAR(128),
+    comment VARCHAR(1024),
+    date_added VARCHAR(64)
+)
+"""
+
+
+def _seed_tracks(session):
+    """Pre-populate Track rows for IDs used across service tests."""
+    for tid in list(range(1, 51)) + [42, 99, 100, 101, 102, 103, 104, 999]:
+        existing = session.query(Track).filter_by(id=tid).first()
+        if existing is None:
+            session.add(Track(id=tid, file_name=f"t_{tid}.mp3", title=f"Track {tid}"))
+    session.commit()
+
+
 @pytest.fixture
 def session():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine, tables=_TABLES)
+    with engine.connect() as conn:
+        conn.execute(text(_TRACK_DDL))
     _Session = sessionmaker(bind=engine)
     s = _Session()
+    _seed_tracks(s)
     yield s
     s.close()
 

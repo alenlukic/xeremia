@@ -131,6 +131,15 @@ describe('SetPoolTable', () => {
     const header = pool.querySelector('.set-pool-header')!;
     expect(header.closest('.set-table-scroll-shell')).toBeNull();
   });
+
+  it('renders column-config button in pool header', () => {
+    const { container } = renderPool([makePoolEntry({ id: 1, track_id: 10 })]);
+    const btn = container.querySelector('.set-pool-header .columns-btn') as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    expect(btn).toBeVisible();
+    expect(btn.textContent).toBe('Columns');
+    expect(btn.disabled).toBe(true);
+  });
 });
 
 describe('SetPoolTable multi-sort', () => {
@@ -926,6 +935,74 @@ describe('SetPoolTable empty row rendering', () => {
     expect(container.querySelector('.set-empty-tracks')).toBeNull();
     const rows = container.querySelectorAll('.set-pool-table tbody tr.empty-row');
     expect(rows.length).toBe(1);
+  });
+});
+
+describe('SetPoolTable pool-sort isolation across views', () => {
+  const subgroups: PoolSubgroup[] = [
+    { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+  ];
+
+  function makeEntries(): PoolEntry[] {
+    return [
+      makePoolEntry({
+        id: 1, track_id: 10, insertion_order: 0,
+        track: { id: 10, title: 'Charlie', artist_names: [], bpm: 140, key: 'C', camelot_code: '8A', genre: null, label: null, energy: null, date_added: null },
+      }),
+      makePoolEntry({
+        id: 2, track_id: 20, insertion_order: 1,
+        track: { id: 20, title: 'Alpha', artist_names: [], bpm: 120, key: 'D', camelot_code: '3B', genre: null, label: null, energy: null, date_added: null },
+      }),
+    ];
+  }
+
+  const memberships: PoolSubgroupMembership[] = [
+    { id: 1, subgroup_id: 1, pool_entry_id: 1 },
+    { id: 2, subgroup_id: 1, pool_entry_id: 2 },
+  ];
+
+  function getTitles(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll('.set-pool-table tbody .set-ws-cell-title'))
+      .map(el => el.textContent ?? '');
+  }
+
+  function clickMenuItem(container: HTMLElement, label: string) {
+    const items = container.querySelectorAll('.sort-tier-menu-item');
+    const target = Array.from(items).find(el => el.textContent === label);
+    if (!target) throw new Error(`Menu item "${label}" not found`);
+    fireEvent.mouseDown(target);
+  }
+
+  it('sorting in All view does not alter subgroup sort state, and vice versa', () => {
+    const { container } = renderPool(makeEntries(), subgroups, memberships);
+    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab');
+    const allTab = tabs[0];
+    const warmupTab = tabs[2];
+
+    expect(getTitles(container)).toEqual(['Charlie', 'Alpha']);
+
+    fireEvent.click(screen.getByRole('button', { name: /remove # sort/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }));
+    clickMenuItem(container, 'Title');
+    expect(getTitles(container)).toEqual(['Alpha', 'Charlie']);
+
+    fireEvent.click(warmupTab);
+    expect(getTitles(container)).toEqual(['Charlie', 'Alpha']);
+
+    fireEvent.click(screen.getByRole('button', { name: /remove # sort/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }));
+    clickMenuItem(container, 'BPM');
+    const bpms = Array.from(container.querySelectorAll('.set-pool-table tbody .set-ws-cell-bpm'))
+      .map(el => el.textContent ?? '');
+    expect(bpms).toEqual(['120', '140']);
+
+    fireEvent.click(allTab);
+    expect(getTitles(container)).toEqual(['Alpha', 'Charlie']);
+
+    fireEvent.click(warmupTab);
+    const bpmsAfterRoundTrip = Array.from(container.querySelectorAll('.set-pool-table tbody .set-ws-cell-bpm'))
+      .map(el => el.textContent ?? '');
+    expect(bpmsAfterRoundTrip).toEqual(['120', '140']);
   });
 });
 

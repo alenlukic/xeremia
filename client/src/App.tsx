@@ -317,7 +317,7 @@ export default function App() {
 
       if (validTrackIds.length === 0) return;
 
-      const surfaceEmptyRows = (sb.activeSet as Record<string, unknown>).empty_rows as Array<{ id: number; set_id: number; surface: string; position: number }> | undefined;
+      const surfaceEmptyRows = (sb.activeSet as unknown as Record<string, unknown>).empty_rows as Array<{ id: number; set_id: number; surface: string; position: number }> | undefined;
       const sameRows = surfaceEmptyRows?.filter(
         r => r.surface === (isTracklist ? 'tracklist' : 'pool'),
       ) ?? [];
@@ -477,6 +477,15 @@ export default function App() {
                     Export m3u8
                   </button>
                 )}
+                <button
+                  className="set-action-btn columns-btn"
+                  disabled
+                  title="Column configuration (Phase B)"
+                  aria-label="Configure columns"
+                  data-testid="tracklist-columns-btn"
+                >
+                  Columns
+                </button>
               </div>
               <div className="tracklist-zone-content">
                 {explorerView ? (

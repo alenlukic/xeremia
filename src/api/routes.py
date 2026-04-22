@@ -1650,7 +1650,12 @@ def api_candidate_add(set_id: int, slot_id: int, body: CandidateAddRequest):
         svc = SetWorkspaceService(session)
         candidate, error = svc.candidate_add(set_id, slot_id, body.track_id)
         if error:
-            status = 409 if "Maximum" in error else 400
+            if "not found" in error.lower():
+                status = 404
+            elif "Maximum" in error or "already exists" in error.lower():
+                status = 409
+            else:
+                status = 400
             raise HTTPException(status_code=status, detail=error)
         session.commit()
         return {
@@ -1678,7 +1683,8 @@ def api_candidate_remove(set_id: int, slot_id: int, candidate_id: int):
         svc = SetWorkspaceService(session)
         ok, error = svc.candidate_remove(set_id, slot_id, candidate_id)
         if not ok:
-            raise HTTPException(status_code=400, detail=error)
+            status = 404 if error and "not found" in error.lower() else 400
+            raise HTTPException(status_code=status, detail=error)
         session.commit()
     except HTTPException:
         raise
@@ -1699,7 +1705,8 @@ def api_candidate_select(set_id: int, slot_id: int, candidate_id: int):
         svc = SetWorkspaceService(session)
         ok, error = svc.candidate_select(set_id, slot_id, candidate_id)
         if not ok:
-            raise HTTPException(status_code=400, detail=error)
+            status = 404 if error and "not found" in error.lower() else 400
+            raise HTTPException(status_code=status, detail=error)
         session.commit()
         return {"ok": True}
     except HTTPException:

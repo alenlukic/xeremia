@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
@@ -5,6 +6,19 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import App from './App';
 import type { Track } from './types';
+
+const mockAudioPlayerState = {
+  track: null as { id: number; title: string } | null,
+  playing: false, loading: false, currentTime: 0, duration: 0,
+  volume: 0.8, error: null as string | null,
+  play: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+  togglePlayPause: vi.fn(), seek: vi.fn(), setVolume: vi.fn(), stop: vi.fn(),
+};
+
+vi.mock('./hooks/useAudioPlayer', () => ({
+  AudioPlayerProvider: ({ children }: { children: React.ReactNode }) => children,
+  useAudioPlayer: () => mockAudioPlayerState,
+}));
 
 vi.mock('./hooks/useCollectionCache', () => ({
   useCollectionCache: vi.fn().mockReturnValue({
@@ -74,6 +88,10 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
   vi.stubGlobal('IntersectionObserver', IntersectionObserverMock);
   localStorage.clear();
+  mockAudioPlayerState.track = null;
+  mockAudioPlayerState.playing = false;
+  mockAudioPlayerState.error = null;
+  mockAudioPlayerState.loading = false;
 });
 
 async function renderApp() {
@@ -188,6 +206,16 @@ describe('Workspace layout with active set', () => {
   it('does not render Matches panel', async () => {
     await renderWithActiveSet();
     expect(document.getElementById('panel-matches')).not.toBeInTheDocument();
+  });
+
+  it('renders column-config button in tracklist zone header', async () => {
+    await renderWithActiveSet();
+    const btn = screen.getByTestId('tracklist-columns-btn');
+    expect(btn).toBeInTheDocument();
+    expect(btn).toBeVisible();
+    expect(btn.textContent).toBe('Columns');
+    expect(btn).toBeDisabled();
+    expect(btn.classList.contains('columns-btn')).toBe(true);
   });
 });
 
@@ -363,6 +391,48 @@ describe('Reset Weights', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('Player bar push-up accommodation', () => {
+  it('renders PlayerBar when playback is active', async () => {
+    mockAudioPlayerState.track = { id: 1, title: 'Test Track' };
+    mockAudioPlayerState.playing = true;
+
+    await renderApp();
+    expect(screen.getByTestId('player-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('player-bar-title').textContent).toBe('Test Track');
+  });
+
+  it('does not render PlayerBar when no track is active', async () => {
+    await renderApp();
+    expect(screen.queryByTestId('player-bar')).not.toBeInTheDocument();
+  });
+
+  it('app shell uses flex column layout so PlayerBar pushes content up', async () => {
+    mockAudioPlayerState.track = { id: 1, title: 'Test Track' };
+    mockAudioPlayerState.playing = true;
+
+    await renderApp();
+
+    const shell = document.querySelector('.app-shell-v2') as HTMLElement;
+    expect(shell).toBeInTheDocument();
+
+    const playerBar = screen.getByTestId('player-bar');
+    expect(playerBar.closest('.app-shell-v2')).toBe(shell);
+
+    const css = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'styles.css'),
+      'utf-8',
+    );
+
+    const shellRule = css.match(/\.app-shell-v2\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(shellRule).toMatch(/display:\s*flex/);
+    expect(shellRule).toMatch(/flex-direction:\s*column/);
+
+    const playerRule = css.match(/\.player-bar\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(playerRule).not.toMatch(/position:\s*fixed/);
+    expect(playerRule).not.toMatch(/position:\s*absolute/);
   });
 });
 

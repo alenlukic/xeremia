@@ -777,6 +777,15 @@ export function SetPoolTable({
       <div className="set-pool-header">
         <h3 className="set-section-title">Pool ({pool.length})</h3>
         <PoolInsertEmptyRowsControl onInsert={onInsertEmptyRows} />
+        <button
+          className="set-action-btn columns-btn"
+          disabled
+          title="Column configuration (Phase B)"
+          aria-label="Configure columns"
+          data-testid="pool-columns-btn"
+        >
+          Columns
+        </button>
         {pool.length > 0 && onClearAll && (
           <button
             className="set-action-btn set-action-btn--danger set-clear-all-btn"

@@ -1,76 +1,71 @@
 # Review Notes
 
-## [Contract 2] Phase A Single-Page Workspace Shell Rewrite
+Run: `20260421T232343Z-delivery-mixed-delivery-input-bundle`
 
-### What was implemented
+## Contract 2 — Phase A Shell Rewrite (Client)
 
-**Layout Architecture** — Replaced the DockBar-era multi-tab shell with a single-page layout:
-- Fixed 48px `WorkspaceHeader` containing set selector, + New Set, search trigger (disabled placeholder for Phase B), weights toggle, and admin toggle
-- Upper tracklist zone (~55vh) with its own header actions: + Slots, Clear All, column config, export, and a reversible explorer toggle
-- Lower pool zone (permanently visible, ~45vh) with independent scrolling
-- Vertical flex layout with a non-draggable zone divider
+### Blockers
+- None.
 
-**New components:**
-- `WorkspaceHeader.tsx` — Global header bar with all top-level controls
-- `ExplorerNodesView.tsx` — Nodes-only explorer table (no edges), using Row/Position terminology instead of implementation-facing coordinates
+### Important
+- **Explorer toggle hides pool zone.** When the explorer toggle is active, `App.tsx` replaces the entire `SetWorkspacePanel` (which contains both tracklist *and* pool) with `ExplorerNodesView`. This means the pool zone disappears during explorer view. The contract states "The tracklist and pool areas scroll independently and remain visible at the same time" (A-3) and the explorer toggle should "replace the visible tracklist content" (A-4, DO-3). Strict reading: explorer should swap only the tracklist table, keeping the pool visible below. Current behavior may be a deliberate full-screen explorer UX choice, but it deviates from the contract's separation of "tracklist content" and "pool zone." Not blocking because the toggle is reversible and the contract language is somewhat ambiguous about explorer-mode layout, but this should be confirmed as intentional before QA.
+- **No explicit test for pool-sort isolation across views.** The `sortByView` state map keyed by `String(activeTab)` correctly isolates sort state per pool view (All, subgroup tabs). However, acceptance item A-6 ("Sorting changes in the pool All view do not alter subgroup sort state") lacks a dedicated test. The implementation is correct by inspection, but there is no test that switches between All and a subgroup tab to verify sort state doesn't leak.
 
-**Modified components:**
-- `App.tsx` — Complete shell rewrite; removed DockBar, Browse table, Matches panel, FilterBar, SearchPanel mounts; simplified DnD logic (removed references to dock tabs, explorer cells); added explorer toggle and tracklist zone header actions
-- `SetWorkspacePanel.tsx` — Switched from accordion layout to vertical split; pool is always expanded
-- `SetPoolTable.tsx` — Implemented per-view sort isolation (`sortByView: Record<string, SortDescriptor[]>`); removed always-visible "Search to add" input (fill-mode search retained)
-- `SetTracklist.tsx` — Removed always-visible "Search to add" input (fill-mode search retained)
-- `styles.css` — Added layout tokens for workspace-header, workspace-body, tracklist-zone, pool-zone, zone-divider, explorer-nodes-view, explorer-nodes-table
+### Nits
+- "Column configuration" (A-5 pool, DO-3 tracklist) is interpreted as sort-tier configuration via `SortTierBar`. If the intent was column visibility toggling, that is missing. Current interpretation is reasonable given the SortTierBar provides column-level configuration.
+- `tracklist-zone-outer` naming is slightly misleading since it wraps the entire workspace (including pool) when explorer is off, not just the tracklist zone. This is cosmetic and does not affect behavior.
 
-**Removed from shell (internals preserved for Phase B reuse):**
-- `DockBar.tsx` — No longer imported or rendered
-- Standalone Matches panel mount
-- Standalone Explorer canvas mount
-- Persistent Browse panel / TrackTable mount
-- FilterBar mount
-- SearchPanel mount
+### Requirement Fit
+- Status: Substantially met.
+- DO-1 through DO-6 are all addressed.
+- Acceptance items A-1, A-2, A-3 (default mode), A-4, A-5, A-7, A-8, A-9 are confirmed by implementation and tests.
+- A-6 (sort isolation): implementation correct, test evidence missing.
+- A-10 (player bar push-up): `PlayerBar` renders at bottom of `app-shell-v2` flex column; existing behavior preserved by layout structure. 706 client tests pass including existing PlayerBar tests.
+- A-11 (focused client tests): tests cover header rendering, zone structure, explorer toggle round-trip, explorer Row/Position copy, no DockBar/Browse/Matches. Missing: sort-isolation cross-view test.
+- Deferred items respected: no search modal, no candidate/version UI, no edges in explorer, no draggable split.
 
-### Test changes
+### Notes
+- All 706 client tests pass, 0 failures.
+- No scope violations detected — changes are limited to client shell files.
 
-**`App.test.tsx`** — Rewritten:
-- Removed all tests for Browse table, DockBar tabs, Matches panel, FilterBar, SearchPanel, old two-column explorer
-- Retained: Reset Weights, DragOverlay snapCenterToCursor modifier guard
-- Added: WorkspaceHeader rendering, workspace layout with active set, explorer toggle, pool permanent visibility, absence of removed UI
+---
 
-**`App.dnd.test.tsx`** — Updated:
-- Removed tests for `dock-matches`, `dock-explorer`, `dock-set` tab targets
-- Removed `drop-matches-header` and `drop-explorer-cell-*` target tests
-- Added `alt-` prefix normalization handling in App.tsx and corresponding test coverage
-- Updated multi-select expectations to reflect that `payload.title` is used for all selections (no browse track lookup)
+## Contract 5 — Backend Phase C CRUD
 
-**`SetBuilder.test.tsx`** — Updated:
-- Replaced 5 accordion expand/collapse tests with 4 tests asserting permanently visible pool zone
-- Scoped `#` header text query to tracklist table to avoid ambiguity with pool table
+### Blockers
+- None.
 
-**`SetPoolTable.test.tsx`** — Updated:
-- Removed `subgroup auto-assign on search-add` test block (always-visible search removed)
-- Updated cancel-fill-mode test to assert search input hides entirely
+### Important
+- None.
 
-**`SetTracklist.test.tsx`** — Updated cancel-fill-mode test similarly
+### Nits
+- None.
 
-### Tradeoffs
+### Requirement Fit
+- Status: Fully met.
+- DO-1: Version create/rename/delete/reorder, branch, slot create/delete/reorder/note-update, candidate add/remove/select — all implemented under the set-workspace API surface.
+- DO-2: Constraints enforced — `MAX_VERSIONS_PER_SET = 10`, `MAX_SLOTS_PER_VERSION = 250`, `MAX_CANDIDATES_PER_SLOT = 5`. Auto-selection of first candidate, auto-delete of slot on last candidate removal, contiguous position shifting — all implemented and tested.
+- DO-3: `version_branch()` deep-copies slots/candidates through `branch_point`, creates linked `SetExplorerTree`, sets `is_inherited=True` on copied slots. `_clear_inherited()` called in `slot_reorder`, `slot_update_note`, `candidate_add`, `candidate_remove`, `candidate_select`.
+- DO-4: Transition score cache tests prove write-on-compute invariant, repeated-call cache hit, directional key preservation, and cache clearing.
+- A-1 through A-9: All acceptance items confirmed by implementation and test evidence:
+  - A-2: 11th version → 409, 251st slot → 409, 6th candidate → 409.
+  - A-3: Forward/backward reorder tests confirm contiguous shifting.
+  - A-4: `test_remove_last_candidate_deletes_slot`, `test_remove_selected_candidate_promotes_next`.
+  - A-5: `test_branch_creates_explorer_tree`, `test_branch_slots_marked_inherited`, `test_branch_copies_candidates`.
+  - A-6: `test_reorder_clears_inherited`, `test_note_update_clears_inherited`, `test_add_candidate_clears_inherited`, `test_remove_candidate_clears_inherited`.
+  - A-7: `test_hydrate_after_full_crud_cycle` confirms hydration consistency.
+  - A-8: `test_cache_populated_after_first_compute`, `test_cache_not_bypassed_by_new_code_paths`.
+  - A-9: Comprehensive test suite covers happy paths, limits, cascades, lifecycle, caching.
+- Deferred items respected: no frontend changes, no dormant table removal, no scoring algorithm changes, no materialized node writes.
 
-1. **Search trigger is a disabled placeholder.** The header includes a `[Search]` button but it's `disabled` since the universal search modal is Phase B scope. This preserves the header layout slot without implementing out-of-scope functionality.
+### Notes
+- All 809 backend tests pass, 0 failures, ruff clean.
+- No scope violations detected — changes are limited to backend CRUD.
 
-2. **Column config and export buttons are placeholders.** The tracklist zone header renders `[Columns]` and `[Export]` buttons that trigger `alert()` stubs. The contract requires these affordances to be present in the zone header, but their full implementation depends on downstream infrastructure.
+---
 
-3. **Pool sort isolation uses a `Record<string, SortDescriptor[]>` keyed by view name.** The "all" view, each subgroup name, and group-level views each get independent sort state. This is stored in component state (not persisted to localStorage) — intentional, as sort preferences are session-scoped.
+## Verdict
 
-4. **Explorer toggle is a simple boolean swap.** When toggled, the tracklist zone body switches between `SetWorkspacePanel` and `ExplorerNodesView`. The explorer view renders tree data as a flat table with Row/Position columns. No edges are rendered.
+**APPROVE**
 
-5. **DnD simplification.** The `handleDragEnd` handler was simplified to only handle `drop-tracklist`, `drop-pool`, `drop-tracklist-empty-*`, and `alt-drop-*` targets. All explorer cell and dock tab targets were removed. The `alt-` prefix normalization ensures correct routing.
-
-### Deferred items
-
-| Item | Reason |
-|------|--------|
-| Universal search modal (Phase B) | Explicitly out of scope per contract |
-| Candidate-per-slot UI, version tabs (Phase C) | Explicitly out of scope per contract |
-| Explorer edges | Explicitly excluded from contract scope |
-| Draggable split between tracklist and pool | Explicitly excluded from contract scope |
-| localStorage persistence for column visibility | Not required by contract; can be added in a follow-up |
-| Removing `DockBar.tsx` file from disk | Component is no longer imported but file deletion was not required; keeping it preserves git history for reference |
+Both contracts are correctly implemented with strong test coverage. Contract 5 is clean with no issues. Contract 2 has two Important items (pool visibility during explorer mode, missing sort-isolation test) that are worth confirming intent before QA but are not blocking: the pool-during-explorer behavior is a reversible toggle with ambiguous contract language, and the sort-isolation implementation is correct by code inspection. 1,515 total tests pass (706 client + 809 backend) with no failures.

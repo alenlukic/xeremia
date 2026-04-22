@@ -1,160 +1,48 @@
 {
-  "timestamp": "2026-04-21T23:47:52Z",
-  "runner": "vitest 4.1.2",
-  "success": true,
-  "numTotalTestSuites": 21,
-  "numPassedTestSuites": 21,
-  "numFailedTestSuites": 0,
-  "numTotalTests": 706,
-  "numPassedTests": 706,
-  "numFailedTests": 0,
-  "testSuites": [
+  "run_id": "20260421T232343Z-delivery-mixed-delivery-input-bundle",
+  "timestamp": "2026-04-21T20:03:00Z",
+  "build": {
+    "command": "npm --prefix client run build",
+    "exit_code": 0,
+    "ts_errors": 0
+  },
+  "tests": {
+    "command": "cd client && npx vitest run",
+    "exit_code": 0,
+    "total_files": 21,
+    "passed_files": 21,
+    "total_tests": 707,
+    "passed_tests": 707,
+    "failed_tests": 0
+  },
+  "fixes_applied": [
     {
-      "file": "src/App.dnd.test.tsx",
-      "status": "passed",
-      "numTests": 71,
-      "numPassed": 71,
-      "numFailed": 0
+      "id": "fix1",
+      "file": "client/src/App.tsx",
+      "description": "TS2352: Added intermediate `unknown` cast for HydratedSet -> Record<string, unknown> conversion",
+      "line": 320
     },
     {
-      "file": "src/App.test.tsx",
-      "status": "passed",
-      "numTests": 19,
-      "numPassed": 19,
-      "numFailed": 0
+      "id": "fix2",
+      "file": "client/src/components/ExplorerNodesView.tsx",
+      "description": "TS6133: Removed unused `maxRow` variable declaration",
+      "line": 25
     },
     {
-      "file": "src/utils.test.ts",
-      "status": "passed",
-      "numTests": 44,
-      "numPassed": 44,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/FilterBar.test.tsx",
-      "status": "passed",
-      "numTests": 34,
-      "numPassed": 34,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/MatchDetail.test.tsx",
-      "status": "passed",
-      "numTests": 3,
-      "numPassed": 3,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/MatchesPanel.test.tsx",
-      "status": "passed",
-      "numTests": 46,
-      "numPassed": 46,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/PlayerBar.test.tsx",
-      "status": "passed",
-      "numTests": 5,
-      "numPassed": 5,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/SetBuilder.test.tsx",
-      "status": "passed",
-      "numTests": 21,
-      "numPassed": 21,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/SetExplorerCanvas.test.tsx",
-      "status": "passed",
-      "numTests": 91,
-      "numPassed": 91,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/SetPoolTable.test.tsx",
-      "status": "passed",
-      "numTests": 60,
-      "numPassed": 60,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/SetTracklist.test.tsx",
-      "status": "passed",
-      "numTests": 69,
-      "numPassed": 69,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/SortTierBar.test.tsx",
-      "status": "passed",
-      "numTests": 11,
-      "numPassed": 11,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/TrackTable.test.tsx",
-      "status": "passed",
-      "numTests": 52,
-      "numPassed": 52,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/WeightControls.test.tsx",
-      "status": "passed",
-      "numTests": 17,
-      "numPassed": 17,
-      "numFailed": 0
-    },
-    {
-      "file": "src/hooks/useAudioPlayer.test.tsx",
-      "status": "passed",
-      "numTests": 68,
-      "numPassed": 68,
-      "numFailed": 0
-    },
-    {
-      "file": "src/hooks/useEdgeAutoScroll.test.tsx",
-      "status": "passed",
-      "numTests": 8,
-      "numPassed": 8,
-      "numFailed": 0
-    },
-    {
-      "file": "src/hooks/useSetBuilder.test.ts",
-      "status": "passed",
-      "numTests": 16,
-      "numPassed": 16,
-      "numFailed": 0
-    },
-    {
-      "file": "src/hooks/useTrackFilters.test.ts",
-      "status": "passed",
-      "numTests": 30,
-      "numPassed": 30,
-      "numFailed": 0
-    },
-    {
-      "file": "src/utils/explorer.test.ts",
-      "status": "passed",
-      "numTests": 15,
-      "numPassed": 15,
-      "numFailed": 0
-    },
-    {
-      "file": "src/utils/trackTitle.test.ts",
-      "status": "passed",
-      "numTests": 16,
-      "numPassed": 16,
-      "numFailed": 0
-    },
-    {
-      "file": "src/components/explorer/ExplorerEdgeLayer.test.tsx",
-      "status": "passed",
-      "numTests": 10,
-      "numPassed": 10,
-      "numFailed": 0
+      "id": "fix3",
+      "file": "client/src/components/SetPoolTable.test.tsx",
+      "description": "Added pool-sort isolation test verifying All vs subgroup sort state independence (Contract 2 AC-6)"
     }
-  ]
+  ],
+  "commands": [
+    {
+      "cmd": "python -m pytest src/tests/ -v",
+      "exit_code": 0,
+      "stdout_tail": "ze_and_rename_file PASSED [ 99%]\nsrc/tests/track_metadata/test_utils.py::test_log_agent_response PASSED   [ 99%]\nsrc/tests/track_metadata/test_utils.py::test_discover_new_audio_files_skips_existing_augmented PASSED [ 99%]\nsrc/tests/track_metadata/test_utils.py::test_convert_wav_to_aiff PASSED  [ 99%]\nsrc/tests/track_metadata/test_utils.py::test_convert_wav_to_aiff_preserves_subtype PASSED [ 99%]\nsrc/tests/track_metadata/test_utils.py::test_convert_wav_to_aiff_invalid_file PASSED [ 99%]\nsrc/tests/track_metadata/test_utils.py::test_discover_includes_wav_files PASSED [ 99%]\nsrc/tests/track_metadata/test_utils.py::test_discover_skips_wav_with_aiff_equivalent_in_augmented PASSED [ 99%]\nsrc/tests/track_metadata/test_utils.py::test_convert_float_wav_to_aiff_uses_pcm24 PASSED [100%]\n\n=============================== warnings summary ===============================\nsrc/db/database.py:47\n  /Users/alen/Dev/dj-tools/src/db/database.py:47: MovedIn20Warning: Deprecated API features detected! These feature(s) are not compatible with SQLAlchemy 2.0. To prevent incompatible upgrades prior to updating applications, ensure requirements files are pinned to \"sqlalchemy<2.0\". Set environment variable SQLALCHEMY_WARN_20=1 to show all deprecation warnings.  Set environment variable SQLALCHEMY_SILENCE_UBER_WARNING=1 to silence this message. (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)\n    self.Base = declarative_base(metadata=self.metadata)\n\nsrc/tests/test_compact_descriptor.py::TestExtractZoneVector::test_minimum_length_accepted\n  /Users/alen/.pyenv/versions/3.8.20/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages/librosa/core/spectrum.py:257: UserWarning: n_fft=1024 is too large for input signal of length=690\n    warnings.warn(\n\nsrc/tests/test_compact_descriptor.py::TestExtractZoneVector::test_minimum_length_accepted\n  /Users/alen/.pyenv/versions/3.8.20/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages/librosa/core/spectrum.py:257: UserWarning: n_fft=1024 is too large for input signal of length=345\n    warnings.warn(\n\nsrc/tests/test_set_tracklist_version_migration.py::TestIdempotence::test_partial_state_recovery\n  /Users/alen/Dev/dj-tools/src/tests/test_set_tracklist_version_migration.py:114: SAWarning: Identity map already had an identity for (<class 'src.models.set_tracklist_slot.SetTracklistSlot'>, (1,), None), replacing it with newly flushed object.   Are there load operations occurring inside of an event handler within the flush?\n    session.flush()\n\nsrc/tests/test_trait_extractor.py::TestComputeMelFromSignal::test_short_signal\n  /Users/alen/.pyenv/versions/3.8.20/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages/librosa/core/spectrum.py:257: UserWarning: n_fft=512 is too large for input signal of length=256\n    warnings.warn(\n\nsrc/tests/test_trait_extractor.py::TestSpectralFlatnessGuard::test_all_nan_returns_zero\n  /Users/alen/Dev/dj-tools/src/tests/test_trait_extractor.py:584: RuntimeWarning: Mean of empty slice\n    raw = float(np.nanmean(arr))\n\nsrc/tests/test_trait_extractor.py: 18 warnings\n  /Users/alen/.pyenv/versions/3.8.20/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages/librosa/util/utils.py:1317: DeprecationWarning: Please use `maximum_filter1d` from the `scipy.ndimage` namespace, the `scipy.ndimage.filters` namespace is deprecated.\n    mov_max = scipy.ndimage.filters.maximum_filter1d(\n\nsrc/tests/test_trait_extractor.py: 18 warnings\n  /Users/alen/.pyenv/versions/3.8.20/Library/Frameworks/Python.framework/Versions/3.8/lib/python3.8/site-packages/librosa/util/utils.py:1326: DeprecationWarning: Please use `uniform_filter1d` from the `scipy.ndimage` namespace, the `scipy.ndimage.filters` namespace is deprecated.\n    mov_avg = scipy.ndimage.filters.uniform_filter1d(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 809 passed, 11 skipped, 42 warnings in 152.11s (0:02:32) ===========\n",
+      "stderr_tail": "",
+      "ran_at": "2026-04-22T00:12:03.396110+00:00",
+      "intent": "test"
+    }
+  ],
+  "last_intent": "test"
 }
