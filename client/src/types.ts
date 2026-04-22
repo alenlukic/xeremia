@@ -217,6 +217,48 @@ export function isEmptyRow(row: TracklistDisplayRow | PoolDisplayRow): row is Em
   return '__empty' in row && row.__empty === true;
 }
 
+// --- Phase C version/slot/candidate types ---
+
+export interface SetTracklistVersion {
+  id: number;
+  set_id: number;
+  name: string;
+  display_order: number;
+  explorer_tree_id: number | null;
+  slots: SetTracklistSlot[];
+  derived_explorer_nodes: DerivedExplorerNode[];
+}
+
+export interface SetTracklistSlot {
+  id: number;
+  version_id: number;
+  position: number;
+  note: string;
+  is_inherited: boolean;
+  candidates: SetTracklistCandidate[];
+}
+
+export interface SetTracklistCandidate {
+  id: number;
+  slot_id: number;
+  track_id: number;
+  is_selected: boolean;
+  track?: Track | null;
+}
+
+export interface DerivedExplorerNode {
+  slot_id: number;
+  candidate_id: number;
+  track_id: number;
+  level: number;
+  position: number;
+  col_index: number;
+  is_selected: boolean;
+  track: Track | null;
+}
+
+export const MAX_CANDIDATES_PER_SLOT = 5;
+
 export interface HydratedSet {
   set: SetSummary;
   pool: PoolEntry[];
@@ -227,4 +269,5 @@ export interface HydratedSet {
   pool_subgroups?: PoolSubgroup[];
   pool_subgroup_memberships?: PoolSubgroupMembership[];
   empty_rows?: PersistedEmptyRow[];
+  versions?: SetTracklistVersion[];
 }

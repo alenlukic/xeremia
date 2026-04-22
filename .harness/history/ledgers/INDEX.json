@@ -1193,5 +1193,61 @@
     "build_status": "PASS",
     "breaker_verdict": "UNKNOWN",
     "regression_severity": "UNKNOWN"
+  },
+  {
+    "run_id": "20260422T041558Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Objective\n- Implement the Phase B universal search modal as a single client-side delivery unit in `client/src/`, replacing the current disabled heade",
+    "published_at": "2026-04-22T04:58:11.396218+00:00",
+    "path": ".harness/history/ledgers/20260422T041558Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 4,
+    "eval_score": 85,
+    "eval_verdict": "FAIL",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "UNKNOWN"
+  },
+  {
+    "run_id": "20260422T045641Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n# Development Contract\n\n## Source Inputs\n- `BREAKER_REPORT.md` from run `20260422T041558Z-delivery-development-contract-source-inpu`\n- Parent contract c",
+    "published_at": "2026-04-22T17:37:55.128129+00:00",
+    "path": ".harness/history/ledgers/20260422T045641Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 5,
+    "eval_score": 85,
+    "eval_verdict": "PASS_WITH_NOTES",
+    "qa_verdict": "FAIL",
+    "build_status": "PENDING",
+    "breaker_verdict": "CONCERNS",
+    "regression_severity": "UNKNOWN"
+  },
+  {
+    "run_id": "20260422T173820Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Source Of Truth\n- Normalized input bundle reviewed: `INPUT_BUNDLE.md`\n- Normalized contract registry reviewed: `CONTRACT_SET.md`\n- Active execution c",
+    "published_at": "2026-04-22T18:15:41.946709+00:00",
+    "path": ".harness/history/ledgers/20260422T173820Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 8,
+    "eval_score": 92,
+    "eval_verdict": "PASS",
+    "qa_verdict": "FAIL",
+    "build_status": "FAIL",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "UNKNOWN"
+  },
+  {
+    "run_id": "20260422T180437Z-delivery-development-contract-source-inpu",
+    "mode": "delivery",
+    "task_excerpt": "# Task\n\n## Contract\n- Execute `DEVELOPMENT_CONTRACT_7.md` only.\n- Contract set status: normalized and complete.\n- Mixed prose remaining in `INPUT_BUNDLE.md`: no",
+    "published_at": "2026-04-22T19:24:57.770437+00:00",
+    "path": ".harness/history/ledgers/20260422T180437Z-delivery-development-contract-source-inpu.md",
+    "files_changed": 9,
+    "eval_score": 83,
+    "eval_verdict": "PASS",
+    "qa_verdict": "PASS",
+    "build_status": "PASS",
+    "breaker_verdict": "UNKNOWN",
+    "regression_severity": "LOW"
   }
 ]

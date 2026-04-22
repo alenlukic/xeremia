@@ -203,6 +203,18 @@ function makeSetBuilderMock(overrides: Record<string, unknown> = {}) {
     addEmptyRows: vi.fn(),
     deleteEmptyRow: vi.fn(),
     reorderEmptyRow: vi.fn(),
+    versions: [],
+    activeVersionId: null as number | null,
+    activeVersion: null,
+    transitionScores: new Map(),
+    scoresLoading: false,
+    versionTrackMap: new Map(),
+    createVersion: vi.fn(),
+    renameVersion: vi.fn(),
+    deleteVersion: vi.fn(),
+    switchVersion: vi.fn(),
+    branchFromSlot: vi.fn(),
+    refreshScores: vi.fn(),
     ...overrides,
   };
 }

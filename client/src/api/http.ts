@@ -1,4 +1,8 @@
-import type { Track, SearchSuggestion, TransitionMatch, MatchDetail, CacheStats, WeightsResponse, TrackTraitEntry, SetSummary, HydratedSet, ExplorerTree, PoolSubgroup, PersistedEmptyRow } from '../types';
+import type {
+  Track, SearchSuggestion, TransitionMatch, MatchDetail, CacheStats, WeightsResponse,
+  TrackTraitEntry, SetSummary, HydratedSet, ExplorerTree, PoolSubgroup, PersistedEmptyRow,
+  SetTracklistVersion, SetTracklistSlot, SetTracklistCandidate,
+} from '../types';
 
 export async function fetchTracks(params: {
   camelot_code?: string;
@@ -71,16 +75,34 @@ export async function updateWeights(weights: Record<string, number>): Promise<We
   return res.json();
 }
 
+export const TRANSITION_SCORE_BATCH_SIZE = 100;
+
 export async function fetchTransitionScores(
   pairs: [number, number][],
 ): Promise<{ scores: (number | null)[] }> {
-  const res = await fetch('/api/sets/transition-scores', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pairs }),
-  });
-  if (!res.ok) throw new Error(`Failed to fetch transition scores: ${res.status}`);
-  return res.json();
+  if (pairs.length <= TRANSITION_SCORE_BATCH_SIZE) {
+    const res = await fetch('/api/sets/transition-scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pairs }),
+    });
+    if (!res.ok) throw new Error(`Failed to fetch transition scores: ${res.status}`);
+    return res.json();
+  }
+
+  const allScores: (number | null)[] = [];
+  for (let i = 0; i < pairs.length; i += TRANSITION_SCORE_BATCH_SIZE) {
+    const chunk = pairs.slice(i, i + TRANSITION_SCORE_BATCH_SIZE);
+    const res = await fetch('/api/sets/transition-scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pairs: chunk }),
+    });
+    if (!res.ok) throw new Error(`Failed to fetch transition scores: ${res.status}`);
+    const data: { scores: (number | null)[] } = await res.json();
+    allScores.push(...data.scores);
+  }
+  return { scores: allScores };
 }
 
 export async function exportSetM3u8(
@@ -505,4 +527,164 @@ export async function subgroupRemoveMember(
     method: 'DELETE',
   });
   if (!res.ok) throw new Error(`Subgroup remove member failed: ${res.status}`);
+}
+
+// --- Phase C: Version CRUD ---
+
+export async function versionCreate(
+  setId: number, name: string,
+): Promise<SetTracklistVersion> {
+  const res = await fetch(`/api/sets/${setId}/versions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Version create failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function versionRename(
+  setId: number, versionId: number, name: string,
+): Promise<SetTracklistVersion> {
+  const res = await fetch(`/api/sets/${setId}/versions/${versionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Version rename failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function versionDelete(
+  setId: number, versionId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/versions/${versionId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Version delete failed: ${res.status}`);
+}
+
+export async function versionReorder(
+  setId: number, versionIds: number[],
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/versions/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version_ids: versionIds }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Version reorder failed: ${res.status}`);
+  }
+}
+
+export async function versionBranch(
+  setId: number, versionId: number, branchPoint: number, name: string,
+): Promise<SetTracklistVersion> {
+  const res = await fetch(`/api/sets/${setId}/versions/${versionId}/branch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branch_point: branchPoint, name }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Version branch failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// --- Phase C: Slot CRUD ---
+
+export async function slotCreate(
+  setId: number, versionId: number,
+): Promise<SetTracklistSlot> {
+  const res = await fetch(`/api/sets/${setId}/versions/${versionId}/slots`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Slot create failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function slotDelete(
+  setId: number, versionId: number, slotId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/versions/${versionId}/slots/${slotId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Slot delete failed: ${res.status}`);
+}
+
+export async function slotReorder(
+  setId: number, versionId: number, slotId: number, newPosition: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/versions/${versionId}/slots/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slot_id: slotId, new_position: newPosition }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Slot reorder failed: ${res.status}`);
+  }
+}
+
+export async function slotUpdateNote(
+  setId: number, versionId: number, slotId: number, note: string,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/versions/${versionId}/slots/${slotId}/note`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Slot note update failed: ${res.status}`);
+  }
+}
+
+// --- Phase C: Candidate CRUD ---
+
+export async function candidateAdd(
+  setId: number, slotId: number, trackId: number,
+): Promise<SetTracklistCandidate> {
+  const res = await fetch(`/api/sets/${setId}/slots/${slotId}/candidates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_id: trackId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Candidate add failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function candidateRemove(
+  setId: number, slotId: number, candidateId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/slots/${slotId}/candidates/${candidateId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Candidate remove failed: ${res.status}`);
+}
+
+export async function candidateSelect(
+  setId: number, slotId: number, candidateId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/slots/${slotId}/candidates/${candidateId}/select`, {
+    method: 'PATCH',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Candidate select failed: ${res.status}`);
+  }
 }

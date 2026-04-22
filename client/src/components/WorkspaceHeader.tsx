@@ -12,11 +12,12 @@ interface Props {
   onToggleWeights: () => void;
   showAdmin: boolean;
   onToggleAdmin: () => void;
+  onSearchOpen?: () => void;
 }
 
 export const WorkspaceHeader = memo(function WorkspaceHeader({
   sets, activeSetId, loading, createSet, selectSet, deleteSet,
-  showWeights, onToggleWeights, showAdmin, onToggleAdmin,
+  showWeights, onToggleWeights, showAdmin, onToggleAdmin, onSearchOpen,
 }: Props) {
   const [showNewInput, setShowNewInput] = useState(false);
   const [newSetName, setNewSetName] = useState('');
@@ -106,8 +107,8 @@ export const WorkspaceHeader = memo(function WorkspaceHeader({
       <div className="workspace-header__actions">
         <button
           className="workspace-header__search-trigger"
-          disabled
-          title="Search (coming soon)"
+          onClick={onSearchOpen}
+          title="Search (Cmd+K)"
           data-testid="header-search-trigger"
         >
           🔍 Search

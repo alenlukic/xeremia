@@ -116,11 +116,11 @@ describe('Workspace header', () => {
     expect(screen.getByTestId('header-new-set')).toBeInTheDocument();
   });
 
-  it('renders search trigger (disabled) in header', async () => {
+  it('renders search trigger (enabled) in header', async () => {
     await renderApp();
     const trigger = screen.getByTestId('header-search-trigger');
     expect(trigger).toBeInTheDocument();
-    expect(trigger).toBeDisabled();
+    expect(trigger).not.toBeDisabled();
   });
 
   it('renders weights toggle in header', async () => {
@@ -274,6 +274,55 @@ describe('Explorer toggle', () => {
     });
 
     expect(screen.queryByTestId('explorer-nodes-view')).not.toBeInTheDocument();
+  });
+
+  it('explorer toggle state is preserved when active version changes', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+      pool: [],
+      tracklist: [],
+      explorer_trees: [],
+      explorer_nodes: [],
+      explorer_edges: [],
+      versions: [
+        {
+          id: 1, set_id: 1, name: 'Main', display_order: 0, explorer_tree_id: null,
+          slots: [{ id: 10, version_id: 1, position: 0, note: '', is_inherited: false, candidates: [{ id: 100, slot_id: 10, track_id: 3, is_selected: true }] }],
+          derived_explorer_nodes: [{ slot_id: 10, candidate_id: 100, track_id: 3, level: 0, position: 0, col_index: 0, is_selected: true, track: null }],
+        },
+        {
+          id: 2, set_id: 1, name: 'Alt', display_order: 1, explorer_tree_id: null,
+          slots: [{ id: 20, version_id: 2, position: 0, note: '', is_inherited: false, candidates: [{ id: 200, slot_id: 20, track_id: 3, is_selected: true }] }],
+          derived_explorer_nodes: [{ slot_id: 20, candidate_id: 200, track_id: 3, level: 0, position: 0, col_index: 0, is_selected: true, track: null }],
+        },
+      ],
+    });
+    vi.mocked(httpMod.fetchTransitionScores).mockResolvedValue({ scores: [] });
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    await act(async () => { fireEvent.change(select, { target: { value: '1' } }); });
+    await waitFor(() => { expect(screen.getByTestId('explorer-toggle')).toBeInTheDocument(); });
+
+    await act(async () => { screen.getByTestId('explorer-toggle').click(); });
+    expect(screen.getByTestId('explorer-toggle').textContent).toContain('Tracklist');
+    expect(screen.getByTestId('derived-explorer-view')).toBeInTheDocument();
+
+    await act(async () => { screen.getByTestId('version-tab-btn-2').click(); });
+
+    expect(screen.getByTestId('explorer-toggle').textContent).toContain('Tracklist');
+    expect(screen.getByTestId('derived-explorer-view')).toBeInTheDocument();
   });
 
   it('explorer nodes view uses Row and Position labels', async () => {
@@ -433,6 +482,41 @@ describe('Player bar push-up accommodation', () => {
     const playerRule = css.match(/\.player-bar\s*\{[^}]+\}/)?.[0] ?? '';
     expect(playerRule).not.toMatch(/position:\s*fixed/);
     expect(playerRule).not.toMatch(/position:\s*absolute/);
+  });
+});
+
+describe('Search modal keyboard shortcut', () => {
+  it('Cmd+K opens the search modal', async () => {
+    await renderApp();
+    expect(screen.queryByTestId('search-modal')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+    });
+
+    expect(screen.getByTestId('search-modal')).toBeInTheDocument();
+  });
+
+  it('Ctrl+K opens the search modal', async () => {
+    await renderApp();
+    expect(screen.queryByTestId('search-modal')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+    });
+
+    expect(screen.getByTestId('search-modal')).toBeInTheDocument();
+  });
+
+  it('search trigger button opens the search modal', async () => {
+    await renderApp();
+    expect(screen.queryByTestId('search-modal')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('header-search-trigger'));
+    });
+
+    expect(screen.getByTestId('search-modal')).toBeInTheDocument();
   });
 });
 

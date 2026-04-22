@@ -5,8 +5,12 @@ import { WeightControls } from './components/WeightControls';
 import { AdminDashboard } from './components/AdminDashboard';
 import { SetWorkspacePanel } from './components/SetWorkspacePanel';
 import { ExplorerNodesView } from './components/ExplorerNodesView';
+import { DerivedExplorerView } from './components/DerivedExplorerView';
 import { WorkspaceHeader } from './components/WorkspaceHeader';
+import { VersionTabs } from './components/VersionTabs';
+import { SlotTracklist } from './components/SlotTracklist';
 import { PlayerBar } from './components/PlayerBar';
+import { SearchModal } from './components/SearchModal';
 import { AudioPlayerProvider } from './hooks/useAudioPlayer';
 import { useCacheStats } from './hooks/useCacheStats';
 import { useWeights } from './hooks/useWeights';
@@ -105,6 +109,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showWeights, setShowWeights] = useState(false);
   const [explorerView, setExplorerView] = useState(false);
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [dragItem, setDragItem] = useState<DragPayload | null>(null);
   const [dndWarning, setDndWarning] = useState<string | null>(null);
   const dragFillNotification = null;
@@ -160,6 +165,17 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleEscape);
   }, [showWeights, showAdmin, handleCloseWeights]);
 
+  useEffect(() => {
+    const handleCmdK = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setSearchModalOpen(true);
+      }
+    };
+    document.addEventListener('keydown', handleCmdK);
+    return () => document.removeEventListener('keydown', handleCmdK);
+  }, []);
+
   const {
     sets,
     activeSetId: sbActiveSetId,
@@ -169,6 +185,7 @@ export default function App() {
     createSet,
     selectSet,
     deleteSet,
+    refreshActive,
     addToPool: sbAddToPool,
     addToTracklist: sbAddToTracklist,
     removeFromPool,
@@ -195,6 +212,22 @@ export default function App() {
     addEmptyRows,
     deleteEmptyRow,
     reorderEmptyRow,
+    versions,
+    activeVersionId,
+    activeVersion,
+    transitionScores,
+    scoresLoading,
+    versionTrackMap,
+    createVersion,
+    renameVersion,
+    deleteVersion,
+    switchVersion,
+    branchFromSlot,
+    refreshScores,
+    selectCandidate,
+    removeCandidate,
+    addCandidate,
+    removeSlot,
   } = useSetBuilder();
 
   const tracklistTrackIds = useMemo(() => {
@@ -447,6 +480,7 @@ export default function App() {
           onToggleWeights={() => setShowWeights(prev => !prev)}
           showAdmin={showAdmin}
           onToggleAdmin={() => setShowAdmin(prev => !prev)}
+          onSearchOpen={() => setSearchModalOpen(true)}
         />
 
         {sbError && (
@@ -462,7 +496,7 @@ export default function App() {
             <div className="tracklist-zone-outer" data-testid="tracklist-zone-outer">
               <div className="tracklist-zone-header" data-testid="tracklist-zone-header">
                 <h3 className="set-section-title">
-                  {explorerView ? 'Explorer' : 'Tracklist'} ({explorerView ? (activeTreeId != null ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId).length : activeSet.explorer_nodes.length) : activeSet.tracklist.length})
+                  {explorerView ? 'Explorer' : 'Tracklist'} ({explorerView ? (activeVersion ? activeVersion.derived_explorer_nodes.length : activeTreeId != null ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId).length : activeSet.explorer_nodes.length) : activeVersion ? activeVersion.slots.length : activeSet.tracklist.length})
                 </h3>
                 <button
                   className={`set-action-btn tracklist-zone-toggle${explorerView ? ' tracklist-zone-toggle--active' : ''}`}
@@ -487,15 +521,51 @@ export default function App() {
                   Columns
                 </button>
               </div>
+
+              {versions.length > 0 && (
+                <VersionTabs
+                  versions={versions}
+                  activeVersionId={activeVersionId}
+                  onSwitch={switchVersion}
+                  onCreate={createVersion}
+                  onRename={renameVersion}
+                  onDelete={deleteVersion}
+                />
+              )}
+
               <div className="tracklist-zone-content">
                 {explorerView ? (
-                  <ExplorerNodesView
-                    nodes={activeSet.explorer_nodes}
-                    trees={activeSet.explorer_trees}
-                    activeTreeId={activeTreeId}
-                    onSelectTree={selectTree}
-                    tracklistTrackIds={tracklistTrackIds}
-                    onNodeToTracklist={explorerNodeAddToTracklist}
+                  activeVersion ? (
+                    <DerivedExplorerView
+                      nodes={activeVersion.derived_explorer_nodes}
+                      trackMap={versionTrackMap}
+                      versionId={activeVersion.id}
+                      onSelectCandidate={selectCandidate}
+                      onRemoveCandidate={removeCandidate}
+                      onRemoveSlot={removeSlot}
+                    />
+                  ) : (
+                    <ExplorerNodesView
+                      nodes={activeSet.explorer_nodes}
+                      trees={activeSet.explorer_trees}
+                      activeTreeId={activeTreeId}
+                      onSelectTree={selectTree}
+                      tracklistTrackIds={tracklistTrackIds}
+                      onNodeToTracklist={explorerNodeAddToTracklist}
+                    />
+                  )
+                ) : activeVersion ? (
+                  <SlotTracklist
+                    version={activeVersion}
+                    trackMap={versionTrackMap}
+                    transitionScores={transitionScores}
+                    scoresLoading={scoresLoading}
+                    onBranchFromSlot={branchFromSlot}
+                    onSelectCandidate={selectCandidate}
+                    onRemoveCandidate={removeCandidate}
+                    onAddCandidate={addCandidate}
+                    onRemoveSlot={removeSlot}
+                    onRefreshScores={refreshScores}
                   />
                 ) : (
                   <SetWorkspacePanel
@@ -535,6 +605,19 @@ export default function App() {
             </p>
           </div>
         )}
+
+        {/* ─── Search modal ─── */}
+        <SearchModal
+          open={searchModalOpen}
+          onClose={() => setSearchModalOpen(false)}
+          activeSetId={sbActiveSetId}
+          activeSet={activeSet ?? null}
+          onAddToTracklist={(trackId) => sbAddToTracklist(trackId)}
+          onAddToPool={(trackId) => sbAddToPool(trackId)}
+          slots={activeVersion?.slots}
+          activeVersionId={activeVersionId}
+          onSlotsChanged={refreshActive}
+        />
 
         {/* ─── Weights overlay ─── */}
         {showWeights && (
