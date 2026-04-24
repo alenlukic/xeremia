@@ -1,0 +1,54 @@
+---
+description: React render stability and hook discipline for the dj-tools client
+globs:
+  - "client/**/*"
+alwaysApply: true
+---
+
+REACT RENDER STABILITY
+
+  Violations of the rules below are a common source of silent performance regressions
+  and subtle correctness bugs in the client. Apply them proactively on any client task.
+
+MEMO AND STABLE REFERENCES
+
+  React.memo is only effective when memoized children receive primitives or stable
+  references. Never pass fresh wrapper objects (e.g., `{ ln: node }`) created during
+  render or layout recomputation — wrapper identity changes every render even when
+  the underlying value does not, defeating memoization.
+  (evidence: ledgers 20260411T050526Z, 20260411T064618Z)
+
+EFFECTS AND UNSTABLE CALLBACKS
+
+  When an effect should respond only to topology or content changes, store unstable
+  callbacks in refs and drive the effect from a stable primitive key (e.g., an
+  `edgePairKey` string) instead of from function identities or array references.
+  (evidence: ledger 20260411T050526Z)
+
+LOADING STATE GRANULARITY
+
+  Prefer keyed Set/Map loading state over a single global boolean when only one row,
+  edge, or item should visibly update. A global `scoresLoading` flag marks every
+  component as dirty on any loading change.
+  (evidence: ledger 20260411T050526Z)
+
+REMOUNT VS MEMO FAILURE
+
+  Before blaming memoization for render churn, first rule out parent conditionals
+  that unmount and remount the entire subtree during loading or hydration. Verify
+  DOM identity, not just prop-level reasoning.
+  (evidence: ledger 20260411T064618Z)
+
+DEFERRED VALUE AND EMPTY-STRING BOUNDARY
+
+  useDeferredValue is appropriate for non-empty search/filter work. Clear-to-empty
+  is a special-case boundary that must bypass deferred state to avoid stale-result
+  lag. Protect this invariant with an explicit test.
+  (evidence: ledger 20260411T201054Z)
+
+STRICTMODE SIDE EFFECTS
+
+  Keep React.useState updater callbacks pure. Move debounced persistence side effects
+  (e.g., persistWeights) outside updater callbacks. StrictMode double-runs updaters,
+  which can double-fire timers and produce incorrect transient states.
+  (evidence: docs/CONVENTIONS.md)

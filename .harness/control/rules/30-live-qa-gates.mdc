@@ -52,7 +52,7 @@ MANDATORY FAILURE CRITERIA
 
   8. DOM INTEGRITY (UI tasks)
      For any task that touches client/ files, React components, CSS, or HTML:
-     - The client dev server MUST be started (port 5173) if not already running
+     - The client dev server MUST be started (port 5174 by default, or CLIENT_PORT from .env) if not already running
      - DOM MUST be inspected via the `user-chrome-devtools` MCP server
      - Use `take_snapshot` to verify the a11y tree / DOM structure is intact
      - Use `evaluate_script` to verify expected elements, attributes, and content
