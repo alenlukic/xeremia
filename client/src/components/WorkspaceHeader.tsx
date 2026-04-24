@@ -21,6 +21,7 @@ export const WorkspaceHeader = memo(function WorkspaceHeader({
 }: Props) {
   const [showNewInput, setShowNewInput] = useState(false);
   const [newSetName, setNewSetName] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -40,11 +41,24 @@ export const WorkspaceHeader = memo(function WorkspaceHeader({
     setNewSetName('');
   }, []);
 
-  const activeSetName = sets.find(s => s.id === activeSetId)?.name;
+  const handleConfirmDelete = useCallback(() => {
+    if (confirmDeleteId != null) {
+      deleteSet(confirmDeleteId);
+      setConfirmDeleteId(null);
+    }
+  }, [confirmDeleteId, deleteSet]);
 
   return (
     <header className="workspace-header" data-testid="workspace-header">
-      <div className="workspace-header__set-controls">
+      <div className="workspace-header__left-group" data-testid="header-left-group">
+        {activeSetId != null && (
+          <button
+            className="set-delete-btn"
+            onClick={() => setConfirmDeleteId(activeSetId)}
+            title="Delete set"
+            data-testid="header-delete-trigger"
+          >×</button>
+        )}
         {sets.length > 0 && (
           <select
             className="set-select workspace-header__select"
@@ -62,11 +76,6 @@ export const WorkspaceHeader = memo(function WorkspaceHeader({
               </option>
             ))}
           </select>
-        )}
-        {activeSetId && activeSetName && (
-          <span className="workspace-header__set-title" data-testid="header-set-title">
-            {activeSetName}
-          </span>
         )}
         {!showNewInput ? (
           <button
@@ -93,18 +102,9 @@ export const WorkspaceHeader = memo(function WorkspaceHeader({
             <button className="set-action-btn" onClick={handleCancel}>Cancel</button>
           </span>
         )}
-        {activeSetId != null && (
-          <button
-            className="set-delete-btn"
-            onClick={() => deleteSet(activeSetId)}
-            title="Delete set"
-          >×</button>
-        )}
       </div>
 
-      <div className="workspace-header__spacer" />
-
-      <div className="workspace-header__actions">
+      <div className="workspace-header__center" data-testid="header-center">
         <button
           className="workspace-header__search-trigger"
           onClick={onSearchOpen}
@@ -113,6 +113,9 @@ export const WorkspaceHeader = memo(function WorkspaceHeader({
         >
           🔍 Search
         </button>
+      </div>
+
+      <div className="workspace-header__right-group" data-testid="header-right-group">
         <button
           className={`search-weights-btn${showWeights ? ' search-weights-btn--active' : ''}`}
           onClick={onToggleWeights}
@@ -128,6 +131,26 @@ export const WorkspaceHeader = memo(function WorkspaceHeader({
       </div>
 
       {loading && <span className="workspace-header__loading">Loading…</span>}
+
+      {confirmDeleteId != null && (
+        <div className="workspace-header__confirm-overlay" data-testid="header-delete-modal">
+          <div className="workspace-header__confirm-modal">
+            <p>Delete set &lsquo;{sets.find(s => s.id === confirmDeleteId)?.name}&rsquo;? This cannot be undone.</p>
+            <div className="workspace-header__confirm-actions">
+              <button
+                className="set-action-btn"
+                onClick={() => setConfirmDeleteId(null)}
+                data-testid="header-delete-cancel"
+              >Cancel</button>
+              <button
+                className="set-action-btn set-action-btn--danger"
+                onClick={handleConfirmDelete}
+                data-testid="header-delete-confirm"
+              >Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 });

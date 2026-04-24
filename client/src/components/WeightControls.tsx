@@ -318,8 +318,8 @@ export const WeightControls = memo(function WeightControls({
   const showStatus = saving || saveSuccess || saveError || warningMessage;
 
   return (
-    <div className="weight-controls-outer">
-      <div className="weight-controls-row">
+    <div className="weight-controls-outer" data-testid="weight-controls-outer">
+      <div className="weight-controls-row" data-testid="weight-controls-row">
         <div className="gauge-group gauge-group--bpm">
           {GAUGE_ROWS[0].factors
             .filter((f) => f in weights)

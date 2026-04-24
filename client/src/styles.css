@@ -1269,6 +1269,8 @@ body,
 .weight-controls-outer {
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
+  width: min(100vw, 1140px);
+  margin: 0 auto;
 }
 
 .weight-controls-row {
@@ -1279,7 +1281,33 @@ body,
   gap: 4px;
   flex-wrap: nowrap;
   justify-content: center;
-  overflow-x: auto;
+}
+
+@media (min-width: 800px) {
+  .weight-controls-row {
+    gap: 8px;
+    overflow-x: auto;
+  }
+  .weight-controls-row .weight-gauge {
+    flex: 1 1 0%;
+    min-width: 70px;
+    max-width: 120px;
+  }
+}
+
+@media (max-width: 799px) {
+  .weight-controls-outer {
+    overflow-x: auto;
+    width: 100%;
+  }
+  .weight-controls-row {
+    width: max-content;
+    overflow-x: visible;
+    justify-content: flex-start;
+  }
+  .weight-controls-row .weight-gauge {
+    flex-shrink: 0;
+  }
 }
 
 .gauge-group {
@@ -3177,28 +3205,21 @@ body,
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
-  gap: 8px;
+  gap: 0;
+  position: relative;
 }
 
-.workspace-header__set-controls {
+.workspace-header__left-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .workspace-header__select {
-  max-width: 220px;
-}
-
-.workspace-header__set-title {
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
-  font-size: 13px;
-  color: var(--text-muted);
+  min-width: 180px;
+  max-width: 260px;
 }
 
 .workspace-header__new-btn {
@@ -3211,11 +3232,14 @@ body,
   gap: 4px;
 }
 
-.workspace-header__spacer {
+.workspace-header__center {
   flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
 }
 
-.workspace-header__actions {
+.workspace-header__right-group {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3241,6 +3265,41 @@ body,
 .workspace-header__loading {
   font-size: 12px;
   color: var(--text-muted);
+  position: absolute;
+  right: var(--content-gutter);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* --- Delete confirmation modal --- */
+.workspace-header__confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.workspace-header__confirm-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.workspace-header__confirm-modal p {
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.workspace-header__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* === Workspace Body (Phase A) === */
@@ -3342,6 +3401,14 @@ body,
 .explorer-nodes-table .set-ws-cell-title {
   font-size: 13px;
   min-width: 0;
+}
+
+.explorer-node-row--selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.explorer-node-row--selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* === Dock Bar === */

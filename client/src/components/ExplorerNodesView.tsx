@@ -10,10 +10,12 @@ interface Props {
   onSelectTree?: (treeId: number) => void;
   tracklistTrackIds: Set<number>;
   onNodeToTracklist: (nodeId: string) => void;
+  selectedCandidateTrackIds?: Set<number>;
 }
 
 export const ExplorerNodesView = memo(function ExplorerNodesView({
   nodes, trees, activeTreeId, onSelectTree, tracklistTrackIds, onNodeToTracklist,
+  selectedCandidateTrackIds,
 }: Props) {
   const filteredNodes = useMemo(() => {
     const target = activeTreeId != null
@@ -68,8 +70,9 @@ export const ExplorerNodesView = memo(function ExplorerNodesView({
               {filteredNodes.map(node => {
                 const title = cleanTitle(node.track, node.track_id);
                 const inTracklist = tracklistTrackIds.has(node.track_id);
+                const isSelectedCandidate = selectedCandidateTrackIds?.has(node.track_id) ?? false;
                 return (
-                  <tr key={node.node_id} data-testid="explorer-node-row">
+                  <tr key={node.node_id} className={isSelectedCandidate ? 'explorer-node-row--selected' : undefined} data-testid="explorer-node-row">
                     <td className="play-cell">
                       <PlayButton trackId={node.track_id} title={title} />
                     </td>

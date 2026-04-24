@@ -3,19 +3,18 @@ import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent, type D
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { WeightControls } from './components/WeightControls';
 import { AdminDashboard } from './components/AdminDashboard';
-import { SetWorkspacePanel } from './components/SetWorkspacePanel';
 import { ExplorerNodesView } from './components/ExplorerNodesView';
-import { DerivedExplorerView } from './components/DerivedExplorerView';
 import { WorkspaceHeader } from './components/WorkspaceHeader';
 import { VersionTabs } from './components/VersionTabs';
 import { SlotTracklist } from './components/SlotTracklist';
+import { SetTracklist } from './components/SetTracklist';
+import { SetPoolTable } from './components/SetPoolTable';
 import { PlayerBar } from './components/PlayerBar';
 import { SearchModal } from './components/SearchModal';
 import { AudioPlayerProvider } from './hooks/useAudioPlayer';
 import { useCacheStats } from './hooks/useCacheStats';
 import { useWeights } from './hooks/useWeights';
 import { useSetBuilder } from './hooks/useSetBuilder';
-import { exportSetM3u8 } from './api/http';
 import type { DragPayload } from './dnd';
 import { DragFillContext } from './dnd';
 
@@ -230,25 +229,30 @@ export default function App() {
     removeSlot,
   } = useSetBuilder();
 
+  const [columnsOpen, setColumnsOpen] = useState(false);
+
   const tracklistTrackIds = useMemo(() => {
     if (!activeSet) return new Set<number>();
     return new Set(activeSet.tracklist.map(e => e.track_id));
   }, [activeSet]);
 
-  const handleExport = useCallback(async () => {
-    if (!activeSet || activeSet.tracklist.length === 0) return;
-    try {
-      const ids = activeSet.tracklist.map(e => e.track_id);
-      const result = await exportSetM3u8(ids, activeSet.set.name);
-      const blob = new Blob([result.content], { type: 'audio/x-mpegurl' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = result.filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch { /* export failure is non-critical */ }
-  }, [activeSet]);
+  const selectedCandidateTrackIds = useMemo(() => {
+    if (!activeVersion) return new Set<number>();
+    const ids = new Set<number>();
+    for (const slot of activeVersion.slots) {
+      const sel = slot.candidates.find(c => c.is_selected);
+      if (sel) ids.add(sel.track_id);
+    }
+    return ids;
+  }, [activeVersion]);
+
+  const versionExplorerNodes = useMemo(() => {
+    if (!activeSet || !activeVersion) return [];
+    const treeId = activeVersion.explorer_tree_id;
+    if (treeId == null) return activeSet.explorer_nodes;
+    const filtered = activeSet.explorer_nodes.filter(n => n.tree_id === treeId);
+    return filtered.length > 0 ? filtered : activeSet.explorer_nodes;
+  }, [activeSet, activeVersion]);
 
   const addToPoolFn = sbAddToPool;
   const addToTracklistFn = sbAddToTracklist;
@@ -496,7 +500,7 @@ export default function App() {
             <div className="tracklist-zone-outer" data-testid="tracklist-zone-outer">
               <div className="tracklist-zone-header" data-testid="tracklist-zone-header">
                 <h3 className="set-section-title">
-                  {explorerView ? 'Explorer' : 'Tracklist'} ({explorerView ? (activeVersion ? activeVersion.derived_explorer_nodes.length : activeTreeId != null ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId).length : activeSet.explorer_nodes.length) : activeVersion ? activeVersion.slots.length : activeSet.tracklist.length})
+                  {explorerView ? 'Explorer' : 'Tracklist'} ({explorerView ? (activeVersion ? versionExplorerNodes.length : activeTreeId != null ? activeSet.explorer_nodes.filter(n => n.tree_id === activeTreeId).length : activeSet.explorer_nodes.length) : activeVersion ? activeVersion.slots.length : activeSet.tracklist.length})
                 </h3>
                 <button
                   className={`set-action-btn tracklist-zone-toggle${explorerView ? ' tracklist-zone-toggle--active' : ''}`}
@@ -506,20 +510,25 @@ export default function App() {
                 >
                   {explorerView ? '← Tracklist' : 'Explorer ↗'}
                 </button>
-                {!explorerView && activeSet.tracklist.length > 0 && (
-                  <button className="set-action-btn" onClick={handleExport} data-testid="tracklist-export">
-                    Export m3u8
+                <div className="column-config-group" style={{ position: 'relative' }}>
+                  <button
+                    className="set-action-btn columns-btn"
+                    onClick={() => setColumnsOpen(prev => !prev)}
+                    title="Configure visible columns"
+                    aria-label="Configure columns"
+                    data-testid="tracklist-columns-btn"
+                  >
+                    Columns
                   </button>
-                )}
-                <button
-                  className="set-action-btn columns-btn"
-                  disabled
-                  title="Column configuration (Phase B)"
-                  aria-label="Configure columns"
-                  data-testid="tracklist-columns-btn"
-                >
-                  Columns
-                </button>
+                  {columnsOpen && (
+                    <div className="column-config-popover" data-testid="tracklist-columns-popover">
+                      <label className="column-config-item"><input type="checkbox" checked disabled /> Title</label>
+                      <label className="column-config-item"><input type="checkbox" defaultChecked /> Key</label>
+                      <label className="column-config-item"><input type="checkbox" defaultChecked /> BPM</label>
+                      <label className="column-config-item"><input type="checkbox" defaultChecked /> Note</label>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {versions.length > 0 && (
@@ -533,68 +542,83 @@ export default function App() {
                 />
               )}
 
-              <div className="tracklist-zone-content">
-                {explorerView ? (
-                  activeVersion ? (
-                    <DerivedExplorerView
-                      nodes={activeVersion.derived_explorer_nodes}
-                      trackMap={versionTrackMap}
-                      versionId={activeVersion.id}
-                      onSelectCandidate={selectCandidate}
-                      onRemoveCandidate={removeCandidate}
-                      onRemoveSlot={removeSlot}
-                    />
-                  ) : (
-                    <ExplorerNodesView
-                      nodes={activeSet.explorer_nodes}
-                      trees={activeSet.explorer_trees}
-                      activeTreeId={activeTreeId}
-                      onSelectTree={selectTree}
-                      tracklistTrackIds={tracklistTrackIds}
-                      onNodeToTracklist={explorerNodeAddToTracklist}
-                    />
-                  )
-                ) : activeVersion ? (
-                  <SlotTracklist
-                    version={activeVersion}
-                    trackMap={versionTrackMap}
-                    transitionScores={transitionScores}
-                    scoresLoading={scoresLoading}
-                    onBranchFromSlot={branchFromSlot}
-                    onSelectCandidate={selectCandidate}
-                    onRemoveCandidate={removeCandidate}
-                    onAddCandidate={addCandidate}
-                    onRemoveSlot={removeSlot}
-                    onRefreshScores={refreshScores}
+              <div className="set-workspace-split set-workspace-split--vertical">
+                <div className="tracklist-zone" data-testid="tracklist-zone">
+                  <div className="tracklist-zone-content">
+                    {explorerView ? (
+                      activeVersion ? (
+                        <ExplorerNodesView
+                          nodes={versionExplorerNodes}
+                          trees={activeSet.explorer_trees}
+                          activeTreeId={activeVersion.explorer_tree_id}
+                          onSelectTree={selectTree}
+                          tracklistTrackIds={tracklistTrackIds}
+                          onNodeToTracklist={explorerNodeAddToTracklist}
+                          selectedCandidateTrackIds={selectedCandidateTrackIds}
+                        />
+                      ) : (
+                        <ExplorerNodesView
+                          nodes={activeSet.explorer_nodes}
+                          trees={activeSet.explorer_trees}
+                          activeTreeId={activeTreeId}
+                          onSelectTree={selectTree}
+                          tracklistTrackIds={tracklistTrackIds}
+                          onNodeToTracklist={explorerNodeAddToTracklist}
+                        />
+                      )
+                    ) : activeVersion ? (
+                      <SlotTracklist
+                        version={activeVersion}
+                        trackMap={versionTrackMap}
+                        transitionScores={transitionScores}
+                        scoresLoading={scoresLoading}
+                        onBranchFromSlot={branchFromSlot}
+                        onSelectCandidate={selectCandidate}
+                        onRemoveCandidate={removeCandidate}
+                        onAddCandidate={addCandidate}
+                        onRemoveSlot={removeSlot}
+                        onRefreshScores={refreshScores}
+                      />
+                    ) : (
+                      <SetTracklist
+                        tracklist={activeSet.tracklist}
+                        emptyRows={(activeSet.empty_rows ?? []).filter(r => r.surface === 'tracklist')}
+                        onRemove={removeFromTracklist}
+                        onClearAll={clearTracklist}
+                        onMoveToPool={moveTracklistToPool}
+                        onReorder={reorderTracklist}
+                        onUpdateNote={updateTracklistNote}
+                        onAddTrack={sbAddToTracklist}
+                        onInsertEmptyRows={(count, position) => addEmptyRows('tracklist', count, position)}
+                        onDeleteEmptyRow={deleteEmptyRow}
+                        onReorderEmptyRow={reorderEmptyRow}
+                      />
+                    )}
+                  </div>
+                </div>
+                <div className="zone-divider" />
+                <div className="pool-zone" data-testid="pool-zone">
+                  <SetPoolTable
+                    pool={activeSet.pool}
+                    emptyRows={(activeSet.empty_rows ?? []).filter(r => r.surface === 'pool')}
+                    subgroups={activeSet.pool_subgroups ?? []}
+                    subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
+                    onRemove={removeFromPool}
+                    onClearAll={clearPool}
+                    onMoveToTracklist={movePoolToTracklist}
+                    onReorder={reorderPool}
+                    onAddTrack={sbAddToPool}
+                    onInsertEmptyRows={(count, position) => addEmptyRows('pool', count, position)}
+                    onDeleteEmptyRow={deleteEmptyRow}
+                    onReorderEmptyRow={reorderEmptyRow}
+                    onCreateSubgroup={createSubgroup}
+                    onRenameSubgroup={renameSubgroup}
+                    onDeleteSubgroup={deleteSubgroup}
+                    onReorderSubgroups={reorderSubgroups}
+                    onAddSubgroupMember={addSubgroupMember}
+                    onRemoveSubgroupMember={removeSubgroupMember}
                   />
-                ) : (
-                  <SetWorkspacePanel
-                    activeSet={activeSet}
-                    removeFromPool={removeFromPool}
-                    clearPool={clearPool}
-                    movePoolToTracklist={movePoolToTracklist}
-                    reorderPool={reorderPool}
-                    addToPool={sbAddToPool}
-                    removeFromTracklist={removeFromTracklist}
-                    clearTracklist={clearTracklist}
-                    moveTracklistToPool={moveTracklistToPool}
-                    reorderTracklist={reorderTracklist}
-                    addToTracklistAtPosition={addToTracklistAtPosition}
-                    updateTracklistNote={updateTracklistNote}
-                    addToTracklist={sbAddToTracklist}
-                    createSubgroup={createSubgroup}
-                    renameSubgroup={renameSubgroup}
-                    deleteSubgroup={deleteSubgroup}
-                    reorderSubgroups={reorderSubgroups}
-                    addSubgroupMember={addSubgroupMember}
-                    removeSubgroupMember={removeSubgroupMember}
-                    addEmptyRows={addEmptyRows}
-                    deleteEmptyRow={deleteEmptyRow}
-                    reorderEmptyRow={reorderEmptyRow}
-                    poolExpanded={true}
-                    onPoolExpandedChange={() => {}}
-                  />
-                )}
+                </div>
               </div>
             </div>
           </div>

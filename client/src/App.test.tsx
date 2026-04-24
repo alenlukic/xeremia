@@ -186,10 +186,9 @@ describe('Workspace layout with active set', () => {
     expect(screen.getByTestId('explorer-toggle').textContent).toContain('Explorer');
   });
 
-  it('pool is permanently visible (no accordion)', async () => {
+  it('pool zone is permanently visible (no accordion)', async () => {
     await renderWithActiveSet();
-    const pool = document.querySelector('.set-pool');
-    expect(pool).toBeInTheDocument();
+    expect(screen.getByTestId('pool-zone')).toBeInTheDocument();
   });
 
   it('does not render DockBar', async () => {
@@ -208,14 +207,27 @@ describe('Workspace layout with active set', () => {
     expect(document.getElementById('panel-matches')).not.toBeInTheDocument();
   });
 
-  it('renders column-config button in tracklist zone header', async () => {
+  it('renders column-config button in tracklist zone header (enabled)', async () => {
     await renderWithActiveSet();
     const btn = screen.getByTestId('tracklist-columns-btn');
     expect(btn).toBeInTheDocument();
     expect(btn).toBeVisible();
     expect(btn.textContent).toBe('Columns');
-    expect(btn).toBeDisabled();
+    expect(btn).not.toBeDisabled();
     expect(btn.classList.contains('columns-btn')).toBe(true);
+  });
+
+  it('pool zone is visible alongside tracklist (legacy set)', async () => {
+    await renderWithActiveSet();
+    expect(screen.getByTestId('tracklist-zone')).toBeInTheDocument();
+    expect(screen.getByTestId('pool-zone')).toBeInTheDocument();
+    expect(document.querySelector('.set-pool')).toBeInTheDocument();
+  });
+
+  it('export m3u8 button is absent', async () => {
+    await renderWithActiveSet();
+    expect(screen.queryByTestId('tracklist-export')).not.toBeInTheDocument();
+    expect(screen.queryByText('Export m3u8')).not.toBeInTheDocument();
   });
 });
 
@@ -285,19 +297,21 @@ describe('Explorer toggle', () => {
       set: { id: 1, name: 'Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
       pool: [],
       tracklist: [],
-      explorer_trees: [],
-      explorer_nodes: [],
+      explorer_trees: [{ id: 1, set_id: 1, name: 'Tree 1' }],
+      explorer_nodes: [
+        { id: 1, set_id: 1, tree_id: 1, node_id: 'n1', track_id: 3, level: 0, col_index: 0, track: { id: 3, title: 'Track 3', artist_names: [], bpm: 125, key: null, camelot_code: '01B', genre: null, label: null, energy: 0.55, date_added: null } },
+      ],
       explorer_edges: [],
       versions: [
         {
-          id: 1, set_id: 1, name: 'Main', display_order: 0, explorer_tree_id: null,
+          id: 1, set_id: 1, name: 'Main', display_order: 0, explorer_tree_id: 1,
           slots: [{ id: 10, version_id: 1, position: 0, note: '', is_inherited: false, candidates: [{ id: 100, slot_id: 10, track_id: 3, is_selected: true }] }],
-          derived_explorer_nodes: [{ slot_id: 10, candidate_id: 100, track_id: 3, level: 0, position: 0, col_index: 0, is_selected: true, track: null }],
+          derived_explorer_nodes: [],
         },
         {
-          id: 2, set_id: 1, name: 'Alt', display_order: 1, explorer_tree_id: null,
+          id: 2, set_id: 1, name: 'Alt', display_order: 1, explorer_tree_id: 1,
           slots: [{ id: 20, version_id: 2, position: 0, note: '', is_inherited: false, candidates: [{ id: 200, slot_id: 20, track_id: 3, is_selected: true }] }],
-          derived_explorer_nodes: [{ slot_id: 20, candidate_id: 200, track_id: 3, level: 0, position: 0, col_index: 0, is_selected: true, track: null }],
+          derived_explorer_nodes: [],
         },
       ],
     });
@@ -317,12 +331,12 @@ describe('Explorer toggle', () => {
 
     await act(async () => { screen.getByTestId('explorer-toggle').click(); });
     expect(screen.getByTestId('explorer-toggle').textContent).toContain('Tracklist');
-    expect(screen.getByTestId('derived-explorer-view')).toBeInTheDocument();
+    expect(screen.getByTestId('explorer-nodes-view')).toBeInTheDocument();
 
     await act(async () => { screen.getByTestId('version-tab-btn-2').click(); });
 
     expect(screen.getByTestId('explorer-toggle').textContent).toContain('Tracklist');
-    expect(screen.getByTestId('derived-explorer-view')).toBeInTheDocument();
+    expect(screen.getByTestId('explorer-nodes-view')).toBeInTheDocument();
   });
 
   it('explorer nodes view uses Row and Position labels', async () => {
@@ -534,5 +548,272 @@ describe('DragOverlay snapCenterToCursor modifier guard', () => {
     expect(appSrc).toMatch(/SNAP_MODIFIERS\s*=\s*\[.*snapCenterToCursor.*\]/);
 
     expect(appSrc).toMatch(/<DragOverlay[\s\S]*?modifiers=\{SNAP_MODIFIERS\}/);
+  });
+});
+
+describe('Versioned set workspace layout', () => {
+  async function renderWithVersionedSet() {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Versioned Set', created_at: '', updated_at: '', pool_count: 1, tracklist_count: 0 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Versioned Set', created_at: '', updated_at: '', pool_count: 1, tracklist_count: 0 },
+      pool: [
+        { id: 10, track_id: 1, insertion_order: 0, starred: false, track: { id: 1, title: 'Pool Track', artist_names: [], bpm: 120, key: null, camelot_code: '01A', genre: null, label: null, energy: 0.5, date_added: null } },
+      ],
+      tracklist: [],
+      explorer_trees: [{ id: 1, set_id: 1, name: 'Tree 1' }],
+      explorer_nodes: [
+        { id: 1, set_id: 1, tree_id: 1, node_id: 'n1', track_id: 5, level: 0, col_index: 0, track: { id: 5, title: 'Explorer Track', artist_names: [], bpm: 130, key: null, camelot_code: '03A', genre: null, label: null, energy: 0.7, date_added: null } },
+      ],
+      explorer_edges: [],
+      versions: [
+        {
+          id: 1, set_id: 1, name: 'Main', display_order: 0, explorer_tree_id: 1,
+          slots: [
+            { id: 10, version_id: 1, position: 0, note: '', is_inherited: false, candidates: [{ id: 100, slot_id: 10, track_id: 5, is_selected: true }] },
+          ],
+          derived_explorer_nodes: [],
+        },
+      ],
+    });
+    vi.mocked(httpMod.fetchTransitionScores).mockResolvedValue({ scores: [] });
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: '1' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('slot-tracklist')).toBeInTheDocument();
+    });
+  }
+
+  it('tracklist zone and pool zone both present for versioned set', async () => {
+    await renderWithVersionedSet();
+    expect(screen.getByTestId('tracklist-zone')).toBeInTheDocument();
+    expect(screen.getByTestId('pool-zone')).toBeInTheDocument();
+    expect(screen.getByTestId('slot-tracklist')).toBeInTheDocument();
+    expect(document.querySelector('.set-pool')).toBeInTheDocument();
+  });
+
+  it('export m3u8 button absent for versioned set', async () => {
+    await renderWithVersionedSet();
+    expect(screen.queryByTestId('tracklist-export')).not.toBeInTheDocument();
+    expect(screen.queryByText('Export m3u8')).not.toBeInTheDocument();
+  });
+
+  it('explorer toggle shows ExplorerNodesView for versioned set', async () => {
+    await renderWithVersionedSet();
+
+    await act(async () => {
+      screen.getByTestId('explorer-toggle').click();
+    });
+
+    expect(screen.getByTestId('explorer-nodes-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('derived-explorer-view')).not.toBeInTheDocument();
+  });
+
+  it('explorer highlights selected candidate node for versioned set', async () => {
+    await renderWithVersionedSet();
+
+    await act(async () => {
+      screen.getByTestId('explorer-toggle').click();
+    });
+
+    const rows = screen.getAllByTestId('explorer-node-row');
+    expect(rows.length).toBeGreaterThan(0);
+    const selectedRow = rows.find(r => r.classList.contains('explorer-node-row--selected'));
+    expect(selectedRow).toBeDefined();
+  });
+
+  it('Columns button opens config popover for versioned set', async () => {
+    await renderWithVersionedSet();
+    expect(screen.queryByTestId('tracklist-columns-popover')).not.toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByTestId('tracklist-columns-btn').click();
+    });
+
+    expect(screen.getByTestId('tracklist-columns-popover')).toBeInTheDocument();
+  });
+});
+
+describe('Explorer selected-candidate specificity', () => {
+  it('only the selected candidate node row receives explorer-node-row--selected; non-selected nodes do not', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Multi-Node Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Multi-Node Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 0 },
+      pool: [],
+      tracklist: [],
+      explorer_trees: [{ id: 1, set_id: 1, name: 'Tree 1' }],
+      explorer_nodes: [
+        { id: 1, set_id: 1, tree_id: 1, node_id: 'n1', track_id: 5, level: 0, col_index: 0, track: { id: 5, title: 'Selected Track', artist_names: [], bpm: 130, key: null, camelot_code: '03A', genre: null, label: null, energy: 0.7, date_added: null } },
+        { id: 2, set_id: 1, tree_id: 1, node_id: 'n2', track_id: 6, level: 1, col_index: 0, track: { id: 6, title: 'Unselected Track', artist_names: [], bpm: 128, key: null, camelot_code: '04A', genre: null, label: null, energy: 0.65, date_added: null } },
+      ],
+      explorer_edges: [],
+      versions: [
+        {
+          id: 1, set_id: 1, name: 'Main', display_order: 0, explorer_tree_id: 1,
+          slots: [
+            { id: 10, version_id: 1, position: 0, note: '', is_inherited: false, candidates: [{ id: 100, slot_id: 10, track_id: 5, is_selected: true }] },
+            { id: 11, version_id: 1, position: 1, note: '', is_inherited: false, candidates: [{ id: 101, slot_id: 11, track_id: 6, is_selected: false }] },
+          ],
+          derived_explorer_nodes: [],
+        },
+      ],
+    });
+    vi.mocked(httpMod.fetchTransitionScores).mockResolvedValue({ scores: [] });
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+    await act(async () => { fireEvent.change(select, { target: { value: '1' } }); });
+    await waitFor(() => expect(screen.getByTestId('slot-tracklist')).toBeInTheDocument());
+
+    await act(async () => { screen.getByTestId('explorer-toggle').click(); });
+
+    const rows = screen.getAllByTestId('explorer-node-row');
+    expect(rows.length).toBe(2);
+
+    const selectedRows = rows.filter(r => r.classList.contains('explorer-node-row--selected'));
+    const unselectedRows = rows.filter(r => !r.classList.contains('explorer-node-row--selected'));
+    expect(selectedRows).toHaveLength(1);
+    expect(unselectedRows).toHaveLength(1);
+
+    expect(selectedRows[0].textContent).toContain('Selected Track');
+    expect(unselectedRows[0].textContent).toContain('Unselected Track');
+  });
+});
+
+describe('Columns action', () => {
+  async function renderWithActiveSet() {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 1 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Live Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 1 },
+      pool: [],
+      tracklist: [
+        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track 3', artist_names: [], bpm: 125, key: null, camelot_code: '01B', genre: null, label: null, energy: 0.55, date_added: null } },
+      ],
+      explorer_trees: [], explorer_nodes: [], explorer_edges: [],
+    });
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: '1' } });
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.set-tracklist')).toBeInTheDocument();
+    });
+  }
+
+  it('Columns button opens and closes config popover (legacy set)', async () => {
+    await renderWithActiveSet();
+    const btn = screen.getByTestId('tracklist-columns-btn');
+    expect(screen.queryByTestId('tracklist-columns-popover')).not.toBeInTheDocument();
+
+    await act(async () => { btn.click(); });
+    expect(screen.getByTestId('tracklist-columns-popover')).toBeInTheDocument();
+
+    await act(async () => { btn.click(); });
+    expect(screen.queryByTestId('tracklist-columns-popover')).not.toBeInTheDocument();
+  });
+});
+
+describe('Workspace split layout structure', () => {
+  it('split container and zone-divider are rendered with both zones for legacy set', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Split Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 1 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Split Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 1 },
+      pool: [],
+      tracklist: [
+        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track A', artist_names: [], bpm: 130, key: null, camelot_code: '01A', genre: null, label: null, energy: 0.6, date_added: null } },
+      ],
+      explorer_trees: [], explorer_nodes: [], explorer_edges: [],
+    });
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+    await act(async () => { fireEvent.change(select, { target: { value: '1' } }); });
+    await waitFor(() => expect(document.querySelector('.set-tracklist')).toBeInTheDocument());
+
+    const split = document.querySelector('.set-workspace-split--vertical');
+    expect(split).toBeInTheDocument();
+    expect(split!.querySelector('[data-testid="tracklist-zone"]')).toBeInTheDocument();
+    expect(split!.querySelector('[data-testid="pool-zone"]')).toBeInTheDocument();
+    expect(split!.querySelector('.zone-divider')).toBeInTheDocument();
+  });
+});
+
+describe('Legacy explorer empty-state', () => {
+  it('legacy set with no explorer nodes shows ExplorerNodesView empty state, not derived-explorer error', async () => {
+    const httpMod = await import('./api/http');
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      { id: 1, name: 'Empty Explorer Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 1 },
+    ]);
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: { id: 1, name: 'Empty Explorer Set', created_at: '', updated_at: '', pool_count: 0, tracklist_count: 1 },
+      pool: [],
+      tracklist: [
+        { id: 20, track_id: 3, position: 0, starred: false, note: '', track: { id: 3, title: 'Track Z', artist_names: [], bpm: 130, key: null, camelot_code: '01A', genre: null, label: null, energy: 0.6, date_added: null } },
+      ],
+      explorer_trees: [], explorer_nodes: [], explorer_edges: [],
+    });
+
+    await act(async () => { render(<App />); });
+    await act(async () => {});
+
+    const select = await waitFor(() => {
+      const el = document.querySelector('.set-select') as HTMLSelectElement;
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+    await act(async () => { fireEvent.change(select, { target: { value: '1' } }); });
+    await waitFor(() => expect(document.querySelector('.set-tracklist')).toBeInTheDocument());
+
+    await act(async () => { screen.getByTestId('explorer-toggle').click(); });
+
+    expect(screen.getByTestId('explorer-nodes-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('derived-explorer-view')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No derived explorer nodes/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/No explorer nodes yet/i)).toBeInTheDocument();
   });
 });

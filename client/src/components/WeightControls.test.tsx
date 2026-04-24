@@ -215,3 +215,27 @@ describe('WeightControls layout measurement contract', () => {
     expect(groups.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('WeightControls responsive container structure', () => {
+  it('outer container has data-testid and weight-controls-outer class', () => {
+    const { container } = renderGauges();
+    const outer = container.querySelector('[data-testid="weight-controls-outer"]');
+    expect(outer).not.toBeNull();
+    expect(outer!.classList.contains('weight-controls-outer')).toBe(true);
+  });
+
+  it('controls row has data-testid and weight-controls-row class', () => {
+    const { container } = renderGauges();
+    const row = container.querySelector('[data-testid="weight-controls-row"]');
+    expect(row).not.toBeNull();
+    expect(row!.classList.contains('weight-controls-row')).toBe(true);
+  });
+
+  it('weight gauges render inside the controls row for flex scaling', () => {
+    const { container } = renderGauges();
+    const row = container.querySelector('.weight-controls-row');
+    expect(row).not.toBeNull();
+    const gauges = row!.querySelectorAll('.weight-gauge');
+    expect(gauges.length).toBeGreaterThanOrEqual(Object.keys(INITIAL_WEIGHTS).length);
+  });
+});
