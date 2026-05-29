@@ -15,9 +15,12 @@ setup(
         "Development Status :: 3 - Alpha",
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
     ],
     keywords="dj harmonic mixing camelot code audio id3 beatport",
     install_requires=requirements,
     packages=find_packages(),
-    python_requires=">=3, <4",
+    python_requires=">=3.9,<3.12",
 )

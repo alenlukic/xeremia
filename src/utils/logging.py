@@ -1,9 +1,11 @@
 import logging
+from pathlib import Path
 
 from src.config import LOG_LOCATION
 
-
-logging.basicConfig(filename=LOG_LOCATION)
+_log_path = Path(LOG_LOCATION)
+_log_path.parent.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(filename=str(_log_path))
 
 
 class Logger:
