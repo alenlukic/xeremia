@@ -32,9 +32,10 @@ Further architecture and workflow detail: [docs/ARCHITECTURE.md](docs/ARCHITECTU
 
 ### Prerequisites
 
-- Python 3.9+ (`setup.py` allows `>=3,<4`; 3.9 is the tested baseline)
+- Python 3.9–3.11 (see [Python version notes](#python-version-notes) below)
 - PostgreSQL
 - ffmpeg (required for lossless-to-AIFF conversion)
+- A C compiler and Cython (required to build `madmom` from source; see install steps)
 - Google API credentials (optional; required only for backup/restore)
 
 ### Clone and configure
@@ -56,28 +57,48 @@ Use a dedicated virtual environment — do not install into the system Python.
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
-pip install -r requirements.txt
+# madmom has no pre-built wheel for many platforms; build it with Cython present.
+pip install Cython
+pip install --no-build-isolation -r requirements.txt
 pip install -e .
 ```
 
-If you use [pyenv](https://github.com/pyenv/pyenv), install and select any local 3.9+ interpreter before creating the venv:
+If you use [pyenv](https://github.com/pyenv/pyenv), install and select a 3.9–3.11 interpreter before creating the venv:
 
 ```bash
-pyenv install 3.9    # skip if you already have a suitable 3.9+ version
-pyenv local 3.9      # optional; .python-version is gitignored
+pyenv install 3.11    # skip if you already have a suitable 3.9–3.11 version
+pyenv local 3.11      # optional; .python-version is gitignored
 ```
+
+#### Python version notes
+
+`setup.py` declares `python_requires=">=3.9,<3.12"`. The broader `>=3,<4` range in older docs was misleading — pinned dependencies enforce a tighter band:
+
+| Constraint | Reason |
+|---|---|
+| **Floor: 3.9** | `uvicorn==0.34.2` requires Python ≥ 3.9 |
+| **Ceiling: 3.11** | `numpy==1.23.5` and `scipy==1.10.1` have no wheels for Python 3.12+ (and fail to build without `distutils`) |
+
+Python 3.9 is the tested baseline on macOS and Linux.
 
 ### Database
 
 `createdb` only creates an empty PostgreSQL database. Initialize the Xeremia schema separately:
 
 ```bash
+# Local PostgreSQL (defaults to localhost:5432)
 createdb music_collection    # or the value of DB_NAME in .env
 
+# Remote or non-default port — pass connection flags matching .env:
+# createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" music_collection
+
 python -m src.scripts.init_db
+python -m src.scripts.init_db --verify-only
 ```
 
-This creates tables, indexes, constraints, sequences, the `pg_trgm` extension, and seeds canonical artist/genre/label mappings. Re-running against an initialized database is a no-op; use `--seed-only` to re-apply mapping seeds, or `--verify-only` to check schema health.
+This creates tables, indexes, constraints, sequences, the `pg_trgm` extension, and seeds canonical artist/genre/label mappings. Re-running against an initialized database exits with an error; use `--seed-only` to re-apply mapping seeds, or `--verify-only` to check schema health.
+
+The `pg_trgm` extension must be installable by your database user (superuser on fresh local installs; may require an admin on managed Postgres).
 
 ---
 
