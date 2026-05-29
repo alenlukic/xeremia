@@ -2,7 +2,29 @@
 
 ## Overview
 
-A toolkit for DJs that manages a music collection database, runs a multi-source track ingestion pipeline, computes audio-similarity features, and provides a live CLI assistant for finding harmonically compatible transition matches.
+A toolkit for DJs that manages a music collection database, runs a multi-source track ingestion pipeline, computes audio-similarity features, and provides both a live CLI assistant and a browser-based client for finding harmonically compatible transition matches.
+
+### Library ingestion & tagging
+
+Processes new audio through a four-step pipeline that reconciles BPM and key from Mixed In Key, Rekordbox, and raw ID3 tags into canonical database records. Files are renamed, tagged, and copied to a processed music directory. Companion scripts sync tags and fields between disk and database, convert lossless formats, and restore backups from Google Drive.
+
+### Metadata enrichment
+
+A batch metadata agent hydrates ID3 tags from AcoustID, MusicBrainz, Discogs, and an optional OpenAI fallback. It estimates missing BPM and key, writes enriched tags back to files, and stages output for ingestion.
+
+### Audio features & similarity
+
+Computes compact CQT-based descriptor vectors and ONNX-derived audio traits for tracks, storing results in PostgreSQL. Pairwise cosine similarity feeds harmonic-mixing scores during transition matching.
+
+### Harmonic mixing & transition matching
+
+Ranks transition candidates using weighted factors — Camelot key compatibility, BPM proximity, genre and mood continuity, vocal clash, danceability, energy, timbre, and audio-similarity. Available via an interactive CLI REPL and the web client's Matches tab, with live-adjustable scoring weights.
+
+### Web client & set building
+
+A React SPA backed by FastAPI provides Elasticsearch-powered search, collection browsing with filters, transition match exploration, DJ set building (pool, tracklist, and visual set explorer), scoring-weight administration, and M3U8 export. See [Web Client & API](#web-client--api) below.
+
+Further architecture and workflow detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/WORKFLOWS.md](docs/WORKFLOWS.md).
 
 ---
 
@@ -10,88 +32,119 @@ A toolkit for DJs that manages a music collection database, runs a multi-source 
 
 ### Prerequisites
 
-- Python ≥ 3 (tested on 3.9)
-- PostgreSQL (database name `music_collection` by default)
+- Python 3.9+ (`setup.py` allows `>=3,<4`; 3.9 is the tested baseline)
+- PostgreSQL
 - ffmpeg (required for lossless-to-AIFF conversion)
 - Google API credentials (optional; required only for backup/restore)
 
-### Installation
+### Clone and configure
 
 ```bash
 git clone https://github.com/alenlukic/xeremia
 cd xeremia
 
-pip install -r requirements.txt
-# or install as a package:
-pip install -e .
-```
-
-Create the PostgreSQL database:
-
-```bash
-createdb music_collection
-```
-
-### Configuration
-
-Copy `.env.example` to `.env` and fill in your values:
-
-```bash
 cp .env.example .env
 ```
 
-**Env vars** (see `.env.example` for a ready-to-copy template):
+Edit `.env` with your data paths and database credentials. See [Environment variables](#environment-variables) in the Appendix for the full reference.
 
-| Variable | Description |
-|---|---|
-| `DATA_ROOT` | Root directory for all data files |
-| `DATA_BACKUP_RESTORE_MUSIC_DIR` | Subdirectory for restored backup files |
-| `DATA_FILE_STAGING_DIR` | Temporary staging area for audio files |
-| `DB_NAME` | PostgreSQL database name |
-| `DB_USER` | PostgreSQL user |
-| `DB_PASSWORD` | PostgreSQL password |
-| `DB_HOST` | PostgreSQL host (default: `localhost`) |
-| `DB_PORT` | PostgreSQL port (default: `5432`) |
-| `HM_WEIGHT_SIMILARITY` | Harmonic mixing weight — cosine similarity (default: `0.18`) |
-| `HM_WEIGHT_CAMELOT` | Harmonic mixing weight — Camelot key compatibility (default: `0.20`) |
-| `HM_WEIGHT_BPM` | Harmonic mixing weight — BPM proximity (default: `0.20`) |
-| `HM_WEIGHT_FRESHNESS` | Harmonic mixing weight — track recency (default: `0.08`) |
-| `HM_WEIGHT_GENRE_SIMILARITY` | Harmonic mixing weight — genre similarity (default: `0.08`) |
-| `HM_WEIGHT_MOOD_CONTINUITY` | Harmonic mixing weight — mood continuity (default: `0.06`) |
-| `HM_WEIGHT_VOCAL_CLASH` | Harmonic mixing weight — vocal clash penalty (default: `0.05`) |
-| `HM_WEIGHT_DANCEABILITY` | Harmonic mixing weight — danceability proximity (default: `0.07`) |
-| `HM_WEIGHT_ENERGY` | Harmonic mixing weight — energy level proximity (default: `0.04`) |
-| `HM_WEIGHT_TIMBRE` | Harmonic mixing weight — timbre similarity (default: `0.04`) |
-| `HM_WEIGHT_INSTRUMENT_SIMILARITY` | Harmonic mixing weight — instrument similarity (default: `0.02`) |
-| `HM_MAX_RESULTS` | Max transition match candidates to return (default: `50`) |
-| `HM_SCORE_THRESHOLD` | Minimum composite score to include a candidate (default: `25`) |
-| `HM_RESULT_THRESHOLD` | Min result count before score threshold is enforced (default: `20`) |
-| `INGESTION_PIPELINE_ROOT` | Root directory for ingestion pipeline data |
-| `INGESTION_PIPELINE_UNPROCESSED` | Subdir for incoming tracks (default: `unprocessed`) |
-| `INGESTION_PIPELINE_PROCESSING` | Subdir for in-progress tracks (default: `processing`) |
-| `INGESTION_PIPELINE_FINALIZED` | Subdir for finalized tracks (default: `finalized`) |
-| `INGESTION_PIPELINE_REKORDBOX_TAG_FILE` | Rekordbox exported tag filename (default: `rekordbox_tags.txt`) |
-| `INGESTION_PIPELINE_PROCESSED_MUSIC_DIR` | Final destination for processed music files |
-| `TRACK_METADATA_DOWNLOAD_DIR` | Input directory for track metadata enrichment |
-| `TRACK_METADATA_PROCESSING_DIR` | Working directory for track-metadata (default: `processing`) |
-| `TRACK_METADATA_AUGMENTED_DIR` | Output directory for enriched tracks (default: `augmented`) |
-| `TRACK_METADATA_LOG_DIR` | Log directory for track-metadata (default: `logs`) |
-| `TRACK_METADATA_RUN_START` | Override timestamp for metadata run (default: current time) |
-| `LOG_LOCATION` | Global log file path (default: `logs/logs.txt`) |
-| `NUM_CORES` | CPU parallelism override (default: system CPU count) |
-| `ES_TRACK_INDEX` | Elasticsearch index name (default: `dj_tracks`) |
-| `ES_URL` | Elasticsearch URL (default: `http://127.0.0.1:9200`) |
-| `TRAIT_WORKERS` | Parallel workers for trait extraction (default: `2`) |
-| `COSINE_WORKERS` | Parallel workers for cosine similarity (default: `2`) |
-| `OPENAI_API_KEY` | OpenAI API key (optional — enables LLM metadata fallback) |
-| `OPENAI_METADATA_MODEL` | OpenAI model for metadata resolution (default: `gpt-5.4-mini`) |
-| `ACOUSTID_API_KEY` | AcoustID API key (optional — enables fingerprint lookup) |
-| `DISCOGS_TOKEN` | Discogs API token (optional — enables Discogs search) |
-| `MUSIC_METADATA_USER_AGENT` | HTTP User-Agent for metadata API requests |
+### Python environment
+
+Use a dedicated virtual environment — do not install into the system Python.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+pip install -r requirements.txt
+pip install -e .
+```
+
+If you use [pyenv](https://github.com/pyenv/pyenv), install and select any local 3.9+ interpreter before creating the venv:
+
+```bash
+pyenv install 3.9    # skip if you already have a suitable 3.9+ version
+pyenv local 3.9      # optional; .python-version is gitignored
+```
+
+### Database
+
+`createdb` only creates an empty PostgreSQL database. Initialize the Xeremia schema separately:
+
+```bash
+createdb music_collection    # or the value of DB_NAME in .env
+
+python -m src.scripts.init_db
+```
+
+This creates tables, indexes, constraints, sequences, the `pg_trgm` extension, and seeds canonical artist/genre/label mappings. Re-running against an initialized database is a no-op; use `--seed-only` to re-apply mapping seeds, or `--verify-only` to check schema health.
 
 ---
 
-## Usage
+## Web Client & API
+
+A browser-based alternative to the CLI assistant, backed by a minimal FastAPI layer.
+
+### Prerequisites
+
+- Node.js ≥ 18
+- A running PostgreSQL database with tracks already ingested
+- Docker (for Elasticsearch)
+
+### Quick start
+
+Start Elasticsearch, the API, and the client in one command:
+
+```bash
+bash src/scripts/start_web.sh
+```
+
+The script will:
+1. Start the Elasticsearch Docker container (creating it on first run)
+2. Index tracks from PostgreSQL into Elasticsearch if the index doesn't exist
+3. Start the FastAPI server on port 8000
+4. Install client dependencies (if needed) and start the Vite dev server on port 5173
+
+Use `bash src/scripts/start_web.sh --reindex` to force a re-index of tracks into Elasticsearch.
+
+Press `Ctrl+C` to stop all services (API, client, and Elasticsearch).
+
+### Manual startup
+
+If you prefer to start services individually:
+
+```bash
+# 1. Elasticsearch
+docker run -d --name xeremia-es -p 9200:9200 \
+  -e "discovery.type=single-node" \
+  -e "xpack.security.enabled=false" \
+  -e "xpack.security.enrollment.enabled=false" \
+  -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
+  docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+
+# 2. Index tracks
+python -m src.scripts.index_tracks
+
+# 3. API server
+python -m src.scripts.run_api
+
+# 4. Client dev server
+cd client && npm install && npm run dev
+```
+
+The Vite dev server proxies `/api/*` requests to the API.
+
+### API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/search?q=<query>` | Elasticsearch-powered autocomplete (max 10 results, title-weighted). |
+| `GET` | `/api/tracks?camelot_code=&bpm=&bpm_min=&bpm_max=` | Full track listing with optional filters. Camelot codes are comma-separated. |
+| `GET` | `/api/tracks/{id}/matches` | Transition matches for a track, computed via existing `TransitionMatchFinder`. |
+
+---
+
+## CLI
 
 ### Mixing Assistant
 
@@ -235,72 +288,67 @@ python -m src.scripts.delete_tracks <start>...<end>
 **Purpose:** Enriches ID3 tags for audio files using MusicBrainz, Discogs, AcoustID, and an
 OpenAI LLM. Writes enriched metadata back to file tags.
 
-**Location:** `src/track_metadata/`
+**Invocation:**
+```bash
+python -m src.track_metadata.metadata_agent
+```
 
-**Entry point:** `src/track_metadata/metadata_agent.py`
+**Location:** `src/track_metadata/`
 
 ---
 
-## Web Client & API
+## Appendix
 
-A browser-based alternative to the CLI assistant, backed by a minimal FastAPI layer.
+### Environment variables
 
-### Prerequisites
+See `.env.example` for a ready-to-copy template.
 
-- Node.js ≥ 18
-- A running PostgreSQL database with tracks already ingested
-- Docker (for Elasticsearch)
-
-### Quick start
-
-Start Elasticsearch, the API, and the client in one command:
-
-```bash
-bash src/scripts/start_web.sh
-```
-
-The script will:
-1. Start the Elasticsearch Docker container (creating it on first run)
-2. Index tracks from PostgreSQL into Elasticsearch if the index doesn't exist
-3. Start the FastAPI server on port 8000
-4. Install client dependencies (if needed) and start the Vite dev server on port 5173
-
-Use `bash src/scripts/start_web.sh --reindex` to force a re-index of tracks into Elasticsearch.
-
-Press `Ctrl+C` to stop all services (API, client, and Elasticsearch).
-
-### Manual startup
-
-If you prefer to start services individually:
-
-```bash
-# 1. Elasticsearch
-docker run -d --name xeremia-es -p 9200:9200 \
-  -e "discovery.type=single-node" \
-  -e "xpack.security.enabled=false" \
-  -e "xpack.security.enrollment.enabled=false" \
-  -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
-  docker.elastic.co/elasticsearch/elasticsearch:8.17.0
-
-# 2. Index tracks
-python -m src.scripts.index_tracks
-
-# 3. API server
-python -m src.scripts.run_api
-
-# 4. Client dev server
-cd client && npm install && npm run dev
-```
-
-The Vite dev server proxies `/api/*` requests to the API.
-
-### API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/search?q=<query>` | Elasticsearch-powered autocomplete (max 10 results, title-weighted). |
-| `GET` | `/api/tracks?camelot_code=&bpm=&bpm_min=&bpm_max=` | Full track listing with optional filters. Camelot codes are comma-separated. |
-| `GET` | `/api/tracks/{id}/matches` | Transition matches for a track, computed via existing `TransitionMatchFinder`. |
+| Variable | Description |
+|---|---|
+| `DATA_ROOT` | Root directory for all data files |
+| `DATA_BACKUP_RESTORE_MUSIC_DIR` | Subdirectory for restored backup files |
+| `DATA_FILE_STAGING_DIR` | Temporary staging area for audio files |
+| `DB_NAME` | PostgreSQL database name |
+| `DB_USER` | PostgreSQL user |
+| `DB_PASSWORD` | PostgreSQL password |
+| `DB_HOST` | PostgreSQL host (default: `localhost`) |
+| `DB_PORT` | PostgreSQL port (default: `5432`) |
+| `HM_WEIGHT_SIMILARITY` | Harmonic mixing weight — cosine similarity (default: `0.18`) |
+| `HM_WEIGHT_CAMELOT` | Harmonic mixing weight — Camelot key compatibility (default: `0.20`) |
+| `HM_WEIGHT_BPM` | Harmonic mixing weight — BPM proximity (default: `0.20`) |
+| `HM_WEIGHT_FRESHNESS` | Harmonic mixing weight — track recency (default: `0.08`) |
+| `HM_WEIGHT_GENRE_SIMILARITY` | Harmonic mixing weight — genre similarity (default: `0.08`) |
+| `HM_WEIGHT_MOOD_CONTINUITY` | Harmonic mixing weight — mood continuity (default: `0.06`) |
+| `HM_WEIGHT_VOCAL_CLASH` | Harmonic mixing weight — vocal clash penalty (default: `0.05`) |
+| `HM_WEIGHT_DANCEABILITY` | Harmonic mixing weight — danceability proximity (default: `0.07`) |
+| `HM_WEIGHT_ENERGY` | Harmonic mixing weight — energy level proximity (default: `0.04`) |
+| `HM_WEIGHT_TIMBRE` | Harmonic mixing weight — timbre similarity (default: `0.04`) |
+| `HM_WEIGHT_INSTRUMENT_SIMILARITY` | Harmonic mixing weight — instrument similarity (default: `0.02`) |
+| `HM_MAX_RESULTS` | Max transition match candidates to return (default: `50`) |
+| `HM_SCORE_THRESHOLD` | Minimum composite score to include a candidate (default: `25`) |
+| `HM_RESULT_THRESHOLD` | Min result count before score threshold is enforced (default: `20`) |
+| `INGESTION_PIPELINE_ROOT` | Root directory for ingestion pipeline data |
+| `INGESTION_PIPELINE_UNPROCESSED` | Subdir for incoming tracks (default: `unprocessed`) |
+| `INGESTION_PIPELINE_PROCESSING` | Subdir for in-progress tracks (default: `processing`) |
+| `INGESTION_PIPELINE_FINALIZED` | Subdir for finalized tracks (default: `finalized`) |
+| `INGESTION_PIPELINE_REKORDBOX_TAG_FILE` | Rekordbox exported tag filename (default: `rekordbox_tags.txt`) |
+| `INGESTION_PIPELINE_PROCESSED_MUSIC_DIR` | Final destination for processed music files |
+| `TRACK_METADATA_DOWNLOAD_DIR` | Input directory for track metadata enrichment |
+| `TRACK_METADATA_PROCESSING_DIR` | Working directory for track-metadata (default: `processing`) |
+| `TRACK_METADATA_AUGMENTED_DIR` | Output directory for enriched tracks (default: `augmented`) |
+| `TRACK_METADATA_LOG_DIR` | Log directory for track-metadata (default: `logs`) |
+| `TRACK_METADATA_RUN_START` | Override timestamp for metadata run (default: current time) |
+| `LOG_LOCATION` | Global log file path (default: `logs/logs.txt`) |
+| `NUM_CORES` | CPU parallelism override (default: system CPU count) |
+| `ES_TRACK_INDEX` | Elasticsearch index name (default: `dj_tracks`) |
+| `ES_URL` | Elasticsearch URL (default: `http://127.0.0.1:9200`) |
+| `TRAIT_WORKERS` | Parallel workers for trait extraction (default: `2`) |
+| `COSINE_WORKERS` | Parallel workers for cosine similarity (default: `2`) |
+| `OPENAI_API_KEY` | OpenAI API key (optional — enables LLM metadata fallback) |
+| `OPENAI_METADATA_MODEL` | OpenAI model for metadata resolution (default: `gpt-5.4-mini`) |
+| `ACOUSTID_API_KEY` | AcoustID API key (optional — enables fingerprint lookup) |
+| `DISCOGS_TOKEN` | Discogs API token (optional — enables Discogs search) |
+| `MUSIC_METADATA_USER_AGENT` | HTTP User-Agent for metadata API requests |
 
 ### Search architecture
 
