@@ -1,7 +1,5 @@
 """Tests for explorer graph rules and validation."""
 
-import pytest
-
 from src.set_workspace.explorer_rules import (
     detect_cycle,
     check_level_width,

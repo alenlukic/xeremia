@@ -31,9 +31,10 @@ logger = logging.getLogger(__name__)
 class TransitionMatchFinder:
     """Encapsulates functionality for finding transition matches."""
 
-    def __init__(self, session=None, cosine_cache=None):
+    def __init__(self, session=None, cosine_cache=None, transition_score_cache=None):
         self.session = session if session is not None else database.create_session()
         self.cosine_cache = cosine_cache
+        self.transition_score_cache = transition_score_cache
         MappingRegistry.load(self.session)
         self.tracks = load_tracks(self.session)
         self.camelot_map, self.collection_metadata = generate_camelot_map(self.tracks)
@@ -94,7 +95,6 @@ class TransitionMatchFinder:
                 else:
                     raise Exception("%s not found in database." % track)
 
-            # Validate BPM and Camelot code exist and are well-formatted
             title = db_row.title
             bpm = float(db_row.bpm)
             camelot_code = db_row.camelot_code
@@ -112,11 +112,19 @@ class TransitionMatchFinder:
 
             cur_track_md = cur_track_md[0]
 
-            # Generate and rank matches
             harmonic_codes = TransitionMatchFinder._get_all_harmonic_codes(cur_track_md)
             same_key, higher_key, lower_key = self._get_matches_for_code(
                 harmonic_codes, cur_track_md, sort_results
             )
+
+            source_id = cur_track_md.get(TrackDBCols.ID)
+            if source_id is not None and self.transition_score_cache is not None:
+                for match in same_key + higher_key + lower_key:
+                    cid = match.metadata.get(TrackDBCols.ID)
+                    if cid is not None:
+                        self.transition_score_cache.put(
+                            source_id, cid, round(match.get_score(), 2),
+                        )
 
             return (same_key, higher_key, lower_key), title_mismatch_message
 

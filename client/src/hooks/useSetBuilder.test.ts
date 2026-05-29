@@ -57,6 +57,7 @@ function makeExplorerNode(
   return {
     id: 1,
     set_id: 1,
+    col_index: 0,
     track: makeTrack(overrides.track_id),
     ...overrides,
   };
@@ -72,6 +73,89 @@ function makeHydratedSet(overrides: Partial<HydratedSet> = {}): HydratedSet {
     ...overrides,
   };
 }
+
+describe('useSetBuilder poolAddInFlightRef duplicate suppression', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    const http = await import('../api/http');
+    vi.mocked(http.fetchSets).mockResolvedValue([makeSetSummary()]);
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet());
+    vi.mocked(http.poolAdd).mockResolvedValue(undefined);
+  });
+
+  it('blocks duplicate addToPool calls while the first is still in flight', async () => {
+    const http = await import('../api/http');
+    let resolvePoolAdd!: () => void;
+    vi.mocked(http.poolAdd).mockImplementation(
+      () => new Promise<void>(r => { resolvePoolAdd = r; }),
+    );
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet());
+
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSetId).toBe(1));
+
+    expect(result.current.isPoolAddInFlight(42)).toBe(false);
+
+    let firstDone = false;
+    act(() => {
+      result.current.addToPool(42, 'T42').then(() => { firstDone = true; });
+    });
+
+    expect(result.current.isPoolAddInFlight(42)).toBe(true);
+
+    await act(async () => { await result.current.addToPool(42, 'T42'); });
+    expect(http.poolAdd).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolvePoolAdd();
+      await new Promise(r => setTimeout(r, 10));
+    });
+    expect(firstDone).toBe(true);
+  });
+
+  it('clears in-flight state on error', async () => {
+    const http = await import('../api/http');
+    vi.mocked(http.poolAdd).mockRejectedValueOnce(new Error('fail'));
+
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSetId).toBe(1));
+
+    await act(async () => { await result.current.addToPool(42, 'T42'); });
+
+    expect(result.current.isPoolAddInFlight(42)).toBe(false);
+    expect(result.current.error).toContain('pool');
+  });
+
+  it('cleans up in-flight set when activeSet pool confirms the track', async () => {
+    const http = await import('../api/http');
+    let resolvePoolAdd!: () => void;
+    vi.mocked(http.poolAdd).mockImplementation(
+      () => new Promise<void>(r => { resolvePoolAdd = r; }),
+    );
+
+    const { result } = renderHook(() => useSetBuilder());
+    await act(async () => { result.current.selectSet(1); });
+    await waitFor(() => expect(result.current.activeSetId).toBe(1));
+
+    act(() => { result.current.addToPool(7, 'T7'); });
+    expect(result.current.isPoolAddInFlight(7)).toBe(true);
+
+    const withTrack = makeHydratedSet({
+      pool: [{ id: 1, set_id: 1, track_id: 7, insertion_order: 0, track: makeTrack(7) }],
+    });
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(withTrack);
+
+    await act(async () => {
+      resolvePoolAdd();
+      await new Promise(r => setTimeout(r, 10));
+    });
+
+    await waitFor(() => expect(result.current.isPoolAddInFlight(7)).toBe(false));
+  });
+});
 
 describe('useSetBuilder addExplorerNode', () => {
   beforeEach(async () => {

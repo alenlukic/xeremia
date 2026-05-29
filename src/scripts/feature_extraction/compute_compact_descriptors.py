@@ -27,7 +27,7 @@ import numpy as np  # noqa: E402
 from src.db import database  # noqa: E402
 from src.models.track import Track  # noqa: E402
 from src.models.track_descriptor import TrackDescriptor  # noqa: E402
-from src.config import NUM_CORES, PROCESSED_MUSIC_DIR  # noqa: E402
+from src.config import PROCESSED_MUSIC_DIR  # noqa: E402
 from src.utils.file_operations import AUDIO_TYPES  # noqa: E402
 from src.errors import handle  # noqa: E402
 from src.feature_extraction.compact_descriptor import CompactDescriptor  # noqa: E402
@@ -110,7 +110,7 @@ def run(track_ids):
         if num_tracks == 0:
             return
 
-        chunks = np.array_split(tracks_to_process, min(NUM_CORES, num_tracks))
+        chunks = np.array_split(tracks_to_process, min(4, num_tracks))
         workers = []
         aggregators = []
 

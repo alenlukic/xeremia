@@ -97,6 +97,14 @@ class BpmBinEntry(BaseModel):
     count: int
 
 
+class TransitionScoreCacheStats(BaseModel):
+    used: int
+    capacity: int
+    hits: int
+    misses: int
+    hit_rate: float
+
+
 class CacheStatsResponse(BaseModel):
     used: int
     capacity: int
@@ -111,6 +119,7 @@ class CacheStatsResponse(BaseModel):
     bpm_distribution: List[BpmBinEntry]
     recent_entries: List[CacheEventEntry]
     recent_exits: List[CacheExitEntry]
+    transition_score_cache: Optional[TransitionScoreCacheStats] = None
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import type { TracklistEntry, SearchSuggestion } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
@@ -47,6 +48,7 @@ function NoteInput({ trackId, initialNote, onSave }: {
 }
 
 export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onAddTrack }: Props) {
+  const { setNodeRef: setTracklistDropRef, isOver: isTracklistOver } = useDroppable({ id: 'drop-tracklist' });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
   const [showSearch, setShowSearch] = useState(false);
@@ -73,7 +75,7 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
   }, [onAddTrack]);
 
   return (
-    <div className="set-tracklist">
+    <div ref={setTracklistDropRef} className={`set-tracklist${isTracklistOver ? ' drop-zone--active' : ''}`}>
       <div className="set-tracklist-header">
         <h3 className="set-section-title">Tracklist ({tracklist.length})</h3>
         <div className="set-tracklist-search-wrapper">

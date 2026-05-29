@@ -50,6 +50,8 @@ class CosineCache:
         self._warmup_cancel: Optional[threading.Event] = None
         self._warmup_track_id: Optional[int] = None
 
+        self._on_warmup_complete = None
+
     @staticmethod
     def _key(id1: int, id2: int) -> Tuple[int, int]:
         return (min(id1, id2), max(id1, id2))
@@ -404,7 +406,95 @@ class CosineCache:
                 "BFS cache warmup completed for track %s, cache size: %d",
                 track_id, self.size(),
             )
+
+            if not cancel.is_set() and self._on_warmup_complete is not None:
+                try:
+                    self._on_warmup_complete(track_id)
+                except Exception:
+                    logger.debug(
+                        "on_warmup_complete callback failed for track %s",
+                        track_id,
+                        exc_info=True,
+                    )
         except Exception:
             logger.exception("Error during BFS warm-up for track %s", track_id)
         finally:
             session.close()
+
+
+_TRANSITION_MAX_ENTRIES = 100_000
+
+
+class TransitionScoreCache:
+    """Thread-safe cache for full transition scores keyed by (source, candidate).
+
+    Unlike ``CosineCache``, keys are directional: ``(source_id, candidate_id)``
+    because transition scores depend on the source track context.
+    """
+
+    def __init__(self, max_entries: int = _TRANSITION_MAX_ENTRIES):
+        self._max_entries = max_entries
+        self._lock = threading.Lock()
+        self._store: OrderedDict[Tuple[int, int], float] = OrderedDict()
+        self._hits = 0
+        self._misses = 0
+
+    def get(self, source_id: int, candidate_id: int) -> Optional[float]:
+        key = (source_id, candidate_id)
+        with self._lock:
+            if key in self._store:
+                self._store.move_to_end(key)
+                self._hits += 1
+                return self._store[key]
+            self._misses += 1
+        return None
+
+    def put(self, source_id: int, candidate_id: int, score: float) -> None:
+        key = (source_id, candidate_id)
+        with self._lock:
+            if key in self._store:
+                self._store.move_to_end(key)
+                self._store[key] = score
+            else:
+                self._store[key] = score
+                if len(self._store) > self._max_entries:
+                    self._store.popitem(last=False)
+
+    def invalidate_source(self, source_id: int) -> int:
+        """Remove all cached scores where *source_id* is the source track.
+
+        Returns the number of entries removed.
+        """
+        with self._lock:
+            keys_to_remove = [k for k in self._store if k[0] == source_id]
+            for k in keys_to_remove:
+                del self._store[k]
+            return len(keys_to_remove)
+
+    def size(self) -> int:
+        with self._lock:
+            return len(self._store)
+
+    def get_stats(self) -> Dict:
+        with self._lock:
+            used = len(self._store)
+            capacity = self._max_entries
+            hits = self._hits
+            misses = self._misses
+
+        total = hits + misses
+        hit_rate = hits / total if total > 0 else 0.0
+
+        return {
+            "used": used,
+            "capacity": capacity,
+            "hits": hits,
+            "misses": misses,
+            "hit_rate": round(hit_rate, 6),
+        }
+
+    def clear(self) -> None:
+        with self._lock:
+            self._store.clear()
+            self._hits = 0
+            self._misses = 0

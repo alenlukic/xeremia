@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, type RenderOptions } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { DndContext } from '@dnd-kit/core';
+import type { ReactElement } from 'react';
 import { MatchesPanel } from './MatchesPanel';
 import type { TransitionMatch } from '../types';
+
+function renderWithDnd(ui: ReactElement, options?: RenderOptions) {
+  return render(<DndContext>{ui}</DndContext>, options);
+}
 
 class ResizeObserverMock {
   observe = vi.fn();
@@ -39,7 +45,7 @@ const SCORE_HEADERS = [
   'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
 ];
 
-const ALL_HEADERS = ['', 'Track', ...SCORE_HEADERS, 'DETAILS'];
+const ALL_HEADERS = ['', '', 'Track', ...SCORE_HEADERS, 'DETAILS'];
 
 const selectedTrack = {
   id: 1, title: 'On Deck', artist_names: ['A'],
@@ -49,7 +55,7 @@ const selectedTrack = {
 describe('MatchesPanel', () => {
   describe('column headers', () => {
     it('renders all column headers regardless of onAddToSet', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -61,7 +67,7 @@ describe('MatchesPanel', () => {
     });
 
     it('renders same column headers when onAddToSet is provided', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -74,7 +80,7 @@ describe('MatchesPanel', () => {
     });
 
     it('includes Track, SCORE, and score sub-columns', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -90,7 +96,7 @@ describe('MatchesPanel', () => {
 
   describe('default column sizing', () => {
     it('score columns render at expected defaults (70px SCORE, 60px for most, 73px for energy/instruments)', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -99,21 +105,22 @@ describe('MatchesPanel', () => {
       );
       const headers = screen.getAllByRole('columnheader');
       const widths = headers.map(h => (h as HTMLElement).style.width);
-      expect(widths[0]).toBe('74px');   // add_to_set
-      expect(widths[2]).toBe('70px');   // SCORE
-      expect(widths[3]).toBe('60px');   // Spectral
-      expect(widths[4]).toBe('60px');   // Key
-      expect(widths[5]).toBe('60px');   // BPM
-      expect(widths[6]).toBe('60px');   // Genre
-      expect(widths[7]).toBe('60px');   // Recency
-      expect(widths[8]).toBe('73px');   // Energy (MIK)
-      expect(widths[9]).toBe('60px');   // Mood
-      expect(widths[10]).toBe('73px');  // Instruments
-      expect(widths[11]).toBe('60px');  // Vocals
+      expect(widths[0]).toBe('24px');   // drag handle
+      expect(widths[1]).toBe('74px');   // add_to_set
+      expect(widths[3]).toBe('70px');   // SCORE
+      expect(widths[4]).toBe('60px');   // Spectral
+      expect(widths[5]).toBe('60px');   // Key
+      expect(widths[6]).toBe('60px');   // BPM
+      expect(widths[7]).toBe('60px');   // Genre
+      expect(widths[8]).toBe('60px');   // Recency
+      expect(widths[9]).toBe('73px');   // Energy (MIK)
+      expect(widths[10]).toBe('60px');  // Mood
+      expect(widths[11]).toBe('73px');  // Instruments
+      expect(widths[12]).toBe('60px');  // Vocals
     });
 
     it('track column renders at 484px', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -121,11 +128,11 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect((headers[1] as HTMLElement).style.width).toBe('484px');
+      expect((headers[2] as HTMLElement).style.width).toBe('484px');
     });
 
-    it('add_to_set column is 50px and details column is 70px', () => {
-      render(
+    it('add_to_set column is 74px and details column is 70px', () => {
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -134,17 +141,17 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader');
-      expect((headers[0] as HTMLElement).style.width).toBe('74px');   // add_to_set
-      expect((headers[1] as HTMLElement).style.width).toBe('484px');  // Track
-      expect((headers[8] as HTMLElement).style.width).toBe('73px');   // Energy (MIK)
-      expect((headers[10] as HTMLElement).style.width).toBe('73px');  // Instruments
-      expect((headers[12] as HTMLElement).style.width).toBe('70px');  // DETAILS
+      expect((headers[1] as HTMLElement).style.width).toBe('74px');   // add_to_set
+      expect((headers[2] as HTMLElement).style.width).toBe('484px');  // Track
+      expect((headers[9] as HTMLElement).style.width).toBe('73px');   // Energy (MIK)
+      expect((headers[11] as HTMLElement).style.width).toBe('73px');  // Instruments
+      expect((headers[13] as HTMLElement).style.width).toBe('70px');  // DETAILS
     });
   });
 
   describe('resize and reorder chrome', () => {
     it('renders a resize handle on Track and score headers', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -161,7 +168,7 @@ describe('MatchesPanel', () => {
     });
 
     it('renders draggable header content on all headers', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -169,13 +176,13 @@ describe('MatchesPanel', () => {
         />
       );
       const draggables = document.querySelectorAll('.th-content[draggable="true"]');
-      expect(draggables.length).toBe(ALL_HEADERS.length);
+      expect(draggables.length).toBe(ALL_HEADERS.length - 1);
     });
   });
 
   describe('score formatting', () => {
     it('displays factor scores on 0-100 integer scale', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ overall_score: 85, similarity_score: 0.8 })]}
@@ -196,7 +203,7 @@ describe('MatchesPanel', () => {
         makeMatch({ candidate_id: 2, bucket: 'same_key' }),
         makeMatch({ candidate_id: 3, bucket: 'higher_key' }),
       ];
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={matches}
@@ -215,7 +222,7 @@ describe('MatchesPanel', () => {
         makeMatch({ candidate_id: 2, bucket: 'higher_key' }),
         makeMatch({ candidate_id: 3, bucket: 'higher_key' }),
       ];
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={matches}
@@ -231,7 +238,7 @@ describe('MatchesPanel', () => {
 
   describe('loading and empty states', () => {
     it('shows loading message when loading with no data', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[]}
@@ -242,7 +249,7 @@ describe('MatchesPanel', () => {
     });
 
     it('shows empty message when no matches in bucket', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[]}
@@ -253,7 +260,7 @@ describe('MatchesPanel', () => {
     });
 
     it('shows placeholder when no track selected', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={null}
           matches={[]}
@@ -264,7 +271,7 @@ describe('MatchesPanel', () => {
     });
 
     it('dims rows during background reload', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -278,7 +285,7 @@ describe('MatchesPanel', () => {
 
   describe('match detail affordance', () => {
     it('renders a visible clickable track title for each match row', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ title: 'Deep Blue' }), makeMatch({ candidate_id: 2, title: 'Red Sky' })]}
@@ -294,7 +301,7 @@ describe('MatchesPanel', () => {
     it('calls onViewDetail when detail icon button is clicked', async () => {
       const onViewDetail = vi.fn();
       const match = makeMatch({ title: 'Deep Blue' });
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[match]}
@@ -309,7 +316,7 @@ describe('MatchesPanel', () => {
     });
 
     it('has hover title and focus-accessible aria-label on each track link', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ title: 'Deep Blue' })]}
@@ -324,7 +331,7 @@ describe('MatchesPanel', () => {
     it('track title click calls onUseAsSource, not onViewDetail', async () => {
       const onViewDetail = vi.fn();
       const onUseAsSource = vi.fn();
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ candidate_id: 7, title: 'Deep Blue' })]}
@@ -341,7 +348,7 @@ describe('MatchesPanel', () => {
 
   describe('use as source action', () => {
     it('track title acts as use-as-source trigger for each row', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch(), makeMatch({ candidate_id: 2 })]}
@@ -354,7 +361,7 @@ describe('MatchesPanel', () => {
 
     it('calls onUseAsSource with candidate_id when track title clicked', async () => {
       const onUseAsSource = vi.fn();
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ candidate_id: 42 })]}
@@ -367,7 +374,7 @@ describe('MatchesPanel', () => {
     });
 
     it('does not render a Use as source button in the actions column', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -383,7 +390,7 @@ describe('MatchesPanel', () => {
 
   describe('add to set action', () => {
     it('renders Add to Set button when onAddToSet is provided', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -395,7 +402,7 @@ describe('MatchesPanel', () => {
     });
 
     it('does not render Add to set button when onAddToSet is not provided', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -408,7 +415,7 @@ describe('MatchesPanel', () => {
 
     it('calls onAddToSet with candidate_id when clicked', async () => {
       const onAddToSet = vi.fn();
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ candidate_id: 99 })]}
@@ -423,7 +430,7 @@ describe('MatchesPanel', () => {
 
   describe('dual add-to-pool/tracklist actions', () => {
     it('renders dual buttons when onAddToPool and onAddToTracklist are provided', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -438,7 +445,7 @@ describe('MatchesPanel', () => {
 
     it('calls onAddToPool with candidate_id when clicked', async () => {
       const onAddToPool = vi.fn();
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ candidate_id: 42 })]}
@@ -453,7 +460,7 @@ describe('MatchesPanel', () => {
 
     it('calls onAddToTracklist with candidate_id when clicked', async () => {
       const onAddToTracklist = vi.fn();
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch({ candidate_id: 42 })]}
@@ -480,7 +487,7 @@ describe('MatchesPanel', () => {
     });
 
     it('uses default config when localStorage is empty', () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -500,7 +507,7 @@ describe('MatchesPanel', () => {
           'mood_continuity_score', 'instrument_similarity_score', 'vocal_clash_score', 'details'],
         columnVisibility: { similarity_score: false },
       }));
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -512,7 +519,7 @@ describe('MatchesPanel', () => {
     });
 
     it('saves column sizing to localStorage when changed', async () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -527,7 +534,7 @@ describe('MatchesPanel', () => {
 
     it('saves column visibility to localStorage when toggled', async () => {
       const user = userEvent.setup();
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -554,7 +561,7 @@ describe('MatchesPanel', () => {
         columnOrder: swappedOrder,
         columnVisibility: {},
       }));
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -562,7 +569,7 @@ describe('MatchesPanel', () => {
         />
       );
       const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
-      expect(headers).toEqual(['', 'Track', 'SCORE', 'BPM', 'Key', 'Spectral',
+      expect(headers).toEqual(['', '', 'Track', 'SCORE', 'BPM', 'Key', 'Spectral',
         'Genre', 'Recency', 'Energy (MIK)', 'Mood', 'Instruments', 'Vocals', 'DETAILS']);
     });
 
@@ -572,7 +579,7 @@ describe('MatchesPanel', () => {
         columnOrder: [],
         columnVisibility: {},
       }));
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -586,7 +593,7 @@ describe('MatchesPanel', () => {
 
     it('falls back to defaults when localStorage contains invalid JSON', () => {
       localStorage.setItem(COLUMN_CONFIG_KEY, '{not valid json!!!');
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -600,7 +607,7 @@ describe('MatchesPanel', () => {
 
   describe('column configurator', () => {
     it('opens popover with score column checkboxes', async () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -614,7 +621,7 @@ describe('MatchesPanel', () => {
     });
 
     it('does not list Track or non-score columns as configurable', async () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -628,7 +635,7 @@ describe('MatchesPanel', () => {
     });
 
     it('hides a score column when its checkbox is unchecked', async () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}
@@ -646,7 +653,7 @@ describe('MatchesPanel', () => {
     });
 
     it('re-shows a hidden column when its checkbox is re-checked', async () => {
-      render(
+      renderWithDnd(
         <MatchesPanel
           selectedTrack={selectedTrack}
           matches={[makeMatch()]}

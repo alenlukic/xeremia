@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import type {
   Track,
   SearchSuggestion,
@@ -7,6 +8,7 @@ import type {
   MatchDetailTrackInfo,
 } from '../types';
 import type { TraitMap } from '../hooks/useCollectionCache';
+import type { DragPayload } from '../dnd';
 import { fetchMatchDetail } from '../api/http';
 import { formatFloat, formatScore, formatOverallScore, displayGenre } from '../utils';
 
@@ -121,6 +123,16 @@ function capitalizeFirst(s: string): string {
 }
 
 export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSource, onAddToSet, onAddToPool, onAddToTracklist }: Props) {
+  const dragPayload: DragPayload = {
+    trackId: match.candidate_id,
+    title: match.title,
+    source: 'matches',
+  };
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: `detail-track-${match.candidate_id}`,
+    data: dragPayload,
+  });
+
   const [{ loading, detail, error }, dispatch] = useReducer(detailReducer, {
     loading: true,
     detail: null,
@@ -218,7 +230,13 @@ export function MatchDetail({ sourceTrack, match, onBack, traitMap, onUseAsSourc
           Match Detail —{' '}
           <span className="mono">{formatOverallScore(detail.overall_score)}</span>
         </h2>
-        <div className="detail-tracks-summary">
+        <div
+          ref={setDragRef}
+          className={`detail-tracks-summary${isDragging ? ' row-dragging' : ''}`}
+          {...listeners}
+          {...attributes}
+        >
+          <span className="drag-handle" aria-hidden="true">⠿</span>
           <span>{detail.on_deck.title}</span>
           <span className="text-muted">→</span>
           <span>{detail.candidate.title}</span>

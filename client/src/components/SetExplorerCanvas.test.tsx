@@ -901,7 +901,6 @@ describe('SetExplorerCanvas', () => {
     const BUCKET_GAP = 8;
 
     function parentX(col: number) { return col * SLOT_W + (SLOT_W - NODE_W) / 2; }
-    function parentCX(col: number) { return parentX(col) + NODE_W / 2; }
     function parentBottom(level: number) { return TOP_PAD + level * (NODE_H + V_GAP) + NODE_H; }
     function nodeSlotX25(nodeX: number, laneIndex: number) {
       const bucket = Math.floor(laneIndex / EDGE_SLOTS);

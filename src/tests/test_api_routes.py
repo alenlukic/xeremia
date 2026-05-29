@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.harmonic_mixing.cosine_cache import CosineCache
+from src.harmonic_mixing.cosine_cache import CosineCache, TransitionScoreCache
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +38,7 @@ def weight_patches():
 def mock_finder():
     finder = MagicMock()
     finder.cosine_cache = None
+    finder.transition_score_cache = None
     finder._sync_effective_weights = MagicMock()
     return finder
 
@@ -60,6 +61,7 @@ class TestCacheStatsEndpoint:
     def test_returns_200_with_no_cache(self):
         finder = MagicMock()
         finder.cosine_cache = None
+        finder.transition_score_cache = None
 
         with patch("src.api.routes._get_match_finder", return_value=finder):
             from src.api.app import create_app
@@ -75,6 +77,7 @@ class TestCacheStatsEndpoint:
         assert data["bpm_distribution"] == []
         assert data["recent_entries"] == []
         assert data["recent_exits"] == []
+        assert data["transition_score_cache"] is None
 
     def test_returns_200_with_populated_cache(self):
         cache = CosineCache(max_entries=100)
@@ -85,6 +88,7 @@ class TestCacheStatsEndpoint:
 
         finder = MagicMock()
         finder.cosine_cache = cache
+        finder.transition_score_cache = None
 
         with patch("src.api.routes._get_match_finder", return_value=finder), \
              patch("src.api.routes._build_cache_distributions", return_value=([], [])):
@@ -107,6 +111,7 @@ class TestCacheStatsEndpoint:
 
         finder = MagicMock()
         finder.cosine_cache = cache
+        finder.transition_score_cache = None
 
         with patch("src.api.routes._get_match_finder", return_value=finder), \
              patch("src.api.routes._build_cache_distributions", return_value=([], [])):
@@ -123,6 +128,33 @@ class TestCacheStatsEndpoint:
             "recent_entries", "recent_exits",
         }
         assert required_keys.issubset(data.keys())
+
+    def test_transition_cache_stats_exposed(self):
+        """Transition-score cache stats appear in the response when the
+        cache is present and has recorded hits and misses."""
+        ts_cache = TransitionScoreCache(max_entries=50)
+        ts_cache.put(10, 20, 85.0)
+        ts_cache.get(10, 20)  # hit
+        ts_cache.get(10, 99)  # miss
+
+        finder = MagicMock()
+        finder.cosine_cache = None
+        finder.transition_score_cache = ts_cache
+
+        with patch("src.api.routes._get_match_finder", return_value=finder):
+            from src.api.app import create_app
+            with TestClient(create_app()) as tc:
+                resp = tc.get("/api/admin/cache-stats")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        ts = data["transition_score_cache"]
+        assert ts is not None
+        assert ts["used"] == 1
+        assert ts["capacity"] == 50
+        assert ts["hits"] == 1
+        assert ts["misses"] == 1
+        assert ts["hit_rate"] == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -309,3 +341,25 @@ class TestPutWeightsEndpoint:
     def test_empty_body_returns_422(self, client):
         resp = client.put("/api/weights", json={})
         assert resp.status_code == 422
+
+    def test_weight_update_clears_transition_score_cache(self, weight_patches):
+        """PUT /api/weights must clear the transition-score cache so stale
+        scores computed under the old weights are not reused."""
+        ts_cache = TransitionScoreCache()
+        ts_cache.put(10, 20, 85.0)
+        ts_cache.put(30, 40, 72.0)
+        assert ts_cache.size() == 2
+
+        finder = MagicMock()
+        finder.cosine_cache = None
+        finder.transition_score_cache = ts_cache
+        finder._sync_effective_weights = MagicMock()
+
+        with patch("src.api.routes._get_match_finder", return_value=finder), \
+             patch("src.api.routes._clear_similarity_cache"):
+            from src.api.app import create_app
+            with TestClient(create_app()) as tc:
+                resp = tc.put("/api/weights", json={"weights": {"BPM": 50}})
+
+        assert resp.status_code == 200
+        assert ts_cache.size() == 0, "transition cache must be empty after weight update"
