@@ -15,19 +15,18 @@ from dotenv import load_dotenv
 LOG_FORMAT = "%(asctime)s %(levelname)s:%(message)s"
 
 
-def _dj_tools_root() -> Path:
-    # .../dj-tools/src/track_metadata/utils.py -> .../dj-tools
+def _xeremia_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-load_dotenv(_dj_tools_root() / ".env")
+load_dotenv(_xeremia_root() / ".env")
 
 
 def _configured_path(env_var: str, default: str) -> Path:
     raw = os.getenv(env_var, default)
     path = Path(raw).expanduser()
     if not path.is_absolute():
-        path = _dj_tools_root() / path
+        path = _xeremia_root() / path
     return path
 
 

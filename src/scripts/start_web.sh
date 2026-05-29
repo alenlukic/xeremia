@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Start all services for the dj-tools web client:
+# Start all services for the Xeremia web client:
 #   Elasticsearch (Docker), API (FastAPI), Client (Vite)
 #
 # Usage:
@@ -25,7 +25,7 @@ if [[ "${1:-}" == "--reindex" ]]; then
   REINDEX=true
 fi
 
-ES_CONTAINER="dj-tools-es"
+ES_CONTAINER="xeremia-es"
 ES_IMAGE="docker.elastic.co/elasticsearch/elasticsearch:8.17.0"
 ES_URL="http://127.0.0.1:9200"
 API_PORT=8000

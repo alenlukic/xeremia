@@ -7,7 +7,7 @@ from src.api.routes import router
 
 
 def create_app() -> FastAPI:
-    application = FastAPI(title="dj-tools API", version="0.1.0")
+    application = FastAPI(title="Xeremia API", version="0.1.0")
 
     application.add_middleware(
         CORSMiddleware,

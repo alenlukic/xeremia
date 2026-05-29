@@ -92,7 +92,7 @@ export function useSetBuilder() {
 
   useEffect(() => {
     refreshSets().then(() => {
-      const stored = localStorage.getItem('dj-tools-active-set-id');
+      const stored = localStorage.getItem('xeremia-active-set-id');
       if (stored) {
         const id = parseInt(stored, 10);
         if (!isNaN(id)) hydrateSet(id);
@@ -102,9 +102,9 @@ export function useSetBuilder() {
 
   useEffect(() => {
     if (activeSetId !== null) {
-      localStorage.setItem('dj-tools-active-set-id', String(activeSetId));
+      localStorage.setItem('xeremia-active-set-id', String(activeSetId));
     } else {
-      localStorage.removeItem('dj-tools-active-set-id');
+      localStorage.removeItem('xeremia-active-set-id');
     }
   }, [activeSetId]);
 
