@@ -12,7 +12,7 @@ class ResizeObserverMock {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
-  localStorage.removeItem('dj-tools-matches-column-config');
+  localStorage.removeItem('xeremia-matches-column-config');
 });
 
 function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
@@ -467,7 +467,7 @@ describe('MatchesPanel', () => {
     });
   });
 
-  const COLUMN_CONFIG_KEY = 'dj-tools-matches-column-config';
+  const COLUMN_CONFIG_KEY = 'xeremia-matches-column-config';
 
   const CONFIGURABLE_LABELS = [
     'Score', 'Spectral', 'Key', 'BPM', 'Genre', 'Recency',

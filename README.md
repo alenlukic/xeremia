@@ -1,4 +1,4 @@
-# dj-tools
+# Xeremia
 
 ## Overview
 
@@ -18,8 +18,8 @@ A toolkit for DJs that manages a music collection database, runs a multi-source 
 ### Installation
 
 ```bash
-git clone https://github.com/alenlukic/dj-tools
-cd dj-tools
+git clone https://github.com/alenlukic/xeremia
+cd xeremia
 
 pip install -r requirements.txt
 # or install as a package:
@@ -275,7 +275,7 @@ If you prefer to start services individually:
 
 ```bash
 # 1. Elasticsearch
-docker run -d --name dj-tools-es -p 9200:9200 \
+docker run -d --name xeremia-es -p 9200:9200 \
   -e "discovery.type=single-node" \
   -e "xpack.security.enabled=false" \
   -e "xpack.security.enrollment.enabled=false" \

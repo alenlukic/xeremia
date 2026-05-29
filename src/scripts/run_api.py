@@ -1,4 +1,4 @@
-"""Start the dj-tools API server.
+"""Start the Xeremia API server.
 
 Run:
     python -m src.scripts.run_api

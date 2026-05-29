@@ -5,11 +5,11 @@ with open("requirements.txt") as f:
     requirements = [r.strip() for r in f.read().splitlines()]
 
 setup(
-    name="dj-tools",
+    name="xeremia",
     version="2.4.4",
     description="Tools for DJs: generate informative file/track titles (Camelot code, key, BPM) using ID3 metadata; "
     "display candidate transition matches using playing track Camelot code and BPM.",
-    url="https://github.com/alenlukic/dj-tools",
+    url="https://github.com/alenlukic/xeremia",
     author="Alen Lukic",
     classifiers=[
         "Development Status :: 3 - Alpha",

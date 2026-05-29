@@ -52,7 +52,7 @@ const CONFIGURABLE_MATCH_COLUMNS: { id: string; label: string }[] = [
   { id: 'vocal_clash_score', label: 'Vocals' },
 ];
 
-const COLUMN_CONFIG_KEY = 'dj-tools-matches-column-config';
+const COLUMN_CONFIG_KEY = 'xeremia-matches-column-config';
 const DEFAULT_COLUMN_ORDER: ColumnOrderState = ['add_to_set', 'track_title', ...SCORE_COLUMN_IDS, 'details'];
 const CONFIGURABLE_IDS = new Set(CONFIGURABLE_MATCH_COLUMNS.map(c => c.id));
 const ALL_COLUMN_IDS = new Set(DEFAULT_COLUMN_ORDER);

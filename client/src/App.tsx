@@ -19,7 +19,7 @@ type TabKey = 'matches' | 'browse' | 'admin' | 'set';
 
 const BROWSE_PAGE_SIZE = 250;
 
-const COL_VIS_STORAGE_KEY = 'dj-tools-browse-col-visibility';
+const COL_VIS_STORAGE_KEY = 'xeremia-browse-col-visibility';
 
 const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'camelot_code', label: 'Camelot' },

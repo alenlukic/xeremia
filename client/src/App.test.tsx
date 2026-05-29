@@ -705,7 +705,7 @@ describe('Transition chaining', () => {
 });
 
 describe('Browse column visibility localStorage round-trip', () => {
-  const COL_VIS_KEY = 'dj-tools-browse-col-visibility';
+  const COL_VIS_KEY = 'xeremia-browse-col-visibility';
 
   beforeEach(() => {
     localStorage.removeItem(COL_VIS_KEY);
@@ -766,7 +766,7 @@ describe('Browse column visibility localStorage round-trip', () => {
 });
 
 describe('Browse column visibility – invalid localStorage values', () => {
-  const COL_VIS_KEY = 'dj-tools-browse-col-visibility';
+  const COL_VIS_KEY = 'xeremia-browse-col-visibility';
 
   beforeEach(() => {
     localStorage.removeItem(COL_VIS_KEY);

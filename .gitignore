@@ -144,16 +144,6 @@ models/traits/
 
 .test_data/
 
-.harness/runs/
-.harness/state/
-.harness/change_summaries/
-.harness/pr_descriptions/
-.harness/docs/prompts/
-
-# Harness bootstrap artifacts (template-only)
-.agents/
-.codex/
-
 # Node / Vite
 node_modules/
 client/dist/

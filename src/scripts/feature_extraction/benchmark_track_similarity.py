@@ -11,7 +11,7 @@ Usage:
     python -m src.scripts.feature_extraction.benchmark_track_similarity --limit 500
 
     # Write output to a specific directory:
-    python -m src.scripts.feature_extraction.benchmark_track_similarity --fixture --output-dir .harness/runs/xxx
+    python -m src.scripts.feature_extraction.benchmark_track_similarity --fixture --output-dir benchmark-results/xxx
 """
 
 import argparse
