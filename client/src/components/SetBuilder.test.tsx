@@ -440,7 +440,7 @@ describe('SetBuilder', () => {
           track: { id: 42, title: 'Drag Me', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
         }],
         explorer_nodes: [{
-          id: 1, set_id: 1, node_id: 'n1', track_id: 99, level: 0,
+          id: 1, set_id: 1, node_id: 'n1', track_id: 99, level: 0, col_index: 0,
           track: { id: 99, title: 'Root Node', artist_names: [], bpm: 130, key: 'D', camelot_code: '10A', genre: null, label: null, energy: null },
         }],
         explorer_edges: [],
@@ -496,7 +496,7 @@ describe('SetBuilder', () => {
     it('shows per-level +Add Track button on explorer', async () => {
       const hydrated = makeHydratedSet({
         explorer_nodes: [{
-          id: 1, set_id: 1, node_id: 'n1', track_id: 10, level: 0,
+          id: 1, set_id: 1, node_id: 'n1', track_id: 10, level: 0, col_index: 0,
           track: { id: 10, title: 'Root', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null },
         }],
         explorer_edges: [],
@@ -519,9 +519,9 @@ describe('SetBuilder', () => {
     it('shows per-child resolution controls in delete modal', async () => {
       const hydrated = makeHydratedSet({
         explorer_nodes: [
-          { id: 1, set_id: 1, node_id: 'parent', track_id: 1, level: 0, track: { id: 1, title: 'Parent', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
-          { id: 2, set_id: 1, node_id: 'mid', track_id: 2, level: 1, track: { id: 2, title: 'Middle', artist_names: [], bpm: 130, key: 'D', camelot_code: '10A', genre: null, label: null, energy: null } },
-          { id: 3, set_id: 1, node_id: 'child', track_id: 3, level: 2, track: { id: 3, title: 'Child', artist_names: [], bpm: 125, key: 'A', camelot_code: '11B', genre: null, label: null, energy: null } },
+          { id: 1, set_id: 1, node_id: 'parent', track_id: 1, level: 0, col_index: 0, track: { id: 1, title: 'Parent', artist_names: [], bpm: 128, key: 'C', camelot_code: '8B', genre: null, label: null, energy: null } },
+          { id: 2, set_id: 1, node_id: 'mid', track_id: 2, level: 1, col_index: 0, track: { id: 2, title: 'Middle', artist_names: [], bpm: 130, key: 'D', camelot_code: '10A', genre: null, label: null, energy: null } },
+          { id: 3, set_id: 1, node_id: 'child', track_id: 3, level: 2, col_index: 0, track: { id: 3, title: 'Child', artist_names: [], bpm: 125, key: 'A', camelot_code: '11B', genre: null, label: null, energy: null } },
         ],
         explorer_edges: [
           { id: 1, set_id: 1, parent_node_id: 'parent', child_node_id: 'mid' },

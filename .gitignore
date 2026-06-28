@@ -93,7 +93,6 @@ venv.bak/
 .vscode/
 
 # Ruff
-ruff.toml
 *.ruff_cache/
 
 # Pytest
@@ -135,7 +134,6 @@ config/*
 *.code-workspace
 
 .cursor/
-.local/
 
 # DB dumps
 .backup/
@@ -151,3 +149,4 @@ client/node_modules/
 *.tsbuildinfo
 
 processing/
+.pancreator/

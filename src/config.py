@@ -22,7 +22,7 @@ def _invalidate_stale_numba_cache() -> None:
     import site
 
     try:
-        import numpy as np  # noqa: delayed — must not trigger at module scope
+        import numpy as np  # delayed — must not trigger at module scope
     except ImportError:
         return
 
@@ -51,7 +51,7 @@ def _invalidate_stale_numba_cache() -> None:
 
 _invalidate_stale_numba_cache()
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(_REPO_ROOT / ".env")

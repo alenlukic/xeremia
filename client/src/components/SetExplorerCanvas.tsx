@@ -814,16 +814,6 @@ export function SetExplorerCanvas({
     return map;
   }, [allFlat]);
 
-  const parentChildMap = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const e of edges) {
-      const list = map.get(e.parent_node_id) ?? [];
-      list.push(e.child_node_id);
-      map.set(e.parent_node_id, list);
-    }
-    return map;
-  }, [edges]);
-
   return (
     <div className="set-explorer">
       <div className="set-explorer-controls">
