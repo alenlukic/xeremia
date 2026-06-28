@@ -151,3 +151,4 @@ client/node_modules/
 *.tsbuildinfo
 
 processing/
+.pancreator/
