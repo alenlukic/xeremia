@@ -2,7 +2,7 @@
 
 Queries tracks present in ``track`` but missing from ``track_trait`` (filtered
 to audio extensions), then recomputes traits single-threaded with full
-traceback logging to the RCA run directory.  Safe to re-run — already-computed
+traceback logging to ``logs/trait_failure_retry.txt``.  Safe to re-run — already-computed
 tracks are skipped by the NOT-IN query.
 
 Usage:
@@ -25,10 +25,7 @@ from src.utils.file_operations import AUDIO_TYPES  # noqa: E402
 from src.feature_extraction.trait_extractor import TraitExtractor  # noqa: E402
 from src.scripts.feature_extraction.compute_track_traits import _resolve_audio_path  # noqa: E402
 
-LOG_FILE = (
-    Path(__file__).resolve().parents[3]
-    / ".local/cursor-meta/runs/2026-03-31_trait_failure_rca/failure_log.txt"
-)
+LOG_FILE = Path(__file__).resolve().parents[3] / "logs" / "trait_failure_retry.txt"
 
 _PROGRESS_INTERVAL = 10
 

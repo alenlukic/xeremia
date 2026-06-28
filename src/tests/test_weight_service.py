@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.harmonic_mixing.config import MATCH_WEIGHTS, MatchFactors
+from src.harmonic_mixing.config import MatchFactors
 
 
 def _make_service(**overrides):
@@ -253,7 +253,7 @@ class TestEnsureTableBehavior:
              ):
             from src.harmonic_mixing.weight_service import WeightService
 
-            svc = WeightService()
+            WeightService()
             mock_et.assert_called_once()
 
     def test_load_succeeds_when_ensure_table_raises(self):
