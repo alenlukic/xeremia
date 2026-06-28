@@ -54,11 +54,22 @@ function makeTrack(id: number, title = `Track ${id}`): Track {
 function makeExplorerNode(
   overrides: Partial<ExplorerNode> & { node_id: string; track_id: number; level: number },
 ): ExplorerNode {
+  const {
+    node_id,
+    track_id,
+    level,
+    col_index = 0,
+    ...rest
+  } = overrides;
   return {
     id: 1,
     set_id: 1,
-    track: makeTrack(overrides.track_id),
-    ...overrides,
+    node_id,
+    track_id,
+    level,
+    col_index,
+    track: makeTrack(track_id),
+    ...rest,
   };
 }
 

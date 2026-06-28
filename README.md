@@ -54,6 +54,9 @@ Edit `.env` with your data paths and database credentials. See [Environment vari
 Use a dedicated virtual environment — do not install into the system Python.
 
 ```bash
+# Verify interpreter first. Must be 3.9, 3.10, or 3.11.
+python --version
+
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
@@ -63,11 +66,15 @@ pip install --no-build-isolation -r requirements.txt
 pip install -e .
 ```
 
-If you use [pyenv](https://github.com/pyenv/pyenv), install and select a 3.9–3.11 interpreter before creating the venv:
+If `python --version` is outside 3.9–3.11 (for example 3.8), select a supported interpreter first.
+With [pyenv](https://github.com/pyenv/pyenv):
 
 ```bash
 pyenv install 3.11    # skip if you already have a suitable 3.9–3.11 version
 pyenv local 3.11      # optional; .python-version is gitignored
+
+# then re-run venv creation with the selected interpreter
+python -m venv .venv
 ```
 
 #### Python version notes
@@ -150,7 +157,7 @@ python -m src.scripts.index_tracks
 python -m src.scripts.run_api
 
 # 4. Client dev server
-cd client && npm install && npm run dev
+cd client && npm ci && npm run dev
 ```
 
 The Vite dev server proxies `/api/*` requests to the API.
