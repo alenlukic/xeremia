@@ -1,7 +1,7 @@
 """Tests for transition match scoring, factor computation, and self-exclusion.
 
 Run with:
-    python -m pytest src/tests/test_transition_match.py -v
+    python -m pytest tests/test_transition_match.py -v
 """
 
 from collections import defaultdict

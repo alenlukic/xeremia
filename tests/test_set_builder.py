@@ -5,7 +5,7 @@ Covers:
     POST /api/sets/export-m3u8
 
 Run with:
-    python -m pytest src/tests/test_set_builder.py -v
+    python -m pytest tests/test_set_builder.py -v
 """
 
 from unittest.mock import MagicMock, patch

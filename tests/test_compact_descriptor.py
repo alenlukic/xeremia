@@ -1,7 +1,7 @@
 """Unit tests for src/lib/feature_extraction/compact_descriptor.py
 
 Run with:
-    python -m pytest src/tests/test_compact_descriptor.py -v
+    python -m pytest tests/test_compact_descriptor.py -v
 """
 
 import numpy as np
@@ -43,6 +43,7 @@ def _pink_noise(duration_s=5.0, sr=SAMPLE_RATE, rng_seed=42):
 # _extract_zone_vector
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestExtractZoneVector:
     def test_output_shape_and_dtype(self):
         y, sr = _sine_wave()
@@ -181,6 +182,7 @@ class TestCosineSimilarity:
 # CompactDescriptor (end-to-end with synthetic audio)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 class TestCompactDescriptor:
     def test_compute_sets_global_vector(self, tmp_path):
         """CompactDescriptor.compute() populates global_vector when given a valid path."""

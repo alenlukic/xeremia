@@ -109,6 +109,51 @@ The `pg_trgm` extension must be installable by your database user (superuser on 
 
 ---
 
+## Testing
+
+Python tests live in top-level `tests/`. Root `pytest.ini` and `conftest.py` configure collection and runtime safety hooks.
+
+### Fast/default Python suite
+
+For day-to-day local validation (unit tests only, under 60 seconds):
+
+```bash
+python -m pytest tests -m "not integration and not slow"
+```
+
+### Full Python suite
+
+Run every Python test, including integration and slow cases:
+
+```bash
+python -m pytest tests
+```
+
+### Subset or single file
+
+```bash
+python -m pytest tests/test_transition_match.py -v
+python -m pytest tests/track_metadata/test_id3.py -v
+```
+
+### Secondary suite (integration and slow)
+
+Model-backed ONNX tests and other heavy cases are marked `integration` or `slow`:
+
+```bash
+python -m pytest tests -m "integration or slow"
+```
+
+Integration tests require downloaded ONNX models in `models/traits/`.
+
+### Client tests
+
+```bash
+npm --prefix client test
+```
+
+---
+
 ## Web Client & API
 
 A browser-based alternative to the CLI assistant, backed by a minimal FastAPI layer.

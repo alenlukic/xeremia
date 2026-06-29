@@ -27,4 +27,4 @@ Xeremia is a Python toolkit for DJ library management: ingestion, feature extrac
 - Backend entry point: `src/api/app.py`.
 - Web startup helper: `src/scripts/start_web.sh`.
 - React client: `client/`.
-- Test configuration: `pytest.ini`, `conftest.py`, and client Vitest tests under `client/src/`.
+- Test configuration: `pytest.ini`, `conftest.py`, Python tests under `tests/`, and client Vitest tests under `client/src/`.

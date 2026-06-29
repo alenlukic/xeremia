@@ -1,7 +1,7 @@
 """Tests for src/feature_extraction/track_similarity.py
 
 Run:
-    python -m pytest src/tests/test_track_similarity.py -v
+    python -m pytest tests/test_track_similarity.py -v
 """
 
 import numpy as np

@@ -1,7 +1,7 @@
 """Tests for assistant service warm-cache debounce logic.
 
 Run with:
-    python -m pytest src/tests/test_assistant_service.py -v
+    python -m pytest tests/test_assistant_service.py -v
 """
 
 from unittest.mock import MagicMock, patch
