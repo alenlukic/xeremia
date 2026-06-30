@@ -6,13 +6,13 @@ Two test categories:
    pytest.mark.integration; skipped when models are not downloaded.
 
 Run all:
-    python -m pytest src/tests/test_trait_extractor.py -v
+    python -m pytest tests/test_trait_extractor.py -v
 
 Run integration tests only (requires models):
-    python -m pytest src/tests/test_trait_extractor.py -v -m integration
+    python -m pytest tests/test_trait_extractor.py -v -m integration
 
 Run unit tests only (no models needed):
-    python -m pytest src/tests/test_trait_extractor.py -v -m "not integration"
+    python -m pytest tests/test_trait_extractor.py -v -m "not integration"
 """
 
 import pathlib
@@ -43,8 +43,9 @@ from src.feature_extraction.trait_extractor import (
     filter_multilabel,
 )
 
-_TEST_DATA = pathlib.Path(__file__).parent.parent.parent / ".test_data"
-_MODELS_DIR = pathlib.Path(__file__).parent.parent.parent / "models" / "traits"
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_TEST_DATA = _REPO_ROOT / ".test_data"
+_MODELS_DIR = _REPO_ROOT / "models" / "traits"
 _BACKBONE = _MODELS_DIR / "discogs-effnet-bsdynamic-1.onnx"
 _MAEST = _MODELS_DIR / "discogs-maest-30s-pw-519l-2.onnx"
 
@@ -466,6 +467,7 @@ class TestDisplayFilters:
         assert GENRE_ALLOWED_FAMILIES == expected
 
 
+@pytest.mark.slow
 class TestComputeMelFromSignal:
     """_compute_mel_from_signal is IO-free and directly testable."""
 
@@ -509,6 +511,7 @@ class TestComputeMelFromSignal:
         assert mel.shape[1] >= 1
 
 
+@pytest.mark.slow
 class TestComputeMelSpectrogram:
     @pytest.mark.skipif(not _TEST_FILES, reason="No test data files found")
     def test_mel_shape(self):

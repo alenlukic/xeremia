@@ -1,7 +1,7 @@
 """Tests for cosine similarity precompute: model, compute helpers, and orchestration.
 
 Run:
-    python -m pytest src/tests/test_cosine_similarity.py -v
+    python -m pytest tests/test_cosine_similarity.py -v
 """
 
 from unittest.mock import MagicMock, patch

@@ -25,33 +25,41 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 def _invalidate_stale_numba_cache() -> None:
     """Remove cached numba gufunc artefacts when numpy changes version."""
-    import glob
     import pathlib
-    import site
 
     try:
         import numpy as np
     except ImportError:
         return
 
-    sp = site.getsitepackages()
-    if not sp:
-        return
-    site_pkgs = pathlib.Path(sp[0])
-    stamp_file = site_pkgs / ".numba_np_version"
+    repo_root = pathlib.Path(__file__).resolve().parent
+    cache_dir = repo_root / ".pytest_cache" / "numba"
+    stamp_file = cache_dir / ".numba_np_version"
 
     current = np.__version__
     if stamp_file.exists() and stamp_file.read_text().strip() == current:
         return
 
-    for ext in ("*.nbc", "*.nbi"):
-        for path in glob.glob(str(site_pkgs / "**" / ext), recursive=True):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+    # Only clear librosa/numba caches under the active environment's site-packages.
+    import site
+
+    sp = site.getsitepackages()
+    if not sp:
+        return
+    site_pkgs = pathlib.Path(sp[0])
+    for subdir in ("librosa", "numba"):
+        target = site_pkgs / subdir
+        if not target.is_dir():
+            continue
+        for ext in (".nbc", ".nbi"):
+            for path in target.rglob(f"*{ext}"):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
 
     try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
         stamp_file.write_text(current)
     except OSError:
         pass

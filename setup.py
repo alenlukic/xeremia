@@ -21,6 +21,6 @@ setup(
     ],
     keywords="dj harmonic mixing camelot code audio id3 beatport",
     install_requires=requirements,
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests", "tests.*"]),
     python_requires=">=3.9,<3.12",
 )

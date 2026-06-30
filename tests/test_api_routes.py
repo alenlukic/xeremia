@@ -6,7 +6,7 @@ Covers:
     PUT  /api/weights
 
 Run with:
-    python -m pytest src/tests/test_api_routes.py -v
+    python -m pytest tests/test_api_routes.py -v
 """
 
 from unittest.mock import MagicMock, patch

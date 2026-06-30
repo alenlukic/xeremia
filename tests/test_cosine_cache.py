@@ -1,7 +1,7 @@
 """Tests for src/harmonic_mixing/cosine_cache.py and cache integration.
 
 Run with:
-    python -m pytest src/tests/test_cosine_cache.py -v
+    python -m pytest tests/test_cosine_cache.py -v
 """
 
 import threading
@@ -63,6 +63,7 @@ class TestCosineCacheLRUEviction:
         # Newest entry should be present
         assert cache.get(999, 1999) == 0.99
 
+    @pytest.mark.slow
     def test_lru_eviction_at_500001(self):
         """Verify the default 500000-entry cap evicts the LRU entry."""
         max_entries = 500_000
@@ -266,6 +267,7 @@ class TestWarmFromDb:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestScheduleWarmup:
     def test_delayed_start(self):
         """Warm-up must not start immediately; it waits for the configured delay."""
@@ -701,6 +703,7 @@ class TestCacheAdminStats:
         assert len(stats["recent_entries"]) == 1
 
 
+@pytest.mark.slow
 class TestSimilarityScoreCacheIntegration:
     def test_cache_hit_skips_db(self):
         """When cache has a value, get_similarity_score must return it
@@ -766,8 +769,9 @@ class TestSimilarityScoreCacheIntegration:
             cand_md = {TrackDBCols.ID: 400, TrackDBCols.TITLE: "Track D"}
             match = TransitionMatch(cand_md, cur_md, CamelotPriority.SAME_KEY)
 
-            with patch.object(TransitionMatch, "_persist_similarity"):
-                result = match.get_similarity_score()
+            with patch.object(TransitionMatch, "_compute_similarity", return_value=0.7):
+                with patch.object(TransitionMatch, "_persist_similarity"):
+                    result = match.get_similarity_score()
             assert result == pytest.approx(0.7, abs=1e-6)
             assert cache.get(300, 400) == pytest.approx(0.7, abs=1e-6)
         finally:

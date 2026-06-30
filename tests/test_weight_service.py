@@ -1,7 +1,7 @@
 """Tests for src/harmonic_mixing/weight_service.py.
 
 Run with:
-    python -m pytest src/tests/test_weight_service.py -v
+    python -m pytest tests/test_weight_service.py -v
 """
 
 import json
