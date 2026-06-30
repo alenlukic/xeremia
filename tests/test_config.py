@@ -135,7 +135,11 @@ class TestConfigStructure:
     def test_track_metadata_keys(self):
         mod = _reload_config()
         assert set(mod.CONFIG["TRACK_METADATA"].keys()) == {
-            "DOWNLOAD_DIR", "PROCESSING_DIR", "AUGMENTED_DIR", "LOG_DIR",
+            "DOWNLOAD_DIR",
+            "PROCESSING_DIR",
+            "AUGMENTED_DIR",
+            "REMEDIATION_DIR",
+            "LOG_DIR",
         }
 
 

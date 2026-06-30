@@ -117,6 +117,7 @@ CONFIG = {
         "DOWNLOAD_DIR": _str("TRACK_METADATA_DOWNLOAD_DIR"),
         "PROCESSING_DIR": _str("TRACK_METADATA_PROCESSING_DIR", "processing"),
         "AUGMENTED_DIR": _str("TRACK_METADATA_AUGMENTED_DIR", "augmented"),
+        "REMEDIATION_DIR": _str("TRACK_METADATA_REMEDIATION_DIR", "Remediation Tracks"),
         "LOG_DIR": _str("TRACK_METADATA_LOG_DIR", "logs"),
     },
     "LOG_LOCATION": _str("LOG_LOCATION", "logs/logs.txt"),
