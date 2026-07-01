@@ -18,6 +18,10 @@ ipython==8.12.3
 python-dotenv==1.0.1
 onnxruntime>=1.17.0
 madmom==0.16.1
+# essentia declares numpy>=1.25 but its cp39 osx-arm64 wheel runs fine
+# against the pinned numpy==1.23.5 above; pip will emit a resolver warning.
+# Only essentia.standard is used (MonoLoader/RhythmExtractor2013/KeyExtractor).
+essentia
 fastapi==0.115.12
 uvicorn==0.34.2
 elasticsearch>=8.0.0,<9.0.0
