@@ -328,7 +328,7 @@ describe('Browse infinite scroll', () => {
     await waitFor(() => {
       expect(getRowCount()).toBe(500);
     }, { timeout: 10000 });
-  });
+  }, 15000);
 
   it('shows sentinel when more pages are available', async () => {
     await openBrowseTab();

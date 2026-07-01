@@ -7,8 +7,9 @@ import os
 import time
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -50,26 +51,29 @@ _last_discogs_request_ts = 0.0
 
 
 class MetadataHydrator:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        candidate_resolver: Callable[
+            [Path, SimpleMetadata, list[dict[str, Any]], list[str]],
+            SimpleMetadata | None,
+        ]
+        | None = None,
+        skip_beatport_hydration: bool = True,
+    ) -> None:
         self.http = requests.Session()
         self.http.headers.update({"User-Agent": DEFAULT_USER_AGENT})
         self.cache = self._load_cache()
-        self.openai_client = self._build_openai_client()
+        self.candidate_resolver = candidate_resolver
+        self.skip_beatport_hydration = skip_beatport_hydration
 
-    def _build_openai_client(self) -> Any | None:
-        if not os.getenv("OPENAI_API_KEY"):
-            return None
-
-        try:
-            from openai import OpenAI
-            from pydantic import BaseModel
-        except ImportError:
-            return None
-
-        self._resolution_model = BaseModel  # marker to validate imports succeeded
-        return OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-    def hydrate(self, file_path: Path, existing: SimpleMetadata) -> SimpleMetadata:
+    def hydrate(
+        self,
+        file_path: Path,
+        existing: SimpleMetadata,
+        *,
+        agent_events: list[dict[str, Any]] | None = None,
+    ) -> SimpleMetadata:
         cache_key = self._file_cache_key(file_path)
         cached = self.cache.get(cache_key, {}).get("final")
         if isinstance(cached, dict):
@@ -77,6 +81,12 @@ class MetadataHydrator:
             return SimpleMetadata.from_dict(cached)
 
         seed = _merge_missing(existing, _parse_filename_seed(file_path))
+        if self.skip_beatport_hydration and self._is_beatport_encoded(file_path):
+            logging.info("Skipping remote hydration for Beatport-encoded file %s", file_path.name)
+            self.cache.setdefault(cache_key, {})["final"] = seed.to_dict()
+            self._save_cache()
+            return seed
+
         sources: list[dict[str, Any]] = []
 
         acoustid_candidate = self._lookup_acoustid(file_path)
@@ -98,7 +108,9 @@ class MetadataHydrator:
             resolved, discogs_candidate, fields={"album", "label", "genre", "year"}
         )
 
-        llm_candidate = self._resolve_from_candidates(file_path, resolved, sources)
+        llm_candidate = self._resolve_from_candidates(
+            file_path, resolved, sources, agent_events=agent_events
+        )
         if llm_candidate is not None:
             resolved = _merge_missing(resolved, llm_candidate)
 
@@ -368,8 +380,10 @@ class MetadataHydrator:
         file_path: Path,
         current: SimpleMetadata,
         sources: list[dict[str, Any]],
+        *,
+        agent_events: list[dict[str, Any]] | None = None,
     ) -> SimpleMetadata | None:
-        if self.openai_client is None or not sources:
+        if self.candidate_resolver is None or not sources:
             return None
 
         missing_fields = [
@@ -382,59 +396,50 @@ class MetadataHydrator:
         if not missing_fields:
             return None
 
-        try:
-            from pydantic import BaseModel
-        except ImportError:
-            return None
-
-        from typing import Optional
-
-        class MetadataResolution(BaseModel):
-            title: Optional[str] = None  # noqa: UP045
-            artist: Optional[str] = None  # noqa: UP045
-            album: Optional[str] = None  # noqa: UP045
-            label: Optional[str] = None  # noqa: UP045
-            genre: Optional[str] = None  # noqa: UP045
-            remixer: Optional[str] = None  # noqa: UP045
-            year: Optional[int] = None  # noqa: UP045
-            bpm: Optional[float] = None  # noqa: UP045
-            key: Optional[str] = None  # noqa: UP045
-
-        prompt = {
-            "file_name": file_path.name,
-            "current_metadata": current.to_dict(),
+        event: dict[str, Any] = {
+            "type": "metadata_fallback",
+            "timestamp": datetime.now().isoformat(),
+            "file": file_path.name,
             "missing_fields": missing_fields,
-            "candidate_sources": sources,
-            "instructions": (
-                "Resolve only the missing music metadata fields using the provided"
-                " candidate sources. Prefer source consensus. Do not invent fields"
-                " that are not clearly supported by the candidates."
-                " Return null for uncertain fields."
-            ),
+            "source_count": len(sources),
         }
+        try:
+            resolved = self.candidate_resolver(file_path, current, sources, missing_fields)
+        except Exception as exc:
+            logging.warning(
+                "Metadata fallback resolver failed for %s: %s", file_path.name, exc
+            )
+            event["outcome"] = "error"
+            event["error"] = str(exc)
+            if agent_events is not None:
+                agent_events.append(event)
+            return None
+
+        if resolved is None:
+            event["outcome"] = "no_match"
+        else:
+            event["outcome"] = "resolved"
+            event["resolved_metadata"] = resolved.to_dict()
+        if agent_events is not None:
+            agent_events.append(event)
+        return resolved
+
+    def _is_beatport_encoded(self, file_path: Path) -> bool:
+        try:
+            from mutagen.id3 import ID3
+        except ImportError:
+            return False
 
         try:
-            response = self.openai_client.responses.parse(
-                model=os.getenv("OPENAI_METADATA_MODEL", "gpt-5.4-mini"),
-                temperature=0,
-                input=[
-                    {
-                        "role": "system",
-                        "content": "You resolve music metadata from structured database results.",
-                    },
-                    {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-                ],
-                text_format=MetadataResolution,
-            )
-            parsed = response.output_parsed
-        except Exception as exc:
-            logging.warning("LLM metadata resolution failed for %s: %s", file_path.name, exc)
-            return None
+            tags = ID3(str(file_path))
+        except Exception:
+            return False
 
-        if parsed is None:
-            return None
-
-        return SimpleMetadata.from_dict(parsed.model_dump())
+        frame = tags.get("TENC")
+        if frame is None or not getattr(frame, "text", None):
+            return False
+        text = str(frame.text[0]).lower()
+        return "beatport" in text
 
     def _respect_rate_limit(self, provider: str) -> None:
         if provider == "musicbrainz":
@@ -452,5 +457,16 @@ class MetadataHydrator:
             time.sleep(delay)
 
 
-def build_metadata_agent() -> MetadataHydrator:
-    return MetadataHydrator()
+def build_metadata_agent(
+    *,
+    candidate_resolver: Callable[
+        [Path, SimpleMetadata, list[dict[str, Any]], list[str]],
+        SimpleMetadata | None,
+    ]
+    | None = None,
+    skip_beatport_hydration: bool = True,
+) -> MetadataHydrator:
+    return MetadataHydrator(
+        candidate_resolver=candidate_resolver,
+        skip_beatport_hydration=skip_beatport_hydration,
+    )

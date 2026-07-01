@@ -33,6 +33,7 @@ def _configured_path(env_var: str, default: str) -> Path:
 DOWNLOAD_DIR = _configured_path("TRACK_METADATA_DOWNLOAD_DIR", "downloads")
 PROCESSING_DIR = _configured_path("TRACK_METADATA_PROCESSING_DIR", "processing")
 AUGMENTED_DIR = _configured_path("TRACK_METADATA_AUGMENTED_DIR", "augmented")
+REMEDIATION_DIR = _configured_path("TRACK_METADATA_REMEDIATION_DIR", "Remediation Tracks")
 LOG_DIR = _configured_path("TRACK_METADATA_LOG_DIR", "logs")
 RUN_START = os.getenv("TRACK_METADATA_RUN_START", datetime.now().strftime("%Y%m%dT%H%M%S"))
 LOG_FILE_PATH = LOG_DIR / f"{RUN_START}.log"
@@ -55,8 +56,9 @@ def ensure_directories(
     download_dir: Path = DOWNLOAD_DIR,
     processing_dir: Path = PROCESSING_DIR,
     augmented_dir: Path = AUGMENTED_DIR,
+    remediation_dir: Path = REMEDIATION_DIR,
 ) -> None:
-    for path in (download_dir, processing_dir, augmented_dir, LOG_DIR):
+    for path in (download_dir, processing_dir, augmented_dir, remediation_dir, LOG_DIR):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -145,6 +147,24 @@ def copy_to_converted(
     return destination
 
 
+def move_to_augmented(
+    path: Path, augmented_dir: Path = AUGMENTED_DIR, original_name: str | None = None
+) -> Path:
+    destination = augmented_dir / (original_name or path.name)
+    shutil.copy2(path, destination)
+    logging.info("Moved %s to augmented destination %s", path.name, destination)
+    return destination
+
+
+def move_to_remediation(
+    path: Path, remediation_dir: Path = REMEDIATION_DIR, original_name: str | None = None
+) -> Path:
+    destination = remediation_dir / (original_name or path.name)
+    shutil.copy2(path, destination)
+    logging.info("Moved %s to remediation destination %s", path.name, destination)
+    return destination
+
+
 def sanitize_filename(base_name: str, pattern: re.Pattern[str] = SANITIZE_PATTERN) -> str:
     sanitized = pattern.sub(" ", base_name).strip()
     return re.sub(r"\s+", " ", sanitized)
@@ -198,6 +218,7 @@ __all__ = [
     "LOG_DIR",
     "LOG_FILE_PATH",
     "PROCESSING_DIR",
+    "REMEDIATION_DIR",
     "RUN_START",
     "SANITIZE_PATTERN",
     "SUPPORTED_AUDIO_EXTENSIONS",
@@ -207,6 +228,8 @@ __all__ = [
     "ensure_directories",
     "log_agent_response",
     "log_dependency_warning",
+    "move_to_augmented",
+    "move_to_remediation",
     "rename_file",
     "reset_processing_dir",
     "sanitize_filename",

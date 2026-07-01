@@ -731,10 +731,9 @@ def test_lookup_discogs_returns_none_below_threshold(tmp_path, monkeypatch) -> N
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_from_candidates_returns_none_without_openai_client(tmp_path) -> None:
+def test_resolve_from_candidates_returns_none_without_resolver(tmp_path) -> None:
     with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
         hydrator = MetadataHydrator()
-    hydrator.openai_client = None
 
     result = hydrator._resolve_from_candidates(
         Path("track.mp3"),
@@ -745,9 +744,9 @@ def test_resolve_from_candidates_returns_none_without_openai_client(tmp_path) ->
 
 
 def test_resolve_from_candidates_returns_none_when_no_missing_fields(tmp_path) -> None:
+    resolver = MagicMock(return_value=SimpleMetadata(title="X"))
     with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-    hydrator.openai_client = MagicMock()
+        hydrator = MetadataHydrator(candidate_resolver=resolver)
 
     full_metadata = SimpleMetadata(
         title="Title",
@@ -764,12 +763,13 @@ def test_resolve_from_candidates_returns_none_when_no_missing_fields(tmp_path) -
         [{"source": "musicbrainz", "metadata": {}}],
     )
     assert result is None
+    resolver.assert_not_called()
 
 
 def test_resolve_from_candidates_returns_none_when_no_sources(tmp_path) -> None:
+    resolver = MagicMock(return_value=SimpleMetadata(title="X"))
     with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-    hydrator.openai_client = MagicMock()
+        hydrator = MetadataHydrator(candidate_resolver=resolver)
 
     result = hydrator._resolve_from_candidates(
         Path("track.mp3"),
@@ -777,6 +777,58 @@ def test_resolve_from_candidates_returns_none_when_no_sources(tmp_path) -> None:
         [],  # no sources
     )
     assert result is None
+    resolver.assert_not_called()
+
+
+def test_resolve_from_candidates_uses_callback(tmp_path) -> None:
+    resolver = MagicMock(return_value=SimpleMetadata(title="Resolved Title"))
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator(candidate_resolver=resolver)
+
+    result = hydrator._resolve_from_candidates(
+        Path("track.mp3"),
+        SimpleMetadata(title=None, artist="Artist"),
+        [{"source": "musicbrainz", "metadata": {"title": "Resolved Title"}}],
+    )
+    assert result is not None
+    assert result.title == "Resolved Title"
+    resolver.assert_called_once()
+
+
+def test_resolve_from_candidates_records_agent_events(tmp_path) -> None:
+    resolver = MagicMock(return_value=SimpleMetadata(title="Resolved Title"))
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator(candidate_resolver=resolver)
+
+    events: list[dict[str, object]] = []
+    result = hydrator._resolve_from_candidates(
+        Path("track.mp3"),
+        SimpleMetadata(title=None, artist="Artist"),
+        [{"source": "musicbrainz", "metadata": {"title": "Resolved Title"}}],
+        agent_events=events,
+    )
+    assert result is not None
+    assert len(events) == 1
+    assert events[0]["type"] == "metadata_fallback"
+    assert events[0]["outcome"] == "resolved"
+    assert "title" in events[0]["missing_fields"]
+    assert events[0]["file"] == "track.mp3"
+
+
+def test_resolve_from_candidates_records_no_match_agent_events(tmp_path) -> None:
+    resolver = MagicMock(return_value=None)
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator(candidate_resolver=resolver)
+
+    events: list[dict[str, object]] = []
+    hydrator._resolve_from_candidates(
+        Path("track.mp3"),
+        SimpleMetadata(title=None, artist="Artist"),
+        [{"source": "musicbrainz", "metadata": {}}],
+        agent_events=events,
+    )
+    assert len(events) == 1
+    assert events[0]["outcome"] == "no_match"
 
 
 # ---------------------------------------------------------------------------
@@ -909,3 +961,27 @@ def test_hydrate_applies_label_fallback(tmp_path) -> None:
             result = hydrator.hydrate(mp3, existing)
 
     assert result.label == "CDR"
+
+
+def test_hydrate_skips_remote_lookups_for_beatport_encoded_file(tmp_path) -> None:
+    from mutagen.id3 import ID3, TENC
+
+    mp3 = tmp_path / "Artist - Beatport Track.mp3"
+    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
+    tags = ID3(str(mp3))
+    tags.add(TENC(encoding=3, text="Beatport"))
+    tags.save(str(mp3), v2_version=4)
+
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator(skip_beatport_hydration=True)
+        with patch.object(hydrator, "_lookup_acoustid", side_effect=AssertionError("should not call")):
+            with patch.object(
+                hydrator, "_lookup_musicbrainz", side_effect=AssertionError("should not call")
+            ):
+                with patch.object(
+                    hydrator, "_lookup_discogs", side_effect=AssertionError("should not call")
+                ):
+                    result = hydrator.hydrate(mp3, SimpleMetadata())
+
+    assert result.artist == "Artist"
+    assert result.title == "Beatport Track"

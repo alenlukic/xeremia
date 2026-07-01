@@ -19,5 +19,11 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Existing components use intentional ref-sync and effect-driven resets;
+      // treat react-hooks v7 strict rules as warnings until refactored.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/refs': 'warn',
+    },
   },
 ])

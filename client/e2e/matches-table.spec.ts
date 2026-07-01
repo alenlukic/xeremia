@@ -105,7 +105,6 @@ test.describe('Matches table interactions', () => {
     expect(tgtBox).toBeTruthy();
 
     const srcCenter = { x: srcBox!.x + srcBox!.width / 2, y: srcBox!.y + srcBox!.height / 2 };
-    const tgtCenter = { x: tgtBox!.x + tgtBox!.width / 2, y: tgtBox!.y + tgtBox!.height / 2 };
 
     await page.mouse.move(srcCenter.x, srcCenter.y);
 

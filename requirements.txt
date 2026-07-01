@@ -1,4 +1,7 @@
 appnope==0.1.3; sys_platform == "darwin"
+# setuptools 82.0.0 removed pkg_resources, which librosa==0.10.1 imports at runtime
+# (librosa/core/intervals.py, librosa/util/files.py). Pin below 82 until librosa is upgraded.
+setuptools<82
 numpy==1.23.5
 scipy==1.10.1
 scikit-learn>=1.3.0,<1.5
@@ -18,3 +21,4 @@ madmom==0.16.1
 fastapi==0.115.12
 uvicorn==0.34.2
 elasticsearch>=8.0.0,<9.0.0
+cursor-sdk

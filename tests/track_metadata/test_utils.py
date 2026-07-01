@@ -11,6 +11,8 @@ from src.track_metadata.utils import (
     discover_new_audio_files,
     ensure_directories,
     log_agent_response,
+    move_to_augmented,
+    move_to_remediation,
     rename_file,
     reset_processing_dir,
     sanitize_filename,
@@ -62,6 +64,22 @@ def test_copy_to_converted_preserves_original_name(tmp_path):
 
     assert copied.exists()
     assert copied.name == "original name.mp3"
+
+
+def test_move_helpers_copy_to_expected_destinations(tmp_path):
+    processing_dir = tmp_path / "processing"
+    augmented_dir = tmp_path / "augmented"
+    remediation_dir = tmp_path / "remediation"
+    ensure_directories(tmp_path / "downloads", processing_dir, augmented_dir, remediation_dir)
+
+    source = processing_dir / "track.mp3"
+    source.write_text("audio")
+
+    augmented_copy = move_to_augmented(source, augmented_dir=augmented_dir)
+    remediation_copy = move_to_remediation(source, remediation_dir=remediation_dir)
+
+    assert augmented_copy.exists()
+    assert remediation_copy.exists()
 
 
 def test_sanitize_and_rename_file(tmp_path):
