@@ -77,7 +77,7 @@ function loadColumnConfig(): ColumnConfig {
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return DEFAULT_CONFIG;
     const obj = parsed as Record<string, unknown>;
 
-    let sizing: ColumnSizingState = {};
+    const sizing: ColumnSizingState = {};
     if (typeof obj.columnSizing === 'object' && obj.columnSizing !== null && !Array.isArray(obj.columnSizing)) {
       const raw = obj.columnSizing as Record<string, unknown>;
       for (const [k, v] of Object.entries(raw)) {
@@ -92,7 +92,7 @@ function loadColumnConfig(): ColumnConfig {
       order = [...saved, ...missing];
     }
 
-    let visibility: Record<string, boolean> = {};
+    const visibility: Record<string, boolean> = {};
     if (typeof obj.columnVisibility === 'object' && obj.columnVisibility !== null && !Array.isArray(obj.columnVisibility)) {
       const raw = obj.columnVisibility as Record<string, unknown>;
       for (const [k, v] of Object.entries(raw)) {

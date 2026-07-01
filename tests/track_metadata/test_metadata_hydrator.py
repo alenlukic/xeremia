@@ -795,6 +795,42 @@ def test_resolve_from_candidates_uses_callback(tmp_path) -> None:
     resolver.assert_called_once()
 
 
+def test_resolve_from_candidates_records_agent_events(tmp_path) -> None:
+    resolver = MagicMock(return_value=SimpleMetadata(title="Resolved Title"))
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator(candidate_resolver=resolver)
+
+    events: list[dict[str, object]] = []
+    result = hydrator._resolve_from_candidates(
+        Path("track.mp3"),
+        SimpleMetadata(title=None, artist="Artist"),
+        [{"source": "musicbrainz", "metadata": {"title": "Resolved Title"}}],
+        agent_events=events,
+    )
+    assert result is not None
+    assert len(events) == 1
+    assert events[0]["type"] == "metadata_fallback"
+    assert events[0]["outcome"] == "resolved"
+    assert "title" in events[0]["missing_fields"]
+    assert events[0]["file"] == "track.mp3"
+
+
+def test_resolve_from_candidates_records_no_match_agent_events(tmp_path) -> None:
+    resolver = MagicMock(return_value=None)
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator(candidate_resolver=resolver)
+
+    events: list[dict[str, object]] = []
+    hydrator._resolve_from_candidates(
+        Path("track.mp3"),
+        SimpleMetadata(title=None, artist="Artist"),
+        [{"source": "musicbrainz", "metadata": {}}],
+        agent_events=events,
+    )
+    assert len(events) == 1
+    assert events[0]["outcome"] == "no_match"
+
+
 # ---------------------------------------------------------------------------
 # MetadataHydrator._respect_rate_limit
 # ---------------------------------------------------------------------------

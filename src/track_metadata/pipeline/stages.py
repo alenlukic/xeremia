@@ -36,7 +36,9 @@ def stage_hydrate(result: TrackResult, context: PipelineContext) -> None:
         raise ValueError("working path is missing before hydrate stage")
 
     existing = read_existing_metadata(result.working_path)
-    hydrated = context.hydrator.hydrate(result.working_path, existing)
+    hydrated = context.hydrator.hydrate(
+        result.working_path, existing, agent_events=result.agent_events
+    )
     result.metadata = hydrated
 
 

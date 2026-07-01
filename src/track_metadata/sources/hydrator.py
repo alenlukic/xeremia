@@ -7,6 +7,7 @@ import os
 import time
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -66,7 +67,13 @@ class MetadataHydrator:
         self.candidate_resolver = candidate_resolver
         self.skip_beatport_hydration = skip_beatport_hydration
 
-    def hydrate(self, file_path: Path, existing: SimpleMetadata) -> SimpleMetadata:
+    def hydrate(
+        self,
+        file_path: Path,
+        existing: SimpleMetadata,
+        *,
+        agent_events: list[dict[str, Any]] | None = None,
+    ) -> SimpleMetadata:
         cache_key = self._file_cache_key(file_path)
         cached = self.cache.get(cache_key, {}).get("final")
         if isinstance(cached, dict):
@@ -101,7 +108,9 @@ class MetadataHydrator:
             resolved, discogs_candidate, fields={"album", "label", "genre", "year"}
         )
 
-        llm_candidate = self._resolve_from_candidates(file_path, resolved, sources)
+        llm_candidate = self._resolve_from_candidates(
+            file_path, resolved, sources, agent_events=agent_events
+        )
         if llm_candidate is not None:
             resolved = _merge_missing(resolved, llm_candidate)
 
@@ -371,6 +380,8 @@ class MetadataHydrator:
         file_path: Path,
         current: SimpleMetadata,
         sources: list[dict[str, Any]],
+        *,
+        agent_events: list[dict[str, Any]] | None = None,
     ) -> SimpleMetadata | None:
         if self.candidate_resolver is None or not sources:
             return None
@@ -385,13 +396,33 @@ class MetadataHydrator:
         if not missing_fields:
             return None
 
+        event: dict[str, Any] = {
+            "type": "metadata_fallback",
+            "timestamp": datetime.now().isoformat(),
+            "file": file_path.name,
+            "missing_fields": missing_fields,
+            "source_count": len(sources),
+        }
         try:
-            return self.candidate_resolver(file_path, current, sources, missing_fields)
+            resolved = self.candidate_resolver(file_path, current, sources, missing_fields)
         except Exception as exc:
             logging.warning(
                 "Metadata fallback resolver failed for %s: %s", file_path.name, exc
             )
+            event["outcome"] = "error"
+            event["error"] = str(exc)
+            if agent_events is not None:
+                agent_events.append(event)
             return None
+
+        if resolved is None:
+            event["outcome"] = "no_match"
+        else:
+            event["outcome"] = "resolved"
+            event["resolved_metadata"] = resolved.to_dict()
+        if agent_events is not None:
+            agent_events.append(event)
+        return resolved
 
     def _is_beatport_encoded(self, file_path: Path) -> bool:
         try:

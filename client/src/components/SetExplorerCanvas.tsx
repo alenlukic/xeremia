@@ -421,7 +421,7 @@ export function SetExplorerCanvas({
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
       setZoom(prev => {
         const next = Math.max(0.2, Math.min(3, prev + delta));
-        try { localStorage.setItem(ZOOM_STORAGE_KEY, String(next)); } catch {}
+        try { localStorage.setItem(ZOOM_STORAGE_KEY, String(next)); } catch { /* storage unavailable */ }
         return next;
       });
     } else {

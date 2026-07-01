@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.pipeline.config import ENABLE_CURSOR_SDK_FALLBACK
+from src.track_metadata.utils import log_agent_response
 
 
 @dataclass
@@ -49,6 +50,11 @@ class CursorSDKFallbackAgent:
             return None
 
         content = _extract_content(response)
+        log_agent_response(
+            file_path.name,
+            content or "",
+            [{"role": "user", "content": prompt}],
+        )
         if not content:
             return None
 
