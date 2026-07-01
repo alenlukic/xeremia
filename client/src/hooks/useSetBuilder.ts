@@ -88,7 +88,7 @@ export function useSetBuilder() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [setErrorWithAutoClear]);
 
   useEffect(() => {
     refreshSets().then(() => {
@@ -118,7 +118,7 @@ export function useSetBuilder() {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not create set.'));
       return null;
     }
-  }, [refreshSets, hydrateSet]);
+  }, [refreshSets, hydrateSet, setErrorWithAutoClear]);
 
   const selectSet = useCallback((id: number) => {
     hydrateSet(id);
@@ -135,7 +135,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not delete set.'));
     }
-  }, [activeSetId, refreshSets]);
+  }, [activeSetId, refreshSets, setErrorWithAutoClear]);
 
   const refreshActive = useCallback(async () => {
     if (activeSetId !== null) {
@@ -155,7 +155,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add track to pool.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const addToTracklist = useCallback(async (trackId: number, title?: string) => {
     if (activeSetId === null) {
@@ -168,7 +168,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add track to tracklist.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const removeFromPool = useCallback(async (trackId: number) => {
     if (activeSetId === null) return;
@@ -178,7 +178,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not remove track from pool.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const removeFromTracklist = useCallback(async (trackId: number) => {
     if (activeSetId === null) return;
@@ -188,7 +188,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not remove track from tracklist.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const movePoolToTracklist = useCallback(async (trackId: number) => {
     if (activeSetId === null) return;
@@ -218,7 +218,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not reorder tracklist.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const updateTracklistNote = useCallback(async (trackId: number, note: string) => {
     if (activeSetId === null) return;
@@ -238,7 +238,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not save note.'));
     }
-  }, [activeSetId, activeSet]);
+  }, [activeSetId, activeSet, setErrorWithAutoClear]);
 
   const addExplorerNode = useCallback(async (
     trackId: number, parentNodeId?: string, level: number = 0,
@@ -266,7 +266,7 @@ export function useSetBuilder() {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add node.'));
       return null;
     }
-  }, [activeSetId, activeSet, refreshActive]);
+  }, [activeSetId, activeSet, refreshActive, setErrorWithAutoClear]);
 
   const deleteExplorerNode = useCallback(async (
     nodeId: string,
@@ -279,7 +279,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not delete node.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const addExplorerEdge = useCallback(async (parentNodeId: string, childNodeId: string) => {
     if (activeSetId === null) return;
@@ -294,7 +294,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add edge.'));
     }
-  }, [activeSetId, activeSet, refreshActive]);
+  }, [activeSetId, activeSet, refreshActive, setErrorWithAutoClear]);
 
   const deleteExplorerEdgeAction = useCallback(async (edgeId: number) => {
     if (activeSetId === null) return;
@@ -304,7 +304,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not delete edge.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const addSiblingNode = useCallback(async (
     trackId: number,
@@ -325,7 +325,7 @@ export function useSetBuilder() {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add sibling.'));
       return null;
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const swapExplorerNodes = useCallback(async (nodeAId: string, nodeBId: string) => {
     if (activeSetId === null) return;
@@ -335,7 +335,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not swap nodes.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const explorerNodeAddToTracklist = useCallback(async (nodeId: string) => {
     if (activeSetId === null) return;
@@ -345,7 +345,7 @@ export function useSetBuilder() {
     } catch (err) {
       if (mountedRef.current) setErrorWithAutoClear(friendlyError(err, 'Could not add to tracklist.'));
     }
-  }, [activeSetId, refreshActive]);
+  }, [activeSetId, refreshActive, setErrorWithAutoClear]);
 
   const fetchEdgeScores = useCallback(async (pairs: [number, number][]) => {
     if (activeSetId === null) return { scores: [] as (number | null)[] };

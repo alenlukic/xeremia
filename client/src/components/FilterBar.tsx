@@ -52,6 +52,20 @@ export function FilterBar({
   const minTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const maxTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // Mirror numeric bpmMin/bpmMax props into the text inputs. Adjusting during
+  // render (vs. in an effect) avoids a cascading render and the
+  // react-hooks/set-state-in-effect warning.
+  const [prevBpmMin, setPrevBpmMin] = useState(bpmMin);
+  if (bpmMin !== prevBpmMin) {
+    setPrevBpmMin(bpmMin);
+    setMinText(bpmMin != null ? String(bpmMin) : '');
+  }
+  const [prevBpmMax, setPrevBpmMax] = useState(bpmMax);
+  if (bpmMax !== prevBpmMax) {
+    setPrevBpmMax(bpmMax);
+    setMaxText(bpmMax != null ? String(bpmMax) : '');
+  }
+
   useEffect(() => {
     return () => {
       clearTimeout(minTimer.current);
@@ -95,14 +109,6 @@ export function FilterBar({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [colConfigOpen]);
-
-  useEffect(() => {
-    setMinText(bpmMin != null ? String(bpmMin) : '');
-  }, [bpmMin]);
-
-  useEffect(() => {
-    setMaxText(bpmMax != null ? String(bpmMax) : '');
-  }, [bpmMax]);
 
   function toggleCode(code: string) {
     if (camelotCodes.includes(code)) {

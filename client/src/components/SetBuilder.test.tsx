@@ -428,6 +428,10 @@ describe('SetBuilder', () => {
       await userEvent.type(noteInput, 'transition here');
       fireEvent.blur(noteInput);
       expect(updateTracklistNote).toHaveBeenCalledWith(10, 'transition here');
+      // The typed value must persist after blur. The parent updates `initialNote`
+      // only after an async save round-trip, so the input must not revert in the
+      // meantime.
+      expect(noteInput).toHaveValue('transition here');
     });
   });
 

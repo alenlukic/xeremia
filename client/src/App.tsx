@@ -52,7 +52,7 @@ export default function App() {
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null);
   const [searchText, setSearchText] = useState('');
   const [loadedPages, setLoadedPages] = useState(1);
-  const loadedPageCacheRef = useRef<Map<string, number>>(new Map());
+  const [pageCache, setPageCache] = useState<Record<string, number>>({});
   const [transitionChain, setTransitionChain] = useState<TransitionChainEntry[]>([]);
 
   const gaugeRowRef = useRef<HTMLDivElement>(null);
@@ -114,6 +114,12 @@ export default function App() {
     }));
   }, []);
 
+  // Measure the weight-controls row to align the search panel padding with the
+  // gauge groups. This is a DOM-measurement useLayoutEffect: setState here is
+  // intentional (React endorses useLayoutEffect for measuring layout before
+  // paint). The react-hooks/set-state-in-effect rule is a false positive for
+  // this pattern, so it is scoped-and-documented rather than refactored.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useLayoutEffect(() => {
     const wrapper = gaugeRowRef.current;
     if (!wrapper) {
@@ -150,6 +156,7 @@ export default function App() {
     ro.observe(row);
     return () => ro.disconnect();
   }, [weightsLoading]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const browsePages = useMemo(() => {
     const pages: Track[][] = [];
@@ -173,18 +180,21 @@ export default function App() {
 
   const hasMorePages = loadedPages < totalPages;
 
-  useEffect(() => {
-    const cached = loadedPageCacheRef.current.get(filterCacheKey);
-    setLoadedPages(cached ?? 1);
-  }, [filterCacheKey]);
+  // Reset pagination when the filter key changes, restoring any cached page
+  // depth for that filter. Adjusting during render avoids the cascading render
+  // and react-hooks/set-state-in-effect warning; reading from `pageCache`
+  // (state) instead of a ref avoids the react-hooks/refs render-read warning.
+  const [prevFilterCacheKey, setPrevFilterCacheKey] = useState(filterCacheKey);
+  if (filterCacheKey !== prevFilterCacheKey) {
+    setPrevFilterCacheKey(filterCacheKey);
+    setLoadedPages(pageCache[filterCacheKey] ?? 1);
+  }
 
   const handleLoadMore = useCallback(() => {
-    setLoadedPages(prev => {
-      const next = Math.min(prev + 1, totalPages);
-      loadedPageCacheRef.current.set(filterCacheKey, next);
-      return next;
-    });
-  }, [totalPages, filterCacheKey]);
+    const next = Math.min(loadedPages + 1, totalPages);
+    setLoadedPages(next);
+    setPageCache(prev => ({ ...prev, [filterCacheKey]: next }));
+  }, [totalPages, filterCacheKey, loadedPages]);
 
   const handleSelectTrack = useCallback(
     (track: Track | SearchSuggestion) => {
