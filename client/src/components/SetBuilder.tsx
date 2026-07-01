@@ -60,11 +60,18 @@ export function SetBuilder({
     }
   }, [showNewInput]);
 
-  useEffect(() => {
-    if (pendingAdd && !activeSetId) {
-      setShowNewInput(true);
-    }
-  }, [pendingAdd, activeSetId]);
+  // Open the new-set input when a pending add arrives with no active set.
+  // The prev trackers start at `undefined` so the check also fires on mount
+  // (matching the original effect's mount behavior), then on subsequent prop
+  // changes. Adjusting during render avoids the cascading render and the
+  // react-hooks/set-state-in-effect warning.
+  const [prevPendingAdd, setPrevPendingAdd] = useState<PendingAdd | null | undefined>(undefined);
+  const [prevActiveSetId, setPrevActiveSetId] = useState<number | null | undefined>(undefined);
+  if (pendingAdd !== prevPendingAdd || activeSetId !== prevActiveSetId) {
+    setPrevPendingAdd(pendingAdd);
+    setPrevActiveSetId(activeSetId);
+    if (pendingAdd && !activeSetId) setShowNewInput(true);
+  }
 
   const handleCreateSet = useCallback(async () => {
     const name = newSetName.trim();

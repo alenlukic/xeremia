@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { TracklistEntry, SearchSuggestion } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
@@ -18,20 +18,28 @@ function NoteInput({ trackId, initialNote, onSave }: {
   onSave: (trackId: number, note: string) => void;
 }) {
   const [value, setValue] = useState(initialNote);
-  const savedRef = useRef(initialNote);
-
-  useEffect(() => {
+  // `savedValue` is the last-persisted baseline used for the blur dirty-check.
+  // It is updated on blur (to avoid duplicate saves) and cannot double as the
+  // prop-change tracker: an async save updates the parent's `initialNote` only
+  // after a round-trip, so a blur-driven `savedValue` change would otherwise
+  // make the reset below fire and revert the input to the stale note.
+  const [savedValue, setSavedValue] = useState(initialNote);
+  // Dedicated tracker for the `initialNote` prop. When the parent rebinds it, we
+  // reset the input during render (see react.dev "adjusting state when a prop
+  // changes") without needing an effect.
+  const [prevInitialNote, setPrevInitialNote] = useState(initialNote);
+  if (initialNote !== prevInitialNote) {
+    setPrevInitialNote(initialNote);
+    setSavedValue(initialNote);
     setValue(initialNote);
-    savedRef.current = initialNote;
-  }, [initialNote]);
+  }
 
   const handleBlur = useCallback(() => {
-    const trimmed = value;
-    if (trimmed !== savedRef.current) {
-      savedRef.current = trimmed;
-      onSave(trackId, trimmed);
+    if (value !== savedValue) {
+      setSavedValue(value);
+      onSave(trackId, value);
     }
-  }, [value, trackId, onSave]);
+  }, [value, savedValue, trackId, onSave]);
 
   return (
     <input

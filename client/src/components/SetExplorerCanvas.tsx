@@ -362,17 +362,12 @@ export function SetExplorerCanvas({
   // Always-current refs so scoring effect can read latest nodes/edges without
   // taking array references as dependencies (array identity changes every render).
   const nodesRef = useRef(nodes);
-  nodesRef.current = nodes;
   const edgesRef = useRef(edges);
-  edgesRef.current = edges;
   // Refs for volatile UI state consumed by stable callbacks — prevents callbacks
   // from changing identity on every render, which would defeat React.memo on sub-components.
   const connectDragRef = useRef<ConnectDragState | null>(null);
-  connectDragRef.current = connectDrag;
   const swapSourceRef = useRef<string | null>(null);
-  swapSourceRef.current = swapSource;
   const fetchEdgeScoresRef = useRef(fetchEdgeScores);
-  fetchEdgeScoresRef.current = fetchEdgeScores;
 
   // Stable refs for ALL external callbacks from the parent.
   // Many of these (onAddNode, onSwap, onAddEdge, etc.) come from useSetBuilder
@@ -380,19 +375,30 @@ export function SetExplorerCanvas({
   // refresh. Without refs, every ExplorerNodeItem/ExplorerEdgeItem would see a
   // new callback prop and re-render, defeating React.memo entirely.
   const onAddNodeRef = useRef(onAddNode);
-  onAddNodeRef.current = onAddNode;
   const onDeleteNodeRef = useRef(onDeleteNode);
-  onDeleteNodeRef.current = onDeleteNode;
   const onAddEdgeRef = useRef(onAddEdge);
-  onAddEdgeRef.current = onAddEdge;
   const onDeleteEdgeRef = useRef(onDeleteEdge);
-  onDeleteEdgeRef.current = onDeleteEdge;
   const onSwapRef = useRef(onSwap);
-  onSwapRef.current = onSwap;
   const onNodeToTracklistRef = useRef(onNodeToTracklist);
-  onNodeToTracklistRef.current = onNodeToTracklist;
   const onAddSiblingRef = useRef(onAddSibling);
-  onAddSiblingRef.current = onAddSibling;
+
+  // Sync render-time values into refs after commit. The refs are only read from
+  // event-handler callbacks / effects (never during render), so a one-render lag
+  // is safe and avoids the react-hooks/refs render-mutation warning.
+  useEffect(() => {
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+    connectDragRef.current = connectDrag;
+    swapSourceRef.current = swapSource;
+    fetchEdgeScoresRef.current = fetchEdgeScores;
+    onAddNodeRef.current = onAddNode;
+    onDeleteNodeRef.current = onDeleteNode;
+    onAddEdgeRef.current = onAddEdge;
+    onDeleteEdgeRef.current = onDeleteEdge;
+    onSwapRef.current = onSwap;
+    onNodeToTracklistRef.current = onNodeToTracklist;
+    onAddSiblingRef.current = onAddSibling;
+  });
 
   // Stable wrapper callbacks — identity never changes, body reads via ref.
   const stableOnAddNode = useCallback(
@@ -538,6 +544,12 @@ export function SetExplorerCanvas({
     [edges],
   );
 
+  // Fetch edge compatibility scores for newly-added edges (cached ones are
+  // merged in synchronously). This is a data-fetch effect: the synchronous
+  // setState calls mark loading state / merge cached scores before the async
+  // fetch resolves. react-hooks/set-state-in-effect is a false positive for
+  // fetch effects, so it is scoped-and-documented rather than refactored.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const currentNodes = nodesRef.current;
     const currentEdges = edgesRef.current;
@@ -615,6 +627,7 @@ export function SetExplorerCanvas({
     });
     return () => { cancelled = true; };
   }, [edgePairKey]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (selectedEdgeId === null) return;

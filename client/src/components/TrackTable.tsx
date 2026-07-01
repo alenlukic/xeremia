@@ -187,6 +187,9 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
 
   const fullColumnOrder = columnOrder;
 
+  // @tanstack/react-table is not yet annotated for the React Compiler, so the
+  // compiler skips optimization here (informational; not a code defect).
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: tracks,
     columns: allColumns,

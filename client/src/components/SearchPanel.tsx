@@ -28,19 +28,25 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (selectedTrack) {
-      setQuery(selectedTrack.title);
-    }
-  }, [selectedTrack]);
-
-  useEffect(() => {
+  // Mirror `selectedTrack` into the query input and clear local state when the
+  // parent resets `searchText`. Adjusting during render (vs. in effects) avoids
+  // cascading renders and the react-hooks/set-state-in-effect warning. The prev
+  // trackers start at `undefined` so the mirror also fires on mount, matching
+  // the original effect's mount behavior.
+  const [prevSelected, setPrevSelected] = useState<Track | SearchSuggestion | null | undefined>(undefined);
+  if (selectedTrack !== prevSelected) {
+    setPrevSelected(selectedTrack);
+    if (selectedTrack) setQuery(selectedTrack.title);
+  }
+  const [prevSearchText, setPrevSearchText] = useState<string | undefined>(undefined);
+  if (searchText !== prevSearchText) {
+    setPrevSearchText(searchText);
     if (searchText === '' && !selectedTrack && query !== '') {
       setQuery('');
       setSuggestions([]);
       setOpen(false);
     }
-  }, [searchText]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
