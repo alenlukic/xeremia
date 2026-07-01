@@ -4,6 +4,7 @@ from src.data_management.audio_file import AudioFile
 from src.data_management.config import CANONICAL_KEY_MAP
 from src.db import database
 from src.track_metadata.audio_features import analyze_missing_audio_features
+from src.track_metadata.matching import _compose_display_title
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.pipeline.config import GAP_REPORT_FIELDS, MISSION_CRITICAL_FIELDS
 from src.track_metadata.pipeline.framework import (
@@ -61,12 +62,7 @@ def stage_format(result: TrackResult, context: PipelineContext) -> None:
     result.metadata.key = canonical
     result.camelot_code = AudioFile.format_camelot_code(canonical)
 
-    prefix = AudioFile.generate_title_prefix(result.camelot_code, canonical, f"{bpm:06.2f}")
-    artist = result.metadata.artist or "Unknown Artist"
-    title = result.metadata.title or "Unknown Title"
-    if result.metadata.remixer:
-        title = f"{title} ({result.metadata.remixer})"
-    result.metadata.title = f"{prefix}{artist} - {title}".strip()
+    result.metadata.title = _compose_display_title(result.metadata, result.camelot_code)
 
 
 def _collect_missing_fields(metadata: SimpleMetadata, camelot_code: str | None) -> set[str]:
@@ -99,12 +95,12 @@ def stage_persist_or_route(result: TrackResult, context: PipelineContext) -> Non
         return
 
     write_tags(result.working_path, result.metadata)
-    renamed = rename_file(result.working_path, result.metadata.artist, result.metadata.title)
+    renamed = rename_file(result.working_path, result.metadata.title)
     result.working_path = renamed
 
     session = database.create_session()
     try:
-        upsert_track_records(session, renamed.name, result.metadata)
+        upsert_track_records(session, renamed, result.metadata)
     finally:
         session.close()
 

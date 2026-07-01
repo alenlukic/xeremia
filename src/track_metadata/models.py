@@ -24,8 +24,10 @@ class SimpleMetadata:
 
     def update(self, data: Mapping[str, str | int | float | None]) -> None:
         for field in ID3_FIELDS:
-            value = str(data.get(field, "")).strip()
-
+            raw_value = data.get(field)
+            if raw_value is None:
+                continue
+            value = str(raw_value).strip()
             if value:
                 setattr(self, field, value)
 

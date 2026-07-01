@@ -132,6 +132,24 @@ def test_parse_filename_seed_with_remix_in_title() -> None:
     assert result.remixer == "DJ Someone"
 
 
+def test_parse_filename_seed_strips_mastering_cruft() -> None:
+    path = Path("Linds - Sunset Funk [MASTER v2].mp3")
+    result = _parse_filename_seed(path)
+    assert result.artist == "Linds"
+    assert result.title == "Sunset Funk"
+    assert result.remixer is None
+
+
+def test_parse_filename_seed_strips_original_mix_but_keeps_real_mix_names() -> None:
+    original_mix = _parse_filename_seed(Path("Echo Delta - Jūra (Original Mix).mp3"))
+    remix = _parse_filename_seed(Path("Lady Gaga - Alejandro (Linds Trance Mix).aiff"))
+
+    assert original_mix.title == "Jūra"
+    assert original_mix.remixer is None
+    assert remix.title == "Alejandro (Linds Trance Mix)"
+    assert remix.remixer == "Linds Trance"
+
+
 def test_parse_filename_seed_underscores_become_spaces() -> None:
     path = Path("Artist_Name - Track_Title.mp3")
     result = _parse_filename_seed(path)
@@ -698,6 +716,39 @@ def test_lookup_discogs_returns_metadata_on_match(tmp_path, monkeypatch) -> None
     assert result.label == "R&S Records"
 
 
+def test_lookup_discogs_supports_key_and_secret_auth(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("DISCOGS_TOKEN", raising=False)
+    monkeypatch.setenv("DISCOGS_KEY", "key123")
+    monkeypatch.setenv("DISCOGS_SECRET", "secret456")
+
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator()
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "results": [
+            {
+                "title": "Echo Delta - Jūra",
+                "year": 2019,
+                "genre": ["Deep House"],
+                "label": ["Mule Musiq"],
+            }
+        ]
+    }
+    hydrator.http.get = MagicMock(return_value=mock_response)
+
+    with patch.object(hydrator, "_respect_rate_limit", return_value=None):
+        result = hydrator._lookup_discogs(SimpleMetadata(title="Jūra", artist="Echo Delta"))
+
+    assert result is not None
+    assert result.label == "Mule Musiq"
+    assert result.genre == "Deep House"
+    _, kwargs = hydrator.http.get.call_args
+    assert kwargs["params"]["key"] == "key123"
+    assert kwargs["params"]["secret"] == "secret456"
+
+
 def test_lookup_discogs_returns_none_below_threshold(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("DISCOGS_TOKEN", "faketoken")
 
@@ -724,6 +775,39 @@ def test_lookup_discogs_returns_none_below_threshold(tmp_path, monkeypatch) -> N
         )
 
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# MetadataHydrator._lookup_web_search
+# ---------------------------------------------------------------------------
+
+
+def test_lookup_web_search_returns_metadata_from_search_results(tmp_path) -> None:
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator()
+
+    with patch.object(
+        hydrator,
+        "_search_web",
+        return_value=[
+            {
+                "title": "Echo Delta - Jūra (Original Mix) [Mule Musiq] | Beatport",
+                "snippet": "Genres: Deep House. Released 2019 on Mule Musiq.",
+                "url": "https://example.com",
+            }
+        ],
+    ):
+        result = hydrator._lookup_web_search(
+            SimpleMetadata(title="Jūra", artist="Echo Delta"),
+            Path("Echo Delta - Jūra (Original Mix).mp3"),
+        )
+
+    assert result is not None
+    assert result.artist == "Echo Delta"
+    assert result.title == "Jūra"
+    assert result.label == "Mule Musiq"
+    assert result.genre == "Deep House"
+    assert result.year == 2019
 
 
 # ---------------------------------------------------------------------------
@@ -961,6 +1045,34 @@ def test_hydrate_applies_label_fallback(tmp_path) -> None:
             result = hydrator.hydrate(mp3, existing)
 
     assert result.label == "CDR"
+
+
+def test_hydrate_uses_web_search_when_catalog_lookups_do_not_fill_fields(tmp_path) -> None:
+    mp3 = tmp_path / "Echo Delta - Jūra (Original Mix).mp3"
+    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
+
+    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
+        hydrator = MetadataHydrator()
+
+        web_candidate = SimpleMetadata(
+            artist="Echo Delta",
+            title="Jūra",
+            label="Mule Musiq",
+            genre="Deep House",
+            year=2019,
+        )
+        with patch.object(hydrator, "_lookup_acoustid", return_value=None), \
+             patch.object(hydrator, "_lookup_musicbrainz", return_value=None), \
+             patch.object(hydrator, "_lookup_discogs", return_value=None), \
+             patch.object(hydrator, "_lookup_web_search", return_value=web_candidate), \
+             patch.object(hydrator, "_resolve_from_candidates", return_value=None):
+            result = hydrator.hydrate(mp3, SimpleMetadata())
+
+    assert result.artist == "Echo Delta"
+    assert result.title == "Jūra"
+    assert result.label == "Mule Musiq"
+    assert result.genre == "Deep House"
+    assert result.year == 2019
 
 
 def test_hydrate_skips_remote_lookups_for_beatport_encoded_file(tmp_path) -> None:

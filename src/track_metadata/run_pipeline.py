@@ -8,7 +8,6 @@ from src.track_metadata.pipeline.report import RunReport
 from src.track_metadata.pipeline.stages import build_context, build_default_pipeline
 from src.track_metadata.sources.hydrator import build_metadata_agent
 from src.track_metadata.utils import (
-    DOWNLOAD_DIR,
     LOG_DIR,
     RUN_START,
     discover_new_audio_files,
