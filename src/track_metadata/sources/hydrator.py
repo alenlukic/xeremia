@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import html as html_lib
 import hashlib
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import Mapping
 from dataclasses import replace
@@ -16,8 +18,10 @@ import requests
 from src.track_metadata.label import _apply_label_fallback
 from src.track_metadata.matching import (
     _best_year,
+    _clean_title_seed,
     _extract_remixer,
     _merge_missing,
+    _normalize_whitespace,
     _parse_filename_seed,
     _similarity,
 )
@@ -43,8 +47,12 @@ MUSICBRAINZ_MIN_INTERVAL_SECONDS = 1.05
 DISCOGS_MIN_INTERVAL_SECONDS = 1.05
 DEFAULT_USER_AGENT = os.getenv(
     "MUSIC_METADATA_USER_AGENT",
-    "metadata-hydrator/1.0 (https://example.com/contact)",
+    os.getenv(
+        "DISCOGS_USER_AGENT",
+        "metadata-hydrator/1.0 (https://example.com/contact)",
+    ),
 )
+WEB_SEARCH_URL = "https://html.duckduckgo.com/html/"
 
 _last_musicbrainz_request_ts = 0.0
 _last_discogs_request_ts = 0.0
@@ -107,6 +115,15 @@ class MetadataHydrator:
         resolved = _merge_missing(
             resolved, discogs_candidate, fields={"album", "label", "genre", "year"}
         )
+
+        if any(
+            getattr(resolved, field) is None
+            for field in {"title", "artist", "album", "label", "genre", "year", "remixer"}
+        ):
+            web_candidate = self._lookup_web_search(resolved, file_path)
+            if web_candidate is not None:
+                sources.append({"source": "web_search", "metadata": web_candidate.to_dict()})
+                resolved = _merge_missing(resolved, web_candidate)
 
         llm_candidate = self._resolve_from_candidates(
             file_path, resolved, sources, agent_events=agent_events
@@ -307,7 +324,9 @@ class MetadataHydrator:
 
     def _lookup_discogs(self, seed: SimpleMetadata) -> SimpleMetadata | None:
         token = os.getenv("DISCOGS_TOKEN")
-        if not token or not seed.title:
+        discogs_key = os.getenv("DISCOGS_KEY")
+        discogs_secret = os.getenv("DISCOGS_SECRET")
+        if not seed.title or not (token or (discogs_key and discogs_secret)):
             return None
 
         params: dict[str, Any] = {
@@ -320,7 +339,12 @@ class MetadataHydrator:
         if seed.album:
             params["release_title"] = seed.album
 
-        headers = {"Authorization": f"Discogs token={token}", "User-Agent": DEFAULT_USER_AGENT}
+        headers = {"User-Agent": DEFAULT_USER_AGENT}
+        if token:
+            headers["Authorization"] = f"Discogs token={token}"
+        elif discogs_key and discogs_secret:
+            params["key"] = discogs_key
+            params["secret"] = discogs_secret
 
         try:
             self._respect_rate_limit("discogs")
@@ -374,6 +398,146 @@ class MetadataHydrator:
             best_score,
         )
         return metadata
+
+    def _lookup_web_search(self, seed: SimpleMetadata, file_path: Path) -> SimpleMetadata | None:
+        artist = _normalize_whitespace(seed.artist) or _parse_filename_seed(file_path).artist
+        title = _clean_title_seed(seed.title) or _parse_filename_seed(file_path).title
+        if not title and not artist:
+            return None
+
+        query = " ".join(segment for segment in (artist, title) if segment)
+        try:
+            results = self._search_web(query)
+        except Exception as exc:
+            logging.warning("Web search failed for %s: %s", file_path.name, exc)
+            return None
+
+        best_metadata: SimpleMetadata | None = None
+        best_score = 0.0
+        for result in results:
+            candidate, score = self._candidate_from_search_result(result, seed)
+            if candidate is None or score <= best_score:
+                continue
+            best_metadata = candidate
+            best_score = score
+
+        if best_metadata is None or best_score < 0.55:
+            return None
+
+        logging.info(
+            "Web search matched %s -> %s / %s (score=%.3f)",
+            file_path.name,
+            best_metadata.artist or artist,
+            best_metadata.title or title,
+            best_score,
+        )
+        return best_metadata
+
+    def _search_web(self, query: str) -> list[dict[str, str]]:
+        response = self.http.get(
+            WEB_SEARCH_URL,
+            params={"q": query},
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return self._parse_search_results(response.text)
+
+    def _parse_search_results(self, html_text: str) -> list[dict[str, str]]:
+        titles = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html_text, flags=re.IGNORECASE | re.DOTALL)
+        urls = re.findall(r'class="result__a"[^>]*href="([^"]+)"', html_text, flags=re.IGNORECASE)
+        snippets = re.findall(
+            r'class="result__snippet"[^>]*>(.*?)</(?:a|div)>',
+            html_text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        results: list[dict[str, str]] = []
+        for index, raw_title in enumerate(titles[:10]):
+            title = self._strip_html(raw_title)
+            if not title:
+                continue
+            results.append(
+                {
+                    "title": title,
+                    "url": urls[index] if index < len(urls) else "",
+                    "snippet": self._strip_html(snippets[index]) if index < len(snippets) else "",
+                }
+            )
+        return results
+
+    def _candidate_from_search_result(
+        self,
+        result: dict[str, str],
+        seed: SimpleMetadata,
+    ) -> tuple[SimpleMetadata | None, float]:
+        title_text = result.get("title", "")
+        snippet = result.get("snippet", "")
+        normalized = re.sub(r"\s+\|\s+.*$", "", title_text).strip()
+        normalized = re.sub(
+            r"\s+-\s+(?:Beatport|Discogs|MusicBrainz|YouTube|Spotify).*$",
+            "",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+
+        candidate_pairs: list[tuple[str | None, str | None]] = []
+        if " - " in normalized:
+            left, right = normalized.split(" - ", 1)
+            candidate_pairs.append((_normalize_whitespace(left), _clean_title_seed(right)))
+            candidate_pairs.append((_normalize_whitespace(right), _clean_title_seed(left)))
+
+        by_match = re.match(r"(.+?)\s+by\s+(.+)", normalized, flags=re.IGNORECASE)
+        if by_match:
+            candidate_pairs.append(
+                (
+                    _normalize_whitespace(by_match.group(2)),
+                    _clean_title_seed(by_match.group(1)),
+                )
+            )
+
+        best_artist = _normalize_whitespace(seed.artist)
+        best_title = _clean_title_seed(seed.title)
+        best_score = 0.0
+
+        for artist, title in candidate_pairs:
+            if not artist or not title:
+                continue
+            score = (0.65 * _similarity(seed.title, title)) + (0.35 * _similarity(seed.artist, artist))
+            if score > best_score:
+                best_artist = artist
+                best_title = title
+                best_score = score
+
+        if best_title is None:
+            return None, 0.0
+
+        label = None
+        bracket_match = re.search(r"\[([^\[\]]+)\]", normalized)
+        if bracket_match and not re.search(r"\bmix\b", bracket_match.group(1), flags=re.IGNORECASE):
+            label = bracket_match.group(1).strip()
+
+        if label is None:
+            on_match = re.search(r"\bon\s+([^|]+)", snippet, flags=re.IGNORECASE)
+            if on_match:
+                label = on_match.group(1).strip(" .,-")
+
+        year_match = re.search(r"\b(19|20)\d{2}\b", f"{normalized} {snippet}")
+        genre_match = re.search(r"\bgenres?:\s*([^|.;]+)", snippet, flags=re.IGNORECASE)
+
+        candidate = SimpleMetadata(
+            artist=best_artist,
+            title=best_title,
+            label=label,
+            genre=genre_match.group(1).strip() if genre_match else None,
+            year=int(year_match.group()) if year_match else None,
+            remixer=_extract_remixer(best_title),
+        )
+        return candidate, best_score
+
+    @staticmethod
+    def _strip_html(value: str) -> str:
+        text = re.sub(r"<[^>]+>", " ", html_lib.unescape(value))
+        return re.sub(r"\s+", " ", text).strip()
 
     def _resolve_from_candidates(
         self,

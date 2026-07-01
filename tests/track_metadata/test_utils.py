@@ -101,6 +101,36 @@ def test_sanitize_and_rename_file(tmp_path):
     assert renamed.name.startswith("An Artist - A Title")
 
 
+def test_rename_file_supports_metadata_first_title_only(tmp_path):
+    processing_dir = tmp_path / "processing"
+    augmented_dir = tmp_path / "augmented"
+    ensure_directories(tmp_path / "downloads", processing_dir, augmented_dir)
+
+    source = processing_dir / "old.mp3"
+    source.write_text("audio")
+
+    renamed = rename_file(source, "[06A - Gm - 151.00] Linds - Sunset Funk [MASTER v2]")
+
+    assert renamed.exists()
+    assert renamed.name == "[06A - Gm - 151.00] Linds - Sunset Funk [MASTER v2].mp3"
+
+
+def test_rename_file_avoids_name_collisions(tmp_path):
+    processing_dir = tmp_path / "processing"
+    augmented_dir = tmp_path / "augmented"
+    ensure_directories(tmp_path / "downloads", processing_dir, augmented_dir)
+
+    source = processing_dir / "track.mp3"
+    source.write_text("audio")
+    existing = processing_dir / "[06A - Gm - 151.00] Linds - Sunset Funk.mp3"
+    existing.write_text("existing")
+
+    renamed = rename_file(source, "[06A - Gm - 151.00] Linds - Sunset Funk")
+
+    assert renamed.exists()
+    assert renamed.name == "[06A - Gm - 151.00] Linds - Sunset Funk (1).mp3"
+
+
 def test_log_agent_response(tmp_path):
     log_path = tmp_path / "logs" / "session.log"
 

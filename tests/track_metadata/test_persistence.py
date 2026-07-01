@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
 from src.models.artist import Artist
 from src.models.artist_track import ArtistTrack
 from src.models.track import Track
@@ -73,6 +72,29 @@ def test_upsert_track_records_is_idempotent_for_reruns():
     assert len(session.data[Track]) == 1
     assert len(session.data[ArtistTrack]) == 2
     assert second["artist_track_links_added"] == 0
+
+
+def test_upsert_track_records_persists_formatted_title_and_date_added(tmp_path):
+    session = _FakeSession()
+    file_path = tmp_path / "[12A - C#m - 128.00] Artist - Track.aiff"
+    file_path.write_bytes(b"audio")
+    metadata = SimpleMetadata(
+        title="[12A - C#m - 128.00] Artist - Track",
+        artist="Artist",
+        key="Dbm",
+        bpm=128.0,
+        genre="Deep House",
+        label="Label",
+    )
+
+    upsert_track_records(session, file_path, metadata)
+
+    track = session.data[Track][0]
+    assert track.file_name == file_path.name
+    assert track.title == metadata.title
+    assert track.genre == "Deep House"
+    assert track.label == "Label"
+    assert getattr(track, "date_added", None) is not None
 
 
 def test_upsert_track_records_requires_title():

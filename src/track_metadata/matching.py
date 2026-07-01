@@ -5,6 +5,8 @@ from dataclasses import replace
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from src.data_management.audio_file import AudioFile
+from src.data_management.utils import extract_unformatted_title
 from src.track_metadata.models import SimpleMetadata
 
 
@@ -34,15 +36,96 @@ def _extract_remixer(title: str | None) -> str | None:
     if not title:
         return None
 
-    match = re.search(r"\(([^()]+?)\s+remix\)", title, flags=re.IGNORECASE)
+    match = re.search(r"\(([^()]+?)\s+(?:remix|mix)\)", title, flags=re.IGNORECASE)
     if match:
-        return match.group(1).strip() or None
+        remixer = match.group(1).strip()
+        if remixer.casefold() not in {"original", "extended"}:
+            return remixer or None
 
-    match = re.search(r"\[([^\[\]]+?)\s+remix\]", title, flags=re.IGNORECASE)
+    match = re.search(r"\[([^\[\]]+?)\s+(?:remix|mix)\]", title, flags=re.IGNORECASE)
     if match:
-        return match.group(1).strip() or None
+        remixer = match.group(1).strip()
+        if remixer.casefold() not in {"original", "extended"}:
+            return remixer or None
 
     return None
+
+
+def _normalize_whitespace(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = re.sub(r"\s+", " ", value).strip()
+    return normalized or None
+
+
+def _has_mix_annotation(value: str | None) -> bool:
+    if not value:
+        return False
+    return bool(
+        re.search(
+            r"\b(mix|remix|edit|dub|version|rework|vip|live|bootleg)\b",
+            value,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _clean_title_seed(title: str | None) -> str | None:
+    if not title:
+        return None
+
+    title = extract_unformatted_title(title)
+    title = title.replace("_", " ")
+    title = re.sub(r"\s*-\s*24bits\b", "", title, flags=re.IGNORECASE)
+
+    removed_mastering_marker = False
+
+    def _replace_square(match: re.Match[str]) -> str:
+        inner = match.group(1).strip()
+        if _has_mix_annotation(inner):
+            return f" ({inner})"
+        return " "
+
+    def _replace_paren(match: re.Match[str]) -> str:
+        nonlocal removed_mastering_marker
+        inner = match.group(1).strip()
+        normalized = inner.casefold()
+        if normalized in {"original mix", "extended mix"}:
+            return " "
+        if "master" in normalized:
+            removed_mastering_marker = True
+            return " "
+        return match.group(0) if _has_mix_annotation(inner) else match.group(0)
+
+    title = re.sub(r"\[([^\[\]]+)\]", _replace_square, title)
+    title = re.sub(r"\(([^()]+)\)", _replace_paren, title)
+    if removed_mastering_marker:
+        title = re.sub(r"\s+(?:[ivxlcdm]+|\d+)\s*$", "", title, flags=re.IGNORECASE)
+
+    title = re.sub(r"\s+", " ", title)
+    title = re.sub(r"\s+\)", ")", title)
+    title = re.sub(r"\(\s+", "(", title)
+    title = re.sub(r"\s+([,.;:])", r"\1", title)
+    title = re.sub(r"\s+-\s*$", "", title)
+    return title.strip() or None
+
+
+def _compose_display_title(
+    metadata: SimpleMetadata,
+    camelot_code: str | None,
+) -> str:
+    artist = _normalize_whitespace(metadata.artist) or "Unknown Artist"
+    title = _clean_title_seed(metadata.title) or "Unknown Title"
+    remixer = _normalize_whitespace(metadata.remixer)
+
+    if remixer and remixer.casefold() not in title.casefold() and not _has_mix_annotation(title):
+        title = f"{title} ({remixer} Remix)"
+
+    if metadata.key is None or metadata.bpm is None:
+        return f"{artist} - {title}".strip()
+
+    prefix = AudioFile.generate_title_prefix(camelot_code, metadata.key, f"{metadata.bpm:06.2f}")
+    return f"{prefix}{artist} - {title}".strip()
 
 
 def _parse_filename_seed(path: Path) -> SimpleMetadata:
@@ -51,12 +134,15 @@ def _parse_filename_seed(path: Path) -> SimpleMetadata:
     stem = re.sub(r"\s+", " ", stem).strip()
 
     if " - " not in stem:
-        return SimpleMetadata(title=stem or None, remixer=_extract_remixer(stem))
+        return SimpleMetadata(
+            title=_clean_title_seed(stem),
+            remixer=_extract_remixer(stem),
+        )
 
     artist_part, title_part = stem.split(" - ", 1)
     return SimpleMetadata(
-        artist=artist_part.strip() or None,
-        title=title_part.strip() or None,
+        artist=_normalize_whitespace(artist_part),
+        title=_clean_title_seed(title_part),
         remixer=_extract_remixer(title_part),
     )
 

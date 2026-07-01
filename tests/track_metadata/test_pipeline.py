@@ -58,7 +58,48 @@ def test_pipeline_orchestrates_and_stays_deterministic(monkeypatch, tmp_path):
     row = report.rows[0]
     assert row.status == TrackStatus.SUCCESS
     assert row.agent_events == []
-    assert row.metadata.title.startswith("[12A - C#m - 128.00]")
+    assert row.metadata.title == "[12A - C#m - 128.00] Artist - Track"
+
+
+class _CruftHydratorStub:
+    def hydrate(
+        self,
+        _file_path: Path,
+        existing: SimpleMetadata,
+        *,
+        agent_events=None,
+    ) -> SimpleMetadata:
+        _ = agent_events
+        data = existing.to_dict()
+        data["artist"] = data.get("artist") or "Linds"
+        data["title"] = data.get("title") or "Sunset Funk [MASTER v2] (Original Mix)"
+        return SimpleMetadata.from_dict(data)
+
+
+def test_pipeline_strips_cruft_from_display_title(monkeypatch, tmp_path):
+    source = tmp_path / "input.mp3"
+    source.write_text("audio", encoding="utf-8")
+    working = tmp_path / "working.mp3"
+    working.write_text("audio", encoding="utf-8")
+
+    monkeypatch.setattr("src.track_metadata.pipeline.stages.stage_file", lambda _source: working)
+    monkeypatch.setattr("src.track_metadata.pipeline.stages.read_existing_metadata", lambda _path: SimpleMetadata())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.analyze_missing_audio_features",
+        lambda _path, metadata: metadata.update({"bpm": 151.0, "key": "Gm"}),
+    )
+    monkeypatch.setattr("src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("src.track_metadata.pipeline.stages.rename_file", lambda path, *_args, **_kwargs: path)
+    monkeypatch.setattr("src.track_metadata.pipeline.stages.move_to_augmented", lambda path, **_kwargs: path)
+    monkeypatch.setattr("src.track_metadata.pipeline.stages.upsert_track_records", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("src.track_metadata.pipeline.stages.database.create_session", lambda: _SessionStub())
+
+    report = RunReport()
+    context = PipelineContext(hydrator=_CruftHydratorStub(), run_report=report)
+    build_default_pipeline().run([source], context)
+
+    row = report.rows[0]
+    assert row.metadata.title == "[06A - Gm - 151.00] Linds - Sunset Funk"
 
 
 class _FallbackHydratorStub:

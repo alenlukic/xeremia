@@ -172,20 +172,27 @@ def sanitize_filename(base_name: str, pattern: re.Pattern[str] = SANITIZE_PATTER
 
 def rename_file(
     path: Path,
-    artist: str | None,
-    title: str | None,
+    title_or_artist: str | None,
+    title_or_pattern: str | re.Pattern[str] | None = None,
     pattern: re.Pattern[str] = SANITIZE_PATTERN,
 ) -> Path:
-    safe_artist = artist or "Unknown Artist"
-    safe_title = title or path.stem
-    new_name = sanitize_filename(f"{safe_artist} - {safe_title}", pattern) + path.suffix.lower()
+    if isinstance(title_or_pattern, re.Pattern):
+        safe_title = title_or_artist or path.stem
+        effective_pattern = title_or_pattern
+    elif title_or_pattern is not None:
+        safe_title = f"{title_or_artist or 'Unknown Artist'} - {title_or_pattern}"
+        effective_pattern = pattern
+    else:
+        safe_title = title_or_artist or path.stem
+        effective_pattern = pattern
+
+    new_name = sanitize_filename(safe_title, effective_pattern) + path.suffix.lower()
 
     destination = path.with_name(new_name)
     counter = 1
     while destination.exists() and destination != path:
         destination = path.with_name(
-            sanitize_filename(f"{safe_artist} - {safe_title} ({counter})", pattern)
-            + path.suffix.lower()
+            sanitize_filename(f"{safe_title} ({counter})", effective_pattern) + path.suffix.lower()
         )
         counter += 1
 
