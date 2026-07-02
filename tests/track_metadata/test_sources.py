@@ -86,11 +86,14 @@ def test_acoustid_returns_none_on_low_confidence(monkeypatch) -> None:
 def test_acoustid_returns_metadata_on_high_confidence(monkeypatch) -> None:
     monkeypatch.setenv("ACOUSTID_API_KEY", "fakekey")
     mock_acoustid = MagicMock()
-    mock_acoustid.match.return_value = [(0.95, "rec-abc", "Matched Title", "Matched Artist")]
+    mock_acoustid.match.return_value = [
+        (0.95, "rec-abc", "Matched Title", "Matched Artist")
+    ]
     source = AcoustIdSource()
 
-    with patch.object(acoustid_mod, "fetch_recording_metadata", return_value=None), patch.dict(
-        "sys.modules", {"acoustid": mock_acoustid}
+    with (
+        patch.object(acoustid_mod, "fetch_recording_metadata", return_value=None),
+        patch.dict("sys.modules", {"acoustid": mock_acoustid}),
     ):
         result = source.lookup(SimpleMetadata(), _context(_client(MagicMock())))
 
@@ -106,7 +109,9 @@ def test_acoustid_returns_metadata_on_high_confidence(monkeypatch) -> None:
 
 def test_musicbrainz_returns_none_without_title() -> None:
     source = MusicBrainzSource()
-    result = source.lookup(SimpleMetadata(), _context(_client(MagicMock()), "no_title.mp3"))
+    result = source.lookup(
+        SimpleMetadata(), _context(_client(MagicMock()), "no_title.mp3")
+    )
     assert result is None
 
 
@@ -122,7 +127,9 @@ def test_musicbrainz_handles_http_error() -> None:
 def test_musicbrainz_returns_none_when_no_recordings_match() -> None:
     get = MagicMock(return_value=_json_response({"recordings": []}))
     source = MusicBrainzSource()
-    result = source.lookup(SimpleMetadata(title="Obscure Track"), _context(_client(get)))
+    result = source.lookup(
+        SimpleMetadata(title="Obscure Track"), _context(_client(get))
+    )
     assert result is None
 
 
@@ -219,14 +226,18 @@ def test_discogs_returns_none_without_credentials(monkeypatch) -> None:
     for var in ("DISCOGS_TOKEN", "DISCOGS_KEY", "DISCOGS_SECRET"):
         monkeypatch.delenv(var, raising=False)
     source = DiscogsSource()
-    result = source.lookup(SimpleMetadata(title="Track"), _context(_client(MagicMock())))
+    result = source.lookup(
+        SimpleMetadata(title="Track"), _context(_client(MagicMock()))
+    )
     assert result is None
 
 
 def test_discogs_returns_none_without_title(monkeypatch) -> None:
     monkeypatch.setenv("DISCOGS_TOKEN", "faketoken")
     source = DiscogsSource()
-    result = source.lookup(SimpleMetadata(artist="Artist"), _context(_client(MagicMock())))
+    result = source.lookup(
+        SimpleMetadata(artist="Artist"), _context(_client(MagicMock()))
+    )
     assert result is None
 
 
@@ -336,7 +347,10 @@ def test_web_search_returns_metadata_from_results() -> None:
     source = WebSearchSource()
     result = source.lookup(
         SimpleMetadata(title="Jūra", artist="Echo Delta"),
-        _context(_client(MagicMock(return_value=_text_response(html))), "Echo Delta - Jūra.mp3"),
+        _context(
+            _client(MagicMock(return_value=_text_response(html))),
+            "Echo Delta - Jūra.mp3",
+        ),
     )
     assert result is not None
     assert result.artist == "Echo Delta"

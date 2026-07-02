@@ -33,9 +33,13 @@ def _configured_path(env_var: str, default: str) -> Path:
 DOWNLOAD_DIR = _configured_path("TRACK_METADATA_DOWNLOAD_DIR", "downloads")
 PROCESSING_DIR = _configured_path("TRACK_METADATA_PROCESSING_DIR", "processing")
 AUGMENTED_DIR = _configured_path("TRACK_METADATA_AUGMENTED_DIR", "augmented")
-REMEDIATION_DIR = _configured_path("TRACK_METADATA_REMEDIATION_DIR", "Remediation Tracks")
+REMEDIATION_DIR = _configured_path(
+    "TRACK_METADATA_REMEDIATION_DIR", "Remediation Tracks"
+)
 LOG_DIR = _configured_path("TRACK_METADATA_LOG_DIR", "logs")
-RUN_START = os.getenv("TRACK_METADATA_RUN_START", datetime.now().strftime("%Y%m%dT%H%M%S"))
+RUN_START = os.getenv(
+    "TRACK_METADATA_RUN_START", datetime.now().strftime("%Y%m%dT%H%M%S")
+)
 LOG_FILE_PATH = LOG_DIR / f"{RUN_START}.log"
 
 SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".aiff", ".aif", ".wav"}
@@ -84,7 +88,10 @@ def discover_new_audio_files(
         if candidate.is_file() and candidate.suffix.lower() in supported_extensions:
             destination = augmented_dir / candidate.name
             if destination.exists():
-                logging.info("Skipping %s; already present in augmented directory", candidate.name)
+                logging.info(
+                    "Skipping %s; already present in augmented directory",
+                    candidate.name,
+                )
                 continue
             if candidate.suffix.lower() == ".wav":
                 aiff_equivalent = augmented_dir / (candidate.stem + ".aiff")
@@ -125,7 +132,8 @@ def convert_wav_to_aiff(wav_path: Path) -> Path:
         data, samplerate = sf.read(str(wav_path))
         subtype = (
             info.subtype
-            if info.subtype in _AIFF_PCM_SUBTYPES and sf.check_format("AIFF", info.subtype)
+            if info.subtype in _AIFF_PCM_SUBTYPES
+            and sf.check_format("AIFF", info.subtype)
             else "PCM_24"
         )
         sf.write(str(aiff_path), data, samplerate, format="AIFF", subtype=subtype)
@@ -157,7 +165,9 @@ def move_to_augmented(
 
 
 def move_to_remediation(
-    path: Path, remediation_dir: Path = REMEDIATION_DIR, original_name: str | None = None
+    path: Path,
+    remediation_dir: Path = REMEDIATION_DIR,
+    original_name: str | None = None,
 ) -> Path:
     destination = remediation_dir / (original_name or path.name)
     shutil.copy2(path, destination)
@@ -165,7 +175,9 @@ def move_to_remediation(
     return destination
 
 
-def sanitize_filename(base_name: str, pattern: re.Pattern[str] = SANITIZE_PATTERN) -> str:
+def sanitize_filename(
+    base_name: str, pattern: re.Pattern[str] = SANITIZE_PATTERN
+) -> str:
     sanitized = pattern.sub(" ", base_name).strip()
     return re.sub(r"\s+", " ", sanitized)
 
@@ -192,7 +204,8 @@ def rename_file(
     counter = 1
     while destination.exists() and destination != path:
         destination = path.with_name(
-            sanitize_filename(f"{safe_title} ({counter})", effective_pattern) + path.suffix.lower()
+            sanitize_filename(f"{safe_title} ({counter})", effective_pattern)
+            + path.suffix.lower()
         )
         counter += 1
 

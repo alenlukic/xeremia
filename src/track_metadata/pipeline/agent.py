@@ -25,7 +25,10 @@ class CursorSDKFallbackAgent:
         try:
             from cursor_sdk import Agent
         except ImportError:
-            logging.info("cursor_sdk not installed; skipping metadata fallback for %s", file_path.name)
+            logging.info(
+                "cursor_sdk not installed; skipping metadata fallback for %s",
+                file_path.name,
+            )
             return None
 
         if not missing_fields:
@@ -46,7 +49,9 @@ class CursorSDKFallbackAgent:
         try:
             response = Agent.create(model=self.model).prompt(prompt)
         except Exception as exc:  # pragma: no cover - network/runtime dependent
-            logging.warning("Cursor SDK fallback failed for %s: %s", file_path.name, exc)
+            logging.warning(
+                "Cursor SDK fallback failed for %s: %s", file_path.name, exc
+            )
             return None
 
         content = _extract_content(response)

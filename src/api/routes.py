@@ -57,6 +57,7 @@ _BPM_BIN_WIDTH = 5
 
 def _get_session():
     from src.db import database
+
     return database.create_session()
 
 
@@ -65,6 +66,7 @@ def _get_match_finder():
     if _match_finder is None:
         from src.harmonic_mixing.cosine_cache import CosineCache
         from src.harmonic_mixing.transition_match_finder import TransitionMatchFinder
+
         _match_finder = TransitionMatchFinder(cosine_cache=CosineCache())
     return _match_finder
 
@@ -72,6 +74,7 @@ def _get_match_finder():
 @router.get("/search", response_model=List[SearchSuggestion])
 def api_search(q: str = Query(..., min_length=1)):
     from src.api.es import search as es_search
+
     try:
         hits = es_search(q.strip(), limit=10)
     except Exception:
@@ -82,14 +85,16 @@ def api_search(q: str = Query(..., min_length=1)):
         artist_names = doc.get("artist_names", [])
         if isinstance(artist_names, str):
             artist_names = [n.strip() for n in artist_names.split(",") if n.strip()]
-        results.append({
-            "id": doc["id"],
-            "title": doc.get("title", ""),
-            "artist_names": artist_names,
-            "bpm": doc.get("bpm"),
-            "key": doc.get("key"),
-            "camelot_code": doc.get("camelot_code"),
-        })
+        results.append(
+            {
+                "id": doc["id"],
+                "title": doc.get("title", ""),
+                "artist_names": artist_names,
+                "bpm": doc.get("bpm"),
+                "key": doc.get("key"),
+                "camelot_code": doc.get("camelot_code"),
+            }
+        )
     return results
 
 
@@ -131,11 +136,7 @@ def api_track_traits():
 
     session = _get_session()
     try:
-        rows = (
-            session.query(TrackTrait)
-            .filter_by(trait_version=TRAIT_VERSION)
-            .all()
-        )
+        rows = session.query(TrackTrait).filter_by(trait_version=TRAIT_VERSION).all()
         return [
             {"track_id": row.track_id, "traits": serialize_trait_info(row)}
             for row in rows
@@ -168,7 +169,7 @@ def api_matches(track_id: int):
         (same_key, higher_key, lower_key), _ = result
 
         cache = finder.cosine_cache
-        if cache is not None and hasattr(cache, 'schedule_warmup'):
+        if cache is not None and hasattr(cache, "schedule_warmup"):
             cache.schedule_warmup(track_id)
 
         return serialize_matches(same_key, higher_key, lower_key)
@@ -222,7 +223,9 @@ def api_match_detail(track_id: int, candidate_id: int):
         target_match.get_score()
 
         try:
-            active_weights = WeightService.instance().get_effective_weights_for_scoring()
+            active_weights = (
+                WeightService.instance().get_effective_weights_for_scoring()
+            )
         except Exception:
             active_weights = MATCH_WEIGHTS
 
@@ -230,11 +233,13 @@ def api_match_detail(track_id: int, candidate_id: int):
         for factor in MatchFactors:
             weight = active_weights.get(factor.name, 0)
             score = target_match.factors.get(factor, 0)
-            factors.append({
-                "name": factor.value,
-                "score": round(score, 4),
-                "weight": round(weight, 4),
-            })
+            factors.append(
+                {
+                    "name": factor.value,
+                    "score": round(score, 4),
+                    "weight": round(weight, 4),
+                }
+            )
 
         return {
             "overall_score": round(target_match.get_score(), 2),
@@ -246,7 +251,11 @@ def api_match_detail(track_id: int, candidate_id: int):
         raise
     except Exception:
         session.rollback()
-        logger.exception("Match detail failed for track_id=%s, candidate_id=%s", track_id, candidate_id)
+        logger.exception(
+            "Match detail failed for track_id=%s, candidate_id=%s",
+            track_id,
+            candidate_id,
+        )
         raise HTTPException(status_code=500, detail="Match detail retrieval failed")
     finally:
         session.close()
@@ -263,12 +272,19 @@ def api_cache_stats():
     cache = finder.cosine_cache
     if cache is None:
         return CacheStatsResponse(
-            used=0, capacity=0, usage_ratio=0.0,
-            hits=0, misses=0, hit_rate=0.0,
-            hit_rate_numerator=0, hit_rate_denominator=0,
+            used=0,
+            capacity=0,
+            usage_ratio=0.0,
+            hits=0,
+            misses=0,
+            hit_rate=0.0,
+            hit_rate_numerator=0,
+            hit_rate_denominator=0,
             hit_rate_basis="process_lifetime",
-            key_distribution=[], bpm_distribution=[],
-            recent_entries=[], recent_exits=[],
+            key_distribution=[],
+            bpm_distribution=[],
+            recent_entries=[],
+            recent_exits=[],
         )
 
     stats = cache.get_stats()
@@ -276,8 +292,11 @@ def api_cache_stats():
     key_dist, bpm_dist = _build_cache_distributions(cache)
 
     return CacheStatsResponse(
-        **{k: v for k, v in stats.items()
-           if k not in ("recent_entries", "recent_exits")},
+        **{
+            k: v
+            for k, v in stats.items()
+            if k not in ("recent_entries", "recent_exits")
+        },
         key_distribution=key_dist,
         bpm_distribution=bpm_dist,
         recent_entries=[
@@ -285,8 +304,11 @@ def api_cache_stats():
             for e in stats["recent_entries"]
         ],
         recent_exits=[
-            {"pair": list(e["pair"]), "timestamp": e["timestamp"],
-             "reason": e.get("reason")}
+            {
+                "pair": list(e["pair"]),
+                "timestamp": e["timestamp"],
+                "reason": e.get("reason"),
+            }
             for e in stats["recent_exits"]
         ],
     )
@@ -301,11 +323,7 @@ def _build_cache_distributions(cache):
 
     session = _get_session()
     try:
-        rows = (
-            session.query(Track)
-            .filter(Track.id.in_(track_ids))
-            .all()
-        )
+        rows = session.query(Track).filter(Track.id.in_(track_ids)).all()
 
         key_counter: Counter = Counter()
         bpms: list = []
@@ -315,10 +333,7 @@ def _build_cache_distributions(cache):
             if row.bpm is not None:
                 bpms.append(float(row.bpm))
 
-        key_dist = [
-            {"key": k, "count": c}
-            for k, c in key_counter.most_common()
-        ]
+        key_dist = [{"key": k, "count": c} for k, c in key_counter.most_common()]
 
         bpm_dist = []
         if bpms:
@@ -329,11 +344,13 @@ def _build_cache_distributions(cache):
                 bin_start = int(b // _BPM_BIN_WIDTH) * _BPM_BIN_WIDTH
                 bins[bin_start] += 1
             for b in range(min_bpm, max_bpm + 1, _BPM_BIN_WIDTH):
-                bpm_dist.append({
-                    "bin_start": float(b),
-                    "bin_end": float(b + _BPM_BIN_WIDTH),
-                    "count": bins.get(b, 0),
-                })
+                bpm_dist.append(
+                    {
+                        "bin_start": float(b),
+                        "bin_end": float(b + _BPM_BIN_WIDTH),
+                        "count": bins.get(b, 0),
+                    }
+                )
 
         return key_dist, bpm_dist
     except Exception:
@@ -352,12 +369,14 @@ def _build_cache_distributions(cache):
 @router.get("/weights", response_model=WeightResponse)
 def api_get_weights():
     from src.harmonic_mixing.weight_service import WeightService
+
     return WeightService.instance().get_weights()
 
 
 @router.get("/weights/defaults")
 def api_get_weight_defaults():
     from src.harmonic_mixing.weight_service import WeightService
+
     return WeightService.instance().get_default_weights()
 
 
@@ -379,6 +398,7 @@ def _clear_similarity_cache():
 @router.put("/weights", response_model=WeightResponse)
 def api_update_weights(body: WeightUpdateRequest):
     from src.harmonic_mixing.weight_service import WeightService
+
     result = WeightService.instance().update_weights(body.weights)
     finder = _get_match_finder()
     finder._sync_effective_weights()
@@ -446,11 +466,7 @@ def api_export_m3u8(body: SetExportRequest):
 
     session = _get_session()
     try:
-        tracks = (
-            session.query(Track)
-            .filter(Track.id.in_(body.track_ids))
-            .all()
-        )
+        tracks = session.query(Track).filter(Track.id.in_(body.track_ids)).all()
         track_map = {t.id: t for t in tracks}
 
         lines = ["#EXTM3U"]
@@ -462,9 +478,10 @@ def api_export_m3u8(body: SetExportRequest):
             lines.append(t.file_name)
 
         content = "\n".join(lines) + "\n"
-        safe_name = "".join(
-            c if c.isalnum() or c in " _-" else "_" for c in body.name
-        ).strip() or "set"
+        safe_name = (
+            "".join(c if c.isalnum() or c in " _-" else "_" for c in body.name).strip()
+            or "set"
+        )
         return {"content": content, "filename": f"{safe_name}.m3u8"}
     except HTTPException:
         raise
@@ -486,7 +503,9 @@ def _serialize_set_summary(dj_set, session) -> dict:
     from src.models.set_tracklist_entry import SetTracklistEntry
 
     pool_count = session.query(SetPoolEntry).filter_by(set_id=dj_set.id).count()
-    tracklist_count = session.query(SetTracklistEntry).filter_by(set_id=dj_set.id).count()
+    tracklist_count = (
+        session.query(SetTracklistEntry).filter_by(set_id=dj_set.id).count()
+    )
     return {
         "id": dj_set.id,
         "name": dj_set.name,
@@ -502,13 +521,11 @@ def _serialize_hydrated(hydration, session) -> dict:
 
     dj_set = hydration["set"]
 
-    all_track_ids = list({
-        e.track_id for e in hydration["pool"]
-    } | {
-        e.track_id for e in hydration["tracklist"]
-    } | {
-        n.track_id for n in hydration["explorer_nodes"]
-    })
+    all_track_ids = list(
+        {e.track_id for e in hydration["pool"]}
+        | {e.track_id for e in hydration["tracklist"]}
+        | {n.track_id for n in hydration["explorer_nodes"]}
+    )
 
     track_map: dict = {}
     if all_track_ids:
@@ -802,7 +819,9 @@ def api_tracklist_reorder(set_id: int, body: TracklistReorderRequest):
 
 
 @router.patch("/sets/{set_id}/tracklist/{track_id}/note")
-def api_tracklist_update_note(set_id: int, track_id: int, body: TracklistNoteUpdateRequest):
+def api_tracklist_update_note(
+    set_id: int, track_id: int, body: TracklistNoteUpdateRequest
+):
     from src.set_workspace.service import SetWorkspaceService
 
     session = _get_session()
@@ -860,7 +879,10 @@ def api_explorer_add_node(set_id: int, body: ExplorerAddNodeRequest):
         if svc.get_set(set_id) is None:
             raise HTTPException(status_code=404, detail="Set not found")
         node, error = svc.explorer_add_node(
-            set_id, body.track_id, body.parent_node_id, body.level,
+            set_id,
+            body.track_id,
+            body.parent_node_id,
+            body.level,
         )
         if error:
             raise HTTPException(status_code=400, detail=error)
@@ -889,7 +911,9 @@ def api_explorer_add_edge(set_id: int, body: ExplorerAddEdgeRequest):
     try:
         svc = SetWorkspaceService(session)
         edge, error = svc.explorer_add_edge(
-            set_id, body.parent_node_id, body.child_node_id,
+            set_id,
+            body.parent_node_id,
+            body.child_node_id,
         )
         if error:
             raise HTTPException(status_code=400, detail=error)
@@ -912,12 +936,18 @@ def api_explorer_delete_node(set_id: int, body: ExplorerDeleteNodeRequest):
     session = _get_session()
     try:
         svc = SetWorkspaceService(session)
-        rewire_edges = [
-            {"parent_node_id": r.parent_node_id, "child_node_id": r.child_node_id}
-            for r in body.rewire_edges
-        ] if body.rewire_edges else None
+        rewire_edges = (
+            [
+                {"parent_node_id": r.parent_node_id, "child_node_id": r.child_node_id}
+                for r in body.rewire_edges
+            ]
+            if body.rewire_edges
+            else None
+        )
         ok, error = svc.explorer_delete_node(
-            set_id, body.node_id, rewire_edges,
+            set_id,
+            body.node_id,
+            rewire_edges,
         )
         if not ok:
             raise HTTPException(status_code=400, detail=error)

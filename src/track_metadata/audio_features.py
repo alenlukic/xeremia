@@ -15,7 +15,9 @@ def _import_attr(module: str, attr: str):
     return getattr(importlib.import_module(module), attr)
 
 
-def analyze_missing_audio_features(audio_path: Path, metadata: SimpleMetadata) -> SimpleMetadata:
+def analyze_missing_audio_features(
+    audio_path: Path, metadata: SimpleMetadata
+) -> SimpleMetadata:
     needs_bpm = metadata.bpm is None
     needs_key = metadata.key is None
     if not (needs_bpm or needs_key):
@@ -46,7 +48,12 @@ def estimate_bpm_candidates(audio_path: Path) -> list[float]:
         try:
             value = estimator(audio_path)
         except Exception as exc:  # pragma: no cover - external library behaviour
-            logging.warning("%s BPM analysis failed for %s: %s", estimator.__name__, audio_path.name, exc)
+            logging.warning(
+                "%s BPM analysis failed for %s: %s",
+                estimator.__name__,
+                audio_path.name,
+                exc,
+            )
             continue
         if value is not None:
             candidates.append(value)
@@ -63,7 +70,12 @@ def estimate_key_candidates(audio_path: Path) -> list[tuple[str, float]]:
         try:
             value = estimator(audio_path)
         except Exception as exc:  # pragma: no cover - external library behaviour
-            logging.warning("%s key analysis failed for %s: %s", estimator.__name__, audio_path.name, exc)
+            logging.warning(
+                "%s key analysis failed for %s: %s",
+                estimator.__name__,
+                audio_path.name,
+                exc,
+            )
             continue
         if value is not None:
             candidates.append(value)
@@ -79,16 +91,22 @@ def _normalize_bpm(value: float) -> float:
     return normalized
 
 
-def fuse_bpm(candidates: list[float], *, tolerance: float = 4.0) -> tuple[float | None, float]:
+def fuse_bpm(
+    candidates: list[float], *, tolerance: float = 4.0
+) -> tuple[float | None, float]:
     if not candidates:
         return None, 0.0
 
-    normalized = [_normalize_bpm(candidate) for candidate in candidates if candidate > 0]
+    normalized = [
+        _normalize_bpm(candidate) for candidate in candidates if candidate > 0
+    ]
     if not normalized:
         return None, 0.0
 
     median = float(np.median(normalized))
-    inliers = [candidate for candidate in normalized if abs(candidate - median) <= tolerance]
+    inliers = [
+        candidate for candidate in normalized if abs(candidate - median) <= tolerance
+    ]
     confidence = len(inliers) / len(normalized)
     if inliers:
         return float(np.median(inliers)), confidence
@@ -233,7 +251,11 @@ def _estimate_key_librosa(audio_path: Path) -> tuple[str, float] | None:
 
     top_key, top_score = scores[0]
     second_score = scores[1][1] if len(scores) > 1 else top_score
-    confidence = 0.5 if top_score <= 0 else max(0.05, min(1.0, (top_score - second_score) / top_score))
+    confidence = (
+        0.5
+        if top_score <= 0
+        else max(0.05, min(1.0, (top_score - second_score) / top_score))
+    )
     return top_key, confidence
 
 

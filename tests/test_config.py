@@ -6,20 +6,38 @@ from unittest.mock import patch
 import pytest
 
 _CONFIG_VARS = [
-    "DATA_ROOT", "DATA_BACKUP_RESTORE_MUSIC_DIR", "DATA_FILE_STAGING_DIR",
-    "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT",
-    "HM_WEIGHT_SIMILARITY", "HM_WEIGHT_CAMELOT", "HM_WEIGHT_BPM",
-    "HM_WEIGHT_FRESHNESS", "HM_WEIGHT_GENRE_SIMILARITY",
-    "HM_WEIGHT_MOOD_CONTINUITY", "HM_WEIGHT_VOCAL_CLASH",
-    "HM_WEIGHT_ENERGY", "HM_WEIGHT_INSTRUMENT_SIMILARITY",
-    "HM_MAX_RESULTS", "HM_SCORE_THRESHOLD", "HM_RESULT_THRESHOLD",
-    "INGESTION_PIPELINE_ROOT", "INGESTION_PIPELINE_UNPROCESSED",
-    "INGESTION_PIPELINE_PROCESSING", "INGESTION_PIPELINE_FINALIZED",
+    "DATA_ROOT",
+    "DATA_BACKUP_RESTORE_MUSIC_DIR",
+    "DATA_FILE_STAGING_DIR",
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+    "DB_HOST",
+    "DB_PORT",
+    "HM_WEIGHT_SIMILARITY",
+    "HM_WEIGHT_CAMELOT",
+    "HM_WEIGHT_BPM",
+    "HM_WEIGHT_FRESHNESS",
+    "HM_WEIGHT_GENRE_SIMILARITY",
+    "HM_WEIGHT_MOOD_CONTINUITY",
+    "HM_WEIGHT_VOCAL_CLASH",
+    "HM_WEIGHT_ENERGY",
+    "HM_WEIGHT_INSTRUMENT_SIMILARITY",
+    "HM_MAX_RESULTS",
+    "HM_SCORE_THRESHOLD",
+    "HM_RESULT_THRESHOLD",
+    "INGESTION_PIPELINE_ROOT",
+    "INGESTION_PIPELINE_UNPROCESSED",
+    "INGESTION_PIPELINE_PROCESSING",
+    "INGESTION_PIPELINE_FINALIZED",
     "INGESTION_PIPELINE_REKORDBOX_TAG_FILE",
     "INGESTION_PIPELINE_PROCESSED_MUSIC_DIR",
-    "TRACK_METADATA_DOWNLOAD_DIR", "TRACK_METADATA_PROCESSING_DIR",
-    "TRACK_METADATA_AUGMENTED_DIR", "TRACK_METADATA_LOG_DIR",
-    "LOG_LOCATION", "NUM_CORES",
+    "TRACK_METADATA_DOWNLOAD_DIR",
+    "TRACK_METADATA_PROCESSING_DIR",
+    "TRACK_METADATA_AUGMENTED_DIR",
+    "TRACK_METADATA_LOG_DIR",
+    "LOG_LOCATION",
+    "NUM_CORES",
 ]
 
 
@@ -35,6 +53,7 @@ def _reload_config():
     by the test are visible — the on-disk .env is never read."""
     with patch("dotenv.load_dotenv", return_value=None):
         import src.config as mod
+
         importlib.reload(mod)
         return mod
 
@@ -43,46 +62,56 @@ def _reload_config():
 # Helper function tests
 # ---------------------------------------------------------------------------
 
+
 class TestHelpers:
     def test_str_returns_env_value(self, monkeypatch):
         monkeypatch.setenv("TEST_STR_VAR", "hello")
         from src.config import _str
+
         assert _str("TEST_STR_VAR") == "hello"
 
     def test_str_returns_default_when_missing(self):
         from src.config import _str
+
         assert _str("NONEXISTENT_VAR_XYZ", "fallback") == "fallback"
 
     def test_str_returns_empty_string_default(self):
         from src.config import _str
+
         assert _str("NONEXISTENT_VAR_XYZ") == ""
 
     def test_int_returns_env_value(self, monkeypatch):
         monkeypatch.setenv("TEST_INT_VAR", "42")
         from src.config import _int
+
         assert _int("TEST_INT_VAR", 0) == 42
 
     def test_int_returns_default_on_missing(self):
         from src.config import _int
+
         assert _int("NONEXISTENT_VAR_XYZ", 99) == 99
 
     def test_int_returns_default_on_invalid(self, monkeypatch):
         monkeypatch.setenv("TEST_INT_VAR", "not_a_number")
         from src.config import _int
+
         assert _int("TEST_INT_VAR", 7) == 7
 
     def test_float_returns_env_value(self, monkeypatch):
         monkeypatch.setenv("TEST_FLOAT_VAR", "3.14")
         from src.config import _float
+
         assert _float("TEST_FLOAT_VAR", 0.0) == pytest.approx(3.14)
 
     def test_float_returns_default_on_missing(self):
         from src.config import _float
+
         assert _float("NONEXISTENT_VAR_XYZ", 1.5) == pytest.approx(1.5)
 
     def test_float_returns_default_on_invalid(self, monkeypatch):
         monkeypatch.setenv("TEST_FLOAT_VAR", "abc")
         from src.config import _float
+
         assert _float("TEST_FLOAT_VAR", 2.5) == pytest.approx(2.5)
 
 
@@ -90,22 +119,38 @@ class TestHelpers:
 # CONFIG structure tests
 # ---------------------------------------------------------------------------
 
+
 class TestConfigStructure:
     def test_top_level_keys(self):
         mod = _reload_config()
         expected = {
-            "DATA", "DB", "FEATURE_EXTRACTION", "HARMONIC_MIXING",
-            "INGESTION_PIPELINE", "TRACK_METADATA", "LOG_LOCATION",
+            "DATA",
+            "DB",
+            "FEATURE_EXTRACTION",
+            "HARMONIC_MIXING",
+            "INGESTION_PIPELINE",
+            "TRACK_METADATA",
+            "LOG_LOCATION",
         }
         assert expected == set(mod.CONFIG.keys())
 
     def test_data_keys(self):
         mod = _reload_config()
-        assert set(mod.CONFIG["DATA"].keys()) == {"ROOT", "BACKUP_RESTORE_MUSIC_DIR", "FILE_STAGING_DIR"}
+        assert set(mod.CONFIG["DATA"].keys()) == {
+            "ROOT",
+            "BACKUP_RESTORE_MUSIC_DIR",
+            "FILE_STAGING_DIR",
+        }
 
     def test_db_keys(self):
         mod = _reload_config()
-        assert set(mod.CONFIG["DB"].keys()) == {"NAME", "USER", "PASSWORD", "HOST", "PORT"}
+        assert set(mod.CONFIG["DB"].keys()) == {
+            "NAME",
+            "USER",
+            "PASSWORD",
+            "HOST",
+            "PORT",
+        }
 
     def test_harmonic_mixing_keys(self):
         mod = _reload_config()
@@ -119,8 +164,14 @@ class TestConfigStructure:
         mod = _reload_config()
         weights = mod.CONFIG["HARMONIC_MIXING"]["TRANSITION_MATCH_WEIGHTS"]
         expected = {
-            "SIMILARITY", "CAMELOT", "BPM", "FRESHNESS", "GENRE_SIMILARITY",
-            "MOOD_CONTINUITY", "VOCAL_CLASH", "ENERGY",
+            "SIMILARITY",
+            "CAMELOT",
+            "BPM",
+            "FRESHNESS",
+            "GENRE_SIMILARITY",
+            "MOOD_CONTINUITY",
+            "VOCAL_CLASH",
+            "ENERGY",
             "INSTRUMENT_SIMILARITY",
         }
         assert expected == set(weights.keys())
@@ -128,8 +179,12 @@ class TestConfigStructure:
     def test_ingestion_pipeline_keys(self):
         mod = _reload_config()
         assert set(mod.CONFIG["INGESTION_PIPELINE"].keys()) == {
-            "ROOT", "UNPROCESSED", "PROCESSING", "FINALIZED",
-            "REKORDBOX_TAG_FILE", "PROCESSED_MUSIC_DIR",
+            "ROOT",
+            "UNPROCESSED",
+            "PROCESSING",
+            "FINALIZED",
+            "REKORDBOX_TAG_FILE",
+            "PROCESSED_MUSIC_DIR",
         }
 
     def test_track_metadata_keys(self):
@@ -146,6 +201,7 @@ class TestConfigStructure:
 # ---------------------------------------------------------------------------
 # Default value tests
 # ---------------------------------------------------------------------------
+
 
 class TestDefaults:
     def test_db_host_default(self):
@@ -211,6 +267,7 @@ class TestDefaults:
 # Env-to-config key mapping tests
 # ---------------------------------------------------------------------------
 
+
 class TestEnvMapping:
     def test_env_var_overrides_data_root(self, monkeypatch):
         monkeypatch.setenv("DATA_ROOT", "/test/data")
@@ -225,7 +282,9 @@ class TestEnvMapping:
     def test_env_var_overrides_weight(self, monkeypatch):
         monkeypatch.setenv("HM_WEIGHT_BPM", "0.99")
         mod = _reload_config()
-        assert mod.CONFIG["HARMONIC_MIXING"]["TRANSITION_MATCH_WEIGHTS"]["BPM"] == pytest.approx(0.99)
+        assert mod.CONFIG["HARMONIC_MIXING"]["TRANSITION_MATCH_WEIGHTS"][
+            "BPM"
+        ] == pytest.approx(0.99)
 
     def test_env_var_overrides_int_threshold(self, monkeypatch):
         monkeypatch.setenv("HM_MAX_RESULTS", "100")
@@ -245,6 +304,7 @@ class TestEnvMapping:
 
     def test_num_cores_default_is_cpu_count(self):
         import multiprocessing
+
         mod = _reload_config()
         assert mod.NUM_CORES == multiprocessing.cpu_count()
 
@@ -252,6 +312,7 @@ class TestEnvMapping:
 # ---------------------------------------------------------------------------
 # Module-level convenience attribute tests
 # ---------------------------------------------------------------------------
+
 
 class TestModuleAttributes:
     def test_log_location_alias(self):

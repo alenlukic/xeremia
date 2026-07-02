@@ -62,8 +62,10 @@ class MetadataHydrator:
         candidate_resolver: CandidateResolver | None = None,
         skip_beatport_hydration: bool = True,
         web_label_verifier: WebLabelVerifier | None = None,
-        beatport_genre_lookup: Callable[[str | None, str | None], str | None] | None = None,
-        lastfm_genre_lookup: Callable[[str | None, str | None], str | None] | None = None,
+        beatport_genre_lookup: Callable[[str | None, str | None], str | None]
+        | None = None,
+        lastfm_genre_lookup: Callable[[str | None, str | None], str | None]
+        | None = None,
         http: RateLimitedHttpClient | None = None,
         cache: MetadataCache | None = None,
         catalog_sources: list[MetadataSource] | None = None,
@@ -127,7 +129,10 @@ class MetadataHydrator:
             web_candidate = self._web_source.lookup(resolved, context)
             if web_candidate is not None:
                 sources.append(
-                    {"source": self._web_source.name, "metadata": web_candidate.to_dict()}
+                    {
+                        "source": self._web_source.name,
+                        "metadata": web_candidate.to_dict(),
+                    }
                 )
                 resolved = _merge_missing(resolved, web_candidate)
 
@@ -145,7 +150,9 @@ class MetadataHydrator:
             )
 
         self._apply_source_catalog_ids(resolved, candidates)
-        resolved.genre = self._resolve_genre(resolved, sources, file_path) or resolved.genre
+        resolved.genre = (
+            self._resolve_genre(resolved, sources, file_path) or resolved.genre
+        )
         apply_label_resolution(resolved, web_verifier=self.web_label_verifier)
 
         self.cache.store_final(cache_key, resolved)
@@ -193,9 +200,13 @@ class MetadataHydrator:
             "source_count": len(sources),
         }
         try:
-            resolved = self.candidate_resolver(file_path, current, sources, missing_fields)
+            resolved = self.candidate_resolver(
+                file_path, current, sources, missing_fields
+            )
         except Exception as exc:
-            logging.warning("Metadata fallback resolver failed for %s: %s", file_path.name, exc)
+            logging.warning(
+                "Metadata fallback resolver failed for %s: %s", file_path.name, exc
+            )
             event["outcome"] = "error"
             event["error"] = str(exc)
             if agent_events is not None:
@@ -219,7 +230,9 @@ class MetadataHydrator:
         if is_beatport_encoded(file_path):
             beatport_genre = read_beatport_genre_from_tags(file_path)
             if beatport_genre:
-                source_candidates.insert(0, ("beatport", beatport_genre, BEATPORT_TAG_CONFIDENCE))
+                source_candidates.insert(
+                    0, ("beatport", beatport_genre, BEATPORT_TAG_CONFIDENCE)
+                )
         return resolve_dynamic_genre(
             artist=resolved.artist,
             title=resolved.title,

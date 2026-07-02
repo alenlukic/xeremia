@@ -20,9 +20,11 @@ def _make_track(track_id, title="Test Track"):
 
 @pytest.fixture()
 def assistant():
-    with patch("src.assistant.service.database") as mock_db, \
-         patch("src.assistant.service.CosineCache"), \
-         patch("src.assistant.service.TransitionMatchFinder"):
+    with (
+        patch("src.assistant.service.database") as mock_db,
+        patch("src.assistant.service.CosineCache"),
+        patch("src.assistant.service.TransitionMatchFinder"),
+    ):
         mock_session = MagicMock()
         mock_db.create_session.return_value = mock_session
         a = Assistant()
@@ -36,8 +38,10 @@ class TestWarmCacheDebounce:
         track = _make_track(42)
         assistant.session.query.return_value.filter_by.return_value.first.return_value = track
 
-        with patch("src.assistant.service.time") as mock_time, \
-             patch("src.assistant.service.threading.Thread") as mock_thread_cls:
+        with (
+            patch("src.assistant.service.time") as mock_time,
+            patch("src.assistant.service.threading.Thread") as mock_thread_cls,
+        ):
             mock_time.monotonic.return_value = 100.0
             assistant._warm_cache_async("Some Track")
 
@@ -48,8 +52,10 @@ class TestWarmCacheDebounce:
         track = _make_track(42)
         assistant.session.query.return_value.filter_by.return_value.first.return_value = track
 
-        with patch("src.assistant.service.time") as mock_time, \
-             patch("src.assistant.service.threading.Thread") as mock_thread_cls:
+        with (
+            patch("src.assistant.service.time") as mock_time,
+            patch("src.assistant.service.threading.Thread") as mock_thread_cls,
+        ):
             mock_time.monotonic.return_value = 100.0
             assistant._warm_cache_async("Some Track")
             assert mock_thread_cls.call_count == 1
@@ -72,8 +78,10 @@ class TestWarmCacheDebounce:
 
         assistant.session.query.return_value.filter_by.side_effect = lookup_track
 
-        with patch("src.assistant.service.time") as mock_time, \
-             patch("src.assistant.service.threading.Thread") as mock_thread_cls:
+        with (
+            patch("src.assistant.service.time") as mock_time,
+            patch("src.assistant.service.threading.Thread") as mock_thread_cls,
+        ):
             mock_time.monotonic.return_value = 100.0
             assistant._warm_cache_async("Track A")
             assert mock_thread_cls.call_count == 1
@@ -86,8 +94,10 @@ class TestWarmCacheDebounce:
         track = _make_track(42)
         assistant.session.query.return_value.filter_by.return_value.first.return_value = track
 
-        with patch("src.assistant.service.time") as mock_time, \
-             patch("src.assistant.service.threading.Thread") as mock_thread_cls:
+        with (
+            patch("src.assistant.service.time") as mock_time,
+            patch("src.assistant.service.threading.Thread") as mock_thread_cls,
+        ):
             mock_time.monotonic.return_value = 100.0
             assistant._warm_cache_async("Some Track")
             assert mock_thread_cls.call_count == 1

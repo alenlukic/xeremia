@@ -54,11 +54,16 @@ def _backfill_chunk(chunk, result_transmitter):
     try:
         extractor = TraitExtractor()
     except Exception:
-        print("  [%d] Failed to load models:\n%s" % (pid, traceback.format_exc()), flush=True)
+        print(
+            "  [%d] Failed to load models:\n%s" % (pid, traceback.format_exc()),
+            flush=True,
+        )
         result_transmitter.send((0, len(chunk)))
         result_transmitter.close()
         return
-    print("  [%d] Sessions ready, backfilling %d tracks." % (pid, len(chunk)), flush=True)
+    print(
+        "  [%d] Sessions ready, backfilling %d tracks." % (pid, len(chunk)), flush=True
+    )
 
     worker_session = database.create_session()
     try:
@@ -70,7 +75,11 @@ def _backfill_chunk(chunk, result_transmitter):
                 except (FileNotFoundError, OSError):
                     fallback = _resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
                     if fallback is None:
-                        print("  [%d] track %d: file not found: %s" % (pid, track_id, file_name), flush=True)
+                        print(
+                            "  [%d] track %d: file not found: %s"
+                            % (pid, track_id, file_name),
+                            flush=True,
+                        )
                         n_fail += 1
                         continue
                     traits = extractor.compute(fallback)
@@ -106,11 +115,18 @@ def _backfill_chunk(chunk, result_transmitter):
             except Exception:
                 worker_session.rollback()
                 n_fail += 1
-                print("  [%d] track %d: exception:\n%s" % (pid, track_id, traceback.format_exc()), flush=True)
+                print(
+                    "  [%d] track %d: exception:\n%s"
+                    % (pid, track_id, traceback.format_exc()),
+                    flush=True,
+                )
     finally:
         worker_session.close()
 
-    print("<<< Worker %d done: %d backfilled, %d failed >>>" % (pid, n_ok, n_fail), flush=True)
+    print(
+        "<<< Worker %d done: %d backfilled, %d failed >>>" % (pid, n_ok, n_fail),
+        flush=True,
+    )
     result_transmitter.send((n_ok, n_fail))
     result_transmitter.close()
 
@@ -123,10 +139,7 @@ def run():
             .filter(TrackTrait.trait_version != TRAIT_VERSION)
             .all()
         )
-        track_map = {
-            t.id: t.file_name
-            for t in session.query(Track).all()
-        }
+        track_map = {t.id: t.file_name for t in session.query(Track).all()}
 
         work_items = []
         skipped = 0
@@ -142,7 +155,10 @@ def run():
             work_items.append((row.id, row.track_id, file_name))
 
         total = len(work_items)
-        print("Backfilling %d rows (%d skipped — missing track or non-audio)" % (total, skipped))
+        print(
+            "Backfilling %d rows (%d skipped — missing track or non-audio)"
+            % (total, skipped)
+        )
         if total == 0:
             return
     finally:

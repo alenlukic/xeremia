@@ -33,7 +33,12 @@ def test_reject_catalog_and_album_title_candidates():
 
 def test_resolve_label_accepts_cdr_db_and_web():
     assert resolve_label("CDR") == "CDR"
-    assert resolve_label("Warp Records", web_verifier=lambda label: label == "Warp Records") == "Warp Records"
+    assert (
+        resolve_label(
+            "Warp Records", web_verifier=lambda label: label == "Warp Records"
+        )
+        == "Warp Records"
+    )
     assert resolve_label("Unknown Label", web_verifier=lambda _label: False) is None
 
 
@@ -65,7 +70,9 @@ def test_album_grouping_and_consistency():
     right = left + timedelta(hours=12)
     assert tracks_share_album_window(left, right) is True
     assert album_group_key(source_catalog_id="mb-123") == "catalog:mb-123"
-    assert album_group_key(album_tag="Album", creation_timestamp=left).startswith("album:album:")
+    assert album_group_key(album_tag="Album", creation_timestamp=left).startswith(
+        "album:album:"
+    )
 
     shared_state: dict = {}
     metadata = SimpleMetadata(label="Warp Records", album="Album")

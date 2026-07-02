@@ -38,7 +38,9 @@ def parse_search_results(html_text: str) -> list[dict[str, str]]:
     titles = re.findall(
         r'class="result__a"[^>]*>(.*?)</a>', html_text, flags=re.IGNORECASE | re.DOTALL
     )
-    urls = re.findall(r'class="result__a"[^>]*href="([^"]+)"', html_text, flags=re.IGNORECASE)
+    urls = re.findall(
+        r'class="result__a"[^>]*href="([^"]+)"', html_text, flags=re.IGNORECASE
+    )
     snippets = re.findall(
         r'class="result__snippet"[^>]*>(.*?)</(?:a|div)>',
         html_text,
@@ -54,7 +56,9 @@ def parse_search_results(html_text: str) -> list[dict[str, str]]:
             {
                 "title": title,
                 "url": urls[index] if index < len(urls) else "",
-                "snippet": _strip_html(snippets[index]) if index < len(snippets) else "",
+                "snippet": _strip_html(snippets[index])
+                if index < len(snippets)
+                else "",
             }
         )
     return results
@@ -75,14 +79,19 @@ def _artist_title_pairs(normalized: str) -> list[tuple[str | None, str | None]]:
     by_match = re.match(r"(.+?)\s+by\s+(.+)", normalized, flags=re.IGNORECASE)
     if by_match:
         pairs.append(
-            (_normalize_whitespace(by_match.group(2)), _clean_title_seed(by_match.group(1)))
+            (
+                _normalize_whitespace(by_match.group(2)),
+                _clean_title_seed(by_match.group(1)),
+            )
         )
     return pairs
 
 
 def _extract_label(normalized: str, snippet: str) -> str | None:
     bracket_match = re.search(r"\[([^\[\]]+)\]", normalized)
-    if bracket_match and not re.search(r"\bmix\b", bracket_match.group(1), flags=re.IGNORECASE):
+    if bracket_match and not re.search(
+        r"\bmix\b", bracket_match.group(1), flags=re.IGNORECASE
+    ):
         label = bracket_match.group(1).strip()
     else:
         on_match = re.search(r"\bon\s+([^|]+)", snippet, flags=re.IGNORECASE)
@@ -106,10 +115,9 @@ def candidate_from_result(
     for artist, title in _artist_title_pairs(normalized):
         if not artist or not title:
             continue
-        score = (
-            WEB_SEARCH_TITLE_WEIGHT * _similarity(seed.title, title)
-            + WEB_SEARCH_ARTIST_WEIGHT * _similarity(seed.artist, artist)
-        )
+        score = WEB_SEARCH_TITLE_WEIGHT * _similarity(
+            seed.title, title
+        ) + WEB_SEARCH_ARTIST_WEIGHT * _similarity(seed.artist, artist)
         if score > best_score:
             best_artist, best_title, best_score = artist, title, score
 

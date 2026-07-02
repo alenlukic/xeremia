@@ -40,7 +40,9 @@ class RunReport:
     def write(self, path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         success_count = len([r for r in self.rows if r.status.value == "success"])
-        remediation_count = len([r for r in self.rows if r.status.value == "remediation"])
+        remediation_count = len(
+            [r for r in self.rows if r.status.value == "remediation"]
+        )
         failed_count = len([r for r in self.rows if r.status.value == "failed"])
         summary = (
             f"# Track metadata run report\n\n"

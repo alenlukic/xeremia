@@ -107,7 +107,9 @@ def run():
         conn.execute(SEED_GENRE_SQL)
         conn.execute(SEED_LABEL_SQL)
         conn.execute(SEED_ARTIST_SQL)
-    print("Migration complete: genre_mapping, label_mapping, artist_mapping created and seeded.")
+    print(
+        "Migration complete: genre_mapping, label_mapping, artist_mapping created and seeded."
+    )
 
 
 if __name__ == "__main__":

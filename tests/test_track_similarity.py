@@ -36,6 +36,7 @@ from src.feature_extraction.compact_descriptor import cosine_similarity
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _random_descriptor(seed=0):
     """Generate a realistic 75-D descriptor vector."""
     rng = np.random.default_rng(seed)
@@ -46,10 +47,17 @@ def _random_descriptor(seed=0):
     mfcc_mean = (rng.standard_normal(13) * 20).astype(np.float32)
     mfcc_std = np.abs(rng.standard_normal(13).astype(np.float32)) * 10
     energy = np.abs(rng.standard_normal(8).astype(np.float32)) * 0.3
-    return np.concatenate([
-        chroma_mean, chroma_std, bpm, tempogram,
-        mfcc_mean, mfcc_std, energy,
-    ])
+    return np.concatenate(
+        [
+            chroma_mean,
+            chroma_std,
+            bpm,
+            tempogram,
+            mfcc_mean,
+            mfcc_std,
+            energy,
+        ]
+    )
 
 
 def _zero_descriptor():
@@ -63,6 +71,7 @@ def _ones_descriptor():
 # ---------------------------------------------------------------------------
 # 1. current_cosine_clamped preserves existing behavior
 # ---------------------------------------------------------------------------
+
 
 class TestCurrentCosineClamped:
     def test_matches_original_cosine_similarity(self):
@@ -97,6 +106,7 @@ class TestCurrentCosineClamped:
 # 2. raw_cosine_uncapped differs only for negative-valued cosines
 # ---------------------------------------------------------------------------
 
+
 class TestRawCosineUncapped:
     def test_agrees_when_positive(self):
         va = _ones_descriptor()
@@ -120,6 +130,7 @@ class TestRawCosineUncapped:
 # ---------------------------------------------------------------------------
 # 3. z-score helpers handle zero-variance dims safely
 # ---------------------------------------------------------------------------
+
 
 class TestZscoreHelpers:
     def test_zero_variance_dims_set_to_one(self):
@@ -166,6 +177,7 @@ class TestZscoreHelpers:
 # 4. Harmonic scorer is invariant to chroma circular shifts
 # ---------------------------------------------------------------------------
 
+
 class TestHarmonicScorer:
     def test_shift_invariance_on_mean(self):
         """Shifting chroma_mean by any amount should not change similarity."""
@@ -174,8 +186,9 @@ class TestHarmonicScorer:
         for shift in range(12):
             shifted = np.roll(chroma, shift)
             sim = _best_circular_shift_sim(chroma, shifted)
-            assert sim == pytest.approx(1.0, abs=0.05), (
-                "shift %d gave sim %.4f" % (shift, sim)
+            assert sim == pytest.approx(1.0, abs=0.05), "shift %d gave sim %.4f" % (
+                shift,
+                sim,
             )
 
     def test_different_chroma_lower_sim(self):
@@ -203,6 +216,7 @@ class TestHarmonicScorer:
 # ---------------------------------------------------------------------------
 # 5. Rhythm scorer: same/different BPM × same/different histogram
 # ---------------------------------------------------------------------------
+
 
 class TestRhythmScorer:
     def test_same_bpm_same_histogram(self):
@@ -244,6 +258,7 @@ class TestRhythmScorer:
 # 6. Timbre and energy scorers are symmetric and bounded
 # ---------------------------------------------------------------------------
 
+
 class TestTimbreEnergyScorers:
     def test_timbre_symmetric(self):
         ba = extract_blocks(_random_descriptor(20))
@@ -284,6 +299,7 @@ class TestTimbreEnergyScorers:
 # 7. Late-fusion score is finite, bounded, symmetric
 # ---------------------------------------------------------------------------
 
+
 class TestLateFusionV1:
     def test_finite(self):
         for seed in range(15):
@@ -321,6 +337,7 @@ class TestLateFusionV1:
 # 7b. late_fusion_v1 respects dynamic fusion weights
 # ---------------------------------------------------------------------------
 
+
 class TestLateFusionDynamicWeights:
     def test_dynamic_weights_change_output(self):
         """Mocking WeightService fusion weights changes late_fusion_v1 output."""
@@ -329,17 +346,21 @@ class TestLateFusionDynamicWeights:
 
         mock_svc = MagicMock()
         mock_svc.get_fusion_weights.return_value = {
-            'FUSION_HARMONIC': 1.0,
-            'FUSION_RHYTHM': 0.0,
-            'FUSION_TIMBRE': 0.0,
-            'FUSION_ENERGY': 0.0,
+            "FUSION_HARMONIC": 1.0,
+            "FUSION_RHYTHM": 0.0,
+            "FUSION_TIMBRE": 0.0,
+            "FUSION_ENERGY": 0.0,
         }
         mock_ws_class = MagicMock()
         mock_ws_class.instance.return_value = mock_svc
 
         with patch.dict(
-            'sys.modules',
-            {'src.harmonic_mixing.weight_service': MagicMock(WeightService=mock_ws_class)},
+            "sys.modules",
+            {
+                "src.harmonic_mixing.weight_service": MagicMock(
+                    WeightService=mock_ws_class
+                )
+            },
         ):
             wh, wr, wt, we = _get_live_fusion_weights()
             assert wh == 1.0
@@ -355,9 +376,10 @@ class TestLateFusionDynamicWeights:
             FUSION_WEIGHT_ENERGY,
             _get_live_fusion_weights,
         )
+
         with patch.dict(
-            'sys.modules',
-            {'src.harmonic_mixing.weight_service': None},
+            "sys.modules",
+            {"src.harmonic_mixing.weight_service": None},
         ):
             wh, wr, wt, we = _get_live_fusion_weights()
         assert wh == FUSION_WEIGHT_HARMONIC
@@ -370,8 +392,11 @@ class TestLateFusionDynamicWeights:
         from unittest.mock import patch
 
         with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
-            with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+            with patch(
+                "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+            ):
                 from src.harmonic_mixing.weight_service import WeightService
+
                 WeightService.reset()
                 svc = WeightService()
                 WeightService._instance = svc
@@ -382,16 +407,16 @@ class TestLateFusionDynamicWeights:
 
             score_default = late_fusion_v1(va, vb)
 
-            svc._fusion_weights['FUSION_HARMONIC'] = 1.0
-            svc._fusion_weights['FUSION_RHYTHM'] = 0.0
-            svc._fusion_weights['FUSION_TIMBRE'] = 0.0
-            svc._fusion_weights['FUSION_ENERGY'] = 0.0
+            svc._fusion_weights["FUSION_HARMONIC"] = 1.0
+            svc._fusion_weights["FUSION_RHYTHM"] = 0.0
+            svc._fusion_weights["FUSION_TIMBRE"] = 0.0
+            svc._fusion_weights["FUSION_ENERGY"] = 0.0
             score_harmonic_only = late_fusion_v1(va, vb)
 
-            svc._fusion_weights['FUSION_HARMONIC'] = 0.0
-            svc._fusion_weights['FUSION_RHYTHM'] = 1.0
-            svc._fusion_weights['FUSION_TIMBRE'] = 0.0
-            svc._fusion_weights['FUSION_ENERGY'] = 0.0
+            svc._fusion_weights["FUSION_HARMONIC"] = 0.0
+            svc._fusion_weights["FUSION_RHYTHM"] = 1.0
+            svc._fusion_weights["FUSION_TIMBRE"] = 0.0
+            svc._fusion_weights["FUSION_ENERGY"] = 0.0
             score_rhythm_only = late_fusion_v1(va, vb)
 
             assert score_default != pytest.approx(score_harmonic_only, abs=1e-6), (
@@ -408,6 +433,7 @@ class TestLateFusionDynamicWeights:
                 assert 0.0 <= s <= 1.0
         finally:
             from src.harmonic_mixing.weight_service import WeightService
+
             WeightService.reset()
 
     def test_normalized_weights_produce_bounded_scores(self):
@@ -415,8 +441,11 @@ class TestLateFusionDynamicWeights:
         from unittest.mock import patch
 
         with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
-            with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+            with patch(
+                "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+            ):
                 from src.harmonic_mixing.weight_service import WeightService
+
                 WeightService.reset()
                 svc = WeightService()
                 WeightService._instance = svc
@@ -425,16 +454,16 @@ class TestLateFusionDynamicWeights:
             va = _random_descriptor(0)
             vb = _random_descriptor(1)
 
-            svc._fusion_weights['FUSION_HARMONIC'] = 0.50
-            svc._fusion_weights['FUSION_RHYTHM'] = 0.50
-            svc._fusion_weights['FUSION_TIMBRE'] = 0.50
-            svc._fusion_weights['FUSION_ENERGY'] = 0.50
+            svc._fusion_weights["FUSION_HARMONIC"] = 0.50
+            svc._fusion_weights["FUSION_RHYTHM"] = 0.50
+            svc._fusion_weights["FUSION_TIMBRE"] = 0.50
+            svc._fusion_weights["FUSION_ENERGY"] = 0.50
             score_doubled = late_fusion_v1(va, vb)
 
-            svc._fusion_weights['FUSION_HARMONIC'] = 0.25
-            svc._fusion_weights['FUSION_RHYTHM'] = 0.25
-            svc._fusion_weights['FUSION_TIMBRE'] = 0.25
-            svc._fusion_weights['FUSION_ENERGY'] = 0.25
+            svc._fusion_weights["FUSION_HARMONIC"] = 0.25
+            svc._fusion_weights["FUSION_RHYTHM"] = 0.25
+            svc._fusion_weights["FUSION_TIMBRE"] = 0.25
+            svc._fusion_weights["FUSION_ENERGY"] = 0.25
             score_equal = late_fusion_v1(va, vb)
 
             assert 0.0 <= score_doubled <= 1.0
@@ -444,6 +473,7 @@ class TestLateFusionDynamicWeights:
             )
         finally:
             from src.harmonic_mixing.weight_service import WeightService
+
             WeightService.reset()
 
     def test_all_zero_fusion_weights_safe(self):
@@ -451,8 +481,11 @@ class TestLateFusionDynamicWeights:
         from unittest.mock import patch
 
         with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
-            with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+            with patch(
+                "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+            ):
                 from src.harmonic_mixing.weight_service import WeightService
+
                 WeightService.reset()
                 svc = WeightService()
                 WeightService._instance = svc
@@ -466,12 +499,14 @@ class TestLateFusionDynamicWeights:
             assert 0.0 <= score <= 1.0
         finally:
             from src.harmonic_mixing.weight_service import WeightService
+
             WeightService.reset()
 
 
 # ---------------------------------------------------------------------------
 # 8. Scorer registry routes correctly
 # ---------------------------------------------------------------------------
+
 
 class TestScorerRegistry:
     def test_all_scorers_registered(self):
@@ -501,6 +536,7 @@ class TestScorerRegistry:
 # ---------------------------------------------------------------------------
 # 9. Benchmark harness runs end-to-end on small fixture data
 # ---------------------------------------------------------------------------
+
 
 class TestBenchmarkHarness:
     def _fixture_vectors(self, n=10):
@@ -561,6 +597,7 @@ class TestBenchmarkHarness:
 # ---------------------------------------------------------------------------
 # extract_blocks sanity
 # ---------------------------------------------------------------------------
+
 
 class TestExtractBlocks:
     def test_block_shapes(self):

@@ -73,7 +73,9 @@ def test_throttle_noop_for_non_positive_interval() -> None:
 
 def test_get_json_raises_for_non_object_payload() -> None:
     client = RateLimitedHttpClient(sleep=lambda _s: None)
-    client.session.get = MagicMock(return_value=_response(json_payload=["not", "a", "dict"]))
+    client.session.get = MagicMock(
+        return_value=_response(json_payload=["not", "a", "dict"])
+    )
     with pytest.raises(ValueError):
         client.get_json("https://example.com")
 
@@ -84,7 +86,9 @@ def test_get_json_returns_dict_and_applies_throttle() -> None:
     client = RateLimitedHttpClient(clock=clock, sleep=slept.append)
     client.session.get = MagicMock(return_value=_response(json_payload={"ok": True}))
 
-    assert client.get_json("https://example.com", rate_key="mb", min_interval=1.0) == {"ok": True}
+    assert client.get_json("https://example.com", rate_key="mb", min_interval=1.0) == {
+        "ok": True
+    }
     clock.advance(0.1)
     client.get_json("https://example.com", rate_key="mb", min_interval=1.0)
     assert slept and slept[0] == pytest.approx(0.9)

@@ -61,7 +61,9 @@ def lookup_beatport_genre(
             WEB_SEARCH_URL, params={"q": f"site:beatport.com {artist} {title}"}
         )
     except Exception as exc:
-        logging.warning("Beatport genre lookup failed for %s - %s: %s", artist, title, exc)
+        logging.warning(
+            "Beatport genre lookup failed for %s - %s: %s", artist, title, exc
+        )
         return None
     match = re.search(r"genre[^>]*>([^<]+)<", html_text, flags=re.IGNORECASE)
     return match.group(1).strip() if match else None
@@ -97,6 +99,8 @@ def lookup_lastfm_genre(
     try:
         payload = http.get_json(LASTFM_API_URL, params=params)
     except Exception as exc:
-        logging.warning("Last.fm genre lookup failed for %s - %s: %s", artist, title, exc)
+        logging.warning(
+            "Last.fm genre lookup failed for %s - %s: %s", artist, title, exc
+        )
         return None
     return _first_lastfm_tag(payload)

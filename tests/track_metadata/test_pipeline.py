@@ -34,23 +34,41 @@ def test_pipeline_orchestrates_and_stays_deterministic(monkeypatch, tmp_path):
     working = tmp_path / "working.mp3"
     working.write_text("audio", encoding="utf-8")
 
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.stage_file", lambda _source: working)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.read_existing_metadata", lambda _path: SimpleMetadata())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.stage_file", lambda _source: working
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.read_existing_metadata",
+        lambda _path: SimpleMetadata(),
+    )
     monkeypatch.setattr(
         "src.track_metadata.pipeline.stages.analyze_missing_audio_features",
         lambda _path, metadata: metadata.update({"bpm": 128.0, "key": "C#m"}),
     )
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.rename_file", lambda path, *_args, **_kwargs: path)
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.rename_file",
+        lambda path, *_args, **_kwargs: path,
+    )
     monkeypatch.setattr(
         "src.track_metadata.pipeline.stages.move_to_augmented",
         lambda path, **_kwargs: tmp_path / f"augmented-{path.name}",
     )
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.upsert_track_records", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.database.create_session", lambda: _SessionStub())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.upsert_track_records",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.database.create_session",
+        lambda: _SessionStub(),
+    )
 
     report = RunReport()
-    context = PipelineContext(hydrator=_HydratorStub(), run_report=report, agent=MagicMock())
+    context = PipelineContext(
+        hydrator=_HydratorStub(), run_report=report, agent=MagicMock()
+    )
     pipeline = build_default_pipeline()
     pipeline.run([source], context)
 
@@ -82,17 +100,36 @@ def test_pipeline_strips_cruft_from_display_title(monkeypatch, tmp_path):
     working = tmp_path / "working.mp3"
     working.write_text("audio", encoding="utf-8")
 
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.stage_file", lambda _source: working)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.read_existing_metadata", lambda _path: SimpleMetadata())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.stage_file", lambda _source: working
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.read_existing_metadata",
+        lambda _path: SimpleMetadata(),
+    )
     monkeypatch.setattr(
         "src.track_metadata.pipeline.stages.analyze_missing_audio_features",
         lambda _path, metadata: metadata.update({"bpm": 151.0, "key": "Gm"}),
     )
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.rename_file", lambda path, *_args, **_kwargs: path)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.move_to_augmented", lambda path, **_kwargs: path)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.upsert_track_records", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.database.create_session", lambda: _SessionStub())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.rename_file",
+        lambda path, *_args, **_kwargs: path,
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.move_to_augmented",
+        lambda path, **_kwargs: path,
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.upsert_track_records",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.database.create_session",
+        lambda: _SessionStub(),
+    )
 
     report = RunReport()
     context = PipelineContext(hydrator=_CruftHydratorStub(), run_report=report)
@@ -131,23 +168,41 @@ def test_pipeline_records_fallback_agent_events(monkeypatch, tmp_path):
     working = tmp_path / "working.mp3"
     working.write_text("audio", encoding="utf-8")
 
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.stage_file", lambda _source: working)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.read_existing_metadata", lambda _path: SimpleMetadata())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.stage_file", lambda _source: working
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.read_existing_metadata",
+        lambda _path: SimpleMetadata(),
+    )
     monkeypatch.setattr(
         "src.track_metadata.pipeline.stages.analyze_missing_audio_features",
         lambda _path, metadata: metadata.update({"bpm": 128.0, "key": "C#m"}),
     )
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.rename_file", lambda path, *_args, **_kwargs: path)
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.rename_file",
+        lambda path, *_args, **_kwargs: path,
+    )
     monkeypatch.setattr(
         "src.track_metadata.pipeline.stages.move_to_augmented",
         lambda path, **_kwargs: tmp_path / f"augmented-{path.name}",
     )
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.upsert_track_records", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.database.create_session", lambda: _SessionStub())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.upsert_track_records",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.database.create_session",
+        lambda: _SessionStub(),
+    )
 
     report = RunReport()
-    context = PipelineContext(hydrator=_FallbackHydratorStub(), run_report=report, agent=MagicMock())
+    context = PipelineContext(
+        hydrator=_FallbackHydratorStub(), run_report=report, agent=MagicMock()
+    )
     pipeline = build_default_pipeline()
     pipeline.run([source], context)
 
@@ -164,17 +219,36 @@ def test_pipeline_batch_run_uses_single_shared_report(monkeypatch, tmp_path):
     source_one.write_text("audio", encoding="utf-8")
     source_two.write_text("audio", encoding="utf-8")
 
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.stage_file", lambda source: source)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.read_existing_metadata", lambda _path: SimpleMetadata())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.stage_file", lambda source: source
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.read_existing_metadata",
+        lambda _path: SimpleMetadata(),
+    )
     monkeypatch.setattr(
         "src.track_metadata.pipeline.stages.analyze_missing_audio_features",
         lambda _path, metadata: metadata.update({"bpm": 128.0, "key": "C#m"}),
     )
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.rename_file", lambda path, *_args, **_kwargs: path)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.move_to_augmented", lambda path, **_kwargs: path)
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.upsert_track_records", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr("src.track_metadata.pipeline.stages.database.create_session", lambda: _SessionStub())
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.rename_file",
+        lambda path, *_args, **_kwargs: path,
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.move_to_augmented",
+        lambda path, **_kwargs: path,
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.upsert_track_records",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.stages.database.create_session",
+        lambda: _SessionStub(),
+    )
 
     report = RunReport()
     context = PipelineContext(hydrator=_HydratorStub(), run_report=report)

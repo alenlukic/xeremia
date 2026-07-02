@@ -18,7 +18,11 @@ from src.track_metadata.sources.queries import (
 
 def test_build_search_terms_normalizes_whitespace_and_title() -> None:
     terms = build_search_terms(
-        SimpleMetadata(artist="  Aphex   Twin ", title="Windowlicker (Original Mix)", album=" Windowlicker ")
+        SimpleMetadata(
+            artist="  Aphex   Twin ",
+            title="Windowlicker (Original Mix)",
+            album=" Windowlicker ",
+        )
     )
     assert terms.artist == "Aphex Twin"
     assert terms.title == "Windowlicker"  # "(Original Mix)" stripped by title cleaning
@@ -26,7 +30,9 @@ def test_build_search_terms_normalizes_whitespace_and_title() -> None:
 
 
 def test_build_search_terms_preserves_real_remix_names() -> None:
-    terms = build_search_terms(SimpleMetadata(artist="Lady Gaga", title="Alejandro (Linds Trance Mix)"))
+    terms = build_search_terms(
+        SimpleMetadata(artist="Lady Gaga", title="Alejandro (Linds Trance Mix)")
+    )
     assert terms.title == "Alejandro (Linds Trance Mix)"
 
 
@@ -42,7 +48,9 @@ def test_build_search_terms_empty_seed_is_empty() -> None:
 
 
 def test_musicbrainz_query_combines_artist_and_title() -> None:
-    terms = build_search_terms(SimpleMetadata(artist="Aphex Twin", title="Windowlicker"))
+    terms = build_search_terms(
+        SimpleMetadata(artist="Aphex Twin", title="Windowlicker")
+    )
     assert musicbrainz_query(terms) == "Aphex Twin Windowlicker"
 
 
@@ -63,7 +71,9 @@ def test_musicbrainz_query_requires_title() -> None:
 
 def test_discogs_query_params_full_seed() -> None:
     terms = build_search_terms(
-        SimpleMetadata(artist="Aphex Twin", title="Windowlicker", album="Windowlicker EP")
+        SimpleMetadata(
+            artist="Aphex Twin", title="Windowlicker", album="Windowlicker EP"
+        )
     )
     assert discogs_query_params(terms) == {
         "track": "Windowlicker",
@@ -90,7 +100,10 @@ def test_discogs_query_params_requires_title() -> None:
 @pytest.mark.parametrize(
     ("seed", "expected"),
     [
-        (SimpleMetadata(artist="Aphex Twin", title="Windowlicker"), "Aphex Twin Windowlicker"),
+        (
+            SimpleMetadata(artist="Aphex Twin", title="Windowlicker"),
+            "Aphex Twin Windowlicker",
+        ),
         (SimpleMetadata(title="Windowlicker"), "Windowlicker"),
         (SimpleMetadata(artist="Aphex Twin"), "Aphex Twin"),
         (SimpleMetadata(), None),

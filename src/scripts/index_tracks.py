@@ -23,18 +23,25 @@ def main() -> None:
     artist_table = tables["artist"]
     artist_track_table = tables["artist_track"]
 
-    artist_agg = func.string_agg(
-        artist_table.c.name, literal_column("', '")
-    ).label("artist_names")
+    artist_agg = func.string_agg(artist_table.c.name, literal_column("', '")).label(
+        "artist_names"
+    )
 
     rows = (
         session.query(Track, artist_agg)
         .outerjoin(artist_track_table, artist_track_table.c.track_id == Track.id)
         .outerjoin(artist_table, artist_table.c.id == artist_track_table.c.artist_id)
         .group_by(
-            Track.id, Track.file_name, Track.title, Track.bpm,
-            Track.key, Track.camelot_code, Track.energy, Track.genre,
-            Track.label, Track.comment,
+            Track.id,
+            Track.file_name,
+            Track.title,
+            Track.bpm,
+            Track.key,
+            Track.camelot_code,
+            Track.energy,
+            Track.genre,
+            Track.label,
+            Track.comment,
         )
         .all()
     )
@@ -45,17 +52,19 @@ def main() -> None:
         if artist_names_str:
             names = [n.strip() for n in artist_names_str.split(",") if n.strip()]
 
-        docs.append({
-            "id": track.id,
-            "title": track.title or "",
-            "artist_names": names,
-            "bpm": float(track.bpm) if track.bpm is not None else None,
-            "key": track.key,
-            "camelot_code": track.camelot_code,
-            "genre": track.genre,
-            "label": track.label,
-            "energy": track.energy,
-        })
+        docs.append(
+            {
+                "id": track.id,
+                "title": track.title or "",
+                "artist_names": names,
+                "bpm": float(track.bpm) if track.bpm is not None else None,
+                "key": track.key,
+                "camelot_code": track.camelot_code,
+                "genre": track.genre,
+                "label": track.label,
+                "energy": track.energy,
+            }
+        )
 
     session_wrapper.close()
 
@@ -65,6 +74,7 @@ def main() -> None:
     ensure_index(es)
     indexed = bulk_index_tracks(es, docs)
     from src.api.es import INDEX_NAME
+
     es.indices.refresh(index=INDEX_NAME)
     logger.info("Indexed %d tracks into Elasticsearch", indexed)
 

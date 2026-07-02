@@ -39,7 +39,8 @@ def _extract_zone_vector(y, sr):
     if len(y) < _MIN_AUDIO_SAMPLES:
         raise ValueError(
             "Audio segment too short for feature extraction: %d samples "
-            "(minimum %d, ~%.2f s)" % (len(y), _MIN_AUDIO_SAMPLES, _MIN_AUDIO_SAMPLES / SAMPLE_RATE)
+            "(minimum %d, ~%.2f s)"
+            % (len(y), _MIN_AUDIO_SAMPLES, _MIN_AUDIO_SAMPLES / SAMPLE_RATE)
         )
     # Harmonic-percussive source separation
     y_harm, y_perc = librosa.effects.hpss(y)
@@ -54,29 +55,34 @@ def _extract_zone_vector(y, sr):
         chroma_sync = librosa.util.sync(chroma, beat_frames, aggregate=np.mean)
     else:
         chroma_sync = chroma
-    chroma_mean = np.mean(chroma_sync, axis=1)   # (12,)
-    chroma_std = np.std(chroma_sync, axis=1)     # (12,)
+    chroma_mean = np.mean(chroma_sync, axis=1)  # (12,)
+    chroma_std = np.std(chroma_sync, axis=1)  # (12,)
 
     # Tempogram: collapse to 16-bin histogram summary
     tempogram = librosa.feature.tempogram(y=y_perc, sr=sr)
-    tempogram_row_means = np.mean(tempogram, axis=1)   # (n_tempo_bins,)
+    tempogram_row_means = np.mean(tempogram, axis=1)  # (n_tempo_bins,)
     n_bins = len(tempogram_row_means)
     group_size = max(n_bins // DESCRIPTOR_TEMPOGRAM_BINS, 1)
-    tempogram_hist = np.array([
-        np.mean(tempogram_row_means[i * group_size:(i + 1) * group_size])
-        for i in range(DESCRIPTOR_TEMPOGRAM_BINS)
-    ], dtype=np.float32)
+    tempogram_hist = np.array(
+        [
+            np.mean(tempogram_row_means[i * group_size : (i + 1) * group_size])
+            for i in range(DESCRIPTOR_TEMPOGRAM_BINS)
+        ],
+        dtype=np.float32,
+    )
     hist_sum = tempogram_hist.sum()
     if hist_sum > 0:
         tempogram_hist = tempogram_hist / hist_sum
 
     # BPM scalar normalized to [0, 1] over expected DJ range
-    bpm_norm = float(np.clip((bpm - DESCRIPTOR_BPM_MIN) / DESCRIPTOR_BPM_RANGE, 0.0, 1.0))
+    bpm_norm = float(
+        np.clip((bpm - DESCRIPTOR_BPM_MIN) / DESCRIPTOR_BPM_RANGE, 0.0, 1.0)
+    )
 
     # MFCC on full signal
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    mfcc_mean = np.mean(mfcc, axis=1)   # (13,)
-    mfcc_std = np.std(mfcc, axis=1)     # (13,)
+    mfcc_mean = np.mean(mfcc, axis=1)  # (13,)
+    mfcc_std = np.std(mfcc, axis=1)  # (13,)
 
     # Energy / brightness features
     nyquist = sr / 2.0
@@ -97,19 +103,30 @@ def _extract_zone_vector(y, sr):
     zcr_mean = float(np.mean(zcr))
     zcr_std = float(np.std(zcr))
 
-    descriptor = np.concatenate([
-        chroma_mean,                                                          # 12
-        chroma_std,                                                           # 12
-        [bpm_norm],                                                           # 1
-        tempogram_hist,                                                       # 16
-        mfcc_mean,                                                            # 13
-        mfcc_std,                                                             # 13
-        [rms_mean, rms_std, centroid_mean, centroid_std,                      # 4
-         rolloff_mean, rolloff_std, zcr_mean, zcr_std],                       # 4
-    ])
+    descriptor = np.concatenate(
+        [
+            chroma_mean,  # 12
+            chroma_std,  # 12
+            [bpm_norm],  # 1
+            tempogram_hist,  # 16
+            mfcc_mean,  # 13
+            mfcc_std,  # 13
+            [
+                rms_mean,
+                rms_std,
+                centroid_mean,
+                centroid_std,  # 4
+                rolloff_mean,
+                rolloff_std,
+                zcr_mean,
+                zcr_std,
+            ],  # 4
+        ]
+    )
 
     assert len(descriptor) == DESCRIPTOR_DIMS, (
-        "Descriptor length mismatch: got %d, expected %d" % (len(descriptor), DESCRIPTOR_DIMS)
+        "Descriptor length mismatch: got %d, expected %d"
+        % (len(descriptor), DESCRIPTOR_DIMS)
     )
     return descriptor.astype(np.float32)
 
@@ -157,6 +174,7 @@ def compute_similarity(vec_a, vec_b, scorer=None):
         ScorerName,
         compute_similarity as _compute,
     )
+
     if scorer is None:
         scorer = ScorerName.LATE_FUSION_V1
     return _compute(vec_a, vec_b, scorer=scorer)

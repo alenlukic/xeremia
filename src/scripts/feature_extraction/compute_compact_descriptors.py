@@ -71,8 +71,12 @@ def _compute_descriptors(chunk, result_transmitter):
                 if n_saved % _PROGRESS_INTERVAL == 0:
                     print(
                         "  [%d] saved %d so far — last %d IDs: %s"
-                        % (pid, n_saved, len(recent_saved_ids[-_PROGRESS_INTERVAL:]),
-                           recent_saved_ids[-_PROGRESS_INTERVAL:]),
+                        % (
+                            pid,
+                            n_saved,
+                            len(recent_saved_ids[-_PROGRESS_INTERVAL:]),
+                            recent_saved_ids[-_PROGRESS_INTERVAL:],
+                        ),
                         flush=True,
                     )
             else:
@@ -100,7 +104,8 @@ def run(track_ids):
                 row.track_id for row in session.query(TrackDescriptor).all()
             }
             tracks_to_process = [
-                t for t in tracks
+                t
+                for t in tracks
                 if t.id not in existing_ids
                 and splitext(t.file_name)[1].lower() in AUDIO_TYPES
             ]

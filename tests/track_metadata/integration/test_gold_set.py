@@ -115,7 +115,10 @@ def test_musicbrainz_live_resolution_matches_gold(entry: dict[str, Any]) -> None
 
 @pytest.mark.parametrize("entry", _LIVE_ENTRIES, ids=[e["name"] for e in _LIVE_ENTRIES])
 def test_discogs_live_resolution_matches_gold(entry: dict[str, Any]) -> None:
-    if not (os.getenv("DISCOGS_TOKEN") or (os.getenv("DISCOGS_KEY") and os.getenv("DISCOGS_SECRET"))):
+    if not (
+        os.getenv("DISCOGS_TOKEN")
+        or (os.getenv("DISCOGS_KEY") and os.getenv("DISCOGS_SECRET"))
+    ):
         pytest.skip("Discogs credentials are not configured")
 
     context = LookupContext(file_path=Path(f"{entry['name']}.mp3"), http=_live_client())

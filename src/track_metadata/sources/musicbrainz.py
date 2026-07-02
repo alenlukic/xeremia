@@ -118,7 +118,9 @@ def _musicbrainz_payload_to_metadata(
                     if isinstance(label_name, str) and label_name.strip():
                         release_label = label_name.strip()
 
-    recording_year = _extract_year_from_date(recording_payload.get("first-release-date"))
+    recording_year = _extract_year_from_date(
+        recording_payload.get("first-release-date")
+    )
     recording_genre = _first_genre_name(recording_payload.get("genres"))
 
     return SimpleMetadata(
@@ -157,7 +159,9 @@ def fetch_recording_metadata(
             params={"fmt": "json", "inc": "artists+releases+genres"},
         )
     except Exception as exc:
-        logging.warning("MusicBrainz recording lookup failed for %s: %s", recording_id, exc)
+        logging.warning(
+            "MusicBrainz recording lookup failed for %s: %s", recording_id, exc
+        )
         return None
 
     release_id = _first_release_id(payload)
@@ -170,7 +174,9 @@ def fetch_recording_metadata(
                 params={"fmt": "json", "inc": "labels+genres"},
             )
         except Exception as exc:
-            logging.warning("MusicBrainz release lookup failed for %s: %s", release_id, exc)
+            logging.warning(
+                "MusicBrainz release lookup failed for %s: %s", release_id, exc
+            )
 
     metadata = _musicbrainz_payload_to_metadata(payload, release_payload)
     if release_id:
@@ -246,7 +252,9 @@ class MusicBrainzSource:
                 },
             )
         except Exception as exc:
-            logging.warning("MusicBrainz search failed for %s: %s", context.file_path.name, exc)
+            logging.warning(
+                "MusicBrainz search failed for %s: %s", context.file_path.name, exc
+            )
             return None
 
         recordings = payload.get("recordings")

@@ -163,7 +163,9 @@ def test_parse_filename_seed_underscores_become_spaces() -> None:
 
 def test_merge_missing_fills_none_fields() -> None:
     target = SimpleMetadata(title="Existing Title", artist=None)
-    candidate = SimpleMetadata(title="Candidate Title", artist="Candidate Artist", genre="Techno")
+    candidate = SimpleMetadata(
+        title="Candidate Title", artist="Candidate Artist", genre="Techno"
+    )
     merged = _merge_missing(target, candidate)
     assert merged.title == "Existing Title"  # not overwritten
     assert merged.artist == "Candidate Artist"  # filled from candidate
@@ -178,7 +180,9 @@ def test_merge_missing_returns_target_if_candidate_is_none() -> None:
 
 def test_merge_missing_with_fields_filter() -> None:
     target = SimpleMetadata(title=None, artist=None, genre=None, label=None)
-    candidate = SimpleMetadata(title="New Title", artist="New Artist", genre="House", label="Label")
+    candidate = SimpleMetadata(
+        title="New Title", artist="New Artist", genre="House", label="Label"
+    )
     merged = _merge_missing(target, candidate, fields={"genre", "label"})
     assert merged.title is None  # filtered out
     assert merged.artist is None  # filtered out
@@ -209,7 +213,10 @@ def test_best_year_all_none_returns_none() -> None:
 
 
 def test_format_artist_credit_simple_list() -> None:
-    credit = [{"name": "Artist One", "joinphrase": " & "}, {"name": "Artist Two", "joinphrase": ""}]
+    credit = [
+        {"name": "Artist One", "joinphrase": " & "},
+        {"name": "Artist Two", "joinphrase": ""},
+    ]
     assert _format_artist_credit(credit) == "Artist One & Artist Two"
 
 
@@ -436,7 +443,9 @@ def _staged_mp3(tmp_path: Path, name: str) -> Path:
 
 def test_hydrate_uses_cache_hit(tmp_path: Path) -> None:
     mp3 = _staged_mp3(tmp_path, "artist - track.mp3")
-    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("boom", boom=True)])
+    hydrator = _make_hydrator(
+        tmp_path, catalog_sources=[_FakeSource("boom", boom=True)]
+    )
     hydrator.cache.store_final(
         hydrator.cache.file_key(mp3),
         SimpleMetadata(title="Cached Title", artist="Cached Artist"),
@@ -458,8 +467,12 @@ def test_hydrate_uses_filename_seed_when_no_sources_match(tmp_path: Path) -> Non
 
 def test_hydrate_does_not_overwrite_existing_metadata(tmp_path: Path) -> None:
     mp3 = _staged_mp3(tmp_path, "SomeFile.mp3")
-    existing = SimpleMetadata(title="Existing Title", artist="Existing Artist", bpm=128.0)
-    candidate = SimpleMetadata(title="Candidate Title", artist="Candidate Artist", genre="Techno")
+    existing = SimpleMetadata(
+        title="Existing Title", artist="Existing Artist", bpm=128.0
+    )
+    candidate = SimpleMetadata(
+        title="Candidate Title", artist="Candidate Artist", genre="Techno"
+    )
     hydrator = _make_hydrator(
         tmp_path, catalog_sources=[_FakeSource("musicbrainz", candidate)]
     )
@@ -486,7 +499,9 @@ def test_hydrate_writes_then_reads_cache(tmp_path: Path) -> None:
     assert first.artist == second.artist
 
 
-def test_hydrate_uses_web_fallback_when_catalog_sources_leave_gaps(tmp_path: Path) -> None:
+def test_hydrate_uses_web_fallback_when_catalog_sources_leave_gaps(
+    tmp_path: Path,
+) -> None:
     mp3 = _staged_mp3(tmp_path, "Echo Delta - Jūra (Original Mix).mp3")
     web_candidate = SimpleMetadata(
         artist="Echo Delta",
@@ -566,13 +581,17 @@ def test_hydrate_uses_musicbrainz_catalog_id_via_merge(tmp_path: Path) -> None:
     mb_candidate = SimpleMetadata(
         genre="Techno", source_catalog_id="mb-1", source_provider="musicbrainz"
     )
-    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("musicbrainz", mb_candidate)])
+    hydrator = _make_hydrator(
+        tmp_path, catalog_sources=[_FakeSource("musicbrainz", mb_candidate)]
+    )
     result = hydrator.hydrate(mp3, SimpleMetadata())
     assert result.source_catalog_id == "mb-1"
     assert result.source_provider == "musicbrainz"
 
 
-def test_hydrate_applies_discogs_catalog_id_despite_field_restriction(tmp_path: Path) -> None:
+def test_hydrate_applies_discogs_catalog_id_despite_field_restriction(
+    tmp_path: Path,
+) -> None:
     # Discogs' merge is restricted to release fields, so its catalog id cannot
     # flow through the merge; _apply_source_catalog_ids is what surfaces it.
     mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
@@ -638,12 +657,19 @@ def test_resolve_from_candidates_returns_none_without_resolver(tmp_path: Path) -
     assert result is None
 
 
-def test_resolve_from_candidates_returns_none_when_no_missing_fields(tmp_path: Path) -> None:
+def test_resolve_from_candidates_returns_none_when_no_missing_fields(
+    tmp_path: Path,
+) -> None:
     resolver = MagicMock(return_value=SimpleMetadata(title="X"))
     hydrator = _make_hydrator(tmp_path, candidate_resolver=resolver)
     full_metadata = SimpleMetadata(
-        title="Title", artist="Artist", album="Album", label="Label",
-        genre="Genre", remixer="Remixer", year=2020,
+        title="Title",
+        artist="Artist",
+        album="Album",
+        label="Label",
+        genre="Genre",
+        remixer="Remixer",
+        year=2020,
     )
     result = hydrator._resolve_from_candidates(
         Path("track.mp3"), full_metadata, [{"source": "musicbrainz", "metadata": {}}]
@@ -655,7 +681,9 @@ def test_resolve_from_candidates_returns_none_when_no_missing_fields(tmp_path: P
 def test_resolve_from_candidates_returns_none_when_no_sources(tmp_path: Path) -> None:
     resolver = MagicMock(return_value=SimpleMetadata(title="X"))
     hydrator = _make_hydrator(tmp_path, candidate_resolver=resolver)
-    result = hydrator._resolve_from_candidates(Path("track.mp3"), SimpleMetadata(title=None), [])
+    result = hydrator._resolve_from_candidates(
+        Path("track.mp3"), SimpleMetadata(title=None), []
+    )
     assert result is None
     resolver.assert_not_called()
 

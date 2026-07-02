@@ -27,3 +27,4 @@ uvicorn==0.34.2
 elasticsearch>=8.0.0,<9.0.0
 cursor-sdk
 pyacoustid
+ruff==0.15.20

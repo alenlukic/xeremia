@@ -15,7 +15,10 @@ def purge_invalid_augmented_files(augmented_dir: Path = AUGMENTED_DIR) -> None:
         return
 
     for candidate in augmented_dir.iterdir():
-        if not (candidate.is_file() and candidate.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS):
+        if not (
+            candidate.is_file()
+            and candidate.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS
+        ):
             continue
 
         try:
@@ -26,7 +29,9 @@ def purge_invalid_augmented_files(augmented_dir: Path = AUGMENTED_DIR) -> None:
         if metadata.title:
             continue
 
-        logging.info("Deleting %s from augmented; missing tags or title", candidate.name)
+        logging.info(
+            "Deleting %s from augmented; missing tags or title", candidate.name
+        )
         candidate.unlink(missing_ok=True)
 
 

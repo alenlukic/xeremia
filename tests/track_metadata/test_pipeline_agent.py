@@ -15,7 +15,10 @@ def test_resolve_metadata_logs_agent_response(tmp_path, monkeypatch) -> None:
     log_path = tmp_path / "agent.log"
     monkeypatch.setattr(
         "src.track_metadata.pipeline.agent.log_agent_response",
-        lambda file_name, raw_text, messages, log_file_path=log_path: log_agent_response(
+        lambda file_name,
+        raw_text,
+        messages,
+        log_file_path=log_path: log_agent_response(
             file_name, raw_text, messages, log_file_path=log_path
         ),
     )

@@ -164,9 +164,7 @@ def load_model(name: str) -> ort.InferenceSession:
         _session_cache[name] = session
         return session
     except Exception as exc:
-        raise RuntimeError(
-            "Failed to load ONNX model '%s': %s" % (name, exc)
-        ) from exc
+        raise RuntimeError("Failed to load ONNX model '%s': %s" % (name, exc)) from exc
 
 
 def is_cached(name: str) -> bool:

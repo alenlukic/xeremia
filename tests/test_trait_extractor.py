@@ -110,7 +110,8 @@ def _is_valid_trait_dict(traits: dict) -> None:
                 assert isinstance(label, str), "label should be str"
                 assert isinstance(prob, float), "prob should be float"
                 assert prob >= TRAIT_STORAGE_THRESHOLD, (
-                    "%s prob %s below storage threshold %s" % (key, prob, TRAIT_STORAGE_THRESHOLD)
+                    "%s prob %s below storage threshold %s"
+                    % (key, prob, TRAIT_STORAGE_THRESHOLD)
                 )
                 assert prob <= 1.0, "%s prob %s > 1.0" % (key, prob)
 
@@ -458,12 +459,21 @@ class TestDisplayFilters:
         assert "Classical---Baroque" not in result
 
     def test_filter_genre_top_k(self):
-        raw = {g: 0.50 for g in LABELS_GENRE_DISCOGS519 if g.startswith("Electronic---")}
+        raw = {
+            g: 0.50 for g in LABELS_GENRE_DISCOGS519 if g.startswith("Electronic---")
+        }
         result = filter_genre(raw)
         assert len(result) == GENRE_TOP_K
 
     def test_allowed_families_coverage(self):
-        expected = {"Electronic", "Hip Hop", "Funk / Soul", "Pop", "Reggae", "Stage & Screen"}
+        expected = {
+            "Electronic",
+            "Hip Hop",
+            "Funk / Soul",
+            "Pop",
+            "Reggae",
+            "Stage & Screen",
+        }
         assert GENRE_ALLOWED_FAMILIES == expected
 
 
@@ -703,8 +713,10 @@ class TestMigrationAndBackfill:
         mock_session.query.return_value.filter.return_value.all.return_value = []
         mock_session.query.return_value.all.return_value = []
 
-        with patch.object(backfill, "database") as mock_db, \
-             patch.object(backfill, "Process") as mock_process:
+        with (
+            patch.object(backfill, "database") as mock_db,
+            patch.object(backfill, "Process") as mock_process,
+        ):
             mock_db.create_session.return_value = mock_session
             backfill.run()
 

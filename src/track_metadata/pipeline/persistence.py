@@ -37,7 +37,9 @@ def _track_file_details(file_ref: str | Path) -> tuple[str, str | None]:
     return str(file_ref), None
 
 
-def upsert_track_records(session: Any, file_ref: str | Path, metadata: SimpleMetadata) -> dict[str, Any]:
+def upsert_track_records(
+    session: Any, file_ref: str | Path, metadata: SimpleMetadata
+) -> dict[str, Any]:
     title = (metadata.title or "").strip()
     if not title:
         raise ValueError("title is required for persistence")
@@ -46,7 +48,9 @@ def upsert_track_records(session: Any, file_ref: str | Path, metadata: SimpleMet
     key = _canonical_key(metadata.key)
     camelot_code = AudioFile.format_camelot_code(key)
     genre = normalize_genre_value(metadata.genre)
-    label = resolve_label(metadata.label, album=metadata.album, title=title, session=session)
+    label = resolve_label(
+        metadata.label, album=metadata.album, title=title, session=session
+    )
 
     track = session.query(Track).filter_by(file_name=file_name).first()
     created = track is None

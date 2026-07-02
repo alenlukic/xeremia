@@ -29,12 +29,18 @@ def _build_factory(cls, *, extra_init_kwargs=None, record_type="InitialTagRecord
         "src.ingestion_pipeline.tag_record_factory.AudioFile", return_value=mock_audio
     ):
         factory = cls(
-            record_type, "track.mp3", "/music", "trk-1", MagicMock(), **extra_init_kwargs
+            record_type,
+            "track.mp3",
+            "/music",
+            "trk-1",
+            MagicMock(),
+            **extra_init_kwargs,
         )
     return factory
 
 
 # --- Fix 1: TAG_COLUMNS no longer includes ENERGY ---
+
 
 class TestTagColumns:
     def test_create_row_excludes_energy(self):
@@ -48,6 +54,7 @@ class TestTagColumns:
 
 
 # --- Fix 6: error message uses model class name ---
+
 
 class TestDuplicateDetection:
     def test_create_tag_record_raises_on_duplicate(self):
@@ -69,6 +76,7 @@ class TestDuplicateDetection:
 
 # --- Fix 2: PostMIKRecordFactory adds energy ---
 
+
 class TestPostMIKRecordFactory:
     def test_post_mik_update_row_adds_energy(self):
         factory = _build_factory(PostMIKRecordFactory, record_type="PostMIKTagRecord")
@@ -78,6 +86,7 @@ class TestPostMIKRecordFactory:
 
 
 # --- PostRBRecordFactory applies overrides ---
+
 
 class TestPostRBRecordFactory:
     def test_post_rb_update_row_applies_overrides(self):
@@ -93,6 +102,7 @@ class TestPostRBRecordFactory:
 
 
 # --- Fix 3: _build_final_row returns a dict ---
+
 
 class TestFinalRecordFactory:
     def test_final_build_final_row_returns_dict(self):
@@ -124,6 +134,7 @@ class TestFinalRecordFactory:
 
 # --- Fix 4: _get_final_bpm guards ---
 
+
 class TestGetFinalBpm:
     def test_get_final_bpm_majority(self):
         a = _make_record(bpm="128")
@@ -145,6 +156,7 @@ class TestGetFinalBpm:
 
 # --- Fix 5: _get_final_key guards ---
 
+
 class TestGetFinalKey:
     def test_get_final_key_majority(self):
         a = _make_record(key="Am")
@@ -162,6 +174,7 @@ class TestGetFinalKey:
 
 
 # --- Regression fix: write_tags guards None BPM ---
+
 
 class TestWriteTagsNoneBpm:
     @patch("src.ingestion_pipeline.track_ingestion_pipeline.AudioFile")

@@ -49,14 +49,16 @@ GENRE_TOP_K = 8
 # Only genres whose family prefix appears here are surfaced; all others
 # are suppressed as acoustically-similar but genre-incorrect noise.
 # Revise this set if the library evolves beyond all-electronic.
-GENRE_ALLOWED_FAMILIES = frozenset({
-    "Electronic",
-    "Hip Hop",
-    "Funk / Soul",
-    "Pop",
-    "Reggae",
-    "Stage & Screen",
-})
+GENRE_ALLOWED_FAMILIES = frozenset(
+    {
+        "Electronic",
+        "Hip Hop",
+        "Funk / Soul",
+        "Pop",
+        "Reggae",
+        "Stage & Screen",
+    }
+)
 
 # EffNet-backed classification heads (18 MB embedding backbone)
 TRAIT_CLASSIFIERS_EFFNET = [

@@ -102,7 +102,9 @@ def select_best_result(
             if seed.artist
             else DISCOGS_MISSING_ARTIST_SCORE
         )
-        total = title_score * DISCOGS_TITLE_WEIGHT + artist_score * DISCOGS_ARTIST_WEIGHT
+        total = (
+            title_score * DISCOGS_TITLE_WEIGHT + artist_score * DISCOGS_ARTIST_WEIGHT
+        )
         if total > best_score:
             best_score = total
             best = result
@@ -175,5 +177,7 @@ class DiscogsSource:
             return None
 
         metadata = _result_to_metadata(best, seed)
-        logging.info("Discogs matched %s / %s (score=%.3f)", seed.artist, seed.title, score)
+        logging.info(
+            "Discogs matched %s / %s (score=%.3f)", seed.artist, seed.title, score
+        )
         return metadata

@@ -94,14 +94,21 @@ class TransitionMatch:
                 (self.get_similarity_score(), weights[MatchFactors.SIMILARITY.name]),
                 (self.get_freshness_score(), weights[MatchFactors.FRESHNESS.name]),
                 (self.get_energy_score(), weights[MatchFactors.ENERGY.name]),
-                (self.get_genre_similarity_score(), weights[MatchFactors.GENRE_SIMILARITY.name]),
-                (self.get_mood_continuity_score(), weights[MatchFactors.MOOD_CONTINUITY.name]),
+                (
+                    self.get_genre_similarity_score(),
+                    weights[MatchFactors.GENRE_SIMILARITY.name],
+                ),
+                (
+                    self.get_mood_continuity_score(),
+                    weights[MatchFactors.MOOD_CONTINUITY.name],
+                ),
                 (self.get_vocal_clash_score(), weights[MatchFactors.VOCAL_CLASH.name]),
-                (self.get_instrument_similarity_score(), weights[MatchFactors.INSTRUMENT_SIMILARITY.name]),
+                (
+                    self.get_instrument_similarity_score(),
+                    weights[MatchFactors.INSTRUMENT_SIMILARITY.name],
+                ),
             ]
-            self.score = 100 * sum(
-                score * weight for score, weight in score_weights
-            )
+            self.score = 100 * sum(score * weight for score, weight in score_weights)
 
         return self.score
 
@@ -148,9 +155,7 @@ class TransitionMatch:
         discount = 0.9
 
         if relative_diff <= abs_same_lower_bound:
-            score = (
-                float(abs_same_lower_bound - relative_diff) / abs_same_lower_bound
-            )
+            score = float(abs_same_lower_bound - relative_diff) / abs_same_lower_bound
 
         if relative_diff <= abs_down_key_lower_bound:
             midpoint = (abs_down_key_lower_bound + abs_down_key_upper_bound) / 2
@@ -262,7 +267,9 @@ class TransitionMatch:
             if on_deck_id not in TransitionMatch._on_deck_descriptor_cache:
                 TransitionMatch._on_deck_descriptor_cache[on_deck_id] = (
                     self.db_session.query(TrackDescriptor)
-                    .filter_by(track_id=on_deck_id, descriptor_version=DESCRIPTOR_VERSION)
+                    .filter_by(
+                        track_id=on_deck_id, descriptor_version=DESCRIPTOR_VERSION
+                    )
                     .first()
                 )
             on_deck_desc = TransitionMatch._on_deck_descriptor_cache[on_deck_id]
@@ -270,13 +277,17 @@ class TransitionMatch:
             if candidate_id not in TransitionMatch._candidate_descriptor_cache:
                 TransitionMatch._candidate_descriptor_cache[candidate_id] = (
                     self.db_session.query(TrackDescriptor)
-                    .filter_by(track_id=candidate_id, descriptor_version=DESCRIPTOR_VERSION)
+                    .filter_by(
+                        track_id=candidate_id, descriptor_version=DESCRIPTOR_VERSION
+                    )
                     .first()
                 )
             candidate_desc = TransitionMatch._candidate_descriptor_cache[candidate_id]
         except Exception:
             self._safe_rollback()
-            logger.debug("DB descriptor lookup failed for (%s, %s)", on_deck_id, candidate_id)
+            logger.debug(
+                "DB descriptor lookup failed for (%s, %s)", on_deck_id, candidate_id
+            )
             return None
 
         if on_deck_desc is not None and candidate_desc is not None:
@@ -290,6 +301,7 @@ class TransitionMatch:
         lo, hi = min(id1, id2), max(id1, id2)
         try:
             from src.db import database
+
             session = database.create_session()
             try:
                 existing = (
@@ -401,8 +413,16 @@ class TransitionMatch:
             self.factors[MatchFactors.VOCAL_CLASH] = 0.0
             return 0.0
 
-        vi_on_deck = on_deck.voice_instrumental if on_deck.voice_instrumental is not None else 0.0
-        vi_candidate = candidate.voice_instrumental if candidate.voice_instrumental is not None else 0.0
+        vi_on_deck = (
+            on_deck.voice_instrumental
+            if on_deck.voice_instrumental is not None
+            else 0.0
+        )
+        vi_candidate = (
+            candidate.voice_instrumental
+            if candidate.voice_instrumental is not None
+            else 0.0
+        )
         result = 1.0 - min(vi_on_deck, vi_candidate)
         self.factors[MatchFactors.VOCAL_CLASH] = result
         return result
@@ -425,7 +445,11 @@ class TransitionMatch:
         return result
 
     def __lt__(self, other):
-        return (self.get_score(), self.get_similarity_score(), self.get_freshness_score()) < (
+        return (
+            self.get_score(),
+            self.get_similarity_score(),
+            self.get_freshness_score(),
+        ) < (
             other.get_score(),
             other.get_similarity_score(),
             other.get_freshness_score(),

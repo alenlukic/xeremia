@@ -23,7 +23,9 @@ def find_artist_disparities():
             if is_empty(artists_str):
                 continue
 
-            db_artist_tracks = session.query(ArtistTrack).filter_by(track_id=track.id).all()
+            db_artist_tracks = (
+                session.query(ArtistTrack).filter_by(track_id=track.id).all()
+            )
             db_artist_ids = {at.artist_id for at in db_artist_tracks}
             db_artists = {
                 session.query(Artist).filter_by(id=aid).first().name
@@ -31,7 +33,9 @@ def find_artist_disparities():
                 if session.query(Artist).filter_by(id=aid).first() is not None
             }
 
-            comment_artists = set([a.strip() for a in artists_str.split(",") if a.strip()])
+            comment_artists = set(
+                [a.strip() for a in artists_str.split(",") if a.strip()]
+            )
             if db_artists != comment_artists:
                 print(
                     "Disparity for track %d (%s): DB=%s, comment=%s"

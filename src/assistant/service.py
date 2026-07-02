@@ -75,9 +75,7 @@ class Assistant:
         Warming is debounced per track_id: a second call for the same track
         within ``_WARM_DEBOUNCE_SECONDS`` is suppressed.
         """
-        track_row = (
-            self.session.query(Track).filter_by(title=track_title).first()
-        )
+        track_row = self.session.query(Track).filter_by(title=track_title).first()
         if track_row is None:
             return
 

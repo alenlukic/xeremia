@@ -56,7 +56,10 @@ def is_empty(value):
 
     return (
         (value is None)
-        or (isinstance(value, str) and (len(value.strip()) == 0 or value.strip() == "\x00"))
+        or (
+            isinstance(value, str)
+            and (len(value.strip()) == 0 or value.strip() == "\x00")
+        )
         or (isinstance(value, (list, tuple)) and all([is_empty(e) for e in value]))
         or (isinstance(value, dict) and all([is_empty(v) for v in value.values()]))
     )

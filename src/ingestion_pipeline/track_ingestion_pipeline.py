@@ -167,7 +167,9 @@ class FinalPipelineStage(PipelineStage):
                     {
                         k: v
                         for k, v in {
-                            TrackDBCols.BPM.value: float(tag_record.bpm) if tag_record.bpm is not None else None,
+                            TrackDBCols.BPM.value: float(tag_record.bpm)
+                            if tag_record.bpm is not None
+                            else None,
                             TrackDBCols.KEY.value: tag_record.key,
                         }.items()
                         if v is not None
