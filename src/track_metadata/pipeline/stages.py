@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from src.data_management.audio_file import AudioFile
 from src.data_management.config import CANONICAL_KEY_MAP
+from src.data_management.utils import normalize_key_symbols
 from src.db import database
+from src.track_metadata.label import apply_album_label_consistency
 from src.track_metadata.audio_features import analyze_missing_audio_features
 from src.track_metadata.matching import _compose_display_title
 from src.track_metadata.models import SimpleMetadata
@@ -23,6 +27,7 @@ from src.track_metadata.utils import (
     rename_file,
     stage_file,
 )
+from src.utils.file_operations import get_file_creation_time
 
 
 def stage_prepare(result: TrackResult, context: PipelineContext) -> None:
@@ -40,6 +45,16 @@ def stage_hydrate(result: TrackResult, context: PipelineContext) -> None:
     hydrated = context.hydrator.hydrate(
         result.working_path, existing, agent_events=result.agent_events
     )
+    creation_ts = datetime.fromtimestamp(get_file_creation_time(str(result.working_path)))
+    conflicts = apply_album_label_consistency(
+        hydrated,
+        context.shared_state,
+        source_catalog_id=hydrated.source_catalog_id,
+        creation_timestamp=creation_ts,
+        web_verifier=getattr(context.hydrator, "web_label_verifier", None),
+    )
+    if conflicts:
+        result.notes.extend(conflicts)
     result.metadata = hydrated
 
 
@@ -50,7 +65,7 @@ def stage_analyze(result: TrackResult, context: PipelineContext) -> None:
 
 
 def stage_format(result: TrackResult, context: PipelineContext) -> None:
-    key = result.metadata.key
+    key = normalize_key_symbols(result.metadata.key)
     bpm = result.metadata.bpm
     if key is None or bpm is None:
         result.camelot_code = None

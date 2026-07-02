@@ -15,7 +15,18 @@ from typing import Any, Callable
 
 import requests
 
-from src.track_metadata.label import _apply_label_fallback
+from src.track_metadata.genre import (
+    collect_genre_candidates_from_sources,
+    resolve_dynamic_genre,
+)
+from src.data_management.utils import normalize_key_symbols
+from src.track_metadata.label import (
+    WebLabelVerifier,
+    apply_album_label_consistency,
+    apply_label_resolution,
+    is_rejected_catalog_label,
+    resolve_label,
+)
 from src.track_metadata.matching import (
     _best_year,
     _clean_title_seed,
@@ -53,6 +64,7 @@ DEFAULT_USER_AGENT = os.getenv(
     ),
 )
 WEB_SEARCH_URL = "https://html.duckduckgo.com/html/"
+LASTFM_API_URL = "https://ws.audioscrobbler.com/2.0/"
 
 _last_musicbrainz_request_ts = 0.0
 _last_discogs_request_ts = 0.0
@@ -68,12 +80,18 @@ class MetadataHydrator:
         ]
         | None = None,
         skip_beatport_hydration: bool = True,
+        web_label_verifier: WebLabelVerifier | None = None,
+        beatport_genre_lookup: Callable[[str | None, str | None], str | None] | None = None,
+        lastfm_genre_lookup: Callable[[str | None, str | None], str | None] | None = None,
     ) -> None:
         self.http = requests.Session()
         self.http.headers.update({"User-Agent": DEFAULT_USER_AGENT})
         self.cache = self._load_cache()
         self.candidate_resolver = candidate_resolver
         self.skip_beatport_hydration = skip_beatport_hydration
+        self.web_label_verifier = web_label_verifier
+        self.beatport_genre_lookup = beatport_genre_lookup or self._lookup_beatport_genre
+        self.lastfm_genre_lookup = lastfm_genre_lookup or self._lookup_lastfm_genre
 
     def hydrate(
         self,
@@ -142,7 +160,16 @@ class MetadataHydrator:
                 discogs_candidate.year if discogs_candidate else None,
             )
 
-        _apply_label_fallback(resolved)
+        self._apply_source_catalog_ids(
+            resolved,
+            musicbrainz_candidate=musicbrainz_candidate,
+            discogs_candidate=discogs_candidate,
+        )
+        resolved.genre = self._resolve_genre(resolved, sources, file_path) or resolved.genre
+        apply_label_resolution(
+            resolved,
+            web_verifier=self.web_label_verifier,
+        )
         self.cache.setdefault(cache_key, {})["final"] = resolved.to_dict()
         self._save_cache()
         return resolved
@@ -305,7 +332,12 @@ class MetadataHydrator:
             except Exception as exc:
                 logging.warning("MusicBrainz release lookup failed for %s: %s", release_id, exc)
 
-        return _musicbrainz_payload_to_metadata(payload, release_payload)
+        metadata = _musicbrainz_payload_to_metadata(payload, release_payload)
+        if release_id:
+            metadata.source_catalog_id = release_id
+            metadata.source_provider = "musicbrainz"
+
+        return metadata
 
     def _musicbrainz_get(self, path: str, *, params: Mapping[str, Any]) -> dict[str, Any]:
         global _last_musicbrainz_request_ts
@@ -381,12 +413,19 @@ class MetadataHydrator:
         if best_result is None or best_score < 0.72:
             return None
 
+        release_id = best_result.get("id")
+        if isinstance(release_id, int):
+            release_id = str(release_id)
+
         metadata = SimpleMetadata(
             album=_first_non_empty(best_result.get("title"), seed.album),
             year=_coerce_year(best_result.get("year")),
             genre=_first_list_item(best_result.get("genre")),
             label=_first_list_item(best_result.get("label")),
         )
+        if isinstance(release_id, str) and release_id:
+            metadata.source_catalog_id = release_id
+            metadata.source_provider = "discogs"
         if metadata.album and " - " in metadata.album:
             _, release_title = _split_discogs_title(metadata.album)
             metadata.album = release_title or metadata.album
@@ -521,6 +560,9 @@ class MetadataHydrator:
             if on_match:
                 label = on_match.group(1).strip(" .,-")
 
+        if label is not None and is_rejected_catalog_label(label):
+            label = None
+
         year_match = re.search(r"\b(19|20)\d{2}\b", f"{normalized} {snippet}")
         genre_match = re.search(r"\bgenres?:\s*([^|.;]+)", snippet, flags=re.IGNORECASE)
 
@@ -588,6 +630,102 @@ class MetadataHydrator:
             agent_events.append(event)
         return resolved
 
+    def _apply_source_catalog_ids(
+        self,
+        resolved: SimpleMetadata,
+        *,
+        musicbrainz_candidate: SimpleMetadata | None,
+        discogs_candidate: SimpleMetadata | None,
+    ) -> None:
+        for candidate in (musicbrainz_candidate, discogs_candidate):
+            if candidate is None:
+                continue
+            if resolved.source_catalog_id is None and candidate.source_catalog_id:
+                resolved.source_catalog_id = candidate.source_catalog_id
+                resolved.source_provider = candidate.source_provider
+
+    def _resolve_genre(
+        self,
+        resolved: SimpleMetadata,
+        sources: list[dict[str, Any]],
+        file_path: Path,
+    ) -> str | None:
+        source_candidates = collect_genre_candidates_from_sources(sources)
+        if self._is_beatport_encoded(file_path):
+            beatport_genre = self._read_beatport_genre_from_tags(file_path)
+            if beatport_genre:
+                source_candidates.insert(0, ("beatport", beatport_genre, 0.98))
+        return resolve_dynamic_genre(
+            artist=resolved.artist,
+            title=resolved.title,
+            source_candidates=source_candidates,
+            beatport_lookup=self.beatport_genre_lookup,
+            lastfm_lookup=self.lastfm_genre_lookup,
+        )
+
+    def _read_beatport_genre_from_tags(self, file_path: Path) -> str | None:
+        try:
+            from mutagen.id3 import ID3
+        except ImportError:
+            return None
+        try:
+            tags = ID3(str(file_path))
+        except Exception:
+            return None
+        frame = tags.get("TCON")
+        if frame is None or not getattr(frame, "text", None):
+            return None
+        text = str(frame.text[0]).strip()
+        return text or None
+
+    def _lookup_beatport_genre(self, artist: str | None, title: str | None) -> str | None:
+        if not artist or not title:
+            return None
+        try:
+            response = self.http.get(
+                WEB_SEARCH_URL,
+                params={"q": f"site:beatport.com {artist} {title}"},
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            match = re.search(r"genre[^>]*>([^<]+)<", response.text, flags=re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        except Exception as exc:
+            logging.warning("Beatport genre lookup failed for %s - %s: %s", artist, title, exc)
+        return None
+
+    def _lookup_lastfm_genre(self, artist: str | None, title: str | None) -> str | None:
+        api_key = os.getenv("LASTFM_API_KEY")
+        if not api_key or not artist:
+            return None
+        params: dict[str, Any] = {
+            "method": "track.getInfo",
+            "api_key": api_key,
+            "artist": artist,
+            "format": "json",
+        }
+        if title:
+            params["track"] = title
+        try:
+            response = self.http.get(LASTFM_API_URL, params=params, timeout=HTTP_TIMEOUT_SECONDS)
+            response.raise_for_status()
+            payload = response.json()
+            track = payload.get("track")
+            if isinstance(track, dict):
+                toptags = track.get("toptags", {})
+                if isinstance(toptags, dict):
+                    tags = toptags.get("tag")
+                    if isinstance(tags, list) and tags:
+                        first = tags[0]
+                        if isinstance(first, dict):
+                            name = first.get("name")
+                            if isinstance(name, str) and name.strip():
+                                return name.strip()
+        except Exception as exc:
+            logging.warning("Last.fm genre lookup failed for %s - %s: %s", artist, title, exc)
+        return None
+
     def _is_beatport_encoded(self, file_path: Path) -> bool:
         try:
             from mutagen.id3 import ID3
@@ -629,8 +767,10 @@ def build_metadata_agent(
     ]
     | None = None,
     skip_beatport_hydration: bool = True,
+    web_label_verifier: WebLabelVerifier | None = None,
 ) -> MetadataHydrator:
     return MetadataHydrator(
         candidate_resolver=candidate_resolver,
         skip_beatport_hydration=skip_beatport_hydration,
+        web_label_verifier=web_label_verifier,
     )

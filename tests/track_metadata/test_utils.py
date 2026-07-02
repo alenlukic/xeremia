@@ -94,6 +94,10 @@ def test_sanitize_and_rename_file(tmp_path):
     assert "?" not in cleaned
     assert "*" not in cleaned
 
+    key_title = sanitize_filename("[12A - C#m - 128.00] Artist - Track")
+    assert "#" in key_title
+    assert "C#m" in key_title
+
     renamed = rename_file(source, "An Artist", "A / Title")
 
     assert renamed.exists()

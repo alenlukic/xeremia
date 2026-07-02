@@ -198,6 +198,11 @@ CANONICAL_KEY_MAP = ChainMap(
         for k, v in CANONICAL_KEY_MAP.items()
         if "#" in k
     },
+    {
+        k.replace("b", "♭"): v.replace("b", "♭")
+        for k, v in CANONICAL_KEY_MAP.items()
+        if "b" in k and "#" not in k
+    },
 )
 
 CAMELOT_MAP = {

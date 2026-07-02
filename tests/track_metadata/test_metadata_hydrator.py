@@ -1052,7 +1052,7 @@ def test_hydrate_uses_web_search_when_catalog_lookups_do_not_fill_fields(tmp_pat
     shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
 
     with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
+        hydrator = MetadataHydrator(web_label_verifier=lambda _label: True)
 
         web_candidate = SimpleMetadata(
             artist="Echo Delta",

@@ -20,6 +20,7 @@ from src.utils.common import is_empty
 from src.data_management.utils import (
     dedupe_title,
     load_comment,
+    normalize_key_symbols,
     normalize_tag_text,
     split_artist_string,
     transform_artist,
@@ -228,7 +229,10 @@ class AudioFile:
         if key is None:
             return None
 
-        canonical_key = CANONICAL_KEY_MAP.get(key.lower())
+        normalized = normalize_key_symbols(key)
+        if normalized is None:
+            return None
+        canonical_key = CANONICAL_KEY_MAP.get(normalized.lower())
         return None if canonical_key is None else canonical_key.capitalize()
 
     @staticmethod
