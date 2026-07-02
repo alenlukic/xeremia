@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import json
 import shutil
-import time
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-import requests
 
 from src.track_metadata.matching import (
     _best_year,
@@ -19,7 +16,8 @@ from src.track_metadata.matching import (
     _similarity,
 )
 from src.track_metadata.models import SimpleMetadata
-from src.track_metadata.sources import hydrator as hydrator_mod
+from src.track_metadata.sources.base import LookupContext, MetadataSource
+from src.track_metadata.sources.cache import MetadataCache
 from src.track_metadata.sources.discogs import (
     _coerce_year,
     _first_list_item,
@@ -35,6 +33,7 @@ from src.track_metadata.sources.musicbrainz import (
 )
 
 TEST_DATA_DIR = Path(__file__).resolve().parent / "test_data"
+SAMPLE_MP3 = TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3"
 
 
 # ---------------------------------------------------------------------------
@@ -382,427 +381,128 @@ def test_musicbrainz_payload_to_metadata_without_release() -> None:
 
 
 # ---------------------------------------------------------------------------
-# MetadataHydrator - cache
+# MetadataHydrator orchestration
 # ---------------------------------------------------------------------------
 
 
-def test_hydrator_load_cache_returns_empty_dict_on_missing_file(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "nonexistent_cache.json"):
-        hydrator = MetadataHydrator()
-        assert hydrator.cache == {}
+class _FakeSource:
+    """A stand-in metadata source that returns a preconfigured candidate."""
+
+    def __init__(
+        self,
+        name: str,
+        result: SimpleMetadata | None = None,
+        *,
+        merge_fields: frozenset[str] | None = None,
+        boom: bool = False,
+    ) -> None:
+        self.name = name
+        self.result = result
+        self.merge_fields = merge_fields
+        self.boom = boom
+        self.seen_seeds: list[SimpleMetadata] = []
+
+    def lookup(
+        self, seed: SimpleMetadata, context: LookupContext
+    ) -> SimpleMetadata | None:
+        if self.boom:  # pragma: no cover - guards against unexpected calls
+            raise AssertionError(f"source {self.name} should not be called")
+        self.seen_seeds.append(seed)
+        return self.result
 
 
-def test_hydrator_save_and_load_cache(tmp_path) -> None:
-    cache_path = tmp_path / "cache.json"
-    with patch.object(hydrator_mod, "CACHE_PATH", cache_path):
-        hydrator = MetadataHydrator()
-        hydrator.cache["key1"] = {"final": {"title": "Cached Track", "artist": "Artist"}}
-        hydrator._save_cache()
-
-        assert cache_path.exists()
-        raw = json.loads(cache_path.read_text(encoding="utf-8"))
-        assert raw["key1"]["final"]["title"] == "Cached Track"
-
-
-def test_hydrator_file_cache_key_is_deterministic(tmp_path) -> None:
-    test_file = tmp_path / "sample.mp3"
-    test_file.write_bytes(b"fake audio data")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-        key1 = hydrator._file_cache_key(test_file)
-        key2 = hydrator._file_cache_key(test_file)
-        assert key1 == key2
-        assert len(key1) == 40  # sha1 hex
-
-
-def test_hydrator_hydrate_uses_cache_hit(tmp_path) -> None:
-    mp3 = tmp_path / "artist - track.mp3"
-    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
-
-    cache_path = tmp_path / "cache.json"
-    with patch.object(hydrator_mod, "CACHE_PATH", cache_path):
-        hydrator = MetadataHydrator()
-        cache_key = hydrator._file_cache_key(mp3)
-        hydrator.cache[cache_key] = {"final": {"title": "Cached Title", "artist": "Cached Artist"}}
-
-        result = hydrator.hydrate(mp3, SimpleMetadata())
-        assert result.title == "Cached Title"
-        assert result.artist == "Cached Artist"
-
-
-# ---------------------------------------------------------------------------
-# MetadataHydrator._lookup_acoustid
-# ---------------------------------------------------------------------------
-
-
-def test_lookup_acoustid_skips_without_api_key(tmp_path) -> None:
-    mp3 = tmp_path / "track.mp3"
-    mp3.write_bytes(b"fake")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    with patch.dict("os.environ", {}, clear=True):
-        # ACOUSTID_API_KEY not set
-        result = hydrator._lookup_acoustid(mp3)
-        assert result is None
-
-
-def test_lookup_acoustid_skips_when_pyacoustid_not_installed(tmp_path, monkeypatch) -> None:
-    mp3 = tmp_path / "track.mp3"
-    mp3.write_bytes(b"fake")
-
-    monkeypatch.setenv("ACOUSTID_API_KEY", "fakekey")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    import sys
-
-    # Temporarily make acoustid unimportable
-    original = sys.modules.get("acoustid", "SENTINEL")
-    sys.modules["acoustid"] = None  # type: ignore[assignment]
-    try:
-        result = hydrator._lookup_acoustid(mp3)
-        assert result is None
-    finally:
-        if original == "SENTINEL":
-            del sys.modules["acoustid"]
-        else:
-            sys.modules["acoustid"] = original
-
-
-def test_lookup_acoustid_returns_none_on_low_confidence(tmp_path, monkeypatch) -> None:
-    mp3 = tmp_path / "track.mp3"
-    mp3.write_bytes(b"fake")
-
-    monkeypatch.setenv("ACOUSTID_API_KEY", "fakekey")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    mock_acoustid = MagicMock()
-    mock_acoustid.match.return_value = [(0.50, "rec-id", "Title", "Artist")]
-
-    with patch.dict("sys.modules", {"acoustid": mock_acoustid}):
-        result = hydrator._lookup_acoustid(mp3)
-        assert result is None
-
-
-def test_lookup_acoustid_returns_metadata_on_high_confidence(tmp_path, monkeypatch) -> None:
-    mp3 = tmp_path / "track.mp3"
-    mp3.write_bytes(b"fake")
-
-    monkeypatch.setenv("ACOUSTID_API_KEY", "fakekey")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    mock_acoustid = MagicMock()
-    mock_acoustid.match.return_value = [(0.95, "rec-abc", "Matched Title", "Matched Artist")]
-
-    # Stub out the follow-up MB recording lookup to avoid HTTP
-    with patch.object(hydrator, "_lookup_musicbrainz_recording", return_value=None), \
-         patch.dict("sys.modules", {"acoustid": mock_acoustid}):
-        result = hydrator._lookup_acoustid(mp3)
-
-    assert result is not None
-    assert result.title == "Matched Title"
-    assert result.artist == "Matched Artist"
-
-
-# ---------------------------------------------------------------------------
-# MetadataHydrator._lookup_musicbrainz
-# ---------------------------------------------------------------------------
-
-
-def test_lookup_musicbrainz_returns_none_without_title(tmp_path, monkeypatch) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    result = hydrator._lookup_musicbrainz(SimpleMetadata(), Path("no_title.mp3"))
-    assert result is None
-
-
-def test_lookup_musicbrainz_handles_http_error(tmp_path, monkeypatch) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    hydrator.http.get = MagicMock(side_effect=requests.RequestException("timeout"))
-    result = hydrator._lookup_musicbrainz(
-        SimpleMetadata(title="Some Track", artist="Some Artist"), Path("track.mp3")
+def _make_hydrator(
+    tmp_path: Path,
+    *,
+    catalog_sources: list[MetadataSource] | None = None,
+    web_source: MetadataSource | None = None,
+    **kwargs: Any,
+) -> MetadataHydrator:
+    return MetadataHydrator(
+        cache=MetadataCache(path=tmp_path / "cache.json"),
+        catalog_sources=catalog_sources if catalog_sources is not None else [],
+        web_source=web_source if web_source is not None else _FakeSource("web_search"),
+        beatport_genre_lookup=lambda artist, title: None,
+        lastfm_genre_lookup=lambda artist, title: None,
+        **kwargs,
     )
-    assert result is None
 
 
-def test_lookup_musicbrainz_returns_none_when_no_recordings_match(tmp_path, monkeypatch) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
+def _staged_mp3(tmp_path: Path, name: str) -> Path:
+    mp3 = tmp_path / name
+    shutil.copy2(SAMPLE_MP3, mp3)
+    return mp3
 
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"recordings": []}
-    mock_response.raise_for_status.return_value = None
-    hydrator.http.get = MagicMock(return_value=mock_response)
 
-    result = hydrator._lookup_musicbrainz(
-        SimpleMetadata(title="Obscure Track"), Path("obscure.mp3")
+def test_hydrate_uses_cache_hit(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "artist - track.mp3")
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("boom", boom=True)])
+    hydrator.cache.store_final(
+        hydrator.cache.file_key(mp3),
+        SimpleMetadata(title="Cached Title", artist="Cached Artist"),
     )
-    assert result is None
+
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.title == "Cached Title"
+    assert result.artist == "Cached Artist"
 
 
-def test_lookup_musicbrainz_returns_metadata_on_match(tmp_path, monkeypatch) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
+def test_hydrate_uses_filename_seed_when_no_sources_match(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "Great Artist - Great Track.mp3")
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("musicbrainz")])
 
-    search_response = MagicMock()
-    search_response.raise_for_status.return_value = None
-    search_response.json.return_value = {
-        "recordings": [
-            {
-                "id": "rec-xyz",
-                "title": "Windowlicker",
-                "artist-credit": [{"name": "Aphex Twin", "joinphrase": ""}],
-                "releases": [{"title": "Windowlicker"}],
-            }
-        ]
-    }
-
-    recording_response = MagicMock()
-    recording_response.raise_for_status.return_value = None
-    recording_response.json.return_value = {
-        "id": "rec-xyz",
-        "title": "Windowlicker",
-        "artist-credit": [{"name": "Aphex Twin", "joinphrase": ""}],
-        "first-release-date": "1999",
-        "genres": [{"name": "Electronic"}],
-        "releases": [{"id": "rel-abc", "title": "Windowlicker"}],
-    }
-
-    release_response = MagicMock()
-    release_response.raise_for_status.return_value = None
-    release_response.json.return_value = {
-        "title": "Windowlicker",
-        "date": "1999-03-22",
-        "genres": [{"name": "Electronic"}],
-        "label-info": [{"label": {"name": "Warp Records"}}],
-    }
-
-    call_count = [0]
-
-    def fake_get(url: str, **kwargs: Any) -> MagicMock:
-        call_count[0] += 1
-        if "/recording/rec-xyz" in url:
-            return recording_response
-        if "/release/rel-abc" in url:
-            return release_response
-        return search_response
-
-    hydrator.http.get = fake_get  # type: ignore[method-assign]
-
-    # Override rate limit to not sleep in tests
-    with patch.object(hydrator, "_respect_rate_limit", return_value=None):
-        result = hydrator._lookup_musicbrainz(
-            SimpleMetadata(title="Windowlicker", artist="Aphex Twin"), Path("windowlicker.mp3")
-        )
-
-    assert result is not None
-    assert result.title == "Windowlicker"
-    assert result.artist == "Aphex Twin"
-    assert result.label == "Warp Records"
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.artist == "Great Artist"
+    assert result.title == "Great Track"
 
 
-# ---------------------------------------------------------------------------
-# MetadataHydrator._select_best_musicbrainz_recording
-# ---------------------------------------------------------------------------
+def test_hydrate_does_not_overwrite_existing_metadata(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "SomeFile.mp3")
+    existing = SimpleMetadata(title="Existing Title", artist="Existing Artist", bpm=128.0)
+    candidate = SimpleMetadata(title="Candidate Title", artist="Candidate Artist", genre="Techno")
+    hydrator = _make_hydrator(
+        tmp_path, catalog_sources=[_FakeSource("musicbrainz", candidate)]
+    )
+
+    result = hydrator.hydrate(mp3, existing)
+    assert result.title == "Existing Title"
+    assert result.artist == "Existing Artist"
+    assert result.bpm == 128.0
+    assert result.genre == "Techno"
 
 
-def test_select_best_musicbrainz_recording_returns_none_below_threshold(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
+def test_hydrate_writes_then_reads_cache(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "Track.mp3")
+    source = _FakeSource("musicbrainz", SimpleMetadata(genre="Techno"))
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[source])
 
-    recordings = [
-        {
-            "id": "rec-1",
-            "title": "Completely Different",
-            "artist-credit": [{"name": "Another Artist", "joinphrase": ""}],
-            "releases": [],
-        }
-    ]
-    seed = SimpleMetadata(title="My Track", artist="My Artist")
-    result = hydrator._select_best_musicbrainz_recording(recordings, seed)
-    assert result is None
+    first = hydrator.hydrate(mp3, SimpleMetadata(title="Cached Track", artist="Artist"))
+    assert len(source.seen_seeds) == 1
+
+    # Second hydrate hits the cache and must not touch sources again.
+    source.boom = True
+    second = hydrator.hydrate(mp3, SimpleMetadata())
+    assert first.title == second.title
+    assert first.artist == second.artist
 
 
-def test_select_best_musicbrainz_recording_returns_best_match(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
+def test_hydrate_uses_web_fallback_when_catalog_sources_leave_gaps(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "Echo Delta - Jūra (Original Mix).mp3")
+    web_candidate = SimpleMetadata(
+        artist="Echo Delta",
+        title="Jūra",
+        label="Mule Musiq",
+        genre="Deep House",
+        year=2019,
+    )
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[_FakeSource("musicbrainz")],
+        web_source=_FakeSource("web_search", web_candidate),
+        web_label_verifier=lambda _label: True,
+    )
 
-    recordings = [
-        {
-            "id": "rec-1",
-            "title": "Windowlicker",
-            "artist-credit": [{"name": "Aphex Twin", "joinphrase": ""}],
-            "releases": [{"title": "Windowlicker"}],
-        },
-        {
-            "id": "rec-2",
-            "title": "Come to Daddy",
-            "artist-credit": [{"name": "Aphex Twin", "joinphrase": ""}],
-            "releases": [{"title": "Come to Daddy"}],
-        },
-    ]
-    seed = SimpleMetadata(title="Windowlicker", artist="Aphex Twin")
-    result = hydrator._select_best_musicbrainz_recording(recordings, seed)
-    assert result is not None
-    assert result["id"] == "rec-1"
-
-
-# ---------------------------------------------------------------------------
-# MetadataHydrator._lookup_discogs
-# ---------------------------------------------------------------------------
-
-
-def test_lookup_discogs_returns_none_without_token(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    env_without_token = {
-        k: v for k, v in __import__("os").environ.items() if k != "DISCOGS_TOKEN"
-    }
-    with patch.dict("os.environ", env_without_token, clear=True):
-        result = hydrator._lookup_discogs(SimpleMetadata(title="Track"))
-        assert result is None
-
-
-def test_lookup_discogs_returns_none_without_title(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("DISCOGS_TOKEN", "faketoken")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    result = hydrator._lookup_discogs(SimpleMetadata(artist="Artist"))
-    assert result is None
-
-
-def test_lookup_discogs_returns_metadata_on_match(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("DISCOGS_TOKEN", "faketoken")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {
-        "results": [
-            {
-                "title": "Aphex Twin - Selected Ambient Works",
-                "year": 1992,
-                "genre": ["Electronic"],
-                "label": ["R&S Records"],
-            }
-        ]
-    }
-    hydrator.http.get = MagicMock(return_value=mock_response)
-
-    with patch.object(hydrator, "_respect_rate_limit", return_value=None):
-        result = hydrator._lookup_discogs(
-            SimpleMetadata(title="Selected Ambient Works", artist="Aphex Twin")
-        )
-
-    assert result is not None
-    assert result.year == 1992
-    assert result.genre == "Electronic"
-    assert result.label == "R&S Records"
-
-
-def test_lookup_discogs_supports_key_and_secret_auth(tmp_path, monkeypatch) -> None:
-    monkeypatch.delenv("DISCOGS_TOKEN", raising=False)
-    monkeypatch.setenv("DISCOGS_KEY", "key123")
-    monkeypatch.setenv("DISCOGS_SECRET", "secret456")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {
-        "results": [
-            {
-                "title": "Echo Delta - Jūra",
-                "year": 2019,
-                "genre": ["Deep House"],
-                "label": ["Mule Musiq"],
-            }
-        ]
-    }
-    hydrator.http.get = MagicMock(return_value=mock_response)
-
-    with patch.object(hydrator, "_respect_rate_limit", return_value=None):
-        result = hydrator._lookup_discogs(SimpleMetadata(title="Jūra", artist="Echo Delta"))
-
-    assert result is not None
-    assert result.label == "Mule Musiq"
-    assert result.genre == "Deep House"
-    _, kwargs = hydrator.http.get.call_args
-    assert kwargs["params"]["key"] == "key123"
-    assert kwargs["params"]["secret"] == "secret456"
-
-
-def test_lookup_discogs_returns_none_below_threshold(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("DISCOGS_TOKEN", "faketoken")
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {
-        "results": [
-            {
-                "title": "Completely Unrelated - Release Name",
-                "year": 2005,
-                "genre": ["Pop"],
-                "label": ["Some Label"],
-            }
-        ]
-    }
-    hydrator.http.get = MagicMock(return_value=mock_response)
-
-    with patch.object(hydrator, "_respect_rate_limit", return_value=None):
-        result = hydrator._lookup_discogs(
-            SimpleMetadata(title="Very Different Track", artist="Unknown Artist")
-        )
-
-    assert result is None
-
-
-# ---------------------------------------------------------------------------
-# MetadataHydrator._lookup_web_search
-# ---------------------------------------------------------------------------
-
-
-def test_lookup_web_search_returns_metadata_from_search_results(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    with patch.object(
-        hydrator,
-        "_search_web",
-        return_value=[
-            {
-                "title": "Echo Delta - Jūra (Original Mix) [Mule Musiq] | Beatport",
-                "snippet": "Genres: Deep House. Released 2019 on Mule Musiq.",
-                "url": "https://example.com",
-            }
-        ],
-    ):
-        result = hydrator._lookup_web_search(
-            SimpleMetadata(title="Jūra", artist="Echo Delta"),
-            Path("Echo Delta - Jūra (Original Mix).mp3"),
-        )
-
-    assert result is not None
+    result = hydrator.hydrate(mp3, SimpleMetadata())
     assert result.artist == "Echo Delta"
     assert result.title == "Jūra"
     assert result.label == "Mule Musiq"
@@ -810,15 +510,126 @@ def test_lookup_web_search_returns_metadata_from_search_results(tmp_path) -> Non
     assert result.year == 2019
 
 
+def test_hydrate_skips_web_fallback_when_all_fields_resolved(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "Track.mp3")
+    full = SimpleMetadata(
+        title="T", artist="A", album="Al", label="L", genre="G", remixer="R", year=2020
+    )
+    web = _FakeSource("web_search", boom=True)
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[_FakeSource("musicbrainz", full)],
+        web_source=web,
+    )
+
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.year == 2020
+
+
+def test_hydrate_respects_discogs_merge_field_restriction(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "No Tags.mp3")
+    discogs = _FakeSource(
+        "discogs",
+        SimpleMetadata(title="Discogs Title", artist="Discogs Artist", label="Label"),
+        merge_fields=frozenset({"album", "label", "genre", "year"}),
+    )
+    hydrator = _make_hydrator(
+        tmp_path, catalog_sources=[discogs], web_label_verifier=lambda _label: True
+    )
+
+    # File has no " - " so no title/artist seed; discogs may only fill release fields.
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.title == "No Tags"  # from filename, not discogs
+    assert result.artist is None  # discogs artist is filtered out
+    assert result.label == "Label"  # release-level field survives the restriction
+
+
+def test_hydrate_fills_year_from_catalog_candidates(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[
+            _FakeSource("musicbrainz", SimpleMetadata(genre="Techno")),
+            _FakeSource(
+                "discogs",
+                SimpleMetadata(year=2011),
+                merge_fields=frozenset({"album", "label", "genre", "year"}),
+            ),
+        ],
+    )
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.year == 2011
+
+
+def test_hydrate_uses_musicbrainz_catalog_id_via_merge(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    mb_candidate = SimpleMetadata(
+        genre="Techno", source_catalog_id="mb-1", source_provider="musicbrainz"
+    )
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("musicbrainz", mb_candidate)])
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.source_catalog_id == "mb-1"
+    assert result.source_provider == "musicbrainz"
+
+
+def test_hydrate_applies_discogs_catalog_id_despite_field_restriction(tmp_path: Path) -> None:
+    # Discogs' merge is restricted to release fields, so its catalog id cannot
+    # flow through the merge; _apply_source_catalog_ids is what surfaces it.
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    mb_candidate = SimpleMetadata(genre="Techno")  # no catalog id
+    discogs_candidate = SimpleMetadata(
+        album="Al", source_catalog_id="disc-9", source_provider="discogs"
+    )
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[
+            _FakeSource("musicbrainz", mb_candidate),
+            _FakeSource(
+                "discogs",
+                discogs_candidate,
+                merge_fields=frozenset({"album", "label", "genre", "year"}),
+            ),
+        ],
+    )
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.source_catalog_id == "disc-9"
+    assert result.source_provider == "discogs"
+
+
+def test_hydrate_applies_label_fallback(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "Track.mp3")
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("musicbrainz")])
+    existing = SimpleMetadata(title="Track", artist="Artist", label="White Label")
+
+    result = hydrator.hydrate(mp3, existing)
+    assert result.label == "CDR"
+
+
+def test_hydrate_skips_remote_lookups_for_beatport_encoded_file(tmp_path: Path) -> None:
+    from mutagen.id3 import ID3, TENC
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Beatport Track.mp3")
+    tags = ID3(str(mp3))
+    tags.add(TENC(encoding=3, text="Beatport"))
+    tags.save(str(mp3), v2_version=4)
+
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[_FakeSource("musicbrainz", boom=True)],
+        web_source=_FakeSource("web_search", boom=True),
+    )
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.artist == "Artist"
+    assert result.title == "Beatport Track"
+
+
 # ---------------------------------------------------------------------------
-# MetadataHydrator._resolve_from_candidates
+# MetadataHydrator candidate-resolver fallback
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_from_candidates_returns_none_without_resolver(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
+def test_resolve_from_candidates_returns_none_without_resolver(tmp_path: Path) -> None:
+    hydrator = _make_hydrator(tmp_path)
     result = hydrator._resolve_from_candidates(
         Path("track.mp3"),
         SimpleMetadata(title="Track", artist="Artist"),
@@ -827,48 +638,31 @@ def test_resolve_from_candidates_returns_none_without_resolver(tmp_path) -> None
     assert result is None
 
 
-def test_resolve_from_candidates_returns_none_when_no_missing_fields(tmp_path) -> None:
+def test_resolve_from_candidates_returns_none_when_no_missing_fields(tmp_path: Path) -> None:
     resolver = MagicMock(return_value=SimpleMetadata(title="X"))
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator(candidate_resolver=resolver)
-
+    hydrator = _make_hydrator(tmp_path, candidate_resolver=resolver)
     full_metadata = SimpleMetadata(
-        title="Title",
-        artist="Artist",
-        album="Album",
-        label="Label",
-        genre="Genre",
-        remixer="Remixer",
-        year=2020,
+        title="Title", artist="Artist", album="Album", label="Label",
+        genre="Genre", remixer="Remixer", year=2020,
     )
     result = hydrator._resolve_from_candidates(
-        Path("track.mp3"),
-        full_metadata,
-        [{"source": "musicbrainz", "metadata": {}}],
+        Path("track.mp3"), full_metadata, [{"source": "musicbrainz", "metadata": {}}]
     )
     assert result is None
     resolver.assert_not_called()
 
 
-def test_resolve_from_candidates_returns_none_when_no_sources(tmp_path) -> None:
+def test_resolve_from_candidates_returns_none_when_no_sources(tmp_path: Path) -> None:
     resolver = MagicMock(return_value=SimpleMetadata(title="X"))
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator(candidate_resolver=resolver)
-
-    result = hydrator._resolve_from_candidates(
-        Path("track.mp3"),
-        SimpleMetadata(title=None),
-        [],  # no sources
-    )
+    hydrator = _make_hydrator(tmp_path, candidate_resolver=resolver)
+    result = hydrator._resolve_from_candidates(Path("track.mp3"), SimpleMetadata(title=None), [])
     assert result is None
     resolver.assert_not_called()
 
 
-def test_resolve_from_candidates_uses_callback(tmp_path) -> None:
+def test_resolve_from_candidates_uses_callback(tmp_path: Path) -> None:
     resolver = MagicMock(return_value=SimpleMetadata(title="Resolved Title"))
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator(candidate_resolver=resolver)
-
+    hydrator = _make_hydrator(tmp_path, candidate_resolver=resolver)
     result = hydrator._resolve_from_candidates(
         Path("track.mp3"),
         SimpleMetadata(title=None, artist="Artist"),
@@ -879,11 +673,9 @@ def test_resolve_from_candidates_uses_callback(tmp_path) -> None:
     resolver.assert_called_once()
 
 
-def test_resolve_from_candidates_records_agent_events(tmp_path) -> None:
+def test_resolve_from_candidates_records_agent_events(tmp_path: Path) -> None:
     resolver = MagicMock(return_value=SimpleMetadata(title="Resolved Title"))
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator(candidate_resolver=resolver)
-
+    hydrator = _make_hydrator(tmp_path, candidate_resolver=resolver)
     events: list[dict[str, object]] = []
     result = hydrator._resolve_from_candidates(
         Path("track.mp3"),
@@ -899,11 +691,9 @@ def test_resolve_from_candidates_records_agent_events(tmp_path) -> None:
     assert events[0]["file"] == "track.mp3"
 
 
-def test_resolve_from_candidates_records_no_match_agent_events(tmp_path) -> None:
+def test_resolve_from_candidates_records_no_match_agent_events(tmp_path: Path) -> None:
     resolver = MagicMock(return_value=None)
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator(candidate_resolver=resolver)
-
+    hydrator = _make_hydrator(tmp_path, candidate_resolver=resolver)
     events: list[dict[str, object]] = []
     hydrator._resolve_from_candidates(
         Path("track.mp3"),
@@ -915,185 +705,16 @@ def test_resolve_from_candidates_records_no_match_agent_events(tmp_path) -> None
     assert events[0]["outcome"] == "no_match"
 
 
-# ---------------------------------------------------------------------------
-# MetadataHydrator._respect_rate_limit
-# ---------------------------------------------------------------------------
-
-
-def test_respect_rate_limit_sleeps_when_needed(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    # Force the last request timestamp to be "just now" so rate limit kicks in
-    hydrator_mod._last_musicbrainz_request_ts = time.monotonic()
-
-    with patch("time.sleep") as mock_sleep:
-        hydrator._respect_rate_limit("musicbrainz")
-        assert mock_sleep.called
-        delay = mock_sleep.call_args[0][0]
-        assert delay > 0
-
-
-def test_respect_rate_limit_no_sleep_when_enough_time_passed(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    # Simulate enough time having elapsed
-    hydrator_mod._last_musicbrainz_request_ts = time.monotonic() - 10.0
-
-    with patch("time.sleep") as mock_sleep:
-        hydrator._respect_rate_limit("musicbrainz")
-        mock_sleep.assert_not_called()
-
-
-def test_respect_rate_limit_unknown_provider_is_noop(tmp_path) -> None:
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-    with patch("time.sleep") as mock_sleep:
-        hydrator._respect_rate_limit("unknown_provider")
-        mock_sleep.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# MetadataHydrator.hydrate - integration (no real network)
-# ---------------------------------------------------------------------------
-
-
-def test_hydrate_uses_filename_seed_when_no_existing_metadata(tmp_path) -> None:
-    mp3 = tmp_path / "Great Artist - Great Track.mp3"
-    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-        # Stub out all remote lookups
-        with patch.object(hydrator, "_lookup_acoustid", return_value=None), \
-             patch.object(hydrator, "_lookup_musicbrainz", return_value=None), \
-             patch.object(hydrator, "_lookup_discogs", return_value=None), \
-             patch.object(hydrator, "_resolve_from_candidates", return_value=None):
-            result = hydrator.hydrate(mp3, SimpleMetadata())
-
-    assert result.artist == "Great Artist"
-    assert result.title == "Great Track"
-
-
-def test_hydrate_does_not_overwrite_existing_metadata(tmp_path) -> None:
-    mp3 = tmp_path / "SomeFile.mp3"
-    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
-
-    existing = SimpleMetadata(title="Existing Title", artist="Existing Artist", bpm=128.0)
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-        candidate = SimpleMetadata(
-            title="Candidate Title", artist="Candidate Artist", genre="Techno"
-        )
-        with patch.object(hydrator, "_lookup_acoustid", return_value=None), \
-             patch.object(hydrator, "_lookup_musicbrainz", return_value=candidate), \
-             patch.object(hydrator, "_lookup_discogs", return_value=None), \
-             patch.object(hydrator, "_resolve_from_candidates", return_value=None):
-            result = hydrator.hydrate(mp3, existing)
-
-    # Existing data preserved
-    assert result.title == "Existing Title"
-    assert result.artist == "Existing Artist"
-    assert result.bpm == 128.0
-    # Missing genre filled from candidate
-    assert result.genre == "Techno"
-
-
-def test_hydrate_writes_and_reads_cache(tmp_path) -> None:
-    mp3 = tmp_path / "Track.mp3"
-    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
-
-    cache_path = tmp_path / "cache.json"
-
-    with patch.object(hydrator_mod, "CACHE_PATH", cache_path):
-        hydrator = MetadataHydrator()
-
-        with patch.object(hydrator, "_lookup_acoustid", return_value=None), \
-             patch.object(hydrator, "_lookup_musicbrainz", return_value=None), \
-             patch.object(hydrator, "_lookup_discogs", return_value=None), \
-             patch.object(hydrator, "_resolve_from_candidates", return_value=None):
-            result1 = hydrator.hydrate(mp3, SimpleMetadata(title="Cached Track", artist="Artist"))
-
-        # Second hydrate should hit cache (no lookup calls)
-        _not_called = AssertionError("Should not be called")
-        with patch.object(hydrator, "_lookup_acoustid", side_effect=_not_called):
-            with patch.object(hydrator, "_lookup_musicbrainz", side_effect=_not_called):
-                result2 = hydrator.hydrate(mp3, SimpleMetadata())
-
-    assert result1.title == result2.title
-    assert result1.artist == result2.artist
-
-
-def test_hydrate_applies_label_fallback(tmp_path) -> None:
-    mp3 = tmp_path / "Track.mp3"
-    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator()
-
-        existing = SimpleMetadata(title="Track", artist="Artist", label="White Label")
-
-        with patch.object(hydrator, "_lookup_acoustid", return_value=None), \
-             patch.object(hydrator, "_lookup_musicbrainz", return_value=None), \
-             patch.object(hydrator, "_lookup_discogs", return_value=None), \
-             patch.object(hydrator, "_resolve_from_candidates", return_value=None):
-            result = hydrator.hydrate(mp3, existing)
-
-    assert result.label == "CDR"
-
-
-def test_hydrate_uses_web_search_when_catalog_lookups_do_not_fill_fields(tmp_path) -> None:
-    mp3 = tmp_path / "Echo Delta - Jūra (Original Mix).mp3"
-    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator(web_label_verifier=lambda _label: True)
-
-        web_candidate = SimpleMetadata(
-            artist="Echo Delta",
-            title="Jūra",
-            label="Mule Musiq",
-            genre="Deep House",
-            year=2019,
-        )
-        with patch.object(hydrator, "_lookup_acoustid", return_value=None), \
-             patch.object(hydrator, "_lookup_musicbrainz", return_value=None), \
-             patch.object(hydrator, "_lookup_discogs", return_value=None), \
-             patch.object(hydrator, "_lookup_web_search", return_value=web_candidate), \
-             patch.object(hydrator, "_resolve_from_candidates", return_value=None):
-            result = hydrator.hydrate(mp3, SimpleMetadata())
-
-    assert result.artist == "Echo Delta"
-    assert result.title == "Jūra"
-    assert result.label == "Mule Musiq"
-    assert result.genre == "Deep House"
-    assert result.year == 2019
-
-
-def test_hydrate_skips_remote_lookups_for_beatport_encoded_file(tmp_path) -> None:
-    from mutagen.id3 import ID3, TENC
-
-    mp3 = tmp_path / "Artist - Beatport Track.mp3"
-    shutil.copy2(TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3", mp3)
-    tags = ID3(str(mp3))
-    tags.add(TENC(encoding=3, text="Beatport"))
-    tags.save(str(mp3), v2_version=4)
-
-    with patch.object(hydrator_mod, "CACHE_PATH", tmp_path / "cache.json"):
-        hydrator = MetadataHydrator(skip_beatport_hydration=True)
-        with patch.object(hydrator, "_lookup_acoustid", side_effect=AssertionError("should not call")):
-            with patch.object(
-                hydrator, "_lookup_musicbrainz", side_effect=AssertionError("should not call")
-            ):
-                with patch.object(
-                    hydrator, "_lookup_discogs", side_effect=AssertionError("should not call")
-                ):
-                    result = hydrator.hydrate(mp3, SimpleMetadata())
-
-    assert result.artist == "Artist"
-    assert result.title == "Beatport Track"
+def test_resolve_from_candidates_records_error_agent_events(tmp_path: Path) -> None:
+    resolver = MagicMock(side_effect=RuntimeError("boom"))
+    hydrator = _make_hydrator(tmp_path, candidate_resolver=resolver)
+    events: list[dict[str, object]] = []
+    result = hydrator._resolve_from_candidates(
+        Path("track.mp3"),
+        SimpleMetadata(title=None, artist="Artist"),
+        [{"source": "musicbrainz", "metadata": {}}],
+        agent_events=events,
+    )
+    assert result is None
+    assert events[0]["outcome"] == "error"
+    assert "boom" in events[0]["error"]
