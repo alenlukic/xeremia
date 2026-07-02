@@ -61,8 +61,16 @@ class Stage:
 class Pipeline:
     stages: list[Stage]
 
-    def run(self, files: list[Path], context: PipelineContext):
-        for source in files:
+    def run(
+        self,
+        files: list[Path],
+        context: PipelineContext,
+        on_progress: Callable[[int, int, Path], None] | None = None,
+    ):
+        total = len(files)
+        for index, source in enumerate(files, start=1):
+            if on_progress is not None:
+                on_progress(index, total, source)
             result = TrackResult(source=source)
             for stage in self.stages:
                 try:

@@ -116,10 +116,10 @@ venv.bak/
 .idea*
 
 # Data directory
-data/*
+data/
 
 # Log directory
-*logs/*
+logs/
 
 # Short-lived scripts
 src/scripts/tmp/*

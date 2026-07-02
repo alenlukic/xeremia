@@ -39,7 +39,7 @@ RUN_START = os.getenv("TRACK_METADATA_RUN_START", datetime.now().strftime("%Y%m%
 LOG_FILE_PATH = LOG_DIR / f"{RUN_START}.log"
 
 SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".aiff", ".aif", ".wav"}
-SANITIZE_PATTERN = re.compile(r"[^\w.\- &'()\[\]]+")
+SANITIZE_PATTERN = re.compile(r"[^\w.\- #'&()\[\]]+")
 _AIFF_PCM_SUBTYPES = frozenset({"PCM_S8", "PCM_16", "PCM_24", "PCM_32"})
 
 

@@ -7,7 +7,8 @@ from typing import Any
 
 from src.data_management.audio_file import AudioFile
 from src.data_management.config import CANONICAL_KEY_MAP
-from src.data_management.utils import transform_genre, transform_label
+from src.track_metadata.label import resolve_label
+from src.track_metadata.genre import normalize_genre_value
 from src.models.artist import Artist
 from src.models.artist_track import ArtistTrack
 from src.models.track import Track
@@ -44,8 +45,8 @@ def upsert_track_records(session: Any, file_ref: str | Path, metadata: SimpleMet
     file_name, date_added = _track_file_details(file_ref)
     key = _canonical_key(metadata.key)
     camelot_code = AudioFile.format_camelot_code(key)
-    genre = transform_genre(metadata.genre) if metadata.genre else None
-    label = transform_label(metadata.label) if metadata.label else None
+    genre = normalize_genre_value(metadata.genre)
+    label = resolve_label(metadata.label, album=metadata.album, title=title, session=session)
 
     track = session.query(Track).filter_by(file_name=file_name).first()
     created = track is None

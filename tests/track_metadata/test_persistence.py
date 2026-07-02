@@ -84,7 +84,7 @@ def test_upsert_track_records_persists_formatted_title_and_date_added(tmp_path):
         key="Dbm",
         bpm=128.0,
         genre="Deep House",
-        label="Label",
+        label="CDR",
     )
 
     upsert_track_records(session, file_path, metadata)
@@ -93,7 +93,7 @@ def test_upsert_track_records_persists_formatted_title_and_date_added(tmp_path):
     assert track.file_name == file_path.name
     assert track.title == metadata.title
     assert track.genre == "Deep House"
-    assert track.label == "Label"
+    assert track.label == "CDR"
     assert getattr(track, "date_added", None) is not None
 
 

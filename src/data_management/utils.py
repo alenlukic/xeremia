@@ -12,6 +12,15 @@ from src.data_management.mapping_registry import MappingRegistry
 from src.utils.common import is_empty
 
 
+def normalize_key_symbols(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text.replace("♯", "#").replace("♭", "b")
+
+
 def get_canonical_form(segment, canon):
     return canon.get(
         segment,

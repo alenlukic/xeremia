@@ -21,6 +21,8 @@ class SimpleMetadata:
     year: int | None = None
     bpm: float | None = None
     key: str | None = None
+    source_catalog_id: str | None = None
+    source_provider: str | None = None
 
     def update(self, data: Mapping[str, str | int | float | None]) -> None:
         for field in ID3_FIELDS:
@@ -63,6 +65,8 @@ class SimpleMetadata:
             "year": self.year,
             "bpm": self.bpm,
             "key": self.key,
+            "source_catalog_id": self.source_catalog_id,
+            "source_provider": self.source_provider,
         }
 
     @classmethod
@@ -79,6 +83,8 @@ class SimpleMetadata:
                 "year": data.get("year"),
                 "bpm": data.get("bpm"),
                 "key": data.get("key"),
+                "source_catalog_id": data.get("source_catalog_id"),
+                "source_provider": data.get("source_provider"),
             }
         )
         return metadata
