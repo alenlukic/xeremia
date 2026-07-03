@@ -32,9 +32,6 @@ data/
 # ONNX model cache (downloaded at runtime)
 models/traits/
 
-# Test data
-.test_data/
-
 # Node / Vite
 client/dist/
 client/node_modules/
