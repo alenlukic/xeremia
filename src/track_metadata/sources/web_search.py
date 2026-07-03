@@ -3,6 +3,7 @@ from __future__ import annotations
 import html as html_lib
 import logging
 import re
+from typing import Any
 
 from src.track_metadata.label import is_rejected_catalog_label
 from src.track_metadata.matching import (
@@ -12,6 +13,7 @@ from src.track_metadata.matching import (
     _similarity,
 )
 from src.track_metadata.models import SimpleMetadata
+from src.track_metadata.research import CatalogNumberObservation, LabelSearchObservation
 from src.track_metadata.sources.base import LookupContext
 from src.track_metadata.sources.constants import (
     WEB_SEARCH_ARTIST_WEIGHT,
@@ -20,7 +22,16 @@ from src.track_metadata.sources.constants import (
     WEB_SEARCH_TITLE_WEIGHT,
     WEB_SEARCH_URL,
 )
-from src.track_metadata.sources.queries import build_search_terms, web_search_query
+from src.track_metadata.sources.queries import (
+    SearchTerms,
+    build_search_terms,
+    catalog_number_album_query,
+    catalog_number_label_query,
+    catalog_number_title_query,
+    direct_label_album_query,
+    direct_label_title_query,
+    web_search_query,
+)
 
 _CATALOG_SUFFIX_PATTERN = re.compile(
     r"\s+-\s+(?:Beatport|Discogs|MusicBrainz|YouTube|Spotify).*$",
@@ -174,3 +185,133 @@ class WebSearchSource:
             best_score,
         )
         return best_metadata
+
+
+_CATALOG_NUMBER_EXTRACT = re.compile(
+    r"\b(?:cat(?:alog)?\.?\s*(?:no|number|#)?\s*[:#-]?\s*)?"
+    r"([A-Z]{1,4}[-\s]?\d{2,6}[A-Z0-9-]*)\b",
+    re.IGNORECASE,
+)
+_DISTRIBUTOR_HINT = re.compile(
+    r"\b(distributor|distribution|publisher|rights society)\b",
+    re.IGNORECASE,
+)
+_IDENTITY_THRESHOLD = 0.72
+
+
+def _identity_confirmed(seed: SimpleMetadata, result: dict[str, str]) -> bool:
+    candidate, score = candidate_from_result(result, seed)
+    return candidate is not None and score >= _IDENTITY_THRESHOLD
+
+
+def _catalog_from_result(
+    result: dict[str, str], seed: SimpleMetadata
+) -> CatalogNumberObservation | None:
+    text = f"{result.get('title', '')} {result.get('snippet', '')}"
+    match = _CATALOG_NUMBER_EXTRACT.search(text)
+    if match is None:
+        return None
+    catalog_number = match.group(1).strip().upper()
+    return CatalogNumberObservation(
+        catalog_number=catalog_number,
+        source_url=result.get("url", ""),
+        identity_confirmed=_identity_confirmed(seed, result),
+        snippet=result.get("snippet", ""),
+    )
+
+
+def _label_from_result(
+    result: dict[str, str], seed: SimpleMetadata
+) -> LabelSearchObservation | None:
+    title_text = result.get("title", "")
+    snippet = result.get("snippet", "")
+    normalized = _normalize_result_title(title_text)
+    label = _extract_label(normalized, snippet)
+    return LabelSearchObservation(
+        label=label,
+        source_url=result.get("url", ""),
+        identity_confirmed=_identity_confirmed(seed, result),
+        is_distributor=bool(_DISTRIBUTOR_HINT.search(f"{title_text} {snippet}")),
+        snippet=snippet,
+    )
+
+
+class WebSearchResearchClient:
+    """Structured web-search observations for field-resolution heuristics."""
+
+    def __init__(self, http: Any) -> None:
+        self._http = http
+
+    def _search(self, query: str) -> list[dict[str, str]]:
+        try:
+            html_text = self._http.get_text(WEB_SEARCH_URL, params={"q": query})
+        except Exception as exc:
+            logging.warning("Structured web search failed: %s", exc)
+            return []
+        return parse_search_results(html_text)
+
+    def _seed(self, artist: str | None, title: str | None, album: str | None = None) -> SimpleMetadata:
+        return SimpleMetadata(artist=artist, title=title, album=album)
+
+    def search_catalog_number_by_title(
+        self, artist: str | None, title: str | None
+    ) -> list[CatalogNumberObservation]:
+        query = catalog_number_title_query(SearchTerms(artist=artist, title=title, album=None))
+        if query is None:
+            return []
+        seed = self._seed(artist, title)
+        return [
+            obs
+            for result in self._search(query)
+            if (obs := _catalog_from_result(result, seed)) is not None
+        ]
+
+    def search_catalog_number_by_album(
+        self, artist: str | None, album: str | None
+    ) -> list[CatalogNumberObservation]:
+        query = catalog_number_album_query(SearchTerms(artist=artist, title=None, album=album))
+        if query is None:
+            return []
+        seed = self._seed(artist, None, album)
+        return [
+            obs
+            for result in self._search(query)
+            if (obs := _catalog_from_result(result, seed)) is not None
+        ]
+
+    def search_label_by_catalog_number(
+        self, catalog_number: str
+    ) -> list[LabelSearchObservation]:
+        query = catalog_number_label_query(catalog_number)
+        seed = SimpleMetadata()
+        return [
+            obs
+            for result in self._search(query)
+            if (obs := _label_from_result(result, seed)) is not None
+        ]
+
+    def search_label_by_title(
+        self, artist: str | None, title: str | None
+    ) -> list[LabelSearchObservation]:
+        query = direct_label_title_query(SearchTerms(artist=artist, title=title, album=None))
+        if query is None:
+            return []
+        seed = self._seed(artist, title)
+        return [
+            obs
+            for result in self._search(query)
+            if (obs := _label_from_result(result, seed)) is not None and obs.label
+        ]
+
+    def search_label_by_album(
+        self, artist: str | None, album: str | None
+    ) -> list[LabelSearchObservation]:
+        query = direct_label_album_query(SearchTerms(artist=artist, title=None, album=album))
+        if query is None:
+            return []
+        seed = self._seed(artist, None, album)
+        return [
+            obs
+            for result in self._search(query)
+            if (obs := _label_from_result(result, seed)) is not None and obs.label
+        ]

@@ -3,6 +3,9 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import numpy as np
+import soundfile as sf
+from mutagen.aiff import AIFF
 from mutagen.id3 import ID3
 
 from src.track_metadata.metadata_agent import purge_invalid_augmented_files
@@ -17,6 +20,17 @@ def _copy_sample(tmp_path: Path, filename: str) -> Path:
     destination = tmp_path / filename
     shutil.copy2(source, destination)
     return destination
+
+
+def _make_aiff(path: Path) -> Path:
+    sf.write(
+        str(path),
+        np.zeros((4410, 2), dtype=np.float32),
+        44100,
+        format="AIFF",
+        subtype="PCM_24",
+    )
+    return path
 
 
 def test_read_existing_metadata_round_trip(tmp_path):
@@ -41,9 +55,7 @@ def test_read_existing_metadata_round_trip(tmp_path):
 
 
 def test_write_tags_preserves_existing_album(tmp_path):
-    audio_path = _copy_sample(
-        tmp_path, "[01A - Abm - 110.00] Nova ft. AES Dana - Kalaallit Nunaat.aiff"
-    )
+    audio_path = _make_aiff(tmp_path / "existing-album.aiff")
     write_tags(
         audio_path,
         SimpleMetadata(
@@ -100,9 +112,7 @@ def test_write_tags_handles_numeric_fields(tmp_path):
 
 
 def test_read_existing_metadata_aiff(tmp_path):
-    audio_path = _copy_sample(
-        tmp_path, "[01A - Abm - 110.00] Nova ft. AES Dana - Kalaallit Nunaat.aiff"
-    )
+    audio_path = _make_aiff(tmp_path / "title-artist.aif")
     write_tags(audio_path, SimpleMetadata(title="Title A", artist="Artist A"))
 
     loaded = read_existing_metadata(audio_path)
@@ -112,9 +122,7 @@ def test_read_existing_metadata_aiff(tmp_path):
 
 
 def test_write_tags_round_trip_aiff(tmp_path):
-    audio_path = _copy_sample(
-        tmp_path, "[01A - Abm - 110.00] Nova ft. AES Dana - Kalaallit Nunaat.aiff"
-    )
+    audio_path = _make_aiff(tmp_path / "round-trip.aiff")
     metadata = SimpleMetadata(
         title="Kalaallit Nunaat",
         artist="Nova ft. AES Dana",
@@ -127,8 +135,13 @@ def test_write_tags_round_trip_aiff(tmp_path):
     )
 
     write_tags(audio_path, metadata)
+    container = AIFF(audio_path)
     loaded = read_existing_metadata(audio_path)
 
+    assert audio_path.read_bytes()[:4] == b"FORM"
+    assert container.tags is not None
+    assert container.tags["TIT2"].text[0] == metadata.title
+    assert container.tags["TPE1"].text[0] == metadata.artist
     assert loaded.to_dict() == metadata.to_dict()
 
 

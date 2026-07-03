@@ -8,9 +8,16 @@ from typing import Any, Callable, Optional
 
 from src.track_metadata.genre import (
     collect_genre_candidates_from_sources,
+    is_unknown_genre,
     resolve_dynamic_genre,
+    resolve_genre_fallback,
 )
-from src.track_metadata.label import WebLabelVerifier, apply_label_resolution
+from src.track_metadata.label import (
+    WebLabelVerifier,
+    apply_label_resolution,
+    is_unresolved_label,
+    resolve_label_fallback,
+)
 from src.track_metadata.matching import (
     _best_year,
     _extract_remixer,
@@ -18,6 +25,20 @@ from src.track_metadata.matching import (
     _parse_filename_seed,
 )
 from src.track_metadata.models import SimpleMetadata
+from src.track_metadata.pipeline.config import (
+    RESOLUTION_CDR_MIN_SOUNDCLOUD_FOLLOWERS,
+    RESOLUTION_GENRE_ARTIST_HISTORY,
+    RESOLUTION_GENRE_BEATPORT,
+    RESOLUTION_LABEL_BEATPORT,
+    RESOLUTION_LABEL_CDR,
+    RESOLUTION_LABEL_WEB_SEARCH,
+)
+from src.track_metadata.research import (
+    CatalogSourceLookupClient,
+    ResolutionProvenance,
+    SqlAlchemyTrackRepository,
+    TrackRepository,
+)
 from src.track_metadata.sources.acoustid_source import AcoustIdSource
 from src.track_metadata.sources.base import LookupContext, MetadataSource
 from src.track_metadata.sources.cache import MetadataCache
@@ -34,7 +55,7 @@ from src.track_metadata.sources.genre_lookups import (
     read_beatport_genre_from_tags,
 )
 from src.track_metadata.sources.musicbrainz import MusicBrainzSource
-from src.track_metadata.sources.web_search import WebSearchSource
+from src.track_metadata.sources.web_search import WebSearchResearchClient, WebSearchSource
 from src.utils.http import RateLimitedHttpClient
 
 CandidateResolver = Callable[
@@ -70,6 +91,16 @@ class MetadataHydrator:
         cache: MetadataCache | None = None,
         catalog_sources: list[MetadataSource] | None = None,
         web_source: MetadataSource | None = None,
+        track_repository: TrackRepository | None = None,
+        session_factory: Callable[[], Any] | None = None,
+        web_research_client: WebSearchResearchClient | None = None,
+        catalog_lookup_client: CatalogSourceLookupClient | None = None,
+        browser_research_client: Any | None = None,
+        enable_genre_artist_history: bool = RESOLUTION_GENRE_ARTIST_HISTORY,
+        enable_genre_beatport: bool = RESOLUTION_GENRE_BEATPORT,
+        enable_label_web_search: bool = RESOLUTION_LABEL_WEB_SEARCH,
+        enable_label_beatport: bool = RESOLUTION_LABEL_BEATPORT,
+        enable_label_cdr: bool = RESOLUTION_LABEL_CDR,
     ) -> None:
         self.http = http or RateLimitedHttpClient(
             user_agent=DEFAULT_USER_AGENT, default_timeout=HTTP_TIMEOUT_SECONDS
@@ -90,6 +121,16 @@ class MetadataHydrator:
             DiscogsSource(),
         ]
         self._web_source = web_source or WebSearchSource()
+        self.session_factory = session_factory
+        self.track_repository = track_repository
+        self.web_research_client = web_research_client
+        self.catalog_lookup_client = catalog_lookup_client
+        self.browser_research_client = browser_research_client
+        self.enable_genre_artist_history = enable_genre_artist_history
+        self.enable_genre_beatport = enable_genre_beatport
+        self.enable_label_web_search = enable_label_web_search
+        self.enable_label_beatport = enable_label_beatport
+        self.enable_label_cdr = enable_label_cdr
 
     def hydrate(
         self,
@@ -154,9 +195,83 @@ class MetadataHydrator:
             self._resolve_genre(resolved, sources, file_path) or resolved.genre
         )
         apply_label_resolution(resolved, web_verifier=self.web_label_verifier)
+        self._apply_field_resolution(
+            resolved,
+            file_path=file_path,
+            agent_events=agent_events,
+        )
 
         self.cache.store_final(cache_key, resolved)
         return resolved
+
+    def _apply_field_resolution(
+        self,
+        resolved: SimpleMetadata,
+        *,
+        file_path: Path,
+        agent_events: list[dict[str, Any]] | None,
+    ) -> None:
+        events: list[ResolutionProvenance] = []
+        repository = self._resolve_track_repository()
+        web_client = self._resolve_web_research_client()
+        catalog_client = self.catalog_lookup_client
+        browser = self.browser_research_client
+
+        if is_unknown_genre(resolved.genre):
+            genre, genre_events = resolve_genre_fallback(
+                artist=resolved.artist,
+                title=resolved.title,
+                repository=repository,
+                browser=browser,
+                enable_artist_history=self.enable_genre_artist_history,
+                enable_beatport=self.enable_genre_beatport,
+                exclude_file_name=file_path.name,
+            )
+            events.extend(genre_events)
+            if genre:
+                resolved.genre = genre
+
+        if is_unresolved_label(resolved.label):
+            label, label_events = resolve_label_fallback(
+                artist=resolved.artist,
+                title=resolved.title,
+                album=resolved.album,
+                web_client=web_client,
+                catalog_client=catalog_client,
+                browser=browser,
+                enable_web_search=self.enable_label_web_search,
+                enable_beatport=self.enable_label_beatport,
+                enable_cdr=self.enable_label_cdr,
+                cdr_min_soundcloud_followers=RESOLUTION_CDR_MIN_SOUNDCLOUD_FOLLOWERS,
+            )
+            events.extend(label_events)
+            if label:
+                resolved.label = label
+
+        if agent_events is not None:
+            for event in events:
+                payload = event.to_event()
+                payload["file"] = file_path.name
+                agent_events.append(payload)
+
+    def _resolve_track_repository(self) -> TrackRepository | None:
+        if self.track_repository is not None:
+            return self.track_repository
+        if self.session_factory is None:
+            return None
+        try:
+            session = self.session_factory()
+            return SqlAlchemyTrackRepository(session)
+        except Exception as exc:
+            logging.warning("Failed to open track repository session: %s", exc)
+            return None
+
+    def _resolve_web_research_client(self) -> WebSearchResearchClient | None:
+        if self.web_research_client is not None:
+            return self.web_research_client
+        if not self.enable_label_web_search:
+            return None
+        return WebSearchResearchClient(self.http)
 
     def _needs_web_fallback(self, resolved: SimpleMetadata) -> bool:
         return any(getattr(resolved, field) is None for field in _RESOLVABLE_FIELDS)
@@ -247,9 +362,18 @@ def build_metadata_agent(
     candidate_resolver: CandidateResolver | None = None,
     skip_beatport_hydration: bool = True,
     web_label_verifier: WebLabelVerifier | None = None,
+    session_factory: Callable[[], Any] | None = None,
+    browser_research_client: Any | None = None,
 ) -> MetadataHydrator:
+    if browser_research_client is None:
+        from src.track_metadata.pipeline.agent import build_browser_research_client
+
+        browser_research_client = build_browser_research_client()
     return MetadataHydrator(
         candidate_resolver=candidate_resolver,
         skip_beatport_hydration=skip_beatport_hydration,
         web_label_verifier=web_label_verifier,
+        session_factory=session_factory,
+        catalog_lookup_client=CatalogSourceLookupClient(),
+        browser_research_client=browser_research_client,
     )

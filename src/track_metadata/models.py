@@ -83,10 +83,14 @@ class SimpleMetadata:
                 "year": data.get("year"),
                 "bpm": data.get("bpm"),
                 "key": data.get("key"),
-                "source_catalog_id": data.get("source_catalog_id"),
-                "source_provider": data.get("source_provider"),
             }
         )
+        source_catalog_id = data.get("source_catalog_id")
+        if isinstance(source_catalog_id, str) and source_catalog_id.strip():
+            metadata.source_catalog_id = source_catalog_id.strip()
+        source_provider = data.get("source_provider")
+        if isinstance(source_provider, str) and source_provider.strip():
+            metadata.source_provider = source_provider.strip()
         return metadata
 
 

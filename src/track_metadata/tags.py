@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from mutagen.aiff import AIFF
 from mutagen.id3 import ID3, TBPM, TDRC, ID3NoHeaderError
 
 from src.track_metadata.models import TEXT_TAG_FIELDS, SimpleMetadata, TextTagField
@@ -74,15 +75,30 @@ def _write_bpm_tag(tags: ID3, bpm: float | None) -> None:
         del tags["TBPM"]
 
 
-def _load_id3(path: Path, create_if_missing: bool = False) -> tuple[ID3 | None, None]:
+def _is_aiff_path(path: Path) -> bool:
+    return path.suffix.lower() in {".aiff", ".aif"}
+
+
+def _load_id3(path: Path, create_if_missing: bool = False) -> tuple[ID3 | None, AIFF | None]:
+    if _is_aiff_path(path):
+        container = AIFF(str(path))
+        if container.tags is None:
+            if not create_if_missing:
+                return None, container
+            container.add_tags()
+        return container.tags, container
+
     try:
         return ID3(str(path)), None
     except ID3NoHeaderError:
         return (ID3(), None) if create_if_missing else (None, None)
 
 
-def _save_id3(path: Path, tags: ID3, container: None = None) -> None:
-    _ = container
+def _save_id3(path: Path, tags: ID3, container: AIFF | None = None) -> None:
+    if container is not None:
+        container.save()
+        return
+
     tags.save(str(path), v2_version=4)
 
 

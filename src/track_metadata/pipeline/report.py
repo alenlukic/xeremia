@@ -37,6 +37,35 @@ class RunReport:
 
         return "\n".join(lines)
 
+    def render_resolution_appendix(self) -> str:
+        lines = ["## Field resolution provenance", ""]
+        found = False
+        for result in self.rows:
+            resolution_events = [
+                event
+                for event in result.agent_events
+                if event.get("type") == "field_resolution"
+            ]
+            if not resolution_events:
+                continue
+            found = True
+            lines.append(f"### {result.source.name}")
+            for event in resolution_events:
+                method = event.get("method", "unknown")
+                field = event.get("field", "?")
+                outcome = event.get("outcome", "unknown")
+                source = event.get("resolution_source") or ""
+                confidence = event.get("confidence") or ""
+                lines.append(
+                    f"- `{field}` / `{method}` / {outcome}"
+                    f"{f' / {source}' if source else ''}"
+                    f"{f' ({confidence})' if confidence else ''}"
+                )
+            lines.append("")
+        if not found:
+            return ""
+        return "\n".join(lines).rstrip() + "\n"
+
     def write(self, path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         success_count = len([r for r in self.rows if r.status.value == "success"])
@@ -52,5 +81,8 @@ class RunReport:
             f"- Failed: {failed_count}\n\n"
             f"{self.render_table()}\n"
         )
+        appendix = self.render_resolution_appendix()
+        if appendix:
+            summary = f"{summary}\n{appendix}"
         path.write_text(summary, encoding="utf-8")
         return path
