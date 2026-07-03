@@ -10,7 +10,10 @@ from src.track_metadata.label import apply_album_label_consistency
 from src.track_metadata.audio_features import analyze_missing_audio_features
 from src.track_metadata.matching import _compose_display_title
 from src.track_metadata.models import SimpleMetadata
-from src.track_metadata.pipeline.config import GAP_REPORT_FIELDS, MISSION_CRITICAL_FIELDS
+from src.track_metadata.pipeline.config import (
+    GAP_REPORT_FIELDS,
+    MISSION_CRITICAL_FIELDS,
+)
 from src.track_metadata.pipeline.framework import (
     Pipeline,
     PipelineContext,
@@ -45,7 +48,9 @@ def stage_hydrate(result: TrackResult, context: PipelineContext) -> None:
     hydrated = context.hydrator.hydrate(
         result.working_path, existing, agent_events=result.agent_events
     )
-    creation_ts = datetime.fromtimestamp(get_file_creation_time(str(result.working_path)))
+    creation_ts = datetime.fromtimestamp(
+        get_file_creation_time(str(result.working_path))
+    )
     conflicts = apply_album_label_consistency(
         hydrated,
         context.shared_state,
@@ -80,19 +85,19 @@ def stage_format(result: TrackResult, context: PipelineContext) -> None:
     result.metadata.title = _compose_display_title(result.metadata, result.camelot_code)
 
 
-def _collect_missing_fields(metadata: SimpleMetadata, camelot_code: str | None) -> set[str]:
+def _collect_missing_fields(
+    metadata: SimpleMetadata, camelot_code: str | None
+) -> set[str]:
     values = metadata.to_dict()
     values["camelot_code"] = camelot_code
-    return {
-        field
-        for field in GAP_REPORT_FIELDS
-        if values.get(field) in (None, "")
-    }
+    return {field for field in GAP_REPORT_FIELDS if values.get(field) in (None, "")}
 
 
 def stage_classify(result: TrackResult, context: PipelineContext) -> None:
     missing = _collect_missing_fields(result.metadata, result.camelot_code)
-    result.missing_critical = [field for field in MISSION_CRITICAL_FIELDS if field in missing]
+    result.missing_critical = [
+        field for field in MISSION_CRITICAL_FIELDS if field in missing
+    ]
     result.missing_optional = [
         field
         for field in GAP_REPORT_FIELDS

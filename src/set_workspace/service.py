@@ -88,7 +88,9 @@ class SetWorkspaceService:
 
     # --- Pool operations ---
 
-    def pool_add(self, set_id: int, track_id: int) -> Tuple[Optional[SetPoolEntry], Optional[str]]:
+    def pool_add(
+        self, set_id: int, track_id: int
+    ) -> Tuple[Optional[SetPoolEntry], Optional[str]]:
         existing = (
             self.session.query(SetPoolEntry)
             .filter_by(set_id=set_id, track_id=track_id)
@@ -113,7 +115,9 @@ class SetWorkspaceService:
         )
         next_order = (max_order[0] + 1) if max_order else 0
 
-        entry = SetPoolEntry(set_id=set_id, track_id=track_id, insertion_order=next_order)
+        entry = SetPoolEntry(
+            set_id=set_id, track_id=track_id, insertion_order=next_order
+        )
         self.session.add(entry)
         self.session.flush()
         return entry, None
@@ -138,7 +142,9 @@ class SetWorkspaceService:
             .all()
         )
 
-    def pool_move_to_tracklist(self, set_id: int, track_id: int) -> Tuple[bool, Optional[str]]:
+    def pool_move_to_tracklist(
+        self, set_id: int, track_id: int
+    ) -> Tuple[bool, Optional[str]]:
         pool_entry = (
             self.session.query(SetPoolEntry)
             .filter_by(set_id=set_id, track_id=track_id)
@@ -165,7 +171,9 @@ class SetWorkspaceService:
 
     # --- Tracklist operations ---
 
-    def tracklist_add(self, set_id: int, track_id: int) -> Tuple[Optional[SetTracklistEntry], Optional[str]]:
+    def tracklist_add(
+        self, set_id: int, track_id: int
+    ) -> Tuple[Optional[SetTracklistEntry], Optional[str]]:
         existing = (
             self.session.query(SetTracklistEntry)
             .filter_by(set_id=set_id, track_id=track_id)
@@ -220,7 +228,9 @@ class SetWorkspaceService:
         self.session.flush()
         return True
 
-    def tracklist_reorder(self, set_id: int, track_id: int, new_position: int) -> Tuple[bool, Optional[str]]:
+    def tracklist_reorder(
+        self, set_id: int, track_id: int, new_position: int
+    ) -> Tuple[bool, Optional[str]]:
         entry = (
             self.session.query(SetTracklistEntry)
             .filter_by(set_id=set_id, track_id=track_id)
@@ -254,7 +264,9 @@ class SetWorkspaceService:
         self.session.flush()
         return True, None
 
-    def update_tracklist_note(self, set_id: int, track_id: int, note: str) -> Tuple[bool, Optional[str]]:
+    def update_tracklist_note(
+        self, set_id: int, track_id: int, note: str
+    ) -> Tuple[bool, Optional[str]]:
         entry = (
             self.session.query(SetTracklistEntry)
             .filter_by(set_id=set_id, track_id=track_id)
@@ -266,7 +278,9 @@ class SetWorkspaceService:
         self.session.flush()
         return True, None
 
-    def tracklist_move_to_pool(self, set_id: int, track_id: int) -> Tuple[bool, Optional[str]]:
+    def tracklist_move_to_pool(
+        self, set_id: int, track_id: int
+    ) -> Tuple[bool, Optional[str]]:
         tl_entry = (
             self.session.query(SetTracklistEntry)
             .filter_by(set_id=set_id, track_id=track_id)
@@ -298,7 +312,9 @@ class SetWorkspaceService:
         )
         next_order = (max_order[0] + 1) if max_order else 0
 
-        pool_entry = SetPoolEntry(set_id=set_id, track_id=track_id, insertion_order=next_order)
+        pool_entry = SetPoolEntry(
+            set_id=set_id, track_id=track_id, insertion_order=next_order
+        )
         self.session.add(pool_entry)
         self.session.flush()
         return True, None
@@ -325,8 +341,12 @@ class SetWorkspaceService:
         node_id = str(uuid.uuid4())[:8]
 
         error = validate_add_node(
-            edge_tuples, nodes_by_level, len(nodes),
-            parent_node_id, node_id, level,
+            edge_tuples,
+            nodes_by_level,
+            len(nodes),
+            parent_node_id,
+            node_id,
+            level,
         )
         if error:
             return None, error
@@ -335,7 +355,10 @@ class SetWorkspaceService:
         col_index = next(i for i in range(len(occupied) + 1) if i not in occupied)
 
         node = SetExplorerNode(
-            set_id=set_id, node_id=node_id, track_id=track_id, level=level,
+            set_id=set_id,
+            node_id=node_id,
+            track_id=track_id,
+            level=level,
             col_index=col_index,
         )
         self.session.add(node)
@@ -352,11 +375,15 @@ class SetWorkspaceService:
         return node, None
 
     def explorer_add_edge(
-        self, set_id: int, parent_node_id: str, child_node_id: str,
+        self,
+        set_id: int,
+        parent_node_id: str,
+        child_node_id: str,
     ) -> Tuple[Optional[SetExplorerEdge], Optional[str]]:
         _, _, edge_tuples, _ = self._get_explorer_state(set_id)
 
         from src.set_workspace.explorer_rules import detect_cycle
+
         if detect_cycle(edge_tuples, parent_node_id, child_node_id):
             return None, "Adding this edge would create a cycle"
 
@@ -412,9 +439,15 @@ class SetWorkspaceService:
         if rewire_edges:
             for re in rewire_edges:
                 if re["parent_node_id"] not in parent_ids:
-                    return False, f"Rewire parent {re['parent_node_id']} is not a parent of deleted node"
+                    return (
+                        False,
+                        f"Rewire parent {re['parent_node_id']} is not a parent of deleted node",
+                    )
                 if re["child_node_id"] not in child_ids:
-                    return False, f"Rewire child {re['child_node_id']} is not a child of deleted node"
+                    return (
+                        False,
+                        f"Rewire child {re['child_node_id']} is not a child of deleted node",
+                    )
 
         for edge in incoming + outgoing:
             self.session.delete(edge)
@@ -443,7 +476,9 @@ class SetWorkspaceService:
         return True, None
 
     def delete_explorer_edge(
-        self, set_id: int, edge_id: int,
+        self,
+        set_id: int,
+        edge_id: int,
     ) -> Tuple[bool, Optional[str]]:
         edge = (
             self.session.query(SetExplorerEdge)
@@ -457,7 +492,10 @@ class SetWorkspaceService:
         return True, None
 
     def explorer_swap(
-        self, set_id: int, node_a_id: str, node_b_id: str,
+        self,
+        set_id: int,
+        node_a_id: str,
+        node_b_id: str,
     ) -> Tuple[bool, Optional[str]]:
         if node_a_id == node_b_id:
             return False, "Cannot swap a node with itself"
@@ -480,7 +518,9 @@ class SetWorkspaceService:
         return True, None
 
     def explorer_node_add_to_tracklist(
-        self, set_id: int, node_id: str,
+        self,
+        set_id: int,
+        node_id: str,
     ) -> Tuple[bool, Optional[str]]:
         node = (
             self.session.query(SetExplorerNode)
@@ -515,7 +555,9 @@ class SetWorkspaceService:
         next_pos = (max_pos[0] + 1) if max_pos else 0
 
         entry = SetTracklistEntry(
-            set_id=set_id, track_id=node.track_id, position=next_pos,
+            set_id=set_id,
+            track_id=node.track_id,
+            position=next_pos,
         )
         self.session.add(entry)
         self.session.flush()

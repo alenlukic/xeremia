@@ -93,7 +93,9 @@ def _classify_existing_pairs(rows, descriptor_version):
     return existing, stale
 
 
-def _compute_cosine_batch(chunk, all_track_ids, result_transmitter, scorer_name=None, force=False):
+def _compute_cosine_batch(
+    chunk, all_track_ids, result_transmitter, scorer_name=None, force=False
+):
     """Worker: compute cosine similarities for a chunk of track IDs.
 
     all_track_ids is the full set of IDs being processed across all workers.
@@ -201,7 +203,9 @@ def _compute_cosine_batch(chunk, all_track_ids, result_transmitter, scorer_name=
 
                         cand_vec = unpack_vector(cand_desc.global_vector)
                         if scorer_name is not None:
-                            sim = compute_similarity(source_vec, cand_vec, scorer=scorer_name)
+                            sim = compute_similarity(
+                                source_vec, cand_vec, scorer=scorer_name
+                            )
                         else:
                             sim = compute_similarity(source_vec, cand_vec)
 
@@ -225,13 +229,15 @@ def _compute_cosine_batch(chunk, all_track_ids, result_transmitter, scorer_name=
                                 worker_session.rollback()
                                 n_failed += 1
                         else:
-                            stmt = pg_insert(TrackCosineSimilarity).values(
-                                id1=id1,
-                                id2=id2,
-                                cosine_similarity=sim,
-                                descriptor_version=DESCRIPTOR_VERSION,
-                            ).on_conflict_do_nothing(
-                                index_elements=["id1", "id2"]
+                            stmt = (
+                                pg_insert(TrackCosineSimilarity)
+                                .values(
+                                    id1=id1,
+                                    id2=id2,
+                                    cosine_similarity=sim,
+                                    descriptor_version=DESCRIPTOR_VERSION,
+                                )
+                                .on_conflict_do_nothing(index_elements=["id1", "id2"])
                             )
                             try:
                                 result = worker_session.session.execute(stmt)

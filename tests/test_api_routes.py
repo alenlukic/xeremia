@@ -21,15 +21,19 @@ from src.harmonic_mixing.cosine_cache import CosineCache
 def _reset_weight_singleton():
     yield
     from src.harmonic_mixing.weight_service import WeightService
+
     WeightService._instance = None
 
 
 @pytest.fixture()
 def weight_patches():
     """Keep WeightService DB calls mocked for the duration of a test."""
-    with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
-         patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+    with (
+        patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
+        patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
+    ):
         from src.harmonic_mixing.weight_service import WeightService
+
         WeightService._instance = None
         yield
 
@@ -47,6 +51,7 @@ def client(mock_finder, weight_patches):
     """A TestClient with match finder and weight DB stubbed out."""
     with patch("src.api.routes._get_match_finder", return_value=mock_finder):
         from src.api.app import create_app
+
         app = create_app()
         yield TestClient(app)
 
@@ -63,6 +68,7 @@ class TestCacheStatsEndpoint:
 
         with patch("src.api.routes._get_match_finder", return_value=finder):
             from src.api.app import create_app
+
             with TestClient(create_app()) as tc:
                 resp = tc.get("/api/admin/cache-stats")
 
@@ -86,9 +92,12 @@ class TestCacheStatsEndpoint:
         finder = MagicMock()
         finder.cosine_cache = cache
 
-        with patch("src.api.routes._get_match_finder", return_value=finder), \
-             patch("src.api.routes._build_cache_distributions", return_value=([], [])):
+        with (
+            patch("src.api.routes._get_match_finder", return_value=finder),
+            patch("src.api.routes._build_cache_distributions", return_value=([], [])),
+        ):
             from src.api.app import create_app
+
             with TestClient(create_app()) as tc:
                 resp = tc.get("/api/admin/cache-stats")
 
@@ -108,19 +117,30 @@ class TestCacheStatsEndpoint:
         finder = MagicMock()
         finder.cosine_cache = cache
 
-        with patch("src.api.routes._get_match_finder", return_value=finder), \
-             patch("src.api.routes._build_cache_distributions", return_value=([], [])):
+        with (
+            patch("src.api.routes._get_match_finder", return_value=finder),
+            patch("src.api.routes._build_cache_distributions", return_value=([], [])),
+        ):
             from src.api.app import create_app
+
             with TestClient(create_app()) as tc:
                 resp = tc.get("/api/admin/cache-stats")
 
         data = resp.json()
         required_keys = {
-            "used", "capacity", "usage_ratio",
-            "hits", "misses", "hit_rate",
-            "hit_rate_numerator", "hit_rate_denominator", "hit_rate_basis",
-            "key_distribution", "bpm_distribution",
-            "recent_entries", "recent_exits",
+            "used",
+            "capacity",
+            "usage_ratio",
+            "hits",
+            "misses",
+            "hit_rate",
+            "hit_rate_numerator",
+            "hit_rate_denominator",
+            "hit_rate_basis",
+            "key_distribution",
+            "bpm_distribution",
+            "recent_entries",
+            "recent_exits",
         }
         assert required_keys.issubset(data.keys())
 
@@ -155,11 +175,14 @@ class TestTrackTraitsEndpoint:
         finder.cosine_cache = None
         finder._sync_effective_weights = MagicMock()
 
-        with patch("src.api.routes._get_match_finder", return_value=finder), \
-             patch("src.api.routes._get_session", return_value=mock_session), \
-             patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
-             patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+        with (
+            patch("src.api.routes._get_match_finder", return_value=finder),
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
+            patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
+        ):
             from src.api.app import create_app
+
             with TestClient(create_app()) as tc:
                 resp = tc.get("/api/track-traits")
 
@@ -184,11 +207,14 @@ class TestTrackTraitsEndpoint:
         finder.cosine_cache = None
         finder._sync_effective_weights = MagicMock()
 
-        with patch("src.api.routes._get_match_finder", return_value=finder), \
-             patch("src.api.routes._get_session", return_value=mock_session), \
-             patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
-             patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+        with (
+            patch("src.api.routes._get_match_finder", return_value=finder),
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
+            patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
+        ):
             from src.api.app import create_app
+
             with TestClient(create_app()) as tc:
                 resp = tc.get("/api/track-traits")
 
@@ -221,6 +247,7 @@ class TestGetWeightsEndpoint:
 
     def test_raw_weights_contains_all_factors(self, client):
         from src.harmonic_mixing.config import MatchFactors
+
         data = client.get("/api/weights").json()
         for factor in MatchFactors:
             assert factor.name in data["raw_weights"]
@@ -234,6 +261,7 @@ class TestGetWeightsEndpoint:
 class TestGetWeightDefaultsEndpoint:
     def test_returns_200_with_all_factors(self, client):
         from src.harmonic_mixing.config import MatchFactors
+
         resp = client.get("/api/weights/defaults")
         assert resp.status_code == 200
         data = resp.json()
@@ -244,7 +272,12 @@ class TestGetWeightDefaultsEndpoint:
         resp = client.get("/api/weights/defaults")
         assert resp.status_code == 200
         data = resp.json()
-        for key in ("FUSION_HARMONIC", "FUSION_RHYTHM", "FUSION_TIMBRE", "FUSION_ENERGY"):
+        for key in (
+            "FUSION_HARMONIC",
+            "FUSION_RHYTHM",
+            "FUSION_TIMBRE",
+            "FUSION_ENERGY",
+        ):
             assert key in data
 
     def test_defaults_unchanged_after_update(self, client, mock_finder):

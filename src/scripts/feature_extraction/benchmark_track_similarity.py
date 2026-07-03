@@ -38,10 +38,17 @@ def _generate_fixture_vectors(n: int = 50, dims: int = 75, seed: int = 42):
         mfcc_mean = rng.standard_normal(13).astype(np.float32) * 20
         mfcc_std = np.abs(rng.standard_normal(13).astype(np.float32)) * 10
         energy = np.abs(rng.standard_normal(8).astype(np.float32)) * 0.3
-        vec = np.concatenate([
-            chroma_mean, chroma_std, bpm, tempogram,
-            mfcc_mean, mfcc_std, energy,
-        ])
+        vec = np.concatenate(
+            [
+                chroma_mean,
+                chroma_std,
+                bpm,
+                tempogram,
+                mfcc_mean,
+                mfcc_std,
+                energy,
+            ]
+        )
         vectors.append(vec)
     return vectors
 
@@ -55,9 +62,8 @@ def _load_db_vectors(limit: int):
 
     session = database.create_session()
     try:
-        query = (
-            session.query(TrackDescriptor)
-            .filter_by(descriptor_version=DESCRIPTOR_VERSION)
+        query = session.query(TrackDescriptor).filter_by(
+            descriptor_version=DESCRIPTOR_VERSION
         )
         if limit > 0:
             query = query.limit(limit)
@@ -69,12 +75,20 @@ def _load_db_vectors(limit: int):
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark track-similarity scorers")
-    parser.add_argument("--fixture", action="store_true", help="Use synthetic fixture data")
-    parser.add_argument("--limit", type=int, default=200, help="Max DB vectors to load")
-    parser.add_argument("--max-pairs", type=int, default=None, help="Cap on pairwise comparisons")
-    parser.add_argument("--fixture-size", type=int, default=50, help="Number of fixture vectors")
     parser.add_argument(
-        "--output-dir", type=str, default=".",
+        "--fixture", action="store_true", help="Use synthetic fixture data"
+    )
+    parser.add_argument("--limit", type=int, default=200, help="Max DB vectors to load")
+    parser.add_argument(
+        "--max-pairs", type=int, default=None, help="Cap on pairwise comparisons"
+    )
+    parser.add_argument(
+        "--fixture-size", type=int, default=50, help="Number of fixture vectors"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=".",
         help="Directory to write benchmark results",
     )
     args = parser.parse_args()
@@ -105,20 +119,36 @@ def main():
     for r in results:
         print("\n--- %s ---" % r["scorer"])
         print("  pairs: %d" % r["num_pairs"])
-        print("  min=%.4f  max=%.4f  mean=%.4f  std=%.4f" % (
-            r["min"], r["max"], r["mean"], r["std"],
-        ))
+        print(
+            "  min=%.4f  max=%.4f  mean=%.4f  std=%.4f"
+            % (
+                r["min"],
+                r["max"],
+                r["mean"],
+                r["std"],
+            )
+        )
         pcts = r["percentiles"]
-        print("  p1=%.4f  p25=%.4f  p50=%.4f  p75=%.4f  p99=%.4f" % (
-            pcts["1"], pcts["25"], pcts["50"], pcts["75"], pcts["99"],
-        ))
+        print(
+            "  p1=%.4f  p25=%.4f  p50=%.4f  p75=%.4f  p99=%.4f"
+            % (
+                pcts["1"],
+                pcts["25"],
+                pcts["50"],
+                pcts["75"],
+                pcts["99"],
+            )
+        )
         hub = r.get("hubness", {})
         if hub:
-            print("  hubness: max_hub=%d  never_in_topk=%.2f%%  occ_std=%.2f" % (
-                hub.get("max_hub_occurrence", 0),
-                hub.get("fraction_never_in_topk", 0) * 100,
-                hub.get("occurrence_std", 0),
-            ))
+            print(
+                "  hubness: max_hub=%d  never_in_topk=%.2f%%  occ_std=%.2f"
+                % (
+                    hub.get("max_hub_occurrence", 0),
+                    hub.get("fraction_never_in_topk", 0) * 100,
+                    hub.get("occurrence_std", 0),
+                )
+            )
 
 
 if __name__ == "__main__":

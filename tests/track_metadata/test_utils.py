@@ -60,7 +60,9 @@ def test_copy_to_converted_preserves_original_name(tmp_path):
     renamed = processing_dir / "renamed.mp3"
     renamed.write_text("audio")
 
-    copied = copy_to_converted(renamed, augmented_dir, original_name="original name.mp3")
+    copied = copy_to_converted(
+        renamed, augmented_dir, original_name="original name.mp3"
+    )
 
     assert copied.exists()
     assert copied.name == "original name.mp3"
@@ -70,7 +72,9 @@ def test_move_helpers_copy_to_expected_destinations(tmp_path):
     processing_dir = tmp_path / "processing"
     augmented_dir = tmp_path / "augmented"
     remediation_dir = tmp_path / "remediation"
-    ensure_directories(tmp_path / "downloads", processing_dir, augmented_dir, remediation_dir)
+    ensure_directories(
+        tmp_path / "downloads", processing_dir, augmented_dir, remediation_dir
+    )
 
     source = processing_dir / "track.mp3"
     source.write_text("audio")
@@ -165,7 +169,9 @@ def test_discover_new_audio_files_skips_existing_augmented(tmp_path):
     already_augmented = augmented_dir / in_downloads.name
     already_augmented.write_text("a-augmented")
 
-    discovered = discover_new_audio_files(download_dir=download_dir, augmented_dir=augmented_dir)
+    discovered = discover_new_audio_files(
+        download_dir=download_dir, augmented_dir=augmented_dir
+    )
 
     assert also_in_downloads in discovered
     assert in_downloads not in discovered
@@ -231,7 +237,9 @@ def test_discover_includes_wav_files(tmp_path):
     wav_file = download_dir / "track2.wav"
     wav_file.write_text("wav")
 
-    discovered = discover_new_audio_files(download_dir=download_dir, augmented_dir=augmented_dir)
+    discovered = discover_new_audio_files(
+        download_dir=download_dir, augmented_dir=augmented_dir
+    )
 
     assert mp3_file in discovered
     assert wav_file in discovered
@@ -246,7 +254,9 @@ def test_discover_skips_wav_with_aiff_equivalent_in_augmented(tmp_path):
     wav_file.write_text("wav")
     (augmented_dir / "track.aiff").write_text("already converted")
 
-    discovered = discover_new_audio_files(download_dir=download_dir, augmented_dir=augmented_dir)
+    discovered = discover_new_audio_files(
+        download_dir=download_dir, augmented_dir=augmented_dir
+    )
 
     assert wav_file not in discovered
 

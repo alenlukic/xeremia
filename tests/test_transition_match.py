@@ -16,7 +16,10 @@ from src.harmonic_mixing.config import (
     CollectionStat,
     MatchFactors,
 )
-from src.harmonic_mixing.transition_match import TransitionMatch, jsonb_cosine_similarity
+from src.harmonic_mixing.transition_match import (
+    TransitionMatch,
+    jsonb_cosine_similarity,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -31,8 +34,9 @@ _COLLECTION_MD = {
 }
 
 
-def _make_md(track_id, title="Track", bpm=128.0, energy=7,
-             camelot_code="08A", date_added=None):
+def _make_md(
+    track_id, title="Track", bpm=128.0, energy=7, camelot_code="08A", date_added=None
+):
     md = {
         TrackDBCols.ID: track_id,
         TrackDBCols.TITLE: title,
@@ -46,15 +50,25 @@ def _make_md(track_id, title="Track", bpm=128.0, energy=7,
     return md
 
 
-def _make_trait(voice_instrumental=0.3, danceability=0.7, bright_dark=0.5,
-                genre=None, mood_theme=None, instruments=None):
+def _make_trait(
+    voice_instrumental=0.3,
+    danceability=0.7,
+    bright_dark=0.5,
+    genre=None,
+    mood_theme=None,
+    instruments=None,
+):
     trait = MagicMock()
     trait.voice_instrumental = voice_instrumental
     trait.danceability = danceability
     trait.bright_dark = bright_dark
     trait.genre = genre if genre is not None else {"house": 0.8, "techno": 0.2}
-    trait.mood_theme = mood_theme if mood_theme is not None else {"energetic": 0.7, "dark": 0.3}
-    trait.instruments = instruments if instruments is not None else {"synth": 0.9, "drums": 0.8}
+    trait.mood_theme = (
+        mood_theme if mood_theme is not None else {"energetic": 0.7, "dark": 0.3}
+    )
+    trait.instruments = (
+        instruments if instruments is not None else {"synth": 0.9, "drums": 0.8}
+    )
     return trait
 
 
@@ -105,6 +119,7 @@ class _MatchFixture:
 # 1. jsonb_cosine_similarity
 # ---------------------------------------------------------------------------
 
+
 class TestJsonbCosineSimilarity:
     def test_identical_dict_returns_one(self):
         d = {"house": 0.8, "techno": 0.2}
@@ -135,6 +150,7 @@ class TestJsonbCosineSimilarity:
 # ---------------------------------------------------------------------------
 # 2. Same-track factor values (metadata-only factors)
 # ---------------------------------------------------------------------------
+
 
 class TestSameTrackMetadataFactors:
     """Factors that depend only on track metadata dicts, not trait DB lookups."""
@@ -170,6 +186,7 @@ class TestSameTrackMetadataFactors:
 # 3. Same-track trait-based factor values
 # ---------------------------------------------------------------------------
 
+
 class TestSameTrackTraitFactors:
     """Factors backed by TrackTrait DB lookups — mock the trait cache."""
 
@@ -195,13 +212,15 @@ class TestSameTrackTraitFactors:
             fx.seed_traits(1, trait)
             md = _make_md(1)
             match = TransitionMatch(md, md, CamelotPriority.SAME_KEY)
-            assert match.get_instrument_similarity_score() == pytest.approx(1.0, abs=1e-6)
-
+            assert match.get_instrument_similarity_score() == pytest.approx(
+                1.0, abs=1e-6
+            )
 
 
 # ---------------------------------------------------------------------------
 # 4. Vocal clash penalty semantics
 # ---------------------------------------------------------------------------
+
 
 class TestVocalClashSemantics:
     """vocal_clash_score is a penalty: 1.0 = no clash, ~0.0 = heavy clash."""
@@ -242,6 +261,7 @@ class TestVocalClashSemantics:
 # ---------------------------------------------------------------------------
 # 5. Source-track exclusion from candidates
 # ---------------------------------------------------------------------------
+
 
 class TestSourceTrackExclusion:
     """The canonical finder path must exclude the source track by ID."""
@@ -287,13 +307,18 @@ class TestSourceTrackExclusion:
         finder.camelot_map = camelot_map
 
         with _MatchFixture():
-            from src.harmonic_mixing.transition_match_finder import TransitionMatchFinder
+            from src.harmonic_mixing.transition_match_finder import (
+                TransitionMatchFinder,
+            )
+
             harmonic_codes = TransitionMatchFinder._get_all_harmonic_codes(source_md)
             same_key, higher_key, lower_key = finder._get_matches_for_code(
                 harmonic_codes, source_md, sort_results=False
             )
 
-            all_ids = [m.metadata[TrackDBCols.ID] for m in same_key + higher_key + lower_key]
+            all_ids = [
+                m.metadata[TrackDBCols.ID] for m in same_key + higher_key + lower_key
+            ]
             assert 10 not in all_ids
 
 
@@ -301,23 +326,38 @@ class TestSourceTrackExclusion:
 # 6. Non-self scoring sanity
 # ---------------------------------------------------------------------------
 
+
 class TestNonSelfScoring:
     """A non-self match with known metadata produces a plausible score."""
 
     def test_close_bpm_different_track(self):
         with _MatchFixture() as fx:
-            trait_a = _make_trait(danceability=0.7, bright_dark=0.5, voice_instrumental=0.1)
-            trait_b = _make_trait(danceability=0.75, bright_dark=0.55, voice_instrumental=0.2)
+            trait_a = _make_trait(
+                danceability=0.7, bright_dark=0.5, voice_instrumental=0.1
+            )
+            trait_b = _make_trait(
+                danceability=0.75, bright_dark=0.55, voice_instrumental=0.2
+            )
             fx.seed_traits(1, trait_a)
             fx.seed_traits(2, trait_b)
 
             TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
             TransitionMatch.cosine_cache = None
 
-            md_a = _make_md(1, title="Track A", bpm=128.0, energy=7,
-                            date_added=_BASE_TIME + timedelta(days=180))
-            md_b = _make_md(2, title="Track B", bpm=129.0, energy=6,
-                            date_added=_BASE_TIME + timedelta(days=200))
+            md_a = _make_md(
+                1,
+                title="Track A",
+                bpm=128.0,
+                energy=7,
+                date_added=_BASE_TIME + timedelta(days=180),
+            )
+            md_b = _make_md(
+                2,
+                title="Track B",
+                bpm=129.0,
+                energy=6,
+                date_added=_BASE_TIME + timedelta(days=200),
+            )
 
             match = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
             score = match.get_score()
@@ -335,19 +375,34 @@ class TestNonSelfScoring:
 
             TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
 
-            md_a = _make_md(1, title="A", bpm=128.0, energy=7,
-                            date_added=_BASE_TIME + timedelta(days=100))
-            md_b = _make_md(2, title="B", bpm=130.0, energy=6,
-                            date_added=_BASE_TIME + timedelta(days=200))
+            md_a = _make_md(
+                1,
+                title="A",
+                bpm=128.0,
+                energy=7,
+                date_added=_BASE_TIME + timedelta(days=100),
+            )
+            md_b = _make_md(
+                2,
+                title="B",
+                bpm=130.0,
+                energy=6,
+                date_added=_BASE_TIME + timedelta(days=200),
+            )
 
             match = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
             match.get_score()
 
             expected_factors = {
-                MatchFactors.BPM, MatchFactors.CAMELOT, MatchFactors.ENERGY,
-                MatchFactors.FRESHNESS, MatchFactors.SIMILARITY,
-                MatchFactors.GENRE_SIMILARITY, MatchFactors.MOOD_CONTINUITY,
-                MatchFactors.VOCAL_CLASH, MatchFactors.INSTRUMENT_SIMILARITY,
+                MatchFactors.BPM,
+                MatchFactors.CAMELOT,
+                MatchFactors.ENERGY,
+                MatchFactors.FRESHNESS,
+                MatchFactors.SIMILARITY,
+                MatchFactors.GENRE_SIMILARITY,
+                MatchFactors.MOOD_CONTINUITY,
+                MatchFactors.VOCAL_CLASH,
+                MatchFactors.INSTRUMENT_SIMILARITY,
             }
             assert set(match.factors.keys()) == expected_factors
 
@@ -560,10 +615,20 @@ class TestEffectiveWeightOverride:
             custom_weights[MatchFactors.BPM.name] = 1.0
             TransitionMatch.effective_weights = custom_weights
 
-            md_a = _make_md(1, title="A", bpm=128.0, energy=7,
-                            date_added=_BASE_TIME + timedelta(days=100))
-            md_b = _make_md(2, title="B", bpm=128.0, energy=6,
-                            date_added=_BASE_TIME + timedelta(days=200))
+            md_a = _make_md(
+                1,
+                title="A",
+                bpm=128.0,
+                energy=7,
+                date_added=_BASE_TIME + timedelta(days=100),
+            )
+            md_b = _make_md(
+                2,
+                title="B",
+                bpm=128.0,
+                energy=6,
+                date_added=_BASE_TIME + timedelta(days=200),
+            )
 
             match = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
             score = match.get_score()
@@ -582,10 +647,20 @@ class TestEffectiveWeightOverride:
             TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
             TransitionMatch.effective_weights = None
 
-            md_a = _make_md(1, title="A", bpm=128.0, energy=7,
-                            date_added=_BASE_TIME + timedelta(days=100))
-            md_b = _make_md(2, title="B", bpm=128.0, energy=6,
-                            date_added=_BASE_TIME + timedelta(days=200))
+            md_a = _make_md(
+                1,
+                title="A",
+                bpm=128.0,
+                energy=7,
+                date_added=_BASE_TIME + timedelta(days=100),
+            )
+            md_b = _make_md(
+                2,
+                title="B",
+                bpm=128.0,
+                energy=6,
+                date_added=_BASE_TIME + timedelta(days=200),
+            )
 
             match = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
             score = match.get_score()
@@ -599,6 +674,7 @@ class TestEffectiveWeightOverride:
 # ---------------------------------------------------------------------------
 # 9. TrackTrait participation in scoring — canary tests
 # ---------------------------------------------------------------------------
+
 
 class TestTraitParticipationInScoring:
     """Prove TrackTrait data is consumed by the active scoring path.
@@ -619,10 +695,20 @@ class TestTraitParticipationInScoring:
         with _MatchFixture():
             TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
 
-            md_a = _make_md(1, title="A", bpm=128.0, energy=7,
-                            date_added=_BASE_TIME + timedelta(days=100))
-            md_b = _make_md(2, title="B", bpm=129.0, energy=6,
-                            date_added=_BASE_TIME + timedelta(days=200))
+            md_a = _make_md(
+                1,
+                title="A",
+                bpm=128.0,
+                energy=7,
+                date_added=_BASE_TIME + timedelta(days=100),
+            )
+            md_b = _make_md(
+                2,
+                title="B",
+                bpm=129.0,
+                energy=6,
+                date_added=_BASE_TIME + timedelta(days=200),
+            )
 
             match = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
             match.get_score()
@@ -657,10 +743,20 @@ class TestTraitParticipationInScoring:
 
             TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
 
-            md_a = _make_md(1, title="A", bpm=128.0, energy=7,
-                            date_added=_BASE_TIME + timedelta(days=100))
-            md_b = _make_md(2, title="B", bpm=129.0, energy=6,
-                            date_added=_BASE_TIME + timedelta(days=200))
+            md_a = _make_md(
+                1,
+                title="A",
+                bpm=128.0,
+                energy=7,
+                date_added=_BASE_TIME + timedelta(days=100),
+            )
+            md_b = _make_md(
+                2,
+                title="B",
+                bpm=129.0,
+                energy=6,
+                date_added=_BASE_TIME + timedelta(days=200),
+            )
 
             match = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
             match.get_score()
@@ -676,10 +772,20 @@ class TestTraitParticipationInScoring:
         with _MatchFixture():
             TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
 
-            md_a = _make_md(1, title="A", bpm=128.0, energy=7,
-                            date_added=_BASE_TIME + timedelta(days=100))
-            md_b = _make_md(2, title="B", bpm=129.0, energy=6,
-                            date_added=_BASE_TIME + timedelta(days=200))
+            md_a = _make_md(
+                1,
+                title="A",
+                bpm=128.0,
+                energy=7,
+                date_added=_BASE_TIME + timedelta(days=100),
+            )
+            md_b = _make_md(
+                2,
+                title="B",
+                bpm=129.0,
+                energy=6,
+                date_added=_BASE_TIME + timedelta(days=200),
+            )
 
             match_no_traits = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
             score_without = match_no_traits.get_score()
@@ -698,10 +804,20 @@ class TestTraitParticipationInScoring:
 
             TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
 
-            md_a = _make_md(1, title="A", bpm=128.0, energy=7,
-                            date_added=_BASE_TIME + timedelta(days=100))
-            md_b = _make_md(2, title="B", bpm=129.0, energy=6,
-                            date_added=_BASE_TIME + timedelta(days=200))
+            md_a = _make_md(
+                1,
+                title="A",
+                bpm=128.0,
+                energy=7,
+                date_added=_BASE_TIME + timedelta(days=100),
+            )
+            md_b = _make_md(
+                2,
+                title="B",
+                bpm=129.0,
+                energy=6,
+                date_added=_BASE_TIME + timedelta(days=200),
+            )
 
             match_with_traits = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
             score_with = match_with_traits.get_score()
@@ -714,6 +830,7 @@ class TestTraitParticipationInScoring:
 # ---------------------------------------------------------------------------
 # 10. TrackTrait version filtering
 # ---------------------------------------------------------------------------
+
 
 class TestTraitVersionFiltering:
     """Verify that trait DB lookups use TRAIT_VERSION for row filtering."""
@@ -733,7 +850,8 @@ class TestTraitVersionFiltering:
             match.get_genre_similarity_score()
 
             version_filtered = [
-                c for c in mock_filter.call_args_list
+                c
+                for c in mock_filter.call_args_list
                 if c.kwargs.get("trait_version") == TRAIT_VERSION
             ]
             assert len(version_filtered) >= 1, (
@@ -768,9 +886,13 @@ class TestFusionWeightPropagation:
     @staticmethod
     def _setup_weight_service():
         from unittest.mock import patch
+
         with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
-            with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+            with patch(
+                "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+            ):
                 from src.harmonic_mixing.weight_service import WeightService
+
                 WeightService.reset()
                 svc = WeightService()
                 WeightService._instance = svc
@@ -804,14 +926,15 @@ class TestFusionWeightPropagation:
                 md_b = _make_md(2, title="B")
 
                 from unittest.mock import patch as _patch
+
                 with _patch.object(TransitionMatch, "_persist_similarity"):
                     match1 = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
                     sim_default = match1.get_similarity_score()
 
-                svc._fusion_weights['FUSION_HARMONIC'] = 1.0
-                svc._fusion_weights['FUSION_RHYTHM'] = 0.0
-                svc._fusion_weights['FUSION_TIMBRE'] = 0.0
-                svc._fusion_weights['FUSION_ENERGY'] = 0.0
+                svc._fusion_weights["FUSION_HARMONIC"] = 1.0
+                svc._fusion_weights["FUSION_RHYTHM"] = 0.0
+                svc._fusion_weights["FUSION_TIMBRE"] = 0.0
+                svc._fusion_weights["FUSION_ENERGY"] = 0.0
 
                 with _patch.object(TransitionMatch, "_persist_similarity"):
                     match2 = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
@@ -854,20 +977,31 @@ class TestFusionWeightPropagation:
                 TransitionMatch.db_session.query.return_value.filter_by.return_value.first.return_value = None
                 TransitionMatch.cosine_cache = None
 
-                md_a = _make_md(1, title="A", bpm=128.0, energy=7,
-                                date_added=_BASE_TIME + timedelta(days=100))
-                md_b = _make_md(2, title="B", bpm=129.0, energy=6,
-                                date_added=_BASE_TIME + timedelta(days=200))
+                md_a = _make_md(
+                    1,
+                    title="A",
+                    bpm=128.0,
+                    energy=7,
+                    date_added=_BASE_TIME + timedelta(days=100),
+                )
+                md_b = _make_md(
+                    2,
+                    title="B",
+                    bpm=129.0,
+                    energy=6,
+                    date_added=_BASE_TIME + timedelta(days=200),
+                )
 
                 from unittest.mock import patch as _patch
+
                 with _patch.object(TransitionMatch, "_persist_similarity"):
                     match1 = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)
                     total_default = match1.get_score()
 
-                svc._fusion_weights['FUSION_HARMONIC'] = 1.0
-                svc._fusion_weights['FUSION_RHYTHM'] = 0.0
-                svc._fusion_weights['FUSION_TIMBRE'] = 0.0
-                svc._fusion_weights['FUSION_ENERGY'] = 0.0
+                svc._fusion_weights["FUSION_HARMONIC"] = 1.0
+                svc._fusion_weights["FUSION_RHYTHM"] = 0.0
+                svc._fusion_weights["FUSION_TIMBRE"] = 0.0
+                svc._fusion_weights["FUSION_ENERGY"] = 0.0
 
                 with _patch.object(TransitionMatch, "_persist_similarity"):
                     match2 = TransitionMatch(md_b, md_a, CamelotPriority.SAME_KEY)

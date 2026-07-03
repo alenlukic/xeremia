@@ -109,7 +109,9 @@ def bulk_index_tracks(client: Elasticsearch, track_docs: List[Dict[str, Any]]) -
     return success
 
 
-def search(query: str, limit: int = 10, client: Optional[Elasticsearch] = None) -> List[Dict[str, Any]]:
+def search(
+    query: str, limit: int = 10, client: Optional[Elasticsearch] = None
+) -> List[Dict[str, Any]]:
     """Search tracks with title-weighted multi-field matching and BPM support."""
     es = client or get_client()
 

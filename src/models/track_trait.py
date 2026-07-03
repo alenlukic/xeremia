@@ -18,25 +18,25 @@ class TrackTrait(Base):
     track_id = Column(Integer, index=True, unique=True, nullable=False)
 
     # Binary classifiers — float probability of positive class
-    voice_instrumental = Column(Float, nullable=True)   # P(voice)
-    danceability = Column(Float, nullable=True)          # P(danceable)
-    bright_dark = Column(Float, nullable=True)           # P(bright)
+    voice_instrumental = Column(Float, nullable=True)  # P(voice)
+    danceability = Column(Float, nullable=True)  # P(danceable)
+    bright_dark = Column(Float, nullable=True)  # P(bright)
     acoustic_electronic = Column(Float, nullable=True)  # P(electronic)
-    tonal_atonal = Column(Float, nullable=True)          # P(tonal)
-    reverb = Column(Float, nullable=True)                # P(wet)
+    tonal_atonal = Column(Float, nullable=True)  # P(tonal)
+    reverb = Column(Float, nullable=True)  # P(wet)
 
     # librosa-derived scalars
-    onset_density = Column(Float, nullable=True)         # onsets/sec
-    spectral_flatness = Column(Float, nullable=True)     # mean [0, 1]
+    onset_density = Column(Float, nullable=True)  # onsets/sec
+    spectral_flatness = Column(Float, nullable=True)  # mean [0, 1]
 
     # Multi-label classifiers — {label: probability} above threshold
-    mood_theme = Column(JSONB, nullable=True)            # 56-class MTG Jamendo
-    genre = Column(JSONB, nullable=True)                 # 519-class Discogs taxonomy (MAEST)
-    instruments = Column(JSONB, nullable=True)           # 40-class MTG Jamendo
+    mood_theme = Column(JSONB, nullable=True)  # 56-class MTG Jamendo
+    genre = Column(JSONB, nullable=True)  # 519-class Discogs taxonomy (MAEST)
+    instruments = Column(JSONB, nullable=True)  # 40-class MTG Jamendo
 
     # Phase III placeholders (no inference implementation yet)
-    audio_events = Column(JSONB, nullable=True)          # YAMNet 520 classes
-    vocal_energy_ratio = Column(Float, nullable=True)    # Demucs stem ratio
+    audio_events = Column(JSONB, nullable=True)  # YAMNet 520 classes
+    vocal_energy_ratio = Column(Float, nullable=True)  # Demucs stem ratio
 
     # Versioning
     trait_version = Column(String(32), nullable=False)

@@ -18,14 +18,18 @@ from fastapi.testclient import TestClient
 def _reset_weight_singleton():
     yield
     from src.harmonic_mixing.weight_service import WeightService
+
     WeightService._instance = None
 
 
 @pytest.fixture()
 def weight_patches():
-    with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), \
-         patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
+    with (
+        patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
+        patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
+    ):
         from src.harmonic_mixing.weight_service import WeightService
+
         WeightService._instance = None
         yield
 
@@ -42,6 +46,7 @@ def mock_finder():
 def client(mock_finder, weight_patches):
     with patch("src.api.routes._get_match_finder", return_value=mock_finder):
         from src.api.app import create_app
+
         app = create_app()
         yield TestClient(app)
 
@@ -64,12 +69,17 @@ class TestTransitionScores:
 
         with patch("src.api.routes._get_session") as mock_session_fn:
             session = MagicMock()
-            session.query.return_value.filter_by.return_value.first.return_value = mock_track
+            session.query.return_value.filter_by.return_value.first.return_value = (
+                mock_track
+            )
             mock_session_fn.return_value = session
 
-            resp = client.post("/api/sets/transition-scores", json={
-                "pairs": [[1, 2]],
-            })
+            resp = client.post(
+                "/api/sets/transition-scores",
+                json={
+                    "pairs": [[1, 2]],
+                },
+            )
 
         assert resp.status_code == 200
         data = resp.json()
@@ -87,12 +97,17 @@ class TestTransitionScores:
 
         with patch("src.api.routes._get_session") as mock_session_fn:
             session = MagicMock()
-            session.query.return_value.filter_by.return_value.first.return_value = mock_track
+            session.query.return_value.filter_by.return_value.first.return_value = (
+                mock_track
+            )
             mock_session_fn.return_value = session
 
-            resp = client.post("/api/sets/transition-scores", json={
-                "pairs": [[1, 99]],
-            })
+            resp = client.post(
+                "/api/sets/transition-scores",
+                json={
+                    "pairs": [[1, 99]],
+                },
+            )
 
         assert resp.status_code == 200
         data = resp.json()
@@ -104,18 +119,24 @@ class TestTransitionScores:
             session.query.return_value.filter_by.return_value.first.return_value = None
             mock_session_fn.return_value = session
 
-            resp = client.post("/api/sets/transition-scores", json={
-                "pairs": [[999, 1]],
-            })
+            resp = client.post(
+                "/api/sets/transition-scores",
+                json={
+                    "pairs": [[999, 1]],
+                },
+            )
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["scores"] == [None]
 
     def test_handles_empty_pairs(self, client, mock_finder):
-        resp = client.post("/api/sets/transition-scores", json={
-            "pairs": [],
-        })
+        resp = client.post(
+            "/api/sets/transition-scores",
+            json={
+                "pairs": [],
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["scores"] == []
 
@@ -135,14 +156,18 @@ class TestExportM3u8:
         with patch("src.api.routes._get_session") as mock_session_fn:
             session = MagicMock()
             session.query.return_value.filter.return_value.all.return_value = [
-                mock_track1, mock_track2
+                mock_track1,
+                mock_track2,
             ]
             mock_session_fn.return_value = session
 
-            resp = client.post("/api/sets/export-m3u8", json={
-                "track_ids": [1, 2],
-                "name": "My Set",
-            })
+            resp = client.post(
+                "/api/sets/export-m3u8",
+                json={
+                    "track_ids": [1, 2],
+                    "name": "My Set",
+                },
+            )
 
         assert resp.status_code == 200
         data = resp.json()
@@ -168,14 +193,18 @@ class TestExportM3u8:
         with patch("src.api.routes._get_session") as mock_session_fn:
             session = MagicMock()
             session.query.return_value.filter.return_value.all.return_value = [
-                mock_track2, mock_track1,
+                mock_track2,
+                mock_track1,
             ]
             mock_session_fn.return_value = session
 
-            resp = client.post("/api/sets/export-m3u8", json={
-                "track_ids": [1, 2],
-                "name": "Ordered",
-            })
+            resp = client.post(
+                "/api/sets/export-m3u8",
+                json={
+                    "track_ids": [1, 2],
+                    "name": "Ordered",
+                },
+            )
 
         data = resp.json()
         lines = data["content"].strip().split("\n")
@@ -190,10 +219,13 @@ class TestExportM3u8:
             session.query.return_value.filter.return_value.all.return_value = []
             mock_session_fn.return_value = session
 
-            resp = client.post("/api/sets/export-m3u8", json={
-                "track_ids": [],
-                "name": "Bad/Name<>",
-            })
+            resp = client.post(
+                "/api/sets/export-m3u8",
+                json={
+                    "track_ids": [],
+                    "name": "Bad/Name<>",
+                },
+            )
 
         assert resp.status_code == 200
         data = resp.json()
@@ -206,10 +238,13 @@ class TestExportM3u8:
             session.query.return_value.filter.return_value.all.return_value = []
             mock_session_fn.return_value = session
 
-            resp = client.post("/api/sets/export-m3u8", json={
-                "track_ids": [],
-                "name": "Empty",
-            })
+            resp = client.post(
+                "/api/sets/export-m3u8",
+                json={
+                    "track_ids": [],
+                    "name": "Empty",
+                },
+            )
 
         assert resp.status_code == 200
         data = resp.json()

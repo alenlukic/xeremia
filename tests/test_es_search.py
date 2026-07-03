@@ -84,9 +84,11 @@ SAMPLE_TRACKS = [
 def _es_test_index():
     """Create a fresh test index before each test and clean up after."""
     import os
+
     os.environ["ES_TRACK_INDEX"] = TEST_INDEX
 
     import src.api.es as es_mod
+
     es_mod.INDEX_NAME = TEST_INDEX
 
     es = Elasticsearch("http://localhost:9200")

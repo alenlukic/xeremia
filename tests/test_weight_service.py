@@ -19,6 +19,7 @@ def _make_service(**overrides):
     with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"):
         with patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
             from src.harmonic_mixing.weight_service import WeightService
+
             svc = WeightService()
             for k, v in overrides.items():
                 if k in svc._raw_weights:
@@ -79,7 +80,12 @@ class TestDefaultWeights:
     def test_returns_fusion_keys(self):
         svc = _make_service()
         defaults = svc.get_default_weights()
-        for key in ("FUSION_HARMONIC", "FUSION_RHYTHM", "FUSION_TIMBRE", "FUSION_ENERGY"):
+        for key in (
+            "FUSION_HARMONIC",
+            "FUSION_RHYTHM",
+            "FUSION_TIMBRE",
+            "FUSION_ENERGY",
+        ):
             assert key in defaults
 
     def test_values_on_0_100_scale(self):
@@ -102,6 +108,7 @@ class TestWeightUpdate:
     @patch("src.harmonic_mixing.weight_service.WeightService._load_from_db")
     def test_update_persists_and_returns(self, mock_load, mock_persist):
         from src.harmonic_mixing.weight_service import WeightService
+
         svc = WeightService()
         result = svc.update_weights({"BPM": 50, "CAMELOT": 50})
         assert result["raw_weights"]["BPM"] == 50.0
@@ -128,7 +135,12 @@ class TestFusionWeights:
     def test_get_weights_includes_fusion_keys(self):
         svc = _make_service()
         result = svc.get_weights()
-        for key in ("FUSION_HARMONIC", "FUSION_RHYTHM", "FUSION_TIMBRE", "FUSION_ENERGY"):
+        for key in (
+            "FUSION_HARMONIC",
+            "FUSION_RHYTHM",
+            "FUSION_TIMBRE",
+            "FUSION_ENERGY",
+        ):
             assert key in result["raw_weights"]
 
     def test_raw_sum_ignores_fusion_keys(self):
@@ -147,6 +159,7 @@ class TestFusionWeights:
     @patch("src.harmonic_mixing.weight_service.WeightService._load_from_db")
     def test_update_fusion_key_round_trips(self, mock_load, mock_persist):
         from src.harmonic_mixing.weight_service import WeightService
+
         svc = WeightService()
         result = svc.update_weights({"FUSION_HARMONIC": 40})
         assert result["raw_weights"]["FUSION_HARMONIC"] == pytest.approx(40.0, abs=0.01)
@@ -155,6 +168,7 @@ class TestFusionWeights:
     @patch("src.harmonic_mixing.weight_service.WeightService._load_from_db")
     def test_get_fusion_weights_returns_0_1_scale(self, mock_load, mock_persist):
         from src.harmonic_mixing.weight_service import WeightService
+
         svc = WeightService()
         svc.update_weights({"FUSION_HARMONIC": 50})
         fw = svc.get_fusion_weights()
@@ -164,7 +178,12 @@ class TestFusionWeights:
     def test_fusion_keys_not_in_effective_weights(self):
         svc = _make_service()
         result = svc.get_weights()
-        for key in ("FUSION_HARMONIC", "FUSION_RHYTHM", "FUSION_TIMBRE", "FUSION_ENERGY"):
+        for key in (
+            "FUSION_HARMONIC",
+            "FUSION_RHYTHM",
+            "FUSION_TIMBRE",
+            "FUSION_ENERGY",
+        ):
             assert key not in result["effective_weights"]
 
 
@@ -221,7 +240,10 @@ class TestWeightPropagation:
         try:
             TransitionMatch.effective_weights = None
 
-            from src.harmonic_mixing.transition_match_finder import TransitionMatchFinder
+            from src.harmonic_mixing.transition_match_finder import (
+                TransitionMatchFinder,
+            )
+
             TransitionMatchFinder._sync_effective_weights()
 
             assert TransitionMatch.effective_weights is not None
@@ -244,13 +266,13 @@ class TestEnsureTableBehavior:
     def test_ensure_table_called_during_init(self):
         """_ensure_table must be invoked when the service initializes."""
         _, mods = _fake_db()
-        with patch.dict(sys.modules, mods), \
-             patch(
-                 "src.harmonic_mixing.weight_service.WeightService._ensure_table"
-             ) as mock_et, \
-             patch(
-                 "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
-             ):
+        with (
+            patch.dict(sys.modules, mods),
+            patch(
+                "src.harmonic_mixing.weight_service.WeightService._ensure_table"
+            ) as mock_et,
+            patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
+        ):
             from src.harmonic_mixing.weight_service import WeightService
 
             WeightService()
@@ -289,20 +311,21 @@ class TestEnsureTableBehavior:
             "src.models.scoring_weight_override": mock_model_mod,
         }
 
-        with patch(
-            "src.harmonic_mixing.weight_service.WeightService._load_from_db"
-        ), patch(
-            "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+        with (
+            patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
+            patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
         ):
             svc = WeightService()
 
         svc._load_from_db = WeightService._load_from_db.__get__(svc)
 
-        with patch.dict(sys.modules, mods), \
-             patch.object(
-                 svc, "_ensure_table", side_effect=Exception("table create failed")
-             ), \
-             patch.object(svc, "_persist_to_db"):
+        with (
+            patch.dict(sys.modules, mods),
+            patch.object(
+                svc, "_ensure_table", side_effect=Exception("table create failed")
+            ),
+            patch.object(svc, "_persist_to_db"),
+        ):
             svc._load_from_db()
 
         assert svc._raw_weights["BPM"] == pytest.approx(0.80, abs=1e-9)
@@ -330,9 +353,9 @@ def _fake_db():
 
     def create_session():
         s = MagicMock()
-        s.query.return_value.filter_by.return_value.first.side_effect = (
-            lambda: store["row"]
-        )
+        s.query.return_value.filter_by.return_value.first.side_effect = lambda: store[
+            "row"
+        ]
 
         def _add(entity):
             store["row"] = entity
@@ -359,10 +382,9 @@ def _fake_db():
 
 def _make_persist_service(mock_modules, *, load=False):
     """Create a WeightService with real persist/load bound to mock modules."""
-    with patch(
-        "src.harmonic_mixing.weight_service.WeightService._load_from_db"
-    ), patch(
-        "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+    with (
+        patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
+        patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
     ):
         from src.harmonic_mixing.weight_service import WeightService
 
@@ -491,7 +513,9 @@ class TestStaleKeyMigration:
         mock_row.weights_json = payload
 
         mock_session = MagicMock()
-        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_row
+        mock_session.query.return_value.filter_by.return_value.first.return_value = (
+            mock_row
+        )
 
         mock_db_mod = ModuleType("src.db")
         mock_database = MagicMock()
@@ -507,27 +531,27 @@ class TestStaleKeyMigration:
             "src.models.scoring_weight_override": mock_model_mod,
         }
 
-        with patch(
-            "src.harmonic_mixing.weight_service.WeightService._load_from_db"
-        ), patch(
-            "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+        with (
+            patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
+            patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
         ):
             svc = WeightService()
 
         svc._load_from_db = WeightService._load_from_db.__get__(svc)
 
-        with patch.dict(sys.modules, mods), \
-             patch.object(svc, "_persist_to_db"):
+        with patch.dict(sys.modules, mods), patch.object(svc, "_persist_to_db"):
             svc._load_from_db()
 
         return svc
 
     def test_stale_keys_redistributed_on_load(self):
         stale_weight = 0.05
-        payload = self._build_saved_payload({
-            "DANCEABILITY": stale_weight,
-            "TIMBRE": stale_weight,
-        })
+        payload = self._build_saved_payload(
+            {
+                "DANCEABILITY": stale_weight,
+                "TIMBRE": stale_weight,
+            }
+        )
 
         svc = self._load_with_payload(payload)
         result = svc.get_weights()
@@ -535,9 +559,11 @@ class TestStaleKeyMigration:
         assert result["raw_sum"] == pytest.approx(expected_sum, abs=0.1)
 
     def test_stale_keys_with_zero_weight_no_change(self):
-        payload = self._build_saved_payload({
-            "OLD_REMOVED_FACTOR": 0.0,
-        })
+        payload = self._build_saved_payload(
+            {
+                "OLD_REMOVED_FACTOR": 0.0,
+            }
+        )
 
         svc = self._load_with_payload(payload)
         result = svc.get_weights()
@@ -550,10 +576,12 @@ class TestStaleKeyMigration:
         from src.harmonic_mixing.weight_service import WeightService
 
         stale_weight = 0.05
-        payload = self._build_saved_payload({
-            "DANCEABILITY": stale_weight,
-            "TIMBRE": stale_weight,
-        })
+        payload = self._build_saved_payload(
+            {
+                "DANCEABILITY": stale_weight,
+                "TIMBRE": stale_weight,
+            }
+        )
 
         mock_row = MagicMock()
         mock_row.weights_json = payload
@@ -577,17 +605,18 @@ class TestStaleKeyMigration:
             "src.models.scoring_weight_override": mock_model_mod,
         }
 
-        with patch(
-            "src.harmonic_mixing.weight_service.WeightService._load_from_db"
-        ), patch(
-            "src.harmonic_mixing.weight_service.WeightService._persist_to_db"
+        with (
+            patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
+            patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
         ):
             svc = WeightService()
 
         svc._load_from_db = WeightService._load_from_db.__get__(svc)
 
-        with patch.dict(sys.modules, mods), \
-             patch.object(svc, "_persist_to_db") as mock_persist:
+        with (
+            patch.dict(sys.modules, mods),
+            patch.object(svc, "_persist_to_db") as mock_persist,
+        ):
             svc._load_from_db()
             mock_persist.assert_called_once()
 

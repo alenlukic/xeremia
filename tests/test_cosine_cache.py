@@ -102,7 +102,9 @@ class TestCosineCacheThreadSafety:
             except Exception as exc:
                 errors.append(exc)
 
-        threads = [threading.Thread(target=writer, args=(t * 10_000,)) for t in range(4)]
+        threads = [
+            threading.Thread(target=writer, args=(t * 10_000,)) for t in range(4)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -277,7 +279,7 @@ class TestScheduleWarmup:
         def tracking_worker(track_id, cancel):
             call_log.append(track_id)
 
-        with patch.object(cache, '_warmup_worker', side_effect=tracking_worker):
+        with patch.object(cache, "_warmup_worker", side_effect=tracking_worker):
             cache.schedule_warmup(42)
             time.sleep(0.05)
             assert call_log == [], "worker should not fire before delay"
@@ -292,7 +294,7 @@ class TestScheduleWarmup:
         def tracking_worker(track_id, cancel):
             call_log.append(track_id)
 
-        with patch.object(cache, '_warmup_worker', side_effect=tracking_worker):
+        with patch.object(cache, "_warmup_worker", side_effect=tracking_worker):
             cache.schedule_warmup(1)
             time.sleep(0.05)
             cache.schedule_warmup(2)
@@ -307,12 +309,14 @@ class TestScheduleWarmup:
         def tracking_worker(track_id, cancel):
             call_log.append(track_id)
 
-        with patch.object(cache, '_warmup_worker', side_effect=tracking_worker):
+        with patch.object(cache, "_warmup_worker", side_effect=tracking_worker):
             cache.schedule_warmup(42)
             cache.schedule_warmup(42)
             cache.schedule_warmup(42)
             time.sleep(0.5)
-            assert call_log == [42], "worker should fire exactly once for repeated same-track calls"
+            assert call_log == [42], (
+                "worker should fire exactly once for repeated same-track calls"
+            )
 
     def test_different_track_supersedes(self):
         """Switching to a different track cancels the old warmup and schedules a new one."""
@@ -322,7 +326,7 @@ class TestScheduleWarmup:
         def tracking_worker(track_id, cancel):
             call_log.append(track_id)
 
-        with patch.object(cache, '_warmup_worker', side_effect=tracking_worker):
+        with patch.object(cache, "_warmup_worker", side_effect=tracking_worker):
             cache.schedule_warmup(1)
             time.sleep(0.05)
             cache.schedule_warmup(2)
@@ -337,7 +341,7 @@ class TestScheduleWarmup:
         def tracking_worker(track_id, cancel):
             call_log.append(track_id)
 
-        with patch.object(cache, '_warmup_worker', side_effect=tracking_worker):
+        with patch.object(cache, "_warmup_worker", side_effect=tracking_worker):
             cache.schedule_warmup(42)
             time.sleep(0.25)
             assert call_log == [42]
@@ -346,7 +350,7 @@ class TestScheduleWarmup:
             time.sleep(0.25)
             assert call_log == [42, 42], "warmup should fire again after clear"
 
-    @patch.object(CosineCache, '_compute_cross_similarities')
+    @patch.object(CosineCache, "_compute_cross_similarities")
     @patch("src.harmonic_mixing.cosine_cache.database")
     def test_active_cancellation_no_eviction(self, mock_db, _mock_cross):
         """Cancelling a running warm-up preserves already-added cache entries."""
@@ -380,7 +384,7 @@ class TestScheduleWarmup:
         assert cache.get(10, 30) == 0.7, "entries added before cancel must persist"
         assert cache.size() == 2
 
-    @patch.object(CosineCache, '_compute_cross_similarities')
+    @patch.object(CosineCache, "_compute_cross_similarities")
     @patch("src.harmonic_mixing.cosine_cache.database")
     def test_bfs_depth2_with_explored_set(self, mock_db, _mock_cross):
         """BFS traverses to depth 2 using batched per-level queries.
@@ -431,7 +435,7 @@ class TestScheduleWarmup:
         assert cache.get(50, 70) == 0.35, "depth-2 expansion"
         assert cache.size() == 6
 
-    @patch.object(CosineCache, '_compute_cross_similarities')
+    @patch.object(CosineCache, "_compute_cross_similarities")
     @patch("src.harmonic_mixing.cosine_cache.database")
     def test_depth2_warmup_populates_second_hop_entries(self, mock_db, _mock_cross):
         """Regression: depth-2 nodes must be visited so their incident pairs
@@ -487,7 +491,9 @@ class TestComputeCrossSimilarities:
         desc_b = MagicMock(track_id=30, global_vector=b"vb")
         desc_c = MagicMock(track_id=40, global_vector=b"vc")
         mock_session.query.return_value.filter.return_value.all.return_value = [
-            desc_a, desc_b, desc_c,
+            desc_a,
+            desc_b,
+            desc_c,
         ]
 
         mock_unpack.return_value = np.ones(75, dtype=np.float32)
@@ -513,7 +519,8 @@ class TestComputeCrossSimilarities:
         desc_a = MagicMock(track_id=20, global_vector=b"va")
         desc_b = MagicMock(track_id=30, global_vector=b"vb")
         mock_session.query.return_value.filter.return_value.all.return_value = [
-            desc_a, desc_b,
+            desc_a,
+            desc_b,
         ]
         mock_unpack.return_value = np.ones(75, dtype=np.float32)
         mock_compute.return_value = 0.85
@@ -545,7 +552,8 @@ class TestComputeCrossSimilarities:
         desc_a = MagicMock(track_id=20, global_vector=b"va")
         desc_b = MagicMock(track_id=30, global_vector=b"vb")
         mock_session.query.return_value.filter.return_value.all.return_value = [
-            desc_a, desc_b,
+            desc_a,
+            desc_b,
         ]
         mock_session.commit.side_effect = RuntimeError("duplicate key")
         mock_unpack.return_value = np.ones(75, dtype=np.float32)
@@ -555,7 +563,9 @@ class TestComputeCrossSimilarities:
         cache = CosineCache()
         cache._compute_cross_similarities(mock_session, {20, 30}, cancel)
 
-        assert cache.get(20, 30) == 0.77, "value should remain in cache despite persist failure"
+        assert cache.get(20, 30) == 0.77, (
+            "value should remain in cache despite persist failure"
+        )
         mock_session.rollback.assert_called_once()
 
     def test_empty_neighbor_ids_is_noop(self):
@@ -567,7 +577,7 @@ class TestComputeCrossSimilarities:
 
 
 class TestWarmupCallsCrossComputation:
-    @patch.object(CosineCache, '_compute_cross_similarities')
+    @patch.object(CosineCache, "_compute_cross_similarities")
     @patch("src.harmonic_mixing.cosine_cache.database")
     def test_warmup_invokes_cross_computation_after_depth0(self, mock_db, mock_cross):
         mock_session = MagicMock()
@@ -599,9 +609,11 @@ class TestWarmupCallsCrossComputation:
         assert call_args[1] == {20, 30}
         assert call_args[2] is cancel
 
-    @patch.object(CosineCache, '_compute_cross_similarities')
+    @patch.object(CosineCache, "_compute_cross_similarities")
     @patch("src.harmonic_mixing.cosine_cache.database")
-    def test_warmup_skips_cross_computation_when_no_neighbors(self, mock_db, mock_cross):
+    def test_warmup_skips_cross_computation_when_no_neighbors(
+        self, mock_db, mock_cross
+    ):
         mock_session = MagicMock()
         mock_db.create_session.return_value = mock_session
 
@@ -743,6 +755,7 @@ class TestSimilarityScoreCacheIntegration:
 
         mock_desc = MagicMock()
         import numpy as np
+
         mock_desc.global_vector = np.ones(75, dtype=np.float32).tobytes()
 
         def filter_by_side_effect(**kwargs):

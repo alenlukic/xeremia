@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 _TARGET_SUM = 100
 
 _FUSION_WEIGHT_DEFAULTS = {
-    'FUSION_HARMONIC': 0.30,
-    'FUSION_RHYTHM': 0.25,
-    'FUSION_TIMBRE': 0.30,
-    'FUSION_ENERGY': 0.15,
+    "FUSION_HARMONIC": 0.30,
+    "FUSION_RHYTHM": 0.25,
+    "FUSION_TIMBRE": 0.30,
+    "FUSION_ENERGY": 0.15,
 }
 _FUSION_KEYS = frozenset(_FUSION_WEIGHT_DEFAULTS)
 
@@ -92,9 +92,7 @@ class WeightService:
                             stale_keys.append(k)
                     if stale_keys:
                         stale_mass = sum(saved[k] for k in stale_keys)
-                        valid_main = [
-                            k for k in self._raw_weights if k in saved
-                        ]
+                        valid_main = [k for k in self._raw_weights if k in saved]
                         if valid_main and stale_mass > 0:
                             per_key = stale_mass / len(valid_main)
                             for k in valid_main:
@@ -110,7 +108,9 @@ class WeightService:
             finally:
                 session.close()
         except Exception:
-            logger.warning("Could not load weight overrides from DB; using config defaults")
+            logger.warning(
+                "Could not load weight overrides from DB; using config defaults"
+            )
 
         if needs_persist:
             self._persist_to_db()

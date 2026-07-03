@@ -22,6 +22,7 @@ from src.feature_extraction.compact_descriptor import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _sine_wave(duration_s=5.0, freq_hz=440.0, sr=SAMPLE_RATE):
     """Return a float32 mono sine wave."""
     t = np.linspace(0, duration_s, int(sr * duration_s), endpoint=False)
@@ -43,12 +44,15 @@ def _pink_noise(duration_s=5.0, sr=SAMPLE_RATE, rng_seed=42):
 # _extract_zone_vector
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.slow
 class TestExtractZoneVector:
     def test_output_shape_and_dtype(self):
         y, sr = _sine_wave()
         vec = _extract_zone_vector(y, sr)
-        assert vec.shape == (DESCRIPTOR_DIMS,), f"expected ({DESCRIPTOR_DIMS},), got {vec.shape}"
+        assert vec.shape == (DESCRIPTOR_DIMS,), (
+            f"expected ({DESCRIPTOR_DIMS},), got {vec.shape}"
+        )
         assert vec.dtype == np.float32
 
     def test_output_shape_noise(self):
@@ -71,7 +75,11 @@ class TestExtractZoneVector:
 
     def test_minimum_length_accepted(self):
         sr = SAMPLE_RATE
-        at_limit = np.random.default_rng(0).standard_normal(_MIN_AUDIO_SAMPLES).astype(np.float32)
+        at_limit = (
+            np.random.default_rng(0)
+            .standard_normal(_MIN_AUDIO_SAMPLES)
+            .astype(np.float32)
+        )
         vec = _extract_zone_vector(at_limit, sr)
         assert vec.shape == (DESCRIPTOR_DIMS,)
 
@@ -114,12 +122,15 @@ class TestExtractZoneVector:
         y2, sr = _sine_wave(freq_hz=880.0)
         v1 = _extract_zone_vector(y1, sr)
         v2 = _extract_zone_vector(y2, sr)
-        assert not np.allclose(v1, v2), "440 Hz and 880 Hz produced identical descriptors"
+        assert not np.allclose(v1, v2), (
+            "440 Hz and 880 Hz produced identical descriptors"
+        )
 
 
 # ---------------------------------------------------------------------------
 # pack_vector / unpack_vector
 # ---------------------------------------------------------------------------
+
 
 class TestPackUnpack:
     def test_roundtrip_exact(self):
@@ -146,6 +157,7 @@ class TestPackUnpack:
 # ---------------------------------------------------------------------------
 # cosine_similarity
 # ---------------------------------------------------------------------------
+
 
 class TestCosineSimilarity:
     def test_identical_vectors(self):
@@ -181,6 +193,7 @@ class TestCosineSimilarity:
 # ---------------------------------------------------------------------------
 # CompactDescriptor (end-to-end with synthetic audio)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.slow
 class TestCompactDescriptor:

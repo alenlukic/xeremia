@@ -24,7 +24,6 @@ _CDR_FORMS = frozenset(
 )
 
 
-from src.data_management.utils import normalize_key_symbols
 
 
 def _normalize_label_value(label: str | None) -> str | None:
@@ -42,7 +41,11 @@ def canonicalize_label(label: str | None) -> str | None:
         return "CDR"
 
     simplified = re.sub(r"[\s\-]+", " ", normalized).lower()
-    if simplified in _CDR_FORMS or "white label" in simplified or "self release" in simplified:
+    if (
+        simplified in _CDR_FORMS
+        or "white label" in simplified
+        or "self release" in simplified
+    ):
         return "CDR"
 
     return normalized
@@ -190,7 +193,11 @@ def _parse_creation_timestamp(value: Any) -> datetime | None:
     if isinstance(value, (int, float)):
         return datetime.fromtimestamp(value)
     if isinstance(value, str):
-        for fmt in ("%a %b %d %H:%M:%S %Y", "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%d %H:%M:%S"):
+        for fmt in (
+            "%a %b %d %H:%M:%S %Y",
+            "%Y-%m-%dT%H:%M:%S.%fZ",
+            "%Y-%m-%d %H:%M:%S",
+        ):
             try:
                 return datetime.strptime(value, fmt)
             except ValueError:

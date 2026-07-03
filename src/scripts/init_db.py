@@ -153,7 +153,9 @@ def run_init(database_name: str | None = None, seed_only: bool = False) -> None:
     try:
         if seed_only:
             if not is_initialized(conn):
-                raise SystemExit("Database is not initialized. Run without --seed-only first.")
+                raise SystemExit(
+                    "Database is not initialized. Run without --seed-only first."
+                )
             seed_mappings(conn)
         else:
             if is_initialized(conn):
@@ -166,7 +168,9 @@ def run_init(database_name: str | None = None, seed_only: bool = False) -> None:
 
         errors = verify_schema(conn)
         if errors:
-            raise SystemExit("Schema verification failed:\n  - " + "\n  - ".join(errors))
+            raise SystemExit(
+                "Schema verification failed:\n  - " + "\n  - ".join(errors)
+            )
 
         tables = sorted(EXPECTED_TABLES)
         print("Database ready: %d tables, pg_trgm enabled." % len(tables))
@@ -192,7 +196,9 @@ def run_verify(database_name: str | None = None) -> int:
 def main(argv: list[str] | None = None) -> int:
     _load_env()
 
-    parser = argparse.ArgumentParser(description="Initialize Xeremia PostgreSQL schema.")
+    parser = argparse.ArgumentParser(
+        description="Initialize Xeremia PostgreSQL schema."
+    )
     parser.add_argument(
         "--database-name",
         help="Override DB_NAME from the environment (useful for sandbox testing).",

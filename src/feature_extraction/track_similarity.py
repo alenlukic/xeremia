@@ -43,7 +43,7 @@ def extract_blocks(vec: np.ndarray) -> Dict[str, np.ndarray]:
     return {
         "chroma_mean": vec[CHROMA_MEAN],
         "chroma_std": vec[CHROMA_STD],
-        "bpm": vec[BPM_IDX: BPM_IDX + 1],
+        "bpm": vec[BPM_IDX : BPM_IDX + 1],
         "tempogram": vec[TEMPOGRAM],
         "mfcc_mean": vec[MFCC_MEAN],
         "mfcc_std": vec[MFCC_STD],
@@ -54,6 +54,7 @@ def extract_blocks(vec: np.ndarray) -> Dict[str, np.ndarray]:
 # ---------------------------------------------------------------------------
 # Scorer name enum and registry
 # ---------------------------------------------------------------------------
+
 
 class ScorerName(str, Enum):
     CURRENT_COSINE_CLAMPED = "current_cosine_clamped"
@@ -71,6 +72,7 @@ def _register(name: ScorerName):
     def decorator(fn):
         _SCORER_REGISTRY[name] = fn
         return fn
+
     return decorator
 
 
@@ -86,6 +88,7 @@ def list_scorers() -> List[ScorerName]:
 # ---------------------------------------------------------------------------
 # Numeric helpers
 # ---------------------------------------------------------------------------
+
 
 def _safe_cosine(a: np.ndarray, b: np.ndarray) -> float:
     """Cosine similarity, returning 0.0 for zero-norm vectors."""
@@ -130,7 +133,7 @@ def _standardized_euclidean_distance(
     diff = a - b
     if variance is not None:
         safe_var = np.where(variance < _EPS, 1.0, variance)
-        return float(np.sqrt(np.sum(diff ** 2 / safe_var)))
+        return float(np.sqrt(np.sum(diff**2 / safe_var)))
     return float(np.linalg.norm(diff))
 
 
@@ -144,6 +147,7 @@ def _dist_to_sim(distance: float, tau: float = 1.0) -> float:
 # ---------------------------------------------------------------------------
 # Baseline scorers
 # ---------------------------------------------------------------------------
+
 
 @_register(ScorerName.CURRENT_COSINE_CLAMPED)
 def current_cosine_clamped(vec_a: np.ndarray, vec_b: np.ndarray, **kw) -> float:
@@ -223,9 +227,7 @@ def _harmonic_similarity(blocks_a: dict, blocks_b: dict) -> float:
     mean_sim = _best_circular_shift_sim(
         blocks_a["chroma_mean"], blocks_b["chroma_mean"]
     )
-    std_sim = _best_circular_shift_sim(
-        blocks_a["chroma_std"], blocks_b["chroma_std"]
-    )
+    std_sim = _best_circular_shift_sim(blocks_a["chroma_std"], blocks_b["chroma_std"])
     return HARMONIC_MEAN_WEIGHT * mean_sim + HARMONIC_STD_WEIGHT * std_sim
 
 
@@ -288,15 +290,21 @@ def _get_live_fusion_weights():
     """Read fusion weights from WeightService if available; fall back to constants."""
     try:
         from src.harmonic_mixing.weight_service import WeightService
+
         fw = WeightService.instance().get_fusion_weights()
         return (
-            fw.get('FUSION_HARMONIC', FUSION_WEIGHT_HARMONIC),
-            fw.get('FUSION_RHYTHM', FUSION_WEIGHT_RHYTHM),
-            fw.get('FUSION_TIMBRE', FUSION_WEIGHT_TIMBRE),
-            fw.get('FUSION_ENERGY', FUSION_WEIGHT_ENERGY),
+            fw.get("FUSION_HARMONIC", FUSION_WEIGHT_HARMONIC),
+            fw.get("FUSION_RHYTHM", FUSION_WEIGHT_RHYTHM),
+            fw.get("FUSION_TIMBRE", FUSION_WEIGHT_TIMBRE),
+            fw.get("FUSION_ENERGY", FUSION_WEIGHT_ENERGY),
         )
     except Exception:
-        return (FUSION_WEIGHT_HARMONIC, FUSION_WEIGHT_RHYTHM, FUSION_WEIGHT_TIMBRE, FUSION_WEIGHT_ENERGY)
+        return (
+            FUSION_WEIGHT_HARMONIC,
+            FUSION_WEIGHT_RHYTHM,
+            FUSION_WEIGHT_TIMBRE,
+            FUSION_WEIGHT_ENERGY,
+        )
 
 
 @_register(ScorerName.LATE_FUSION_V1)
@@ -318,12 +326,7 @@ def late_fusion_v1(vec_a: np.ndarray, vec_b: np.ndarray, **kw) -> float:
     w_total = wh + wr + wt + we
     if w_total > _EPS:
         wh, wr, wt, we = wh / w_total, wr / w_total, wt / w_total, we / w_total
-    score = (
-        wh * h
-        + wr * r
-        + wt * t
-        + we * e
-    )
+    score = wh * h + wr * r + wt * t + we * e
 
     if not np.isfinite(score):
         return 0.0
@@ -333,6 +336,7 @@ def late_fusion_v1(vec_a: np.ndarray, vec_b: np.ndarray, **kw) -> float:
 # ---------------------------------------------------------------------------
 # Convenience entry point
 # ---------------------------------------------------------------------------
+
 
 def compute_similarity(
     vec_a: np.ndarray,
@@ -348,6 +352,7 @@ def compute_similarity(
 # ---------------------------------------------------------------------------
 # Benchmark harness
 # ---------------------------------------------------------------------------
+
 
 class BenchmarkHarness:
     """Run pairwise scoring diagnostics across multiple scorers.
@@ -373,11 +378,7 @@ class BenchmarkHarness:
 
     def _build_pairs(self, max_pairs, seed):
         total = self.n * (self.n - 1) // 2
-        all_pairs = [
-            (i, j)
-            for i in range(self.n)
-            for j in range(i + 1, self.n)
-        ]
+        all_pairs = [(i, j) for i in range(self.n) for j in range(i + 1, self.n)]
         if max_pairs is not None and max_pairs < total:
             rng = np.random.default_rng(seed)
             indices = rng.choice(total, size=max_pairs, replace=False)
@@ -430,9 +431,7 @@ class BenchmarkHarness:
             "max": float(np.max(scores)) if len(scores) else None,
             "mean": float(np.mean(scores)) if len(scores) else None,
             "std": float(np.std(scores)) if len(scores) else None,
-            "percentiles": {
-                str(p): float(v) for p, v in zip(percentiles, pcts)
-            },
+            "percentiles": {str(p): float(v) for p, v in zip(percentiles, pcts)},
         }
 
     def _hubness_stats(self, scores: np.ndarray, top_k: int = 25) -> dict:

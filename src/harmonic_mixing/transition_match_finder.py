@@ -62,11 +62,14 @@ class TransitionMatchFinder:
     def _sync_effective_weights():
         try:
             from src.harmonic_mixing.weight_service import WeightService
+
             TransitionMatch.effective_weights = (
                 WeightService.instance().get_effective_weights_for_scoring()
             )
         except Exception:
-            logger.warning("Failed to sync effective weights from WeightService", exc_info=True)
+            logger.warning(
+                "Failed to sync effective weights from WeightService", exc_info=True
+            )
 
     def get_transition_matches(self, track, sort_results=True):
         TransitionMatch.clear_descriptor_caches()

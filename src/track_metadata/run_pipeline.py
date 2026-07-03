@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from pathlib import Path
 
 from src.track_metadata.pipeline.agent import build_cursor_sdk_agent
@@ -47,7 +46,10 @@ def run_pipeline() -> Path:
             candidate_resolver=(
                 None
                 if fallback_agent is None
-                else lambda file_path, current, sources, missing: fallback_agent.resolve_metadata(
+                else lambda file_path,
+                current,
+                sources,
+                missing: fallback_agent.resolve_metadata(
                     file_path, current, sources, missing
                 )
             )

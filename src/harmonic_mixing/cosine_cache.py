@@ -34,7 +34,9 @@ class CosineCache:
     dashboard instrumentation.
     """
 
-    def __init__(self, max_entries: int = _MAX_ENTRIES, warmup_delay: float = _WARMUP_DELAY):
+    def __init__(
+        self, max_entries: int = _MAX_ENTRIES, warmup_delay: float = _WARMUP_DELAY
+    ):
         self._max_entries = max_entries
         self._warmup_delay = warmup_delay
         self._lock = threading.Lock()
@@ -82,11 +84,13 @@ class CosineCache:
                 self._recent_entries.append({"pair": key, "timestamp": now})
                 if len(self._store) > self._max_entries:
                     evicted_key, _ = self._store.popitem(last=False)
-                    self._recent_exits.append({
-                        "pair": evicted_key,
-                        "timestamp": now,
-                        "reason": "lru_eviction",
-                    })
+                    self._recent_exits.append(
+                        {
+                            "pair": evicted_key,
+                            "timestamp": now,
+                            "reason": "lru_eviction",
+                        }
+                    )
 
     def size(self) -> int:
         with self._lock:
@@ -402,7 +406,8 @@ class CosineCache:
 
             logger.info(
                 "BFS cache warmup completed for track %s, cache size: %d",
-                track_id, self.size(),
+                track_id,
+                self.size(),
             )
         except Exception:
             logger.exception("Error during BFS warm-up for track %s", track_id)

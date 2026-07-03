@@ -20,7 +20,9 @@ def _copy_sample(tmp_path: Path, filename: str) -> Path:
 
 
 def test_read_existing_metadata_round_trip(tmp_path):
-    audio_path = _copy_sample(tmp_path, "[01A - Abm - 086.00] Cell - Traffic (Live).mp3")
+    audio_path = _copy_sample(
+        tmp_path, "[01A - Abm - 086.00] Cell - Traffic (Live).mp3"
+    )
     expected = SimpleMetadata(
         title="Traffic (Live)",
         artist="Cell",
@@ -60,8 +62,12 @@ def test_write_tags_preserves_existing_album(tmp_path):
 
 
 def test_write_and_read_remixer(tmp_path):
-    audio_path = _copy_sample(tmp_path, "[01A - Abm - 086.00] Cell - Traffic (Live).mp3")
-    metadata = SimpleMetadata(title="Traffic (Live)", artist="Cell", remixer="Example Remixer")
+    audio_path = _copy_sample(
+        tmp_path, "[01A - Abm - 086.00] Cell - Traffic (Live).mp3"
+    )
+    metadata = SimpleMetadata(
+        title="Traffic (Live)", artist="Cell", remixer="Example Remixer"
+    )
 
     write_tags(audio_path, metadata)
     loaded = read_existing_metadata(audio_path)
@@ -72,7 +78,9 @@ def test_write_and_read_remixer(tmp_path):
 
 
 def test_write_tags_handles_numeric_fields(tmp_path):
-    audio_path = _copy_sample(tmp_path, "[01A - Abm - 086.00] Cell - Traffic (Live).mp3")
+    audio_path = _copy_sample(
+        tmp_path, "[01A - Abm - 086.00] Cell - Traffic (Live).mp3"
+    )
     metadata = SimpleMetadata(
         title="Track Title",
         artist="Artist",

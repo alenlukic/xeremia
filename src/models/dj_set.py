@@ -16,7 +16,13 @@ class DjSet(Base):
     )
 
     name = Column("name", String(256), nullable=False)
-    created_at = Column("created_at", DateTime, server_default=func.now(), nullable=False)
+    created_at = Column(
+        "created_at", DateTime, server_default=func.now(), nullable=False
+    )
     updated_at = Column(
-        "updated_at", DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )

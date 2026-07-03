@@ -20,7 +20,10 @@ class _FakeQuery:
 
     def first(self):
         for record in self.records:
-            if all(getattr(record, key, None) == value for key, value in self.criteria.items()):
+            if all(
+                getattr(record, key, None) == value
+                for key, value in self.criteria.items()
+            ):
                 return record
         return None
 

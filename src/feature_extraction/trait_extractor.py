@@ -886,6 +886,7 @@ def filter_genre(raw: dict) -> dict:
         GENRE_DISPLAY_THRESHOLD,
         GENRE_TOP_K,
     )
+
     return filter_multilabel(
         raw,
         threshold=GENRE_DISPLAY_THRESHOLD,
@@ -900,6 +901,7 @@ def filter_mood(raw: dict) -> dict:
         MOOD_DISPLAY_THRESHOLD,
         MOOD_TOP_K,
     )
+
     return filter_multilabel(
         raw,
         threshold=MOOD_DISPLAY_THRESHOLD,
@@ -910,6 +912,7 @@ def filter_mood(raw: dict) -> dict:
 def filter_instruments(raw: dict) -> dict:
     """Filter stored instrument predictions for display using current config."""
     from src.feature_extraction.config import INSTRUMENT_DISPLAY_THRESHOLD
+
     return filter_multilabel(raw, threshold=INSTRUMENT_DISPLAY_THRESHOLD)
 
 

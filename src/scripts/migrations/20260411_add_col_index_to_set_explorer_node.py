@@ -29,7 +29,9 @@ WHERE t.id = ranked.id;
 def run():
     engine = database.engine
     engine.execute(MIGRATION_SQL)
-    print("Migration complete: col_index column added to set_explorer_node and backfilled.")
+    print(
+        "Migration complete: col_index column added to set_explorer_node and backfilled."
+    )
 
 
 if __name__ == "__main__":

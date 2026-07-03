@@ -1,0 +1,65 @@
+{
+  "description": "Known real tracks used to validate query generation and live catalog resolution. Kept intentionally small and limited to stable, well-catalogued releases so the gold set rarely drifts.",
+  "entries": [
+    {
+      "name": "aphex_twin_windowlicker",
+      "seed": {"artist": "Aphex Twin", "title": "Windowlicker (Original Mix)", "album": "Windowlicker"},
+      "expected_queries": {
+        "musicbrainz": "Aphex Twin Windowlicker",
+        "discogs": {"track": "Windowlicker", "artist": "Aphex Twin", "release_title": "Windowlicker"},
+        "web_search": "Aphex Twin Windowlicker"
+      },
+      "gold": {"artist": "Aphex Twin", "title": "Windowlicker"}
+    },
+    {
+      "name": "burial_archangel",
+      "seed": {"artist": "Burial", "title": "Archangel"},
+      "expected_queries": {
+        "musicbrainz": "Burial Archangel",
+        "discogs": {"track": "Archangel", "artist": "Burial"},
+        "web_search": "Burial Archangel"
+      },
+      "gold": {"artist": "Burial", "title": "Archangel"}
+    },
+    {
+      "name": "boards_of_canada_roygbiv",
+      "seed": {"artist": "Boards of Canada", "title": "Roygbiv"},
+      "expected_queries": {
+        "musicbrainz": "Boards of Canada Roygbiv",
+        "discogs": {"track": "Roygbiv", "artist": "Boards of Canada"},
+        "web_search": "Boards of Canada Roygbiv"
+      },
+      "gold": {"artist": "Boards of Canada", "title": "Roygbiv"}
+    },
+    {
+      "name": "title_only_no_artist",
+      "seed": {"title": "Windowlicker"},
+      "expected_queries": {
+        "musicbrainz": "Windowlicker",
+        "discogs": {"track": "Windowlicker"},
+        "web_search": "Windowlicker"
+      },
+      "gold": null
+    },
+    {
+      "name": "artist_only_no_title",
+      "seed": {"artist": "Aphex Twin"},
+      "expected_queries": {
+        "musicbrainz": null,
+        "discogs": null,
+        "web_search": "Aphex Twin"
+      },
+      "gold": null
+    },
+    {
+      "name": "empty_seed",
+      "seed": {},
+      "expected_queries": {
+        "musicbrainz": null,
+        "discogs": null,
+        "web_search": null
+      },
+      "gold": null
+    }
+  ]
+}

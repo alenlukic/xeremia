@@ -118,13 +118,19 @@ def _compose_display_title(
     title = _clean_title_seed(metadata.title) or "Unknown Title"
     remixer = _normalize_whitespace(metadata.remixer)
 
-    if remixer and remixer.casefold() not in title.casefold() and not _has_mix_annotation(title):
+    if (
+        remixer
+        and remixer.casefold() not in title.casefold()
+        and not _has_mix_annotation(title)
+    ):
         title = f"{title} ({remixer} Remix)"
 
     if metadata.key is None or metadata.bpm is None:
         return f"{artist} - {title}".strip()
 
-    prefix = AudioFile.generate_title_prefix(camelot_code, metadata.key, f"{metadata.bpm:06.2f}")
+    prefix = AudioFile.generate_title_prefix(
+        camelot_code, metadata.key, f"{metadata.bpm:06.2f}"
+    )
     return f"{prefix}{artist} - {title}".strip()
 
 

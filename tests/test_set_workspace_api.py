@@ -128,7 +128,9 @@ class TestPoolTracklistExclusivity:
         assert err2 is None
         assert entry2.track_id == 10
 
-    def test_pool_blocked_by_tracklist(self, svc: SetWorkspaceService, session: Session):
+    def test_pool_blocked_by_tracklist(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         s = svc.create_set("S")
         session.commit()
         svc.tracklist_add(s.id, 10)
@@ -137,7 +139,9 @@ class TestPoolTracklistExclusivity:
         assert err is not None
         assert "tracklist" in err.lower()
 
-    def test_tracklist_blocked_by_pool(self, svc: SetWorkspaceService, session: Session):
+    def test_tracklist_blocked_by_pool(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         s = svc.create_set("S")
         session.commit()
         svc.pool_add(s.id, 20)
@@ -154,8 +158,13 @@ class TestPoolTracklistExclusivity:
         ok, err = svc.pool_move_to_tracklist(s.id, 10)
         assert ok is True
         assert err is None
-        assert session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).count() == 0
-        assert session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).count() == 1
+        assert (
+            session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).count() == 0
+        )
+        assert (
+            session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).count()
+            == 1
+        )
 
     def test_tracklist_move_to_pool(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
@@ -165,8 +174,13 @@ class TestPoolTracklistExclusivity:
         ok, err = svc.tracklist_move_to_pool(s.id, 10)
         assert ok is True
         assert err is None
-        assert session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).count() == 0
-        assert session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).count() == 1
+        assert (
+            session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).count()
+            == 0
+        )
+        assert (
+            session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).count() == 1
+        )
 
 
 class TestTracklistReorder:
@@ -239,8 +253,12 @@ class TestDeleteNodeResolution:
         s = svc.create_set("S")
         session.commit()
         node_a, _ = svc.explorer_add_node(s.id, 1, level=0)
-        node_b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=node_a.node_id, level=1)
-        node_c, _ = svc.explorer_add_node(s.id, 3, parent_node_id=node_b.node_id, level=2)
+        node_b, _ = svc.explorer_add_node(
+            s.id, 2, parent_node_id=node_a.node_id, level=1
+        )
+        node_c, _ = svc.explorer_add_node(
+            s.id, 3, parent_node_id=node_b.node_id, level=2
+        )
         session.commit()
         return s.id, node_a.node_id, node_b.node_id, node_c.node_id
 
@@ -249,9 +267,13 @@ class TestDeleteNodeResolution:
         ok, err = svc.explorer_delete_node(sid, c)
         assert ok is True
         assert err is None
-        assert session.query(SetExplorerNode).filter_by(set_id=sid, node_id=c).count() == 0
+        assert (
+            session.query(SetExplorerNode).filter_by(set_id=sid, node_id=c).count() == 0
+        )
 
-    def test_delete_middle_orphan_children(self, svc: SetWorkspaceService, session: Session):
+    def test_delete_middle_orphan_children(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         sid, a, b, c = self._build_chain(svc, session)
         ok, err = svc.explorer_delete_node(sid, b)
         assert ok is True
@@ -259,7 +281,9 @@ class TestDeleteNodeResolution:
         child_ids = {e.child_node_id for e in remaining_edges}
         assert c not in child_ids
 
-    def test_delete_middle_rewire_to_parent(self, svc: SetWorkspaceService, session: Session):
+    def test_delete_middle_rewire_to_parent(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         sid, a, b, c = self._build_chain(svc, session)
         rewire = [{"parent_node_id": a, "child_node_id": c}]
         ok, err = svc.explorer_delete_node(sid, b, rewire_edges=rewire)
@@ -271,14 +295,18 @@ class TestDeleteNodeResolution:
         )
         assert edge is not None
 
-    def test_delete_invalid_rewire_parent(self, svc: SetWorkspaceService, session: Session):
+    def test_delete_invalid_rewire_parent(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         sid, a, b, c = self._build_chain(svc, session)
         rewire = [{"parent_node_id": "nonexistent", "child_node_id": c}]
         ok, err = svc.explorer_delete_node(sid, b, rewire_edges=rewire)
         assert ok is False
         assert "parent" in err.lower()
 
-    def test_delete_invalid_rewire_child(self, svc: SetWorkspaceService, session: Session):
+    def test_delete_invalid_rewire_child(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         sid, a, b, c = self._build_chain(svc, session)
         rewire = [{"parent_node_id": a, "child_node_id": "nonexistent"}]
         ok, err = svc.explorer_delete_node(sid, b, rewire_edges=rewire)
@@ -291,7 +319,9 @@ class TestDeleteNodeResolution:
         ok, err = svc.explorer_delete_node(s.id, "nope")
         assert ok is False
 
-    def test_selective_rewire_multiple_children(self, svc: SetWorkspaceService, session: Session):
+    def test_selective_rewire_multiple_children(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         """A -> B, B -> C, B -> D. Delete B, rewire only C to A, orphan D."""
         s = svc.create_set("S")
         session.commit()
@@ -305,14 +335,18 @@ class TestDeleteNodeResolution:
         ok, err = svc.explorer_delete_node(s.id, b.node_id, rewire_edges=rewire)
         assert ok is True
 
-        ac_edge = session.query(SetExplorerEdge).filter_by(
-            set_id=s.id, parent_node_id=a.node_id, child_node_id=c.node_id
-        ).first()
+        ac_edge = (
+            session.query(SetExplorerEdge)
+            .filter_by(set_id=s.id, parent_node_id=a.node_id, child_node_id=c.node_id)
+            .first()
+        )
         assert ac_edge is not None
 
-        ad_edge = session.query(SetExplorerEdge).filter_by(
-            set_id=s.id, parent_node_id=a.node_id, child_node_id=d.node_id
-        ).first()
+        ad_edge = (
+            session.query(SetExplorerEdge)
+            .filter_by(set_id=s.id, parent_node_id=a.node_id, child_node_id=d.node_id)
+            .first()
+        )
         assert ad_edge is None
 
 
@@ -323,9 +357,11 @@ class TestDeleteExplorerEdge:
         a, _ = svc.explorer_add_node(s.id, 1, level=0)
         b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id, level=1)
         session.commit()
-        edge = session.query(SetExplorerEdge).filter_by(
-            set_id=s.id, parent_node_id=a.node_id, child_node_id=b.node_id
-        ).first()
+        edge = (
+            session.query(SetExplorerEdge)
+            .filter_by(set_id=s.id, parent_node_id=a.node_id, child_node_id=b.node_id)
+            .first()
+        )
         assert edge is not None
 
         ok, err = svc.delete_explorer_edge(s.id, edge.id)
@@ -347,9 +383,11 @@ class TestDeleteExplorerEdge:
         a, _ = svc.explorer_add_node(s1.id, 1, level=0)
         b, _ = svc.explorer_add_node(s1.id, 2, parent_node_id=a.node_id, level=1)
         session.commit()
-        edge = session.query(SetExplorerEdge).filter_by(
-            set_id=s1.id, parent_node_id=a.node_id, child_node_id=b.node_id
-        ).first()
+        edge = (
+            session.query(SetExplorerEdge)
+            .filter_by(set_id=s1.id, parent_node_id=a.node_id, child_node_id=b.node_id)
+            .first()
+        )
         assert edge is not None
 
         ok, err = svc.delete_explorer_edge(s2.id, edge.id)
@@ -374,12 +412,16 @@ class TestExplorerSwap:
         assert ok is True
         assert err is None
 
-        refreshed_root = session.query(SetExplorerNode).filter_by(
-            set_id=s.id, node_id=root.node_id
-        ).first()
-        refreshed_leaf = session.query(SetExplorerNode).filter_by(
-            set_id=s.id, node_id=leaf.node_id
-        ).first()
+        refreshed_root = (
+            session.query(SetExplorerNode)
+            .filter_by(set_id=s.id, node_id=root.node_id)
+            .first()
+        )
+        refreshed_leaf = (
+            session.query(SetExplorerNode)
+            .filter_by(set_id=s.id, node_id=leaf.node_id)
+            .first()
+        )
         assert refreshed_root is not None
         assert refreshed_leaf is not None
         assert refreshed_root.track_id == 404
@@ -393,7 +435,12 @@ class TestExplorerSwap:
             (root.node_id, left.node_id),
             (left.node_id, leaf.node_id),
         }
-        assert session.query(SetExplorerNode).filter_by(set_id=s.id, node_id=right.node_id).first() is not None
+        assert (
+            session.query(SetExplorerNode)
+            .filter_by(set_id=s.id, node_id=right.node_id)
+            .first()
+            is not None
+        )
 
     def test_swap_rejects_same_node(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
@@ -416,7 +463,9 @@ class TestTracklistNote:
         ok, err = svc.update_tracklist_note(s.id, 10, "Great opener")
         assert ok is True
         assert err is None
-        entry = session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).first()
+        entry = (
+            session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=10).first()
+        )
         assert entry.note == "Great opener"
 
     def test_update_note_not_found(self, svc: SetWorkspaceService, session: Session):
@@ -433,7 +482,9 @@ class TestTracklistNote:
         session.commit()
         assert entry.note == ""
 
-    def test_note_persists_through_hydration(self, svc: SetWorkspaceService, session: Session):
+    def test_note_persists_through_hydration(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         s = svc.create_set("S")
         session.commit()
         svc.tracklist_add(s.id, 10)
@@ -450,7 +501,9 @@ class TestTracklistNote:
 class TestEdgeScoreRequestShape:
     """Verify the add-edge service method validates properly."""
 
-    def test_add_edge_creates_connection(self, svc: SetWorkspaceService, session: Session):
+    def test_add_edge_creates_connection(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         s = svc.create_set("S")
         session.commit()
         a, _ = svc.explorer_add_node(s.id, 1, level=0)
@@ -471,9 +524,12 @@ class TestEdgeScoreRequestShape:
         edge, err = svc.explorer_add_edge(s.id, a.node_id, b.node_id)
         assert err is None
         assert edge is not None
-        assert session.query(SetExplorerEdge).filter_by(
-            set_id=s.id, parent_node_id=a.node_id, child_node_id=b.node_id
-        ).count() == 1
+        assert (
+            session.query(SetExplorerEdge)
+            .filter_by(set_id=s.id, parent_node_id=a.node_id, child_node_id=b.node_id)
+            .count()
+            == 1
+        )
 
     def test_add_edge_cycle_rejected(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")

@@ -28,9 +28,7 @@ def run():
     engine = database.engine
     result = engine.execute(UPDATE_SQL % TRAIT_VERSION)
     count = result.rowcount
-    print(
-        "Migration complete: %d row(s) marked as outdated." % count
-    )
+    print("Migration complete: %d row(s) marked as outdated." % count)
 
 
 if __name__ == "__main__":
