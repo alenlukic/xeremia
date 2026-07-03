@@ -31,3 +31,28 @@ def test_run_report_write_creates_markdown_file(tmp_path):
     body = output_path.read_text(encoding="utf-8")
     assert "Tracks processed: 1" in body
     assert "Routed to remediation: 1" in body
+
+
+def test_run_report_renders_resolution_appendix(tmp_path):
+    report = RunReport()
+    result = TrackResult(source=Path("track.mp3"), metadata=SimpleMetadata())
+    result.status = TrackStatus.SUCCESS
+    result.agent_events = [
+        {
+            "type": "field_resolution",
+            "field": "genre",
+            "method": "artist_history",
+            "outcome": "resolved",
+            "resolution_source": "track_repository",
+            "confidence": "high",
+        }
+    ]
+    report.add(result)
+
+    appendix = report.render_resolution_appendix()
+    assert "Field resolution provenance" in appendix
+    assert "artist_history" in appendix
+
+    output_path = report.write(tmp_path / "report.md")
+    body = output_path.read_text(encoding="utf-8")
+    assert "Field resolution provenance" in body

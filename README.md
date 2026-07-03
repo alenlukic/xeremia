@@ -411,6 +411,13 @@ See `.env.example` for a ready-to-copy template.
 | `TRACK_METADATA_AUGMENTED_DIR` | Output directory for enriched tracks (default: `augmented`) |
 | `TRACK_METADATA_LOG_DIR` | Log directory for track-metadata (default: `logs`) |
 | `TRACK_METADATA_RUN_START` | Override timestamp for metadata run (default: current time) |
+| `TRACK_METADATA_RESOLUTION_GENRE_ARTIST_HISTORY` | Enable DB artist-history genre fallback (default: `1`) |
+| `TRACK_METADATA_RESOLUTION_GENRE_BEATPORT` | Enable Beatport artist-page genre fallback via cursor-sdk (default: `1`) |
+| `TRACK_METADATA_RESOLUTION_LABEL_WEB_SEARCH` | Enable catalog-number and direct-label web heuristics (default: `1`) |
+| `TRACK_METADATA_RESOLUTION_LABEL_BEATPORT` | Enable Beatport track-page label fallback via cursor-sdk (default: `1`) |
+| `TRACK_METADATA_RESOLUTION_LABEL_CDR` | Enable qualified `CDR` inference when no label is found (default: `1`) |
+| `TRACK_METADATA_RESOLUTION_EXTERNAL_TIMEOUT_SECONDS` | Timeout for external research heuristics (default: `20`) |
+| `TRACK_METADATA_RESOLUTION_CDR_MIN_SOUNDCLOUD_FOLLOWERS` | Supporting threshold for SoundCloud follower evidence (default: `5000`) |
 | `LOG_LOCATION` | Global log file path (default: `logs/logs.txt`) |
 | `NUM_CORES` | CPU parallelism override (default: system CPU count) |
 | `ES_TRACK_INDEX` | Elasticsearch index name (default: `dj_tracks`) |

@@ -61,3 +61,39 @@ def web_search_query(terms: SearchTerms) -> str | None:
     if not parts:
         return None
     return " ".join(parts)
+
+
+def catalog_number_title_query(terms: SearchTerms) -> str | None:
+    if not terms.artist or not terms.title:
+        return None
+    return f'"{terms.artist}" "{terms.title}" "catalog number"'
+
+
+def catalog_number_album_query(terms: SearchTerms) -> str | None:
+    if not terms.artist or not terms.album:
+        return None
+    return f'"{terms.artist}" "{terms.album}" "catalog number"'
+
+
+def direct_label_title_query(terms: SearchTerms) -> str | None:
+    if not terms.artist or not terms.title:
+        return None
+    return f'"{terms.artist}" "{terms.title}" "record label"'
+
+
+def direct_label_album_query(terms: SearchTerms) -> str | None:
+    if not terms.artist or not terms.album:
+        return None
+    return f'"{terms.artist}" "{terms.album}" "record label"'
+
+
+def catalog_number_label_query(catalog_number: str) -> str:
+    return f'"{catalog_number}" label'
+
+
+def beatport_artist_discovery_query(artist: str) -> str:
+    return f"site:beatport.com {artist}"
+
+
+def beatport_track_discovery_query(artist: str, title: str) -> str:
+    return f'site:beatport.com "{artist}" "{title}"'

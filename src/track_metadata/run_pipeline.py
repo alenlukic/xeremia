@@ -41,6 +41,8 @@ def run_pipeline() -> Path:
 
     report = RunReport()
     if files:
+        from src.db import database
+
         fallback_agent = build_cursor_sdk_agent()
         hydrator = build_metadata_agent(
             candidate_resolver=(
@@ -52,7 +54,8 @@ def run_pipeline() -> Path:
                 missing: fallback_agent.resolve_metadata(
                     file_path, current, sources, missing
                 )
-            )
+            ),
+            session_factory=database.create_session,
         )
         context = build_context(hydrator=hydrator, run_report=report)
         context.agent = fallback_agent

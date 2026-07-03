@@ -746,3 +746,120 @@ def test_resolve_from_candidates_records_error_agent_events(tmp_path: Path) -> N
     assert result is None
     assert events[0]["outcome"] == "error"
     assert "boom" in events[0]["error"]
+
+
+def test_field_resolution_does_not_overwrite_existing_genre_or_label(tmp_path: Path) -> None:
+    from src.track_metadata.research import ArtistGenreCounts
+
+    class _Repo:
+        def query_genres_for_artist(self, artist, **_kwargs):
+            return ArtistGenreCounts(artist, 1, {"Techno": 1})
+
+    class _Web:
+        def search_catalog_number_by_title(self, *_args):
+            return []
+
+        def search_catalog_number_by_album(self, *_args):
+            return []
+
+        def search_label_by_catalog_number(self, *_args):
+            return []
+
+        def search_label_by_title(self, *_args):
+            return []
+
+        def search_label_by_album(self, *_args):
+            return []
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        track_repository=_Repo(),
+        web_research_client=_Web(),
+        web_label_verifier=lambda label: label == "Warp",
+        enable_genre_artist_history=True,
+    )
+    result = hydrator.hydrate(
+        mp3,
+        SimpleMetadata(artist="Artist", title="Track", genre="House", label="Warp"),
+    )
+    assert result.genre == "House"
+    assert result.label == "Warp"
+
+
+def test_field_resolution_records_provenance_events(tmp_path: Path) -> None:
+    from src.track_metadata.research import ArtistGenreCounts
+
+    class _Repo:
+        def query_genres_for_artist(self, artist, **_kwargs):
+            return ArtistGenreCounts(artist, 1, {"Techno": 1})
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        track_repository=_Repo(),
+        enable_label_web_search=False,
+    )
+    events: list[dict[str, object]] = []
+    result = hydrator.hydrate(
+        mp3,
+        SimpleMetadata(artist="Artist", title="Track"),
+        agent_events=events,
+    )
+    assert result.genre == "Techno"
+    resolution_events = [event for event in events if event.get("type") == "field_resolution"]
+    assert resolution_events
+    assert resolution_events[0]["method"] == "artist_history"
+
+
+def test_field_resolution_fail_open_on_web_errors(tmp_path: Path) -> None:
+    class _BoomWeb:
+        def search_catalog_number_by_title(self, *_args):
+            raise RuntimeError("network down")
+
+        def search_catalog_number_by_album(self, *_args):
+            return []
+
+        def search_label_by_catalog_number(self, *_args):
+            return []
+
+        def search_label_by_title(self, *_args):
+            return []
+
+        def search_label_by_album(self, *_args):
+            return []
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        web_research_client=_BoomWeb(),
+        enable_genre_artist_history=False,
+    )
+    events: list[dict[str, object]] = []
+    result = hydrator.hydrate(
+        mp3,
+        SimpleMetadata(artist="Artist", title="Track"),
+        agent_events=events,
+    )
+    assert result.label is None
+    assert any(event.get("outcome") == "error" for event in events)
+
+
+def test_external_research_can_be_disabled_without_disabling_db_genre(tmp_path: Path) -> None:
+    from src.track_metadata.research import ArtistGenreCounts
+
+    class _Repo:
+        def query_genres_for_artist(self, artist, **_kwargs):
+            return ArtistGenreCounts(artist, 1, {"Techno": 1})
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        track_repository=_Repo(),
+        enable_label_web_search=False,
+        enable_genre_beatport=False,
+        enable_label_beatport=False,
+        enable_label_cdr=False,
+    )
+    result = hydrator.hydrate(mp3, SimpleMetadata(artist="Artist", title="Track"))
+    assert result.genre == "Techno"
