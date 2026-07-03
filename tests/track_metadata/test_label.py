@@ -7,13 +7,20 @@ from src.track_metadata.label import (
     album_group_key,
     apply_album_label_consistency,
     canonicalize_label,
+    infer_cdr_label,
     is_album_title_candidate,
     is_rejected_catalog_label,
     resolve_album_label_for_group,
     resolve_label,
+    resolve_label_fallback,
     tracks_share_album_window,
 )
 from src.track_metadata.models import SimpleMetadata
+from src.track_metadata.research import (
+    CatalogNumberObservation,
+    CdrEvidence,
+    LabelSearchObservation,
+)
 
 
 def test_canonicalize_label_maps_cdr_and_white_label():
@@ -110,14 +117,6 @@ def test_album_label_conflict_is_reported():
     )
     assert chosen_two == "Label A"
     assert conflicts_two
-
-
-from src.track_metadata.research import (
-    CatalogNumberObservation,
-    LabelSearchObservation,
-)
-from src.track_metadata.label import infer_cdr_label, resolve_label_fallback
-from src.track_metadata.research import CdrEvidence
 
 
 class _StubWebClient:
