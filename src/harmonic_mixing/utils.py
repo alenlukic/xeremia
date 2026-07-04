@@ -1,4 +1,7 @@
+import logging
 from collections import defaultdict
+
+import mutagen
 
 from src.data_management.config import ArtistFields, TrackDBCols
 from src.harmonic_mixing.config import CollectionStat
@@ -11,6 +14,8 @@ from src.utils.common import (
     is_empty,
 )
 from src.data_management.utils import load_comment, split_artist_string
+
+logger = logging.getLogger(__name__)
 
 
 def flip_camelot_letter(camelot_letter):
@@ -42,10 +47,18 @@ def generate_camelot_map(tracks):
     for track in tracks:
         file_name = track.file_name
         comment = track.comment
-        track_comment = load_comment(
-            comment
-            or AudioFile(file_name).get_metadata().get(TrackDBCols.COMMENT.value)
-        )
+        raw_comment = comment
+        if not raw_comment:
+            try:
+                raw_comment = AudioFile(file_name).get_metadata().get(
+                    TrackDBCols.COMMENT.value
+                )
+            except (FileNotFoundError, OSError, mutagen.MutagenError) as exc:
+                logger.warning(
+                    "Skipping audio metadata fallback for %s: %s", file_name, exc
+                )
+
+        track_comment = load_comment(raw_comment)
 
         # Increment artist/remixer counts
         artists = split_artist_string(track_comment.get(ArtistFields.ARTISTS.value, ""))
