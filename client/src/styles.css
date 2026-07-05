@@ -2569,3 +2569,33 @@ body,
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* === Audio Preview Play Button === */
+.play-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: color var(--transition), background var(--transition);
+  padding: 0;
+}
+
+.play-btn:hover {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.play-btn--playing {
+  color: var(--accent);
+}
+
+.set-ws-col-play {
+  width: 32px;
+}

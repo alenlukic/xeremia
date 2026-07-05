@@ -342,3 +342,88 @@ class TestPutWeightsEndpoint:
     def test_empty_body_returns_422(self, client):
         resp = client.put("/api/weights", json={})
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET/HEAD /api/tracks/{track_id}/audio
+# ---------------------------------------------------------------------------
+
+
+class TestAudioEndpoint:
+    """Endpoint-level tests for the audio preview route."""
+
+    def _session_with_track(self, track):
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = track
+        return mock_session
+
+    def test_returns_404_when_track_missing(self, client):
+        mock_session = self._session_with_track(None)
+        with (
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.config.PROCESSED_MUSIC_DIR", "/music"),
+        ):
+            resp = client.get("/api/tracks/42/audio")
+        assert resp.status_code == 404
+
+    def test_returns_404_when_track_has_no_file(self, client):
+        track = MagicMock()
+        track.file_name = None
+        mock_session = self._session_with_track(track)
+        with (
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.config.PROCESSED_MUSIC_DIR", "/music"),
+        ):
+            resp = client.get("/api/tracks/42/audio")
+        assert resp.status_code == 404
+
+    def test_returns_415_for_unsupported_extension(self, client):
+        track = MagicMock()
+        track.file_name = "song.flac"
+        mock_session = self._session_with_track(track)
+        with (
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.config.PROCESSED_MUSIC_DIR", "/music"),
+        ):
+            resp = client.get("/api/tracks/42/audio")
+        assert resp.status_code == 415
+
+    def test_returns_404_when_file_missing_on_disk(self, client):
+        track = MagicMock()
+        track.file_name = "song.aiff"
+        mock_session = self._session_with_track(track)
+        with (
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.config.PROCESSED_MUSIC_DIR", "/nonexistent-music-dir"),
+        ):
+            resp = client.head("/api/tracks/42/audio")
+        assert resp.status_code == 404
+
+    def test_head_returns_200_with_content_type_for_mp3(self, client, tmp_path):
+        track = MagicMock()
+        track.file_name = "song.mp3"
+        (tmp_path / "song.mp3").write_bytes(b"audio-bytes")
+
+        mock_session = self._session_with_track(track)
+        with (
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)),
+        ):
+            resp = client.head("/api/tracks/42/audio")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("audio/mpeg")
+
+    def test_get_streams_file_bytes(self, client, tmp_path):
+        track = MagicMock()
+        track.file_name = "song.wav"
+        (tmp_path / "song.wav").write_bytes(b"wav-bytes")
+
+        mock_session = self._session_with_track(track)
+        with (
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)),
+        ):
+            resp = client.get("/api/tracks/42/audio")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("audio/wav")
+        assert resp.content == b"wav-bytes"

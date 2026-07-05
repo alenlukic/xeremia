@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import type { TracklistEntry, SearchSuggestion } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
+import { PlayButton } from './PlayButton';
 
 interface Props {
   tracklist: TracklistEntry[];
@@ -115,6 +116,7 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
       ) : (
         <table className="set-tracklist-table">
           <colgroup>
+            <col className="set-ws-col-play" />
             <col className="set-ws-col-num" />
             <col className="set-ws-col-title" />
             <col className="set-ws-col-key" />
@@ -124,6 +126,7 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
           </colgroup>
           <thead>
             <tr>
+              <th className="set-ws-th"></th>
               <th className="set-ws-th">#</th>
               <th className="set-ws-th">Title</th>
               <th className="set-ws-th">Key</th>
@@ -139,6 +142,9 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
                 draggable
                 onDragStart={e => e.dataTransfer.setData('text/plain', String(entry.track_id))}
               >
+                <td className="set-ws-cell-play">
+                  <PlayButton trackId={entry.track_id} title={entry.track?.title ?? ''} />
+                </td>
                 <td className="mono set-ws-cell-num">{i + 1}</td>
                 <td className="set-ws-cell-title">{cleanTitle(entry.track, entry.track_id)}</td>
                 <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>

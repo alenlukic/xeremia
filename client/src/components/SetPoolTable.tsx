@@ -3,6 +3,7 @@ import type { PoolEntry } from '../types';
 import { cleanTitle } from '../utils/trackTitle';
 import { searchTracks } from '../api/http';
 import type { SearchSuggestion } from '../types';
+import { PlayButton } from './PlayButton';
 
 interface Props {
   pool: PoolEntry[];
@@ -102,6 +103,7 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: 
       ) : (
         <table className="set-pool-table">
           <colgroup>
+            <col className="set-ws-col-play" />
             <col className="set-ws-col-num" />
             <col className="set-ws-col-title" />
             <col className="set-ws-col-key" />
@@ -110,6 +112,7 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: 
           </colgroup>
           <thead>
             <tr>
+              <th className="set-ws-th"></th>
               <th className="set-ws-th set-ws-th-sortable" onClick={() => handleSort('insertion_order')}>
                 #{sortIndicator('insertion_order')}
               </th>
@@ -132,6 +135,9 @@ export function SetPoolTable({ pool, onRemove, onMoveToTracklist, onAddTrack }: 
                 draggable
                 onDragStart={e => e.dataTransfer.setData('text/plain', String(entry.track_id))}
               >
+                <td className="set-ws-cell-play">
+                  <PlayButton trackId={entry.track_id} title={entry.track?.title ?? ''} />
+                </td>
                 <td className="mono set-ws-cell-num">{entry.insertion_order + 1}</td>
                 <td className="set-ws-cell-title">{cleanTitle(entry.track, entry.track_id)}</td>
                 <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>

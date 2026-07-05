@@ -12,6 +12,7 @@ import {
 } from '@tanstack/react-table';
 import type { Track, SearchSuggestion, TransitionMatch } from '../types';
 import { formatScore, formatOverallScore } from '../utils';
+import { PlayButton } from './PlayButton';
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key';
 
@@ -252,6 +253,7 @@ export const MatchesPanel = memo(function MatchesPanel({
         minSize: 100,
         cell: (info) => (
           <div className="match-track-cell">
+            <PlayButton trackId={info.row.original.candidate_id} title={info.getValue()} />
             <button
               className="match-track-link"
               onClick={() => onUseAsSource?.(info.row.original.candidate_id)}

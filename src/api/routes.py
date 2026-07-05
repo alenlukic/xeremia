@@ -1,10 +1,13 @@
 """API route definitions."""
 
 import logging
+import os
 from collections import Counter
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from src.api.schemas import (
     CacheStatsResponse,
@@ -147,6 +150,63 @@ def api_track_traits():
         session.rollback()
         logger.exception("Track trait listing failed")
         raise HTTPException(status_code=500, detail="Track trait listing failed")
+    finally:
+        session.close()
+
+
+_SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".aiff", ".aif"}
+_AUDIO_MEDIA_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+}
+
+
+@router.api_route("/tracks/{track_id}/audio", methods=["GET", "HEAD"])
+def api_track_audio(track_id: int):
+    from src.models.track import Track
+    from src.config import PROCESSED_MUSIC_DIR
+
+    if not PROCESSED_MUSIC_DIR:
+        raise HTTPException(status_code=500, detail="Audio directory not configured")
+
+    session = _get_session()
+    try:
+        track = session.query(Track).filter_by(id=track_id).first()
+        if track is None:
+            raise HTTPException(status_code=404, detail="Track not found")
+
+        file_name = track.file_name
+        if not file_name:
+            raise HTTPException(status_code=404, detail="Track has no associated file")
+
+        ext = os.path.splitext(file_name)[1].lower()
+        if ext not in _SUPPORTED_AUDIO_EXTENSIONS:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported audio format '{ext}'. Supported: MP3, WAV, AIFF, AIF.",
+            )
+
+        file_path = Path(PROCESSED_MUSIC_DIR) / file_name
+        if not file_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Audio file not found on disk for track {track_id}",
+            )
+
+        media_type = _AUDIO_MEDIA_TYPES[ext]
+        return FileResponse(
+            path=str(file_path),
+            media_type=media_type,
+            filename=file_name,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Audio streaming failed for track_id=%s", track_id)
+        raise HTTPException(status_code=500, detail="Audio streaming failed")
     finally:
         session.close()
 
