@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Keep track_metadata config deterministic in local/dev shells by loading the
+# repository .env before evaluating any feature toggles.
+load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=True)
 
 MISSION_CRITICAL_FIELDS: tuple[str, ...] = (
     "key",

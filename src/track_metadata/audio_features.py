@@ -36,7 +36,10 @@ def analyze_missing_audio_features(
     if needs_bpm:
         bpm_value, _confidence = fuse_bpm(estimate_bpm_candidates(audio_path))
         if bpm_value is not None:
-            metadata.bpm = round(bpm_value, 2)
+            # Estimated tempos should follow library convention: whole BPMs are
+            # the default, with decimal-tempo exceptions carried only when tags
+            # already provide them.
+            metadata.bpm = float(round(bpm_value))
             logging.info("Estimated BPM for %s: %.2f", audio_path.name, metadata.bpm)
 
     if needs_key:

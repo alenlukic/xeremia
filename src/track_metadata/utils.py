@@ -19,7 +19,9 @@ def _xeremia_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-load_dotenv(_xeremia_root() / ".env")
+# Ensure .env values stay authoritative for local metadata runs, even if a
+# shell accidentally exported stale TRACK_METADATA_* values earlier.
+load_dotenv(_xeremia_root() / ".env", override=True)
 
 
 def _configured_path(env_var: str, default: str) -> Path:

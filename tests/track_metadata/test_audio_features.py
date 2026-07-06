@@ -17,9 +17,9 @@ from src.track_metadata.models import SimpleMetadata
 @pytest.mark.parametrize(
     ("initial_bpm", "initial_key", "expected_bpm", "expected_key"),
     [
-        (None, None, 128.12, "C#m"),
+        (None, None, 128.0, "C#m"),
         (120.0, None, 120.0, "C#m"),
-        (None, "Gm", 128.12, "Gm"),
+        (None, "Gm", 128.0, "Gm"),
         (120.0, "Gm", 120.0, "Gm"),
     ],
 )

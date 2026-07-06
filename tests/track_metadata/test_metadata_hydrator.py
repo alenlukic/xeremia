@@ -698,6 +698,40 @@ def test_hydrate_resolves_remixer_from_web_search_for_remix_prefix(tmp_path: Pat
     assert result.remixer == "LonelyFans"
 
 
+def test_hydrate_prefers_remix_prefix_original_work_over_existing_tags(
+    tmp_path: Path,
+) -> None:
+    mp3 = _staged_mp3(
+        tmp_path, "[Remix of ATC - Around The World] LonelyFans - Na Na Na.mp3"
+    )
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("musicbrainz")])
+    existing = SimpleMetadata(artist="LonelyFans", title="Na Na Na")
+
+    result = hydrator.hydrate(mp3, existing)
+    assert result.artist == "ATC"
+    assert result.title == "Around The World"
+    assert result.remixer == "LonelyFans"
+
+
+def test_hydrate_preserves_existing_remixer_format_when_matching_seed(
+    tmp_path: Path,
+) -> None:
+    mp3 = _staged_mp3(
+        tmp_path,
+        "[Remix of Fatima Yamaha - What's a Girl To Do] "
+        "KI_KI - What_s a Girl to Do in _25 (Extended) (Extended).mp3",
+    )
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("musicbrainz")])
+    existing = SimpleMetadata(
+        artist="KI/KI", title="What's a Girl to Do in '25 (Extended) (Extended)"
+    )
+
+    result = hydrator.hydrate(mp3, existing)
+    assert result.artist == "Fatima Yamaha"
+    assert result.title == "What's a Girl To Do"
+    assert result.remixer == "KI/KI"
+
+
 def test_classify_free_download_genre_assigns_ravevival(tmp_path: Path) -> None:
     class _FreeDownloadWeb:
         def detect_free_download(self, artist, title):

@@ -36,13 +36,21 @@ def _extract_remixer(title: str | None) -> str | None:
     if not title:
         return None
 
-    match = re.search(r"\(([^()]+?)\s+(?:remix|mix)\)", title, flags=re.IGNORECASE)
+    match = re.search(
+        r"\(([^()]+?)\s+(?:mix|remix|edit|dub|version|rework|vip|live|bootleg)\)",
+        title,
+        flags=re.IGNORECASE,
+    )
     if match:
         remixer = match.group(1).strip()
         if remixer.casefold() not in {"original", "extended"}:
             return remixer or None
 
-    match = re.search(r"\[([^\[\]]+?)\s+(?:remix|mix)\]", title, flags=re.IGNORECASE)
+    match = re.search(
+        r"\[([^\[\]]+?)\s+(?:mix|remix|edit|dub|version|rework|vip|live|bootleg)\]",
+        title,
+        flags=re.IGNORECASE,
+    )
     if match:
         remixer = match.group(1).strip()
         if remixer.casefold() not in {"original", "extended"}:
@@ -56,6 +64,22 @@ def _normalize_whitespace(value: str | None) -> str | None:
         return None
     normalized = re.sub(r"\s+", " ", value).strip()
     return normalized or None
+
+
+def _format_artist_display(value: str | None) -> str | None:
+    normalized = _normalize_whitespace(value)
+    if not normalized:
+        return None
+
+    parts = [
+        part.strip()
+        for part in re.split(r"\s*(?:,| and )\s*", normalized, flags=re.IGNORECASE)
+        if part.strip()
+    ]
+    if len(parts) <= 1:
+        return normalized
+    separator = " and " if any("&" in part for part in parts) else " & "
+    return separator.join(parts)
 
 
 def _has_mix_annotation(value: str | None) -> bool:
@@ -114,9 +138,9 @@ def _compose_display_title(
     metadata: SimpleMetadata,
     camelot_code: str | None,
 ) -> str:
-    artist = _normalize_whitespace(metadata.artist) or "Unknown Artist"
+    artist = _format_artist_display(metadata.artist) or "Unknown Artist"
     title = _clean_title_seed(metadata.title) or "Unknown Title"
-    remixer = _normalize_whitespace(metadata.remixer)
+    remixer = _format_artist_display(metadata.remixer)
 
     if (
         remixer
@@ -140,6 +164,36 @@ _REMIX_PREFIX_PATTERN = re.compile(
 )
 
 
+def _parse_remix_prefix_tail(tail: str | None) -> str | None:
+    candidate = _normalize_whitespace(tail)
+    if not candidate:
+        return None
+
+    if " - " in candidate:
+        remixer, _ = candidate.split(" - ", 1)
+        remixer = _normalize_whitespace(remixer)
+        if remixer:
+            return remixer
+
+    extracted = _normalize_whitespace(_extract_remixer(candidate))
+    if extracted:
+        return extracted
+
+    fallback = re.match(
+        r"^(.+?)\s+(?:mix|remix|edit|dub|version|rework|vip|live|bootleg)\b",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    if fallback:
+        remixer = _normalize_whitespace(fallback.group(1))
+        if remixer and remixer.casefold() not in {"original", "extended"}:
+            if "[" in candidate and "(" not in candidate and " - " not in candidate:
+                return remixer.split(" ", 1)[0]
+            return remixer
+
+    return None
+
+
 def _parse_filename_seed(path: Path) -> SimpleMetadata:
     stem = path.stem
     stem = re.sub(r"[_]+", " ", stem)
@@ -150,7 +204,7 @@ def _parse_filename_seed(path: Path) -> SimpleMetadata:
         return SimpleMetadata(
             artist=_normalize_whitespace(remix_match.group(1)),
             title=_clean_title_seed(remix_match.group(2)),
-            remixer=None,
+            remixer=_parse_remix_prefix_tail(remix_match.group(3)),
         )
 
     if " - " not in stem:

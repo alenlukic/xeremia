@@ -24,6 +24,7 @@ from src.track_metadata.matching import (
     _best_year,
     _extract_remixer,
     _merge_missing,
+    _normalize_for_match,
     _parse_filename_seed,
 )
 from src.track_metadata.models import SimpleMetadata
@@ -144,7 +145,22 @@ class MetadataHydrator:
             logging.info("Using cached metadata for %s", file_path.name)
             return cached
 
-        seed = _merge_missing(existing, _parse_filename_seed(file_path))
+        parsed_seed = _parse_filename_seed(file_path)
+        # Remix-prefix filenames encode the original work identity. Preserve that
+        # artist/title seed even if imported tags currently point at the remixer.
+        if file_path.stem.casefold().startswith("[remix of "):
+            seed = _merge_missing(parsed_seed, existing)
+            if (
+                parsed_seed.remixer
+                and existing.artist
+                and _normalize_for_match(parsed_seed.remixer)
+                == _normalize_for_match(existing.artist)
+            ):
+                # Keep higher-fidelity artist formatting from existing tags
+                # (e.g. KI/KI instead of KI KI) when it matches the parsed remixer.
+                seed.remixer = existing.artist
+        else:
+            seed = _merge_missing(existing, parsed_seed)
         if self.skip_beatport_hydration and is_beatport_encoded(file_path):
             logging.info(
                 "Skipping remote hydration for Beatport-encoded file %s", file_path.name
