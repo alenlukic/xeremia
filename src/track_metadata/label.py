@@ -8,8 +8,6 @@ from typing import Any
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.research import (
     BrowserResearchClient,
-    CatalogLookupClient,
-    CatalogNumberObservation,
     CdrEvidence,
     LabelSearchObservation,
     ResolutionProvenance,
@@ -326,18 +324,6 @@ def _album_is_usable(album: str | None) -> bool:
     return lowered not in {"unknown", "n/a", "none", "untitled"}
 
 
-def _pick_confirmed_catalog(
-    observations: list[CatalogNumberObservation],
-) -> CatalogNumberObservation | None:
-    confirmed = [item for item in observations if item.identity_confirmed]
-    if not confirmed:
-        return None
-    numbers = {item.catalog_number.casefold() for item in confirmed}
-    if len(numbers) != 1:
-        return None
-    return confirmed[0]
-
-
 def _pick_confirmed_label(
     observations: list[LabelSearchObservation],
 ) -> LabelSearchObservation | None:
@@ -355,31 +341,6 @@ def _pick_confirmed_label(
     if len(labels) != 1:
         return None
     return next(item for item in viable if canonicalize_label(item.label) in labels)
-
-
-def _resolve_from_catalog_number(
-    catalog_number: str,
-    *,
-    catalog_client: CatalogLookupClient | None,
-    web_client: WebSearchClient | None,
-) -> str | None:
-    if catalog_client is not None:
-        try:
-            label = catalog_client.lookup_label_by_catalog_number(catalog_number)
-        except Exception:
-            label = None
-        if label:
-            return canonicalize_label(label)
-
-    if web_client is not None:
-        try:
-            observations = web_client.search_label_by_catalog_number(catalog_number)
-        except Exception:
-            observations = []
-        picked = _pick_confirmed_label(observations)
-        if picked and picked.label:
-            return canonicalize_label(picked.label)
-    return None
 
 
 def infer_cdr_label(evidence: CdrEvidence) -> bool:
@@ -409,7 +370,6 @@ def resolve_label_fallback(
     title: str | None,
     album: str | None = None,
     web_client: WebSearchClient | None = None,
-    catalog_client: CatalogLookupClient | None = None,
     browser: BrowserResearchClient | None = None,
     enable_web_search: bool = True,
     enable_beatport: bool = True,
@@ -422,93 +382,6 @@ def resolve_label_fallback(
     title_label_obs: list[LabelSearchObservation] = []
 
     if enable_web_search and web_client is not None and artist and title:
-        try:
-            title_catalog_obs = web_client.search_catalog_number_by_title(artist, title)
-        except Exception as exc:
-            events.append(
-                ResolutionProvenance(
-                    field="label",
-                    method="catalog_number_title",
-                    outcome="error",
-                    source="web_search",
-                    confidence="error",
-                    evidence={"error": str(exc)},
-                    inputs=inputs,
-                )
-            )
-            title_catalog_obs = []
-        else:
-            picked = _pick_confirmed_catalog(title_catalog_obs)
-            events.append(
-                ResolutionProvenance(
-                    field="label",
-                    method="catalog_number_title",
-                    outcome="resolved" if picked else "unresolved",
-                    source=picked.source_url if picked else "web_search",
-                    confidence="high" if picked else "no_match",
-                    evidence={
-                        "observations": [item.catalog_number for item in title_catalog_obs]
-                    },
-                    inputs=inputs,
-                )
-            )
-            if picked:
-                cdr_evidence.catalog_number_found = True
-                cdr_evidence.track_identity_confirmed = True
-                label = _resolve_from_catalog_number(
-                    picked.catalog_number,
-                    catalog_client=catalog_client,
-                    web_client=web_client,
-                )
-                if label:
-                    return label, events
-
-        if _album_is_usable(album):
-            try:
-                album_catalog_obs = web_client.search_catalog_number_by_album(
-                    artist, album
-                )
-            except Exception as exc:
-                events.append(
-                    ResolutionProvenance(
-                        field="label",
-                        method="catalog_number_album",
-                        outcome="error",
-                        source="web_search",
-                        confidence="error",
-                        evidence={"error": str(exc)},
-                        inputs=inputs,
-                    )
-                )
-                album_catalog_obs = []
-            else:
-                picked = _pick_confirmed_catalog(album_catalog_obs)
-                events.append(
-                    ResolutionProvenance(
-                        field="label",
-                        method="catalog_number_album",
-                        outcome="resolved" if picked else "unresolved",
-                        source=picked.source_url if picked else "web_search",
-                        confidence="high" if picked else "no_match",
-                        evidence={
-                            "observations": [
-                                item.catalog_number for item in album_catalog_obs
-                            ]
-                        },
-                        inputs=inputs,
-                    )
-                )
-                if picked:
-                    cdr_evidence.catalog_number_found = True
-                    cdr_evidence.track_identity_confirmed = True
-                    label = _resolve_from_catalog_number(
-                        picked.catalog_number,
-                        catalog_client=catalog_client,
-                        web_client=web_client,
-                    )
-                    if label:
-                        return label, events
-
         try:
             title_label_obs = web_client.search_label_by_title(artist, title)
         except Exception as exc:

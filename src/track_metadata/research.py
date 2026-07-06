@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Protocol
 
 from src.track_metadata.matching import _normalize_for_match, _similarity
@@ -97,33 +96,7 @@ class TrackRepository(Protocol):
         ...
 
 
-class CatalogLookupClient(Protocol):
-    def lookup_label_by_catalog_number(
-        self,
-        catalog_number: str,
-        *,
-        artist: str | None = None,
-        title: str | None = None,
-    ) -> str | None:
-        ...
-
-
 class WebSearchClient(Protocol):
-    def search_catalog_number_by_title(
-        self, artist: str | None, title: str | None
-    ) -> list[CatalogNumberObservation]:
-        ...
-
-    def search_catalog_number_by_album(
-        self, artist: str | None, album: str | None
-    ) -> list[CatalogNumberObservation]:
-        ...
-
-    def search_label_by_catalog_number(
-        self, catalog_number: str
-    ) -> list[LabelSearchObservation]:
-        ...
-
     def search_label_by_title(
         self, artist: str | None, title: str | None
     ) -> list[LabelSearchObservation]:
@@ -132,6 +105,9 @@ class WebSearchClient(Protocol):
     def search_label_by_album(
         self, artist: str | None, album: str | None
     ) -> list[LabelSearchObservation]:
+        ...
+
+    def detect_free_download(self, artist: str | None, title: str | None) -> bool:
         ...
 
 
@@ -225,49 +201,3 @@ def _track_identity_key(row: Any) -> str | None:
     if file_name and title:
         return f"{file_name}|{_normalize_for_match(title)}"
     return None
-
-
-class CatalogSourceLookupClient:
-    """Resolve labels from catalog numbers via existing catalog integrations."""
-
-    def __init__(self, sources: list[Any] | None = None) -> None:
-        if sources is None:
-            from src.track_metadata.sources.discogs import DiscogsSource
-            from src.track_metadata.sources.musicbrainz import MusicBrainzSource
-
-            self._sources = [MusicBrainzSource(), DiscogsSource()]
-        else:
-            self._sources = sources
-
-    def lookup_label_by_catalog_number(
-        self,
-        catalog_number: str,
-        *,
-        artist: str | None = None,
-        title: str | None = None,
-    ) -> str | None:
-        from src.track_metadata.sources.base import LookupContext
-        from src.track_metadata.sources.constants import (
-            DEFAULT_USER_AGENT,
-            HTTP_TIMEOUT_SECONDS,
-        )
-        from src.track_metadata.models import SimpleMetadata
-        from src.utils.http import RateLimitedHttpClient
-
-        seed = SimpleMetadata(artist=artist, title=title, album=catalog_number)
-        context = LookupContext(
-            file_path=Path("catalog-lookup"),
-            http=RateLimitedHttpClient(
-                user_agent=DEFAULT_USER_AGENT, default_timeout=HTTP_TIMEOUT_SECONDS
-            ),
-        )
-        for source in self._sources:
-            lookup = getattr(source, "lookup_by_catalog_number", None)
-            if callable(lookup):
-                try:
-                    candidate = lookup(catalog_number, seed, context)
-                except Exception:
-                    candidate = None
-                if candidate is not None and candidate.label:
-                    return candidate.label
-        return None

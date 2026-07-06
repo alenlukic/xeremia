@@ -7,9 +7,17 @@ from src.track_metadata.genre import (
     resolve_beatport_artist_genre,
     resolve_dynamic_genre,
     resolve_genre_fallback,
+    resolve_ravevival,
     resolve_single_genre,
 )
 from src.track_metadata.research import ArtistGenreCounts, BeatportArtistGenreObservation
+
+
+def test_resolve_ravevival_boundary_values():
+    assert resolve_ravevival(free_download=True, bpm=140.0) == "Ravevival"
+    assert resolve_ravevival(free_download=True, bpm=139.0) is None
+    assert resolve_ravevival(free_download=False, bpm=150.0) is None
+    assert resolve_ravevival(free_download=True, bpm=None) is None
 
 
 def test_resolve_single_genre_prefers_beatport_then_lastfm():

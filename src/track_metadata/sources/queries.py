@@ -13,6 +13,10 @@ from dataclasses import dataclass
 
 from src.track_metadata.matching import _clean_title_seed, _normalize_whitespace
 from src.track_metadata.models import SimpleMetadata
+from src.track_metadata.sources.constants import (
+    FREE_DOWNLOAD_SEARCH_SITES,
+    METADATA_SEARCH_SITES,
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,15 @@ def build_search_terms(seed: SimpleMetadata) -> SearchTerms:
         title=_clean_title_seed(seed.title),
         album=_normalize_whitespace(seed.album),
     )
+
+
+def _site_restriction(sites: tuple[str, ...] = METADATA_SEARCH_SITES) -> str:
+    clauses = " OR ".join(f"site:{site}" for site in sites)
+    return f"({clauses})"
+
+
+def _with_site_restriction(query: str, *, sites: tuple[str, ...] = METADATA_SEARCH_SITES) -> str:
+    return f"{_site_restriction(sites)} {query}"
 
 
 def musicbrainz_query(terms: SearchTerms) -> str | None:
@@ -60,35 +73,26 @@ def web_search_query(terms: SearchTerms) -> str | None:
     parts = [part for part in (terms.artist, terms.title) if part]
     if not parts:
         return None
-    return " ".join(parts)
-
-
-def catalog_number_title_query(terms: SearchTerms) -> str | None:
-    if not terms.artist or not terms.title:
-        return None
-    return f'"{terms.artist}" "{terms.title}" "catalog number"'
-
-
-def catalog_number_album_query(terms: SearchTerms) -> str | None:
-    if not terms.artist or not terms.album:
-        return None
-    return f'"{terms.artist}" "{terms.album}" "catalog number"'
+    return _with_site_restriction(" ".join(parts))
 
 
 def direct_label_title_query(terms: SearchTerms) -> str | None:
     if not terms.artist or not terms.title:
         return None
-    return f'"{terms.artist}" "{terms.title}" "record label"'
+    return _with_site_restriction(f'"{terms.artist}" "{terms.title}" "record label"')
 
 
 def direct_label_album_query(terms: SearchTerms) -> str | None:
     if not terms.artist or not terms.album:
         return None
-    return f'"{terms.artist}" "{terms.album}" "record label"'
+    return _with_site_restriction(f'"{terms.artist}" "{terms.album}" "record label"')
 
 
-def catalog_number_label_query(catalog_number: str) -> str:
-    return f'"{catalog_number}" label'
+def free_download_query(terms: SearchTerms) -> str | None:
+    if not terms.artist or not terms.title:
+        return None
+    core = f'"{terms.artist}" "{terms.title}" "free download"'
+    return _with_site_restriction(core, sites=FREE_DOWNLOAD_SEARCH_SITES)
 
 
 def beatport_artist_discovery_query(artist: str) -> str:

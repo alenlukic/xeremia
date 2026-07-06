@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import requests
+import pytest
 
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.sources import acoustid_source as acoustid_mod
@@ -16,7 +17,11 @@ from src.track_metadata.sources.musicbrainz import (
     MusicBrainzSource,
     select_best_recording,
 )
-from src.track_metadata.sources.web_search import WebSearchSource
+from src.track_metadata.sources.web_search import (
+    WebSearchResearchClient,
+    WebSearchSource,
+    is_free_download_result,
+)
 from src.utils.http import RateLimitedHttpClient
 
 
@@ -364,3 +369,62 @@ def test_web_search_returns_none_without_query() -> None:
     source = WebSearchSource()
     result = source.lookup(SimpleMetadata(), _context(_client(MagicMock())))
     assert result is None
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        (
+            {
+                "title": "Artist - Track",
+                "snippet": "Free download on SoundCloud",
+                "url": "https://soundcloud.com/artist/track",
+            },
+            True,
+        ),
+        (
+            {
+                "title": "Artist - Track | Hypeddit",
+                "snippet": "Download track",
+                "url": "https://hypeddit.com/track",
+            },
+            True,
+        ),
+        (
+            {
+                "title": "Artist - Track",
+                "snippet": "Stream only",
+                "url": "https://soundcloud.com/artist/track",
+            },
+            False,
+        ),
+    ],
+)
+def test_is_free_download_result(result: dict[str, str], expected: bool) -> None:
+    assert is_free_download_result(result) is expected
+
+
+def test_detect_free_download_uses_site_restricted_query() -> None:
+    html = (
+        '<a class="result__a" href="https://soundcloud.com/a/t">Artist - Track | SoundCloud</a>'
+        '<div class="result__snippet">Free download</div>'
+    )
+    captured: dict[str, str] = {}
+
+    def _get(url: str, *, params: dict[str, str] | None = None, timeout=None, **_kwargs):
+        captured["query"] = params["q"] if params else ""
+        return _text_response(html)
+
+    client = WebSearchResearchClient(_client(_get))
+    assert client.detect_free_download("Artist", "Track") is True
+    assert captured["query"].startswith("(site:soundcloud.com OR site:hypeddit.com)")
+
+
+def test_detect_free_download_requires_identity_match() -> None:
+    html = (
+        '<a class="result__a" href="https://soundcloud.com/other/track">'
+        "Other Artist - Other Track | SoundCloud</a>"
+        '<div class="result__snippet">Free download</div>'
+    )
+    client = WebSearchResearchClient(_client(lambda *_args, **_kwargs: _text_response(html)))
+    assert client.detect_free_download("Artist", "Track") is False
