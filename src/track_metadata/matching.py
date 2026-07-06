@@ -134,10 +134,24 @@ def _compose_display_title(
     return f"{prefix}{artist} - {title}".strip()
 
 
+_REMIX_PREFIX_PATTERN = re.compile(
+    r"^\[Remix of (.+?) - (.+?)\]\s*(.*)$",
+    flags=re.IGNORECASE,
+)
+
+
 def _parse_filename_seed(path: Path) -> SimpleMetadata:
     stem = path.stem
     stem = re.sub(r"[_]+", " ", stem)
     stem = re.sub(r"\s+", " ", stem).strip()
+
+    remix_match = _REMIX_PREFIX_PATTERN.match(stem)
+    if remix_match:
+        return SimpleMetadata(
+            artist=_normalize_whitespace(remix_match.group(1)),
+            title=_clean_title_seed(remix_match.group(2)),
+            remixer=None,
+        )
 
     if " - " not in stem:
         return SimpleMetadata(

@@ -13,6 +13,7 @@ import { useCollectionCache } from './hooks/useCollectionCache';
 import { useCacheStats } from './hooks/useCacheStats';
 import { useWeights } from './hooks/useWeights';
 import { useSetBuilder } from './hooks/useSetBuilder';
+import { AudioPlayerProvider } from './hooks/useAudioPlayer';
 import type { Track, SearchSuggestion, TransitionMatch, TransitionChainEntry } from './types';
 
 type TabKey = 'matches' | 'browse' | 'admin' | 'set';
@@ -290,7 +291,8 @@ export default function App() {
   }, [setBuilder.activeSet]);
 
   return (
-    <div className="app-shell-v2">
+    <AudioPlayerProvider>
+      <div className="app-shell-v2">
       {!weightsLoading && Object.keys(weights).length > 0 && (
         <div ref={gaugeRowRef}>
           <WeightControls
@@ -474,6 +476,7 @@ export default function App() {
           />
         )}
       </div>
-    </div>
+      </div>
+    </AudioPlayerProvider>
   );
 }

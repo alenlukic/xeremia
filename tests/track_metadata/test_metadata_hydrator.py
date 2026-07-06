@@ -425,6 +425,9 @@ def _make_hydrator(
     web_source: MetadataSource | None = None,
     **kwargs: Any,
 ) -> MetadataHydrator:
+    # Unit tests are offline by default. Tests that exercise external research
+    # must opt in explicitly and provide a fake client.
+    kwargs.setdefault("enable_label_web_search", False)
     return MetadataHydrator(
         cache=MetadataCache(path=tmp_path / "cache.json"),
         catalog_sources=catalog_sources if catalog_sources is not None else [],
@@ -439,6 +442,13 @@ def _staged_mp3(tmp_path: Path, name: str) -> Path:
     mp3 = tmp_path / name
     shutil.copy2(SAMPLE_MP3, mp3)
     return mp3
+
+
+def test_unit_hydrator_defaults_are_offline(tmp_path: Path) -> None:
+    hydrator = _make_hydrator(tmp_path)
+
+    assert hydrator._catalog_sources == []
+    assert hydrator.enable_label_web_search is False
 
 
 def test_hydrate_uses_cache_hit(tmp_path: Path) -> None:
@@ -625,11 +635,17 @@ def test_hydrate_applies_label_fallback(tmp_path: Path) -> None:
 
 
 def test_hydrate_skips_remote_lookups_for_beatport_encoded_file(tmp_path: Path) -> None:
-    from mutagen.id3 import ID3, TENC
+    from mutagen.id3 import ID3, TALB, TBPM, TCON, TENC, TIT2, TKEY, TPE1
 
     mp3 = _staged_mp3(tmp_path, "Artist - Beatport Track.mp3")
     tags = ID3(str(mp3))
     tags.add(TENC(encoding=3, text="Beatport"))
+    tags.add(TPE1(encoding=3, text="Beatport Artist"))
+    tags.add(TIT2(encoding=3, text="Beatport Title"))
+    tags.add(TALB(encoding=3, text="Beatport Album"))
+    tags.add(TCON(encoding=3, text="Techno"))
+    tags.add(TKEY(encoding=3, text="8A"))
+    tags.add(TBPM(encoding=3, text="128"))
     tags.save(str(mp3), v2_version=4)
 
     hydrator = _make_hydrator(
@@ -637,9 +653,90 @@ def test_hydrate_skips_remote_lookups_for_beatport_encoded_file(tmp_path: Path) 
         catalog_sources=[_FakeSource("musicbrainz", boom=True)],
         web_source=_FakeSource("web_search", boom=True),
     )
+    result = hydrator.hydrate(
+        mp3,
+        SimpleMetadata(
+            artist="Beatport Artist",
+            title="Beatport Title",
+            album="Beatport Album",
+            genre="Techno",
+            key="8A",
+            bpm=128.0,
+        ),
+    )
+    assert result.artist == "Beatport Artist"
+    assert result.title == "Beatport Title"
+    assert result.album == "Beatport Album"
+    assert result.genre == "Techno"
+    assert result.key is None
+    assert result.bpm is None
+
+
+def test_hydrate_resolves_remixer_from_web_search_for_remix_prefix(tmp_path: Path) -> None:
+    class _RemixWebSource(MetadataSource):
+        name = "web_search"
+        merge_fields = None
+
+        def lookup(self, seed: SimpleMetadata, context: LookupContext) -> SimpleMetadata | None:
+            return SimpleMetadata(
+                artist=seed.artist,
+                title=f"{seed.title} (LonelyFans Remix)",
+                remixer="LonelyFans",
+            )
+
+    mp3 = _staged_mp3(
+        tmp_path, "[Remix of ATC - Around The World] LonelyFans - Na Na Na.mp3"
+    )
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[_FakeSource("musicbrainz")],
+        web_source=_RemixWebSource(),
+    )
     result = hydrator.hydrate(mp3, SimpleMetadata())
-    assert result.artist == "Artist"
-    assert result.title == "Beatport Track"
+    assert result.artist == "ATC"
+    assert result.title == "Around The World"
+    assert result.remixer == "LonelyFans"
+
+
+def test_classify_free_download_genre_assigns_ravevival(tmp_path: Path) -> None:
+    class _FreeDownloadWeb:
+        def detect_free_download(self, artist, title):
+            return True
+
+        def search_label_by_title(self, *_args):
+            return []
+
+        def search_label_by_album(self, *_args):
+            return []
+
+    hydrator = _make_hydrator(tmp_path, web_research_client=_FreeDownloadWeb())
+    metadata = SimpleMetadata(artist="Artist", title="Track", genre="Techno", bpm=140.0)
+    assert hydrator.classify_free_download_genre(metadata) == "Ravevival"
+
+
+def test_classify_free_download_genre_returns_none_below_threshold(tmp_path: Path) -> None:
+    class _FreeDownloadWeb:
+        def detect_free_download(self, artist, title):
+            return True
+
+    hydrator = _make_hydrator(tmp_path, web_research_client=_FreeDownloadWeb())
+    metadata = SimpleMetadata(artist="Artist", title="Track", genre="Techno", bpm=139.0)
+    assert hydrator.classify_free_download_genre(metadata) is None
+
+
+def test_cache_miss_when_schema_version_changes(tmp_path: Path) -> None:
+    mp3 = _staged_mp3(tmp_path, "artist - track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path, catalog_sources=[_FakeSource("musicbrainz")]
+    )
+    key = hydrator.cache.file_key(mp3)
+    hydrator.cache._entries[key] = {
+        "final": SimpleMetadata(title="Stale Title").to_dict(),
+        "version": 1,
+    }
+
+    result = hydrator.hydrate(mp3, SimpleMetadata())
+    assert result.title != "Stale Title"
 
 
 # ---------------------------------------------------------------------------
@@ -756,15 +853,6 @@ def test_field_resolution_does_not_overwrite_existing_genre_or_label(tmp_path: P
             return ArtistGenreCounts(artist, 1, {"Techno": 1})
 
     class _Web:
-        def search_catalog_number_by_title(self, *_args):
-            return []
-
-        def search_catalog_number_by_album(self, *_args):
-            return []
-
-        def search_label_by_catalog_number(self, *_args):
-            return []
-
         def search_label_by_title(self, *_args):
             return []
 
@@ -814,17 +902,8 @@ def test_field_resolution_records_provenance_events(tmp_path: Path) -> None:
 
 def test_field_resolution_fail_open_on_web_errors(tmp_path: Path) -> None:
     class _BoomWeb:
-        def search_catalog_number_by_title(self, *_args):
-            raise RuntimeError("network down")
-
-        def search_catalog_number_by_album(self, *_args):
-            return []
-
-        def search_label_by_catalog_number(self, *_args):
-            return []
-
         def search_label_by_title(self, *_args):
-            return []
+            raise RuntimeError("network down")
 
         def search_label_by_album(self, *_args):
             return []
@@ -833,6 +912,7 @@ def test_field_resolution_fail_open_on_web_errors(tmp_path: Path) -> None:
     hydrator = _make_hydrator(
         tmp_path,
         web_research_client=_BoomWeb(),
+        enable_label_web_search=True,
         enable_genre_artist_history=False,
     )
     events: list[dict[str, object]] = []

@@ -7,7 +7,7 @@
       "expected_queries": {
         "musicbrainz": "Aphex Twin Windowlicker",
         "discogs": {"track": "Windowlicker", "artist": "Aphex Twin", "release_title": "Windowlicker"},
-        "web_search": "Aphex Twin Windowlicker"
+        "web_search": "(site:beatport.com OR site:soundcloud.com OR site:bandcamp.com OR site:hypeddit.com) Aphex Twin Windowlicker"
       },
       "gold": {"artist": "Aphex Twin", "title": "Windowlicker"}
     },
@@ -17,7 +17,7 @@
       "expected_queries": {
         "musicbrainz": "Burial Archangel",
         "discogs": {"track": "Archangel", "artist": "Burial"},
-        "web_search": "Burial Archangel"
+        "web_search": "(site:beatport.com OR site:soundcloud.com OR site:bandcamp.com OR site:hypeddit.com) Burial Archangel"
       },
       "gold": {"artist": "Burial", "title": "Archangel"}
     },
@@ -27,7 +27,7 @@
       "expected_queries": {
         "musicbrainz": "Boards of Canada Roygbiv",
         "discogs": {"track": "Roygbiv", "artist": "Boards of Canada"},
-        "web_search": "Boards of Canada Roygbiv"
+        "web_search": "(site:beatport.com OR site:soundcloud.com OR site:bandcamp.com OR site:hypeddit.com) Boards of Canada Roygbiv"
       },
       "gold": {"artist": "Boards of Canada", "title": "Roygbiv"}
     },
@@ -37,7 +37,7 @@
       "expected_queries": {
         "musicbrainz": "Windowlicker",
         "discogs": {"track": "Windowlicker"},
-        "web_search": "Windowlicker"
+        "web_search": "(site:beatport.com OR site:soundcloud.com OR site:bandcamp.com OR site:hypeddit.com) Windowlicker"
       },
       "gold": null
     },
@@ -47,7 +47,7 @@
       "expected_queries": {
         "musicbrainz": null,
         "discogs": null,
-        "web_search": "Aphex Twin"
+        "web_search": "(site:beatport.com OR site:soundcloud.com OR site:bandcamp.com OR site:hypeddit.com) Aphex Twin"
       },
       "gold": null
     },

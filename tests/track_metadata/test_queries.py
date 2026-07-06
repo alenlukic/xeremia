@@ -5,9 +5,15 @@ import pytest
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.sources.queries import (
     build_search_terms,
+    direct_label_album_query,
+    direct_label_title_query,
     discogs_query_params,
     musicbrainz_query,
     web_search_query,
+)
+
+_SITE_RESTRICTION = (
+    "(site:beatport.com OR site:soundcloud.com OR site:bandcamp.com OR site:hypeddit.com)"
 )
 
 
@@ -102,12 +108,24 @@ def test_discogs_query_params_requires_title() -> None:
     [
         (
             SimpleMetadata(artist="Aphex Twin", title="Windowlicker"),
-            "Aphex Twin Windowlicker",
+            f"{_SITE_RESTRICTION} Aphex Twin Windowlicker",
         ),
-        (SimpleMetadata(title="Windowlicker"), "Windowlicker"),
-        (SimpleMetadata(artist="Aphex Twin"), "Aphex Twin"),
+        (SimpleMetadata(title="Windowlicker"), f"{_SITE_RESTRICTION} Windowlicker"),
+        (SimpleMetadata(artist="Aphex Twin"), f"{_SITE_RESTRICTION} Aphex Twin"),
         (SimpleMetadata(), None),
     ],
 )
 def test_web_search_query(seed: SimpleMetadata, expected: str | None) -> None:
     assert web_search_query(build_search_terms(seed)) == expected
+
+
+def test_direct_label_queries_include_site_restriction() -> None:
+    terms = build_search_terms(
+        SimpleMetadata(artist="Artist", title="Track", album="Album")
+    )
+    title_query = direct_label_title_query(terms)
+    album_query = direct_label_album_query(terms)
+    assert title_query is not None
+    assert album_query is not None
+    assert title_query.startswith(_SITE_RESTRICTION)
+    assert album_query.startswith(_SITE_RESTRICTION)

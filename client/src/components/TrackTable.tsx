@@ -12,6 +12,7 @@ import {
 } from '@tanstack/react-table';
 import type { Track, SearchSuggestion } from '../types';
 import { formatFloat, formatBpm, displayGenre } from '../utils';
+import { PlayButton } from './PlayButton';
 
 const col = createColumnHelper<Track>();
 
@@ -103,7 +104,7 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
   const [containerWidth, setContainerWidth] = useState(0);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([
-    ...COLUMN_IDS.slice(0, 4), 'add_to_set', ...COLUMN_IDS.slice(4),
+    'play', ...COLUMN_IDS.slice(0, 4), 'add_to_set', ...COLUMN_IDS.slice(4),
   ]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
@@ -180,9 +181,20 @@ export const TrackTable = memo(function TrackTable({ tracks, loading, selectedTr
     ) : null,
   }), [onAddToSet, onAddToPool, onAddToTracklist]);
 
+  const playColumn = useMemo(() => col.display({
+    id: 'play',
+    header: '',
+    size: 32,
+    minSize: 28,
+    enableSorting: false,
+    cell: ({ row }) => (
+      <PlayButton trackId={row.original.id} title={row.original.title} />
+    ),
+  }), []);
+
   const allColumns = useMemo(
-    () => [...dataColumns, addToSetColumn],
-    [addToSetColumn],
+    () => [playColumn, ...dataColumns, addToSetColumn],
+    [playColumn, addToSetColumn],
   );
 
   const fullColumnOrder = columnOrder;

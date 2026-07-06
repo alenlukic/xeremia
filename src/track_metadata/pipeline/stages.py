@@ -69,6 +69,14 @@ def stage_analyze(result: TrackResult, context: PipelineContext) -> None:
     analyze_missing_audio_features(result.working_path, result.metadata)
 
 
+def stage_classify_genre(result: TrackResult, context: PipelineContext) -> None:
+    if result.metadata is None:
+        return
+    genre = context.hydrator.classify_free_download_genre(result.metadata)
+    if genre:
+        result.metadata.genre = genre
+
+
 def stage_format(result: TrackResult, context: PipelineContext) -> None:
     key = normalize_key_symbols(result.metadata.key)
     bpm = result.metadata.bpm
@@ -134,6 +142,7 @@ def build_default_pipeline() -> Pipeline:
             Stage(name="prepare", run=stage_prepare),
             Stage(name="hydrate", run=stage_hydrate),
             Stage(name="analyze", run=stage_analyze),
+            Stage(name="classify_genre", run=stage_classify_genre),
             Stage(name="format", run=stage_format),
             Stage(name="classify", run=stage_classify),
             Stage(name="persist_or_route", run=stage_persist_or_route),

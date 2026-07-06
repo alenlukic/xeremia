@@ -13,6 +13,8 @@ from src.track_metadata.research import (
     TrackRepository,
 )
 
+RAVEVIVAL_MIN_BPM = 140.0
+
 _UNKNOWN_GENRE_VALUES = frozenset({"", "unknown", "n/a", "na", "none", "misc", "other"})
 _PLACEHOLDER_ARTISTS = frozenset(
     {"unknown", "various artists", "va", "n/a", "none", "artist unknown"}
@@ -29,6 +31,12 @@ _SOURCE_PRIORITY = (
 
 BeatportGenreLookup = Callable[[Optional[str], Optional[str]], Optional[str]]
 LastFmGenreLookup = Callable[[Optional[str], Optional[str]], Optional[str]]
+
+
+def resolve_ravevival(*, free_download: bool, bpm: float | None) -> str | None:
+    if not free_download or bpm is None or bpm < RAVEVIVAL_MIN_BPM:
+        return None
+    return "Ravevival"
 
 
 def is_unknown_genre(genre: Optional[str]) -> bool:

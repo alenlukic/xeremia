@@ -121,12 +121,13 @@ For day-to-day local validation (unit tests only, under 60 seconds):
 python -m pytest tests -m "not integration and not slow"
 ```
 
-### Full Python suite
+### Full mainline suite
 
-Run every Python test, including integration and slow cases:
+Run the complete blocking Python suite used by the development workflow. It is
+hermetic and excludes optional integration and slow tests:
 
 ```bash
-python -m pytest tests
+python -m pytest tests -m "not integration and not slow"
 ```
 
 ### Subset or single file
@@ -138,13 +139,17 @@ python -m pytest tests/track_metadata/test_id3.py -v
 
 ### Secondary suite (integration and slow)
 
-Model-backed ONNX tests and other heavy cases are marked `integration` or `slow`:
+Tests that require live external services, downloaded ONNX models, or local
+fixture corpora are marked `integration`; other heavy cases are marked `slow`.
+Neither category runs in the blocking fast or full mainline suites:
 
 ```bash
 python -m pytest tests -m "integration or slow"
 ```
 
-Integration tests require downloaded ONNX models in `models/traits/`.
+Integration tests may require downloaded ONNX models in `models/traits/` and
+local audio fixtures in `.test_data/`. Missing optional dependencies must skip
+those tests rather than fail a mainline verification run.
 
 ### Client tests
 

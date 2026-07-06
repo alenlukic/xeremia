@@ -17,7 +17,6 @@ from src.track_metadata.label import (
 )
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.research import (
-    CatalogNumberObservation,
     CdrEvidence,
     LabelSearchObservation,
 )
@@ -122,29 +121,25 @@ def test_album_label_conflict_is_reported():
 class _StubWebClient:
     def __init__(self, **responses):
         self.responses = responses
+        self.catalog_calls: list[str] = []
 
     def search_catalog_number_by_title(self, artist, title):
-        return self.responses.get("catalog_title", [])
+        self.catalog_calls.append("catalog_title")
+        raise AssertionError("catalog-number search must not run")
 
     def search_catalog_number_by_album(self, artist, album):
-        return self.responses.get("catalog_album", [])
+        self.catalog_calls.append("catalog_album")
+        raise AssertionError("catalog-number search must not run")
 
     def search_label_by_catalog_number(self, catalog_number):
-        return self.responses.get("catalog_label", [])
+        self.catalog_calls.append("catalog_label")
+        raise AssertionError("catalog-number search must not run")
 
     def search_label_by_title(self, artist, title):
         return self.responses.get("label_title", [])
 
     def search_label_by_album(self, artist, album):
         return self.responses.get("label_album", [])
-
-
-class _StubCatalogClient:
-    def __init__(self, label=None):
-        self.label = label
-
-    def lookup_label_by_catalog_number(self, catalog_number, **kwargs):
-        return self.label
 
 
 class _StubTrackBrowser:
@@ -165,43 +160,35 @@ class _StubTrackBrowser:
         )
 
 
-def test_catalog_number_title_runs_before_direct_label():
+def test_resolve_label_fallback_skips_catalog_number_search():
     web = _StubWebClient(
-        catalog_title=[
-            CatalogNumberObservation("ABC123", "url", True),
-        ],
-        catalog_label=[
-            LabelSearchObservation("Warp Records", "url2", True),
-        ],
         label_title=[
-            LabelSearchObservation("Other Label", "url3", True),
+            LabelSearchObservation("Warp Records", "url", True),
         ],
     )
     label, events = resolve_label_fallback(
         artist="Artist",
         title="Track",
         web_client=web,
-        catalog_client=_StubCatalogClient("Warp Records"),
     )
     assert label == "Warp Records"
-    assert events[0].method == "catalog_number_title"
+    assert web.catalog_calls == []
+    assert all("catalog_number" not in event.method for event in events)
 
 
-def test_album_catalog_search_runs_only_after_title_failure():
+def test_album_label_search_runs_when_title_label_unresolved():
     web = _StubWebClient(
-        catalog_title=[],
-        catalog_album=[CatalogNumberObservation("XYZ9", "url", True)],
-        catalog_label=[LabelSearchObservation("Album Label", "url", True)],
+        label_title=[],
+        label_album=[LabelSearchObservation("Album Label", "url", True)],
     )
     label, events = resolve_label_fallback(
         artist="Artist",
         title="Track",
         album="Album",
         web_client=web,
-        catalog_client=_StubCatalogClient("Album Label"),
     )
     methods = [event.method for event in events]
-    assert "catalog_number_album" in methods
+    assert "web_label_album" in methods
     assert label == "Album Label"
 
 
@@ -240,7 +227,7 @@ def test_cdr_requires_positive_indicator_not_followers_alone():
 
 
 def test_beatport_track_label_runs_after_web_heuristics():
-    web = _StubWebClient(catalog_title=[], label_title=[])
+    web = _StubWebClient(label_title=[])
     browser = _StubTrackBrowser("Anjunadeep")
     label, events = resolve_label_fallback(
         artist="Artist",

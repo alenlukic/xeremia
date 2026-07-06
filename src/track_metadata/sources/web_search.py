@@ -13,7 +13,7 @@ from src.track_metadata.matching import (
     _similarity,
 )
 from src.track_metadata.models import SimpleMetadata
-from src.track_metadata.research import CatalogNumberObservation, LabelSearchObservation
+from src.track_metadata.research import LabelSearchObservation
 from src.track_metadata.sources.base import LookupContext
 from src.track_metadata.sources.constants import (
     WEB_SEARCH_ARTIST_WEIGHT,
@@ -25,11 +25,9 @@ from src.track_metadata.sources.constants import (
 from src.track_metadata.sources.queries import (
     SearchTerms,
     build_search_terms,
-    catalog_number_album_query,
-    catalog_number_label_query,
-    catalog_number_title_query,
     direct_label_album_query,
     direct_label_title_query,
+    free_download_query,
     web_search_query,
 )
 
@@ -187,16 +185,16 @@ class WebSearchSource:
         return best_metadata
 
 
-_CATALOG_NUMBER_EXTRACT = re.compile(
-    r"\b(?:cat(?:alog)?\.?\s*(?:no|number|#)?\s*[:#-]?\s*)?"
-    r"([A-Z]{1,4}[-\s]?\d{2,6}[A-Z0-9-]*)\b",
-    re.IGNORECASE,
-)
 _DISTRIBUTOR_HINT = re.compile(
     r"\b(distributor|distribution|publisher|rights society)\b",
     re.IGNORECASE,
 )
 _IDENTITY_THRESHOLD = 0.72
+_FREE_DOWNLOAD_SNIPPET = re.compile(r"free\s+download", re.IGNORECASE)
+_FREE_DOWNLOAD_AFFORDANCE = re.compile(
+    r"\b(download\s+(?:for\s+)?free|free\s+download|download\s+track)\b",
+    re.IGNORECASE,
+)
 
 
 def _identity_confirmed(seed: SimpleMetadata, result: dict[str, str]) -> bool:
@@ -204,20 +202,23 @@ def _identity_confirmed(seed: SimpleMetadata, result: dict[str, str]) -> bool:
     return candidate is not None and score >= _IDENTITY_THRESHOLD
 
 
-def _catalog_from_result(
-    result: dict[str, str], seed: SimpleMetadata
-) -> CatalogNumberObservation | None:
-    text = f"{result.get('title', '')} {result.get('snippet', '')}"
-    match = _CATALOG_NUMBER_EXTRACT.search(text)
-    if match is None:
-        return None
-    catalog_number = match.group(1).strip().upper()
-    return CatalogNumberObservation(
-        catalog_number=catalog_number,
-        source_url=result.get("url", ""),
-        identity_confirmed=_identity_confirmed(seed, result),
-        snippet=result.get("snippet", ""),
-    )
+def is_free_download_result(result: dict[str, str]) -> bool:
+    title = result.get("title", "")
+    snippet = result.get("snippet", "")
+    url = result.get("url", "").casefold()
+    text = f"{title} {snippet}"
+
+    if _FREE_DOWNLOAD_SNIPPET.search(text):
+        return True
+    if _FREE_DOWNLOAD_AFFORDANCE.search(text):
+        return True
+    if "hypeddit.com" in url and re.search(r"\bdownload\b", text, flags=re.IGNORECASE):
+        return True
+    if "soundcloud.com" in url and re.search(
+        r"\b(?:free|download)\b", text, flags=re.IGNORECASE
+    ):
+        return True
+    return False
 
 
 def _label_from_result(
@@ -253,42 +254,17 @@ class WebSearchResearchClient:
     def _seed(self, artist: str | None, title: str | None, album: str | None = None) -> SimpleMetadata:
         return SimpleMetadata(artist=artist, title=title, album=album)
 
-    def search_catalog_number_by_title(
+    def detect_free_download(
         self, artist: str | None, title: str | None
-    ) -> list[CatalogNumberObservation]:
-        query = catalog_number_title_query(SearchTerms(artist=artist, title=title, album=None))
+    ) -> bool:
+        query = free_download_query(SearchTerms(artist=artist, title=title, album=None))
         if query is None:
-            return []
+            return False
         seed = self._seed(artist, title)
-        return [
-            obs
+        return any(
+            _identity_confirmed(seed, result) and is_free_download_result(result)
             for result in self._search(query)
-            if (obs := _catalog_from_result(result, seed)) is not None
-        ]
-
-    def search_catalog_number_by_album(
-        self, artist: str | None, album: str | None
-    ) -> list[CatalogNumberObservation]:
-        query = catalog_number_album_query(SearchTerms(artist=artist, title=None, album=album))
-        if query is None:
-            return []
-        seed = self._seed(artist, None, album)
-        return [
-            obs
-            for result in self._search(query)
-            if (obs := _catalog_from_result(result, seed)) is not None
-        ]
-
-    def search_label_by_catalog_number(
-        self, catalog_number: str
-    ) -> list[LabelSearchObservation]:
-        query = catalog_number_label_query(catalog_number)
-        seed = SimpleMetadata()
-        return [
-            obs
-            for result in self._search(query)
-            if (obs := _label_from_result(result, seed)) is not None
-        ]
+        )
 
     def search_label_by_title(
         self, artist: str | None, title: str | None

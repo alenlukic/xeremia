@@ -10,6 +10,7 @@ from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.utils import AUGMENTED_DIR
 
 CACHE_PATH = AUGMENTED_DIR / ".metadata_cache.json"
+CACHE_SCHEMA_VERSION = 2
 
 
 class MetadataCache:
@@ -36,12 +37,16 @@ class MetadataCache:
         return hashlib.sha1(signature.encode("utf-8")).hexdigest()
 
     def get_final(self, key: str) -> SimpleMetadata | None:
-        cached = self._entries.get(key, {}).get("final")
+        entry = self._entries.get(key, {})
+        if entry.get("version") != CACHE_SCHEMA_VERSION:
+            return None
+        cached = entry.get("final")
         if isinstance(cached, dict):
             return SimpleMetadata.from_dict(cached)
         return None
 
     def store_final(self, key: str, metadata: SimpleMetadata) -> None:
+        self._entries.setdefault(key, {})["version"] = CACHE_SCHEMA_VERSION
         self._entries.setdefault(key, {})["final"] = metadata.to_dict()
         self._save()
 

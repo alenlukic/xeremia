@@ -22,6 +22,9 @@ class _HydratorStub:
         data["title"] = data.get("title") or "Track"
         return SimpleMetadata.from_dict(data)
 
+    def classify_free_download_genre(self, metadata: SimpleMetadata) -> str | None:
+        return None
+
 
 class _SessionStub:
     def close(self):
@@ -93,6 +96,9 @@ class _CruftHydratorStub:
         data["title"] = data.get("title") or "Sunset Funk [MASTER v2] (Original Mix)"
         return SimpleMetadata.from_dict(data)
 
+    def classify_free_download_genre(self, metadata: SimpleMetadata) -> str | None:
+        return None
+
 
 def test_pipeline_strips_cruft_from_display_title(monkeypatch, tmp_path):
     source = tmp_path / "input.mp3"
@@ -160,6 +166,9 @@ class _FallbackHydratorStub:
         data["artist"] = data.get("artist") or "Artist"
         data["title"] = data.get("title") or "Resolved Track"
         return SimpleMetadata.from_dict(data)
+
+    def classify_free_download_genre(self, metadata: SimpleMetadata) -> str | None:
+        return None
 
 
 def test_pipeline_records_fallback_agent_events(monkeypatch, tmp_path):

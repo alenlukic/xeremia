@@ -48,3 +48,12 @@ WEB_SEARCH_ARTIST_WEIGHT = 0.35
 
 # --- Genre resolution ------------------------------------------------------
 BEATPORT_TAG_CONFIDENCE = 0.98
+
+# --- Metadata web search ---------------------------------------------------
+METADATA_SEARCH_SITES = (
+    "beatport.com",
+    "soundcloud.com",
+    "bandcamp.com",
+    "hypeddit.com",
+)
+FREE_DOWNLOAD_SEARCH_SITES = ("soundcloud.com", "hypeddit.com")

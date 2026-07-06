@@ -11,6 +11,8 @@ from src.track_metadata.genre import (
     is_unknown_genre,
     resolve_dynamic_genre,
     resolve_genre_fallback,
+    resolve_ravevival,
+    RAVEVIVAL_MIN_BPM,
 )
 from src.track_metadata.label import (
     WebLabelVerifier,
@@ -34,7 +36,6 @@ from src.track_metadata.pipeline.config import (
     RESOLUTION_LABEL_WEB_SEARCH,
 )
 from src.track_metadata.research import (
-    CatalogSourceLookupClient,
     ResolutionProvenance,
     SqlAlchemyTrackRepository,
     TrackRepository,
@@ -94,7 +95,6 @@ class MetadataHydrator:
         track_repository: TrackRepository | None = None,
         session_factory: Callable[[], Any] | None = None,
         web_research_client: WebSearchResearchClient | None = None,
-        catalog_lookup_client: CatalogSourceLookupClient | None = None,
         browser_research_client: Any | None = None,
         enable_genre_artist_history: bool = RESOLUTION_GENRE_ARTIST_HISTORY,
         enable_genre_beatport: bool = RESOLUTION_GENRE_BEATPORT,
@@ -115,16 +115,15 @@ class MetadataHydrator:
         self.lastfm_genre_lookup = lastfm_genre_lookup or (
             lambda artist, title: lookup_lastfm_genre(self.http, artist, title)
         )
-        self._catalog_sources = catalog_sources or [
-            AcoustIdSource(),
-            MusicBrainzSource(),
-            DiscogsSource(),
-        ]
-        self._web_source = web_source or WebSearchSource()
+        self._catalog_sources = (
+            catalog_sources
+            if catalog_sources is not None
+            else [AcoustIdSource(), MusicBrainzSource(), DiscogsSource()]
+        )
+        self._web_source = web_source if web_source is not None else WebSearchSource()
         self.session_factory = session_factory
         self.track_repository = track_repository
         self.web_research_client = web_research_client
-        self.catalog_lookup_client = catalog_lookup_client
         self.browser_research_client = browser_research_client
         self.enable_genre_artist_history = enable_genre_artist_history
         self.enable_genre_beatport = enable_genre_beatport
@@ -150,6 +149,7 @@ class MetadataHydrator:
             logging.info(
                 "Skipping remote hydration for Beatport-encoded file %s", file_path.name
             )
+            seed = replace(seed, key=None, bpm=None)
             self.cache.store_final(cache_key, seed)
             return seed
 
@@ -214,7 +214,6 @@ class MetadataHydrator:
         events: list[ResolutionProvenance] = []
         repository = self._resolve_track_repository()
         web_client = self._resolve_web_research_client()
-        catalog_client = self.catalog_lookup_client
         browser = self.browser_research_client
 
         if is_unknown_genre(resolved.genre):
@@ -237,7 +236,6 @@ class MetadataHydrator:
                 title=resolved.title,
                 album=resolved.album,
                 web_client=web_client,
-                catalog_client=catalog_client,
                 browser=browser,
                 enable_web_search=self.enable_label_web_search,
                 enable_beatport=self.enable_label_beatport,
@@ -356,6 +354,17 @@ class MetadataHydrator:
             lastfm_lookup=self.lastfm_genre_lookup,
         )
 
+    def classify_free_download_genre(self, metadata: SimpleMetadata) -> str | None:
+        if metadata.bpm is None or metadata.bpm < RAVEVIVAL_MIN_BPM:
+            return None
+        web_client = self._resolve_web_research_client()
+        if web_client is None or not metadata.artist or not metadata.title:
+            return None
+        free_download = web_client.detect_free_download(
+            metadata.artist, metadata.title
+        )
+        return resolve_ravevival(free_download=free_download, bpm=metadata.bpm)
+
 
 def build_metadata_agent(
     *,
@@ -374,6 +383,5 @@ def build_metadata_agent(
         skip_beatport_hydration=skip_beatport_hydration,
         web_label_verifier=web_label_verifier,
         session_factory=session_factory,
-        catalog_lookup_client=CatalogSourceLookupClient(),
         browser_research_client=browser_research_client,
     )

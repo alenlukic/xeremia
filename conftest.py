@@ -1,68 +1,77 @@
-"""Root conftest — BLAS thread-pool safety and numba cache hygiene.
+"""Root conftest — deterministic native-library settings and test isolation.
 
-Must execute before any test module imports numpy/scipy.  Module-level
-``os.environ`` writes run during conftest collection, which precedes
-test-module imports.
-
-NumPy bundles libopenblas64_ (ILP64) while SciPy bundles libopenblas
-(LP64).  Both libraries initialise their own global thread pools; when
-both are active in the same process the shared global state can corrupt,
-producing SIGSEGV inside ufunc inner loops.  Restricting each pool to a
-single worker thread eliminates the race.
-
-Stale numba gufunc cache files (.nbc/.nbi) compiled against a previous
-numpy build can also cause SIGSEGV in librosa's pitch-tracking path.
-We invalidate them on first import by recording the numpy version and
-clearing the cache when it changes.
+This module executes before test modules import NumPy, SciPy, librosa, or Numba.
+Thread pools are restricted to one worker to avoid conflicting BLAS runtimes,
+Numba is directed to a repository-local pytest cache, and mainline tests are
+prevented from making real outbound network calls. Tests must never modify
+package-manager or third-party library directories such as site-packages.
 """
 
+from __future__ import annotations
+
+import ipaddress
 import os
+from pathlib import Path
+import socket
+from typing import Any
+
+import pytest
+
+_REPO_ROOT = Path(__file__).resolve().parent
 
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ["NUMBA_CACHE_DIR"] = str(_REPO_ROOT / ".pytest_cache" / "numba")
 
 
-def _invalidate_stale_numba_cache() -> None:
-    """Remove cached numba gufunc artefacts when numpy changes version."""
-    import pathlib
-
+def _is_loopback_host(host: Any) -> bool:
+    if host is None:
+        return True
+    normalized = str(host).strip().strip("[]").casefold()
+    if normalized == "localhost":
+        return True
     try:
-        import numpy as np
-    except ImportError:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _external_network_error(host: Any) -> RuntimeError:
+    return RuntimeError(
+        "Outbound network access is forbidden in the mainline test suite "
+        f"(attempted host: {host!r}). Mark the test 'integration' and keep it "
+        "out of the fast/default profile."
+    )
+
+
+@pytest.fixture(autouse=True)
+def block_external_network(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+):
+    """Fail fast on live network access unless the test is explicitly integration."""
+    if request.node.get_closest_marker("integration") is not None:
         return
 
-    repo_root = pathlib.Path(__file__).resolve().parent
-    cache_dir = repo_root / ".pytest_cache" / "numba"
-    stamp_file = cache_dir / ".numba_np_version"
+    original_getaddrinfo = socket.getaddrinfo
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
 
-    current = np.__version__
-    if stamp_file.exists() and stamp_file.read_text().strip() == current:
-        return
+    def guarded_getaddrinfo(host: Any, *args: Any, **kwargs: Any):
+        if not _is_loopback_host(host):
+            raise _external_network_error(host)
+        return original_getaddrinfo(host, *args, **kwargs)
 
-    # Only clear librosa/numba caches under the active environment's site-packages.
-    import site
+    def guarded_connect(sock: socket.socket, address: Any):
+        if isinstance(address, tuple) and not _is_loopback_host(address[0]):
+            raise _external_network_error(address[0])
+        return original_connect(sock, address)
 
-    sp = site.getsitepackages()
-    if not sp:
-        return
-    site_pkgs = pathlib.Path(sp[0])
-    for subdir in ("librosa", "numba"):
-        target = site_pkgs / subdir
-        if not target.is_dir():
-            continue
-        for ext in (".nbc", ".nbi"):
-            for path in target.rglob(f"*{ext}"):
-                try:
-                    path.unlink()
-                except OSError:
-                    pass
+    def guarded_connect_ex(sock: socket.socket, address: Any):
+        if isinstance(address, tuple) and not _is_loopback_host(address[0]):
+            raise _external_network_error(address[0])
+        return original_connect_ex(sock, address)
 
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        stamp_file.write_text(current)
-    except OSError:
-        pass
-
-
-_invalidate_stale_numba_cache()
+    monkeypatch.setattr(socket, "getaddrinfo", guarded_getaddrinfo)
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
