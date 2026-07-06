@@ -53,6 +53,23 @@ _HAVE_BACKBONE = _BACKBONE.exists() and _BACKBONE.stat().st_size > 10_000
 _HAVE_MAEST = _MAEST.exists() and _MAEST.stat().st_size > 10_000
 
 _TEST_FILES = sorted(_TEST_DATA.glob("*")) if _TEST_DATA.exists() else []
+_REQUIRED_TRAIT_INTEGRATION_FIXTURES = (
+    "[04A - Fm - 116.99] Koreless - White Picket Fence.aiff",
+    "[04A - Fm - 146.00] Frank Heise - Abort To Orbit.aiff",
+    "[05A - Cm - 000] Bicep - Vespa.mp3",
+    "[07B - F - 126.00] Beyonce - Drunk in Love (Glass Half Empty Remix).aiff",
+    "[08A - Am - 137.00] Omformer - Interstellar Infection.aiff",
+    "[08A - Am - 144.00] Pernox - Cruel Intentions (Alpha Tracks Remix).mp3",
+    "[08B - C - 085.00] Solar Fields - Electric Fluid.aiff",
+    "[10B - D - 124.00] Ed Sheeran - Shivers (Dillon Francis Remix) [Club Mix].mp3",
+    "[12A - C#m - 140] Neptune Project - Panspermia (The Digital Blonde Remix).aif",
+    "[12B - E - 155.00] Alexandra Stone - Mr. Saxobeat (Skearney Edit).aiff",
+)
+_MISSING_TRAIT_INTEGRATION_FIXTURES = tuple(
+    name
+    for name in _REQUIRED_TRAIT_INTEGRATION_FIXTURES
+    if not (_TEST_DATA / name).is_file()
+)
 
 
 # ------------------------------------------------------------------ #
@@ -730,6 +747,10 @@ class TestMigrationAndBackfill:
 
 @pytest.mark.integration
 @pytest.mark.skipif(not _HAVE_BACKBONE, reason="EffNet backbone not in models/traits/")
+@pytest.mark.skipif(
+    bool(_MISSING_TRAIT_INTEGRATION_FIXTURES),
+    reason="Required local .test_data audio fixtures are unavailable",
+)
 class TestTraitExtractorIntegration:
     """End-to-end tests exercising the full inference chain.
 
