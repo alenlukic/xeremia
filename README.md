@@ -138,7 +138,7 @@ python -m pytest tests/track_metadata/test_id3.py -v
 
 ### Secondary suite (integration and slow)
 
-Model-backed ONNX tests and other heavy cases are marked `integration` or `slow`:
+Tests that require live external services or downloaded ONNX models are marked `integration`; other heavy cases are marked `slow`. Neither category runs in the fast/default suite:
 
 ```bash
 python -m pytest tests -m "integration or slow"

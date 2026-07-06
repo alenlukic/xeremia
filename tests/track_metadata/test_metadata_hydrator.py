@@ -425,6 +425,9 @@ def _make_hydrator(
     web_source: MetadataSource | None = None,
     **kwargs: Any,
 ) -> MetadataHydrator:
+    # Unit tests are offline by default. Tests that exercise external research
+    # must opt in explicitly and provide a fake client.
+    kwargs.setdefault("enable_label_web_search", False)
     return MetadataHydrator(
         cache=MetadataCache(path=tmp_path / "cache.json"),
         catalog_sources=catalog_sources if catalog_sources is not None else [],
@@ -439,6 +442,13 @@ def _staged_mp3(tmp_path: Path, name: str) -> Path:
     mp3 = tmp_path / name
     shutil.copy2(SAMPLE_MP3, mp3)
     return mp3
+
+
+def test_unit_hydrator_defaults_are_offline(tmp_path: Path) -> None:
+    hydrator = _make_hydrator(tmp_path)
+
+    assert hydrator._catalog_sources == []
+    assert hydrator.enable_label_web_search is False
 
 
 def test_hydrate_uses_cache_hit(tmp_path: Path) -> None:
@@ -902,6 +912,7 @@ def test_field_resolution_fail_open_on_web_errors(tmp_path: Path) -> None:
     hydrator = _make_hydrator(
         tmp_path,
         web_research_client=_BoomWeb(),
+        enable_label_web_search=True,
         enable_genre_artist_history=False,
     )
     events: list[dict[str, object]] = []

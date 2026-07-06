@@ -115,12 +115,12 @@ class MetadataHydrator:
         self.lastfm_genre_lookup = lastfm_genre_lookup or (
             lambda artist, title: lookup_lastfm_genre(self.http, artist, title)
         )
-        self._catalog_sources = catalog_sources or [
-            AcoustIdSource(),
-            MusicBrainzSource(),
-            DiscogsSource(),
-        ]
-        self._web_source = web_source or WebSearchSource()
+        self._catalog_sources = (
+            catalog_sources
+            if catalog_sources is not None
+            else [AcoustIdSource(), MusicBrainzSource(), DiscogsSource()]
+        )
+        self._web_source = web_source if web_source is not None else WebSearchSource()
         self.session_factory = session_factory
         self.track_repository = track_repository
         self.web_research_client = web_research_client
