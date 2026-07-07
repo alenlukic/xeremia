@@ -9,3 +9,5 @@ exclude = [
 ]
 
 lint.ignore = ["F405"]
+lint.extend-select = ["B006", "S101"]
+lint.per-file-ignores = { "tests/**/*.py" = ["S101"] }

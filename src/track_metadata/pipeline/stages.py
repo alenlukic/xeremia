@@ -9,7 +9,10 @@ from src.track_metadata.audio_features import analyze_missing_audio_features
 from src.track_metadata.db_matching import apply_db_fields
 from src.track_metadata.key_utils import canonicalize_key
 from src.track_metadata.label import apply_album_label_consistency
-from src.track_metadata.matching import _compose_display_title, seed_metadata_from_filename
+from src.track_metadata.matching import (
+    _compose_display_title,
+    seed_metadata_from_filename,
+)
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.pipeline.config import (
     GAP_REPORT_FIELDS,
@@ -22,7 +25,10 @@ from src.track_metadata.pipeline.framework import (
     TrackResult,
     TrackStatus,
 )
-from src.track_metadata.pipeline.persistence import update_track_records, upsert_track_records
+from src.track_metadata.pipeline.persistence import (
+    update_track_records,
+    upsert_track_records,
+)
 from src.track_metadata.tags import read_existing_metadata, write_tags
 from src.track_metadata.utils import (
     AUGMENTED_DIR,

@@ -101,8 +101,7 @@ def test_parse_filename_seed_remix_prefix_extracts_parenthetical_edit_remixer() 
 
 def test_parse_filename_seed_remix_prefix_extracts_bracketed_edit_remixer() -> None:
     path = Path(
-        "[Remix of Justin Timberlake - Sexyback] "
-        "SUITSIDE SEXY BACK EDIT [V1MASTER].wav"
+        "[Remix of Justin Timberlake - Sexyback] SUITSIDE SEXY BACK EDIT [V1MASTER].wav"
     )
     result = _parse_filename_seed(path)
     assert result.artist == "Justin Timberlake"
@@ -133,7 +132,9 @@ def test_compose_display_title_normalizes_multi_artist_separator_to_ampersand() 
     assert title == "[06A - Gm - 153.85] Mes Amis & DJ Holgersson - Atmos"
 
 
-def test_compose_display_title_normalizes_multi_remixer_separator_to_ampersand() -> None:
+def test_compose_display_title_normalizes_multi_remixer_separator_to_ampersand() -> (
+    None
+):
     metadata = SimpleMetadata(
         artist="ATC",
         title="Around The World",

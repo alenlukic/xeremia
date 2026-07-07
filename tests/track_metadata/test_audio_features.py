@@ -135,9 +135,7 @@ def test_existing_camelot_and_rekordbox_named_key_skip_all_key_analyzers(
         lambda *_args: pytest.fail("no key analyzer should run"),
     )
 
-    resolution = resolve_key(
-        Path("dummy.mp3"), existing_key="4A", rekordbox_key="Fm"
-    )
+    resolution = resolve_key(Path("dummy.mp3"), existing_key="4A", rekordbox_key="Fm")
 
     assert resolution.value == "Fm"
     assert resolution.reason == "id3_rekordbox_agreement"

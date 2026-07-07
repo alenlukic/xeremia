@@ -6,8 +6,7 @@ from src.data_management.config import CAMELOT_MAP, CANONICAL_KEY_MAP
 
 _CAMELOT_PATTERN = re.compile(r"^0?([1-9]|1[0-2])\s*([ab])$", re.IGNORECASE)
 _CAMELOT_TO_KEY = {
-    code.casefold(): canonical_key
-    for canonical_key, code in CAMELOT_MAP.items()
+    code.casefold(): canonical_key for canonical_key, code in CAMELOT_MAP.items()
 }
 
 

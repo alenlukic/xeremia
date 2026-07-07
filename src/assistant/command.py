@@ -1,12 +1,12 @@
 class Command:
     """Encapsulates a mixing assistant command."""
 
-    def __init__(self, cmd, description, function, aliases={}, arguments=[]):
+    def __init__(self, cmd, description, function, aliases=None, arguments=None):
         self.cmd = cmd
         self.description = description
         self.function = function
-        self.aliases = aliases
-        self.arguments = arguments
+        self.aliases = set() if aliases is None else aliases
+        self.arguments = [] if arguments is None else arguments
         self.num_aliases = len(self.aliases)
         self.num_args = len(self.arguments)
 

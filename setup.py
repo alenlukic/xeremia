@@ -1,8 +1,13 @@
-from setuptools import setup, find_packages
+from pathlib import Path
+
+from setuptools import find_packages, setup
 
 
-with open("requirements.txt") as f:
-    requirements = [r.strip() for r in f.read().splitlines()]
+requirements_path = Path(__file__).with_name("requirements.txt")
+requirements = [
+    requirement.strip()
+    for requirement in requirements_path.read_text(encoding="utf-8").splitlines()
+]
 
 setup(
     name="xeremia",

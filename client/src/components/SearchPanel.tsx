@@ -1,123 +1,152 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import type { SearchSuggestion, Track } from '../types';
-import { searchTracks } from '../api/http';
+import { useState, useRef, useEffect, useCallback } from 'react'
+import type { SearchSuggestion, Track } from '../types'
+import { searchTracks } from '../api/http'
 
-const searchCache = new Map<string, SearchSuggestion[]>();
+const searchCache = new Map<string, SearchSuggestion[]>()
 
 interface Props {
-  selectedTrack: Track | SearchSuggestion | null;
-  selectTrack: (track: Track | SearchSuggestion) => void;
-  clearSelectedTrack: () => void;
-  normalizeWeights: () => void;
-  resetWeights: () => void;
-  isSumValid: boolean;
-  rawSum: number;
-  onSearchTextChange?: (text: string) => void;
-  searchPadding?: { left: number; right: number } | null;
-  onAddToSet?: () => void;
-  onAddToPool?: () => void;
-  onAddToTracklist?: () => void;
-  searchText?: string;
+  selectedTrack: Track | SearchSuggestion | null
+  selectTrack: (track: Track | SearchSuggestion) => void
+  clearSelectedTrack: () => void
+  normalizeWeights: () => void
+  resetWeights: () => void
+  isSumValid: boolean
+  rawSum: number
+  onSearchTextChange?: (text: string) => void
+  searchPadding?: { left: number; right: number } | null
+  onAddToSet?: () => void
+  onAddToPool?: () => void
+  onAddToTracklist?: () => void
+  searchText?: string
 }
 
-export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, normalizeWeights, resetWeights, isSumValid, rawSum, onSearchTextChange, searchPadding, onAddToSet, onAddToPool, onAddToTracklist, searchText }: Props) {
-  const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
-  const [open, setOpen] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(-1);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+export function SearchPanel({
+  selectedTrack,
+  selectTrack,
+  clearSelectedTrack,
+  normalizeWeights,
+  resetWeights,
+  isSumValid,
+  rawSum,
+  onSearchTextChange,
+  searchPadding,
+  onAddToSet,
+  onAddToPool,
+  onAddToTracklist,
+  searchText,
+}: Props) {
+  const [query, setQuery] = useState('')
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([])
+  const [open, setOpen] = useState(false)
+  const [activeIdx, setActiveIdx] = useState(-1)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   // Mirror `selectedTrack` into the query input and clear local state when the
   // parent resets `searchText`. Adjusting during render (vs. in effects) avoids
   // cascading renders and the react-hooks/set-state-in-effect warning. The prev
   // trackers start at `undefined` so the mirror also fires on mount, matching
   // the original effect's mount behavior.
-  const [prevSelected, setPrevSelected] = useState<Track | SearchSuggestion | null | undefined>(undefined);
+  const [prevSelected, setPrevSelected] = useState<
+    Track | SearchSuggestion | null | undefined
+  >(undefined)
   if (selectedTrack !== prevSelected) {
-    setPrevSelected(selectedTrack);
-    if (selectedTrack) setQuery(selectedTrack.title);
+    setPrevSelected(selectedTrack)
+    if (selectedTrack) {
+      setQuery(selectedTrack.title)
+    }
   }
-  const [prevSearchText, setPrevSearchText] = useState<string | undefined>(undefined);
+  const [prevSearchText, setPrevSearchText] = useState<string | undefined>(
+    undefined,
+  )
   if (searchText !== prevSearchText) {
-    setPrevSearchText(searchText);
+    setPrevSearchText(searchText)
     if (searchText === '' && !selectedTrack && query !== '') {
-      setQuery('');
-      setSuggestions([]);
-      setOpen(false);
+      setQuery('')
+      setSuggestions([])
+      setOpen(false)
     }
   }
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newQuery = e.target.value;
-      setQuery(newQuery);
-      clearSelectedTrack();
-      onSearchTextChange?.(newQuery);
+      const newQuery = e.target.value
+      setQuery(newQuery)
+      clearSelectedTrack()
+      onSearchTextChange?.(newQuery)
 
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-
-      const trimmed = newQuery.trim();
-      if (!trimmed) {
-        setSuggestions([]);
-        setOpen(false);
-        return;
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
       }
 
-      const cached = searchCache.get(trimmed);
+      const trimmed = newQuery.trim()
+      if (!trimmed) {
+        setSuggestions([])
+        setOpen(false)
+        return
+      }
+
+      const cached = searchCache.get(trimmed)
       if (cached) {
-        setSuggestions(cached);
-        setOpen(cached.length > 0);
-        setActiveIdx(-1);
-        return;
+        setSuggestions(cached)
+        setOpen(cached.length > 0)
+        setActiveIdx(-1)
+        return
       }
 
       debounceRef.current = setTimeout(() => {
         searchTracks(newQuery).then((results) => {
-          searchCache.set(trimmed, results);
-          setSuggestions(results);
-          setOpen(results.length > 0);
-          setActiveIdx(-1);
-        });
-      }, 200);
+          searchCache.set(trimmed, results)
+          setSuggestions(results)
+          setOpen(results.length > 0)
+          setActiveIdx(-1)
+        })
+      }, 200)
     },
     [clearSelectedTrack, onSearchTextChange],
-  );
+  )
 
   useEffect(() => {
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   function handleSelect(suggestion: SearchSuggestion) {
-    selectTrack(suggestion);
-    setOpen(false);
+    selectTrack(suggestion)
+    setOpen(false)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (!open) return;
+    if (!open) {
+      return
+    }
     if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveIdx((prev) => Math.min(prev + 1, suggestions.length - 1));
+      e.preventDefault()
+      setActiveIdx((prev) => Math.min(prev + 1, suggestions.length - 1))
     } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveIdx((prev) => Math.max(prev - 1, 0));
+      e.preventDefault()
+      setActiveIdx((prev) => Math.max(prev - 1, 0))
     } else if (e.key === 'Enter' && activeIdx >= 0) {
-      e.preventDefault();
-      handleSelect(suggestions[activeIdx]);
+      e.preventDefault()
+      handleSelect(suggestions[activeIdx])
     } else if (e.key === 'Escape') {
-      setOpen(false);
+      setOpen(false)
     }
   }
 
@@ -125,7 +154,14 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
     <div
       className="search-bar-wrapper"
       ref={containerRef}
-      style={searchPadding ? { paddingLeft: searchPadding.left, paddingRight: searchPadding.right } : undefined}
+      style={
+        searchPadding
+          ? {
+              paddingLeft: searchPadding.left,
+              paddingRight: searchPadding.right,
+            }
+          : undefined
+      }
     >
       <div className="search-input-container">
         <input
@@ -142,11 +178,11 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           <button
             className="clear-btn clear-btn--search"
             onClick={() => {
-              setQuery('');
-              setSuggestions([]);
-              setOpen(false);
-              clearSelectedTrack();
-              onSearchTextChange?.('');
+              setQuery('')
+              setSuggestions([])
+              setOpen(false)
+              clearSelectedTrack()
+              onSearchTextChange?.('')
             }}
             tabIndex={-1}
           >
@@ -165,7 +201,9 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
                 <span className="search-item-title">{s.title}</span>
                 <span className="search-item-meta">
                   {s.artist_names.join(', ')}
-                  {s.camelot_code && <span className="mono"> · {s.camelot_code}</span>}
+                  {s.camelot_code && (
+                    <span className="mono"> · {s.camelot_code}</span>
+                  )}
                   {s.bpm != null && <span className="mono"> · {s.bpm}</span>}
                 </span>
               </li>
@@ -173,7 +211,7 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           </ul>
         )}
       </div>
-      {(onAddToPool || onAddToTracklist) ? (
+      {onAddToPool || onAddToTracklist ? (
         <div className="set-dual-actions search-dual-actions">
           {onAddToPool && (
             <button
@@ -190,7 +228,9 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
               className="match-action-btn match-action-btn--small"
               onClick={onAddToTracklist}
               disabled={!selectedTrack}
-              title={selectedTrack ? 'Add to Tracklist' : 'Select a track first'}
+              title={
+                selectedTrack ? 'Add to Tracklist' : 'Select a track first'
+              }
             >
               + TL
             </button>
@@ -201,7 +241,9 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           className="match-action-btn search-add-to-set-btn"
           onClick={onAddToSet}
           disabled={!selectedTrack}
-          title={selectedTrack ? 'Add selected track to set' : 'Select a track first'}
+          title={
+            selectedTrack ? 'Add selected track to set' : 'Select a track first'
+          }
         >
           + Set
         </button>
@@ -218,9 +260,10 @@ export function SearchPanel({ selectedTrack, selectTrack, clearSelectedTrack, no
           disabled={isSumValid}
           onClick={normalizeWeights}
         >
-          Normalize Weights{!isSumValid && ` (${parseFloat(rawSum.toFixed(1))})`}
+          Normalize Weights
+          {!isSumValid && ` (${Number(rawSum.toFixed(1))})`}
         </button>
       </div>
     </div>
-  );
+  )
 }

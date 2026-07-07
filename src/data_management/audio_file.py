@@ -180,7 +180,7 @@ class AudioFile:
         try:
             energy = self.get_tag(ID3Tag.ENERGY)
             return int(energy)
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             pass
 
         comment_tags = [ID3Tag.COMMENT, ID3Tag.USER_COMMENT, ID3Tag.COMMENT_ENG]
@@ -206,7 +206,7 @@ class AudioFile:
                     )
                     return int(track_metadata.get("Energy", ""))
 
-            except Exception:
+            except (AttributeError, IndexError, TypeError, ValueError):
                 continue
 
         return None

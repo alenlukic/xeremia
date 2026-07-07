@@ -47,10 +47,10 @@ def get_lossless_files(input_dir):
 
 
 def get_file_creation_time(full_path):
-    try:
-        return osstat(full_path).st_birthtime if IS_UNIX else osstat(full_path).st_ctime
-    except Exception:
-        return osstat(full_path).st_ctime
+    file_stat = osstat(full_path)
+    if IS_UNIX:
+        return getattr(file_stat, "st_birthtime", file_stat.st_ctime)
+    return file_stat.st_ctime
 
 
 def get_track_load_path(track):

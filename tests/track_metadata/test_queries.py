@@ -12,9 +12,7 @@ from src.track_metadata.sources.queries import (
     web_search_query,
 )
 
-_SITE_RESTRICTION = (
-    "(site:beatport.com OR site:soundcloud.com OR site:bandcamp.com OR site:hypeddit.com)"
-)
+_SITE_RESTRICTION = "(site:beatport.com OR site:soundcloud.com OR site:bandcamp.com OR site:hypeddit.com)"
 
 
 # ---------------------------------------------------------------------------

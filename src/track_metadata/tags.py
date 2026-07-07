@@ -79,7 +79,9 @@ def _is_aiff_path(path: Path) -> bool:
     return path.suffix.lower() in {".aiff", ".aif"}
 
 
-def _load_id3(path: Path, create_if_missing: bool = False) -> tuple[ID3 | None, AIFF | None]:
+def _load_id3(
+    path: Path, create_if_missing: bool = False
+) -> tuple[ID3 | None, AIFF | None]:
     if _is_aiff_path(path):
         container = AIFF(str(path))
         if container.tags is None:

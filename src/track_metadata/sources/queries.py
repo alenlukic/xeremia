@@ -44,7 +44,9 @@ def _site_restriction(sites: tuple[str, ...] = METADATA_SEARCH_SITES) -> str:
     return f"({clauses})"
 
 
-def _with_site_restriction(query: str, *, sites: tuple[str, ...] = METADATA_SEARCH_SITES) -> str:
+def _with_site_restriction(
+    query: str, *, sites: tuple[str, ...] = METADATA_SEARCH_SITES
+) -> str:
     return f"{_site_restriction(sites)} {query}"
 
 

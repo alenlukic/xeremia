@@ -251,12 +251,12 @@ class WebSearchResearchClient:
             return []
         return parse_search_results(html_text)
 
-    def _seed(self, artist: str | None, title: str | None, album: str | None = None) -> SimpleMetadata:
+    def _seed(
+        self, artist: str | None, title: str | None, album: str | None = None
+    ) -> SimpleMetadata:
         return SimpleMetadata(artist=artist, title=title, album=album)
 
-    def detect_free_download(
-        self, artist: str | None, title: str | None
-    ) -> bool:
+    def detect_free_download(self, artist: str | None, title: str | None) -> bool:
         query = free_download_query(SearchTerms(artist=artist, title=title, album=None))
         if query is None:
             return False
@@ -269,7 +269,9 @@ class WebSearchResearchClient:
     def search_label_by_title(
         self, artist: str | None, title: str | None
     ) -> list[LabelSearchObservation]:
-        query = direct_label_title_query(SearchTerms(artist=artist, title=title, album=None))
+        query = direct_label_title_query(
+            SearchTerms(artist=artist, title=title, album=None)
+        )
         if query is None:
             return []
         seed = self._seed(artist, title)
@@ -282,7 +284,9 @@ class WebSearchResearchClient:
     def search_label_by_album(
         self, artist: str | None, album: str | None
     ) -> list[LabelSearchObservation]:
-        query = direct_label_album_query(SearchTerms(artist=artist, title=None, album=album))
+        query = direct_label_album_query(
+            SearchTerms(artist=artist, title=None, album=album)
+        )
         if query is None:
             return []
         seed = self._seed(artist, None, album)

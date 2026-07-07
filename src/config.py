@@ -33,7 +33,10 @@ def _invalidate_stale_numba_cache() -> None:
     stamp_file = site_pkgs / ".numba_np_version"
 
     current = np.__version__
-    if stamp_file.exists() and stamp_file.read_text().strip() == current:
+    if (
+        stamp_file.exists()
+        and stamp_file.read_text(encoding="utf-8").strip() == current
+    ):
         return
 
     for ext in ("*.nbc", "*.nbi"):
@@ -44,7 +47,7 @@ def _invalidate_stale_numba_cache() -> None:
                 pass
 
     try:
-        stamp_file.write_text(current)
+        stamp_file.write_text(current, encoding="utf-8")
     except OSError:
         pass
 

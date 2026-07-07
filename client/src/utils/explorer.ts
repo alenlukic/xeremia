@@ -7,13 +7,13 @@ export const EXPLORER_PALETTE = {
   edgeOrange: '#ffb74d',
   edgePink: '#f06292',
   edgePurple: '#ce93d8',
-} as const;
+} as const
 
 export const LEVEL_COLORS = [
   EXPLORER_PALETTE.nodeDanger,
   EXPLORER_PALETTE.nodeInfo,
   EXPLORER_PALETTE.nodeSuccess,
-] as const;
+] as const
 
 export const EDGE_COLORS = [
   EXPLORER_PALETTE.edgeCyan,
@@ -21,18 +21,18 @@ export const EDGE_COLORS = [
   EXPLORER_PALETTE.edgeOrange,
   EXPLORER_PALETTE.edgePink,
   EXPLORER_PALETTE.edgePurple,
-] as const;
+] as const
 
 export const ACTION_FILL = {
   danger: 'var(--danger)',
   success: 'var(--success)',
   accent: 'var(--accent)',
-} as const;
+} as const
 
 export function nodeColorForLevel(level: number): string {
-  return LEVEL_COLORS[level % LEVEL_COLORS.length];
+  return LEVEL_COLORS[level % LEVEL_COLORS.length]
 }
 
 export function edgeColorForColumn(columnIndex: number): string {
-  return EDGE_COLORS[columnIndex % EDGE_COLORS.length];
+  return EDGE_COLORS[columnIndex % EDGE_COLORS.length]
 }

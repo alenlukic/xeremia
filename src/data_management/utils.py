@@ -141,10 +141,10 @@ def normalize_tag_text(text):
 def load_comment(comment_string, default=None):
     try:
         return literal_eval(comment_string)
-    except Exception:
+    except (SyntaxError, TypeError, ValueError):
         try:
             return literal_eval(default)
-        except Exception:
+        except (SyntaxError, TypeError, ValueError):
             return {}
 
 

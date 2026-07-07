@@ -50,8 +50,8 @@ def generate_camelot_map(tracks):
         raw_comment = comment
         if not raw_comment:
             try:
-                raw_comment = AudioFile(file_name).get_metadata().get(
-                    TrackDBCols.COMMENT.value
+                raw_comment = (
+                    AudioFile(file_name).get_metadata().get(TrackDBCols.COMMENT.value)
                 )
             except (FileNotFoundError, OSError, mutagen.MutagenError) as exc:
                 logger.warning(

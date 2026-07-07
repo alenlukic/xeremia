@@ -69,7 +69,7 @@ class TransitionMatch:
             try:
                 self.db_session.rollback()
             except Exception:
-                pass
+                logger.debug("Session rollback failed", exc_info=True)
 
     def __init__(self, metadata, cur_track_md, camelot_priority):
         self.metadata = metadata

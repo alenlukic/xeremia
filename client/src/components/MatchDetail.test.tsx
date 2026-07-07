@@ -1,14 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MatchDetail } from './MatchDetail';
-import type { TransitionMatch, MatchDetail as MatchDetailData } from '../types';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { MatchDetail } from './MatchDetail'
+import type { TransitionMatch, MatchDetail as MatchDetailData } from '../types'
 
 vi.mock('../api/http', () => ({
   fetchMatchDetail: vi.fn(),
-}));
+}))
 
-import { fetchMatchDetail } from '../api/http';
-const mockFetch = vi.mocked(fetchMatchDetail);
+import { fetchMatchDetail } from '../api/http'
+const mockFetch = vi.mocked(fetchMatchDetail)
 
 const sourceTrack = {
   id: 1,
@@ -17,7 +17,7 @@ const sourceTrack = {
   bpm: 128,
   key: 'C',
   camelot_code: '8B',
-};
+}
 
 function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
   return {
@@ -35,7 +35,7 @@ function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
     vocal_clash_score: 0.5,
     instrument_similarity_score: 0.55,
     ...overrides,
-  };
+  }
 }
 
 function makeDetail(overrides: Partial<MatchDetailData> = {}): MatchDetailData {
@@ -85,18 +85,18 @@ function makeDetail(overrides: Partial<MatchDetailData> = {}): MatchDetailData {
       },
     },
     ...overrides,
-  };
+  }
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
-});
+  vi.clearAllMocks()
+})
 
 describe('MatchDetail', () => {
   describe('Factor Breakdown labels', () => {
     it('displays factor names matching weight gauge terminology', async () => {
-      const detail = makeDetail();
-      mockFetch.mockResolvedValue(detail);
+      const detail = makeDetail()
+      mockFetch.mockResolvedValue(detail)
 
       render(
         <MatchDetail
@@ -105,25 +105,34 @@ describe('MatchDetail', () => {
           onBack={vi.fn()}
           traitMap={new Map()}
         />,
-      );
+      )
 
       await waitFor(() => {
-        expect(screen.getByText('Factor Breakdown')).toBeInTheDocument();
-      });
+        expect(screen.getByText('Factor Breakdown')).toBeInTheDocument()
+      })
 
       const expectedLabels = [
-        'Spectral', 'Key', 'BPM', 'Genre', 'Recency',
-        'Energy (MIK)', 'Mood', 'Instruments', 'Vocals',
-      ];
-      const factorCells = document.querySelectorAll('.factor-table tbody td:first-child');
-      const rendered = Array.from(factorCells).map((td) => td.textContent);
-      expect(rendered).toEqual(expectedLabels);
-    });
-  });
+        'Spectral',
+        'Key',
+        'BPM',
+        'Genre',
+        'Recency',
+        'Energy (MIK)',
+        'Mood',
+        'Instruments',
+        'Vocals',
+      ]
+      const factorCells = document.querySelectorAll(
+        '.factor-table tbody td:first-child',
+      )
+      const rendered = Array.from(factorCells).map((td) => td.textContent)
+      expect(rendered).toEqual(expectedLabels)
+    })
+  })
 
   describe('Track Inputs labels', () => {
     it('renders shortened trait labels: Vocals, Onsets, Flatness, Mood', async () => {
-      mockFetch.mockResolvedValue(makeDetail());
+      mockFetch.mockResolvedValue(makeDetail())
 
       render(
         <MatchDetail
@@ -132,26 +141,33 @@ describe('MatchDetail', () => {
           onBack={vi.fn()}
           traitMap={new Map()}
         />,
-      );
+      )
 
       await waitFor(() => {
-        expect(screen.getByText('Track Inputs')).toBeInTheDocument();
-      });
+        expect(screen.getByText('Track Inputs')).toBeInTheDocument()
+      })
 
-      const labels = document.querySelectorAll('.detail-field-label');
-      const labelTexts = Array.from(labels).map((el) => el.textContent);
+      const labels = document.querySelectorAll('.detail-field-label')
+      const labelTexts = Array.from(labels).map((el) => el.textContent)
 
       for (const short of ['Vocals', 'Onsets', 'Flatness', 'Mood']) {
-        expect(labelTexts.filter((t) => t === short).length).toBeGreaterThanOrEqual(2);
+        expect(
+          labelTexts.filter((t) => t === short).length,
+        ).toBeGreaterThanOrEqual(2)
       }
 
-      for (const old of ['Voice / Instrumental', 'Onset Density', 'Spectral Flatness', 'Mood / Theme']) {
-        expect(labelTexts).not.toContain(old);
+      for (const old of [
+        'Voice / Instrumental',
+        'Onset Density',
+        'Spectral Flatness',
+        'Mood / Theme',
+      ]) {
+        expect(labelTexts).not.toContain(old)
       }
-    });
+    })
 
     it('places Vocals, Onsets, Flatness in a 3-column fixed row and Mood as a variable section', async () => {
-      mockFetch.mockResolvedValue(makeDetail());
+      mockFetch.mockResolvedValue(makeDetail())
 
       render(
         <MatchDetail
@@ -160,29 +176,29 @@ describe('MatchDetail', () => {
           onBack={vi.fn()}
           traitMap={new Map()}
         />,
-      );
+      )
 
       await waitFor(() => {
-        expect(screen.getByText('Track Inputs')).toBeInTheDocument();
-      });
+        expect(screen.getByText('Track Inputs')).toBeInTheDocument()
+      })
 
-      const cards = document.querySelectorAll('.detail-track-card');
-      expect(cards.length).toBe(2);
+      const cards = document.querySelectorAll('.detail-track-card')
+      expect(cards.length).toBe(2)
 
-      const fourColRows = cards[0].querySelectorAll('.detail-row--4');
-      expect(fourColRows.length).toBeGreaterThanOrEqual(2);
+      const fourColRows = cards[0].querySelectorAll('.detail-row--4')
+      expect(fourColRows.length).toBeGreaterThanOrEqual(2)
 
-      const traitRow = fourColRows[fourColRows.length - 1];
+      const traitRow = fourColRows[fourColRows.length - 1]
       const labelsInRow = Array.from(
         traitRow.querySelectorAll('.detail-field-label'),
-      ).map((el) => el.textContent);
-      expect(labelsInRow).toEqual(['Vocals', 'Onsets', 'Flatness']);
+      ).map((el) => el.textContent)
+      expect(labelsInRow).toEqual(['Vocals', 'Onsets', 'Flatness'])
 
-      const varSections = cards[0].querySelectorAll('.detail-var-section');
+      const varSections = cards[0].querySelectorAll('.detail-var-section')
       const varLabels = Array.from(varSections).map(
         (s) => s.querySelector('.detail-field-label')?.textContent,
-      );
-      expect(varLabels).toContain('Mood');
-    });
-  });
-});
+      )
+      expect(varLabels).toContain('Mood')
+    })
+  })
+})

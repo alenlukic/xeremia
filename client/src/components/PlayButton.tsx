@@ -1,27 +1,34 @@
-import { memo, useCallback, useContext } from 'react';
-import { AudioPlayerContext } from '../hooks/useAudioPlayer';
+import { memo, useCallback, useContext } from 'react'
+import { AudioPlayerContext } from '../hooks/useAudioPlayer'
 
 interface Props {
-  trackId: number;
-  title: string;
-  className?: string;
+  trackId: number
+  title: string
+  className?: string
 }
 
-export const PlayButton = memo(function PlayButton({ trackId, title, className }: Props) {
-  const ctx = useContext(AudioPlayerContext);
-  const track = ctx?.track ?? null;
-  const playing = ctx?.playing ?? false;
-  const loading = ctx?.loading ?? false;
-  const togglePlayPause = ctx?.togglePlayPause;
+export const PlayButton = memo(function PlayButton({
+  trackId,
+  title,
+  className,
+}: Props) {
+  const ctx = useContext(AudioPlayerContext)
+  const track = ctx?.track ?? null
+  const playing = ctx?.playing ?? false
+  const loading = ctx?.loading ?? false
+  const togglePlayPause = ctx?.togglePlayPause
 
-  const isThisTrack = track?.id === trackId;
-  const isPlaying = isThisTrack && playing;
-  const isLoading = isThisTrack && loading;
+  const isThisTrack = track?.id === trackId
+  const isPlaying = isThisTrack && playing
+  const isLoading = isThisTrack && loading
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    togglePlayPause?.(trackId, title);
-  }, [trackId, title, togglePlayPause]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      togglePlayPause?.(trackId, title)
+    },
+    [trackId, title, togglePlayPause],
+  )
 
   return (
     <button
@@ -35,5 +42,5 @@ export const PlayButton = memo(function PlayButton({ trackId, title, className }
     >
       {isLoading ? '⏳' : isPlaying ? '⏸' : '▶'}
     </button>
-  );
-});
+  )
+})

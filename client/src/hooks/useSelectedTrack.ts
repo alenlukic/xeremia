@@ -1,15 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Track, SearchSuggestion, TransitionMatch } from '../types';
-import { fetchMatches } from '../api/http';
+import { useState, useCallback, useRef, useEffect } from 'react'
+import type { Track, SearchSuggestion, TransitionMatch } from '../types'
+import { fetchMatches } from '../api/http'
 
 interface SelectedTrackState {
-  selectedTrack: Track | SearchSuggestion | null;
-  matches: TransitionMatch[];
-  matchesLoading: boolean;
-  matchesError: string | null;
-  selectTrack: (track: Track | SearchSuggestion) => void;
-  clearSelectedTrack: () => void;
-  refetchMatches: () => void;
+  selectedTrack: Track | SearchSuggestion | null
+  matches: TransitionMatch[]
+  matchesLoading: boolean
+  matchesError: string | null
+  selectTrack: (track: Track | SearchSuggestion) => void
+  clearSelectedTrack: () => void
+  refetchMatches: () => void
 }
 
 /**
@@ -17,79 +17,102 @@ interface SelectedTrackState {
  * Both autocomplete and browse selections converge on `selectTrack`.
  * Match results are cached per track ID for the session.
  */
-export function useSelectedTrack(onTrackAction?: () => void): SelectedTrackState {
-  const [selectedTrack, setSelectedTrack] = useState<Track | SearchSuggestion | null>(null);
-  const [matches, setMatches] = useState<TransitionMatch[]>([]);
-  const [matchesLoading, setMatchesLoading] = useState(false);
-  const [matchesError, setMatchesError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const matchCacheRef = useRef<Map<number, TransitionMatch[]>>(new Map());
-  const selectedTrackRef = useRef<Track | SearchSuggestion | null>(null);
-  const onTrackActionRef = useRef(onTrackAction);
+export function useSelectedTrack(
+  onTrackAction?: () => void,
+): SelectedTrackState {
+  const [selectedTrack, setSelectedTrack] = useState<
+    Track | SearchSuggestion | null
+  >(null)
+  const [matches, setMatches] = useState<TransitionMatch[]>([])
+  const [matchesLoading, setMatchesLoading] = useState(false)
+  const [matchesError, setMatchesError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const matchCacheRef = useRef<Map<number, TransitionMatch[]>>(new Map())
+  const selectedTrackRef = useRef<Track | SearchSuggestion | null>(null)
+  const onTrackActionRef = useRef(onTrackAction)
   useEffect(() => {
-    onTrackActionRef.current = onTrackAction;
-  }, [onTrackAction]);
+    onTrackActionRef.current = onTrackAction
+  }, [onTrackAction])
 
   const loadMatches = useCallback((trackId: number) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setMatchesLoading(true);
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    setMatchesLoading(true)
 
     fetchMatches(trackId, controller.signal)
       .then((data) => {
         if (!controller.signal.aborted) {
-          matchCacheRef.current.set(trackId, data);
-          setMatches(data);
-          setMatchesError(null);
-          onTrackActionRef.current?.();
+          matchCacheRef.current.set(trackId, data)
+          setMatches(data)
+          setMatchesError(null)
+          onTrackActionRef.current?.()
         }
       })
       .catch((err: unknown) => {
         if (!controller.signal.aborted) {
-          setMatches([]);
-          setMatchesError(err instanceof Error ? err.message : 'Failed to load matches');
+          setMatches([])
+          setMatchesError(
+            err instanceof Error ? err.message : 'Failed to load matches',
+          )
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setMatchesLoading(false);
-      });
-  }, []);
+        if (!controller.signal.aborted) {
+          setMatchesLoading(false)
+        }
+      })
+  }, [])
 
-  const selectTrack = useCallback((track: Track | SearchSuggestion) => {
-    abortRef.current?.abort();
-    setSelectedTrack(track);
-    selectedTrackRef.current = track;
+  const selectTrack = useCallback(
+    (track: Track | SearchSuggestion) => {
+      abortRef.current?.abort()
+      setSelectedTrack(track)
+      selectedTrackRef.current = track
 
-    const cached = matchCacheRef.current.get(track.id);
-    if (cached) {
-      setMatches(cached);
-      setMatchesError(null);
-      setMatchesLoading(false);
-      return;
-    }
+      const cached = matchCacheRef.current.get(track.id)
+      if (cached) {
+        setMatches(cached)
+        setMatchesError(null)
+        setMatchesLoading(false)
+        return
+      }
 
-    setMatches([]);
-    setMatchesError(null);
-    loadMatches(track.id);
-  }, [loadMatches]);
+      setMatches([])
+      setMatchesError(null)
+      loadMatches(track.id)
+    },
+    [loadMatches],
+  )
 
   const clearSelectedTrack = useCallback(() => {
-    if (selectedTrackRef.current === null) return;
-    abortRef.current?.abort();
-    setSelectedTrack(null);
-    selectedTrackRef.current = null;
-    setMatches([]);
-    setMatchesError(null);
-    setMatchesLoading(false);
-  }, []);
+    if (selectedTrackRef.current === null) {
+      return
+    }
+    abortRef.current?.abort()
+    setSelectedTrack(null)
+    selectedTrackRef.current = null
+    setMatches([])
+    setMatchesError(null)
+    setMatchesLoading(false)
+  }, [])
 
   const refetchMatches = useCallback(() => {
-    const track = selectedTrackRef.current;
-    if (!track) return;
-    matchCacheRef.current.delete(track.id);
-    loadMatches(track.id);
-  }, [loadMatches]);
+    const track = selectedTrackRef.current
+    if (!track) {
+      return
+    }
+    matchCacheRef.current.delete(track.id)
+    loadMatches(track.id)
+  }, [loadMatches])
 
-  return { selectedTrack, matches, matchesLoading, matchesError, selectTrack, clearSelectedTrack, refetchMatches };
+  return {
+    selectedTrack,
+    matches,
+    matchesLoading,
+    matchesError,
+    selectTrack,
+    clearSelectedTrack,
+    refetchMatches,
+  }
 }

@@ -56,7 +56,10 @@ from src.track_metadata.sources.genre_lookups import (
     read_beatport_genre_from_tags,
 )
 from src.track_metadata.sources.musicbrainz import MusicBrainzSource
-from src.track_metadata.sources.web_search import WebSearchResearchClient, WebSearchSource
+from src.track_metadata.sources.web_search import (
+    WebSearchResearchClient,
+    WebSearchSource,
+)
 from src.utils.http import RateLimitedHttpClient
 
 CandidateResolver = Callable[
@@ -360,9 +363,7 @@ class MetadataHydrator:
         web_client = self._resolve_web_research_client()
         if web_client is None or not metadata.artist or not metadata.title:
             return None
-        free_download = web_client.detect_free_download(
-            metadata.artist, metadata.title
-        )
+        free_download = web_client.detect_free_download(metadata.artist, metadata.title)
         return resolve_ravevival(free_download=free_download, bpm=metadata.bpm)
 
 

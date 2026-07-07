@@ -151,7 +151,9 @@ class CursorBrowserResearchClient:
             identity_confirmed=True,
         )
 
-    def _prompt(self, instruction: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    def _prompt(
+        self, instruction: str, payload: dict[str, Any]
+    ) -> dict[str, Any] | None:
         if not ENABLE_CURSOR_SDK_FALLBACK:
             return None
         try:
