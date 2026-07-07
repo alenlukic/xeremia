@@ -19,6 +19,8 @@ class TrackStatus(str, Enum):
 class TrackResult:
     source: Path
     metadata: SimpleMetadata = field(default_factory=SimpleMetadata)
+    existing_metadata: SimpleMetadata = field(default_factory=SimpleMetadata)
+    rekordbox_metadata: SimpleMetadata | None = None
     working_path: Path | None = None
     output_path: Path | None = None
     status: TrackStatus = TrackStatus.SKIPPED
@@ -27,6 +29,7 @@ class TrackResult:
     missing_optional: list[str] = field(default_factory=list)
     agent_events: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    matched_track_id: int | None = None
 
 
 @dataclass
@@ -36,6 +39,7 @@ class PipelineContext:
     agent: Any | None = None
     session_factory: Callable[[], Any] | None = None
     shared_state: dict[str, Any] = field(default_factory=dict)
+    rekordbox_index: Any | None = None
 
 
 StageRun = Callable[[TrackResult, PipelineContext], None]

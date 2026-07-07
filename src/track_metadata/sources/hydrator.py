@@ -24,7 +24,7 @@ from src.track_metadata.matching import (
     _best_year,
     _extract_remixer,
     _merge_missing,
-    _parse_filename_seed,
+    seed_metadata_from_filename,
 )
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.pipeline.config import (
@@ -144,7 +144,7 @@ class MetadataHydrator:
             logging.info("Using cached metadata for %s", file_path.name)
             return cached
 
-        seed = _merge_missing(existing, _parse_filename_seed(file_path))
+        seed = seed_metadata_from_filename(file_path, existing)
         if self.skip_beatport_hydration and is_beatport_encoded(file_path):
             logging.info(
                 "Skipping remote hydration for Beatport-encoded file %s", file_path.name

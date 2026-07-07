@@ -369,7 +369,12 @@ OpenAI LLM. Writes enriched metadata back to file tags.
 **Invocation:**
 ```bash
 python -m src.track_metadata.metadata_agent
+
+# Optional: use Rekordbox-exported BPM/key metadata
+python -m src.track_metadata.metadata_agent --rekordbox-tsv /path/to/rekordbox.tsv
 ```
+
+The TSV may use named musical keys or Camelot notation (`4A` and `04A` are equivalent).
 
 **Location:** `src/track_metadata/`
 

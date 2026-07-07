@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import logging
 from pathlib import Path
 
 from src.track_metadata.pipeline.agent import build_cursor_sdk_agent
 from src.track_metadata.pipeline.report import RunReport
+from src.track_metadata.rekordbox import RekordboxMetadataIndex
 from src.track_metadata.pipeline.stages import build_context, build_default_pipeline
 from src.track_metadata.sources.hydrator import build_metadata_agent
 from src.track_metadata.utils import (
@@ -25,13 +27,28 @@ def _heartbeat(message: str) -> None:
     print(message, flush=True)
 
 
-def run_pipeline() -> Path:
+def run_pipeline(rekordbox_tsv: Path | None = None) -> Path:
     setup_logging()
     _heartbeat(
         "track_metadata pipeline starting | "
         f"download={DOWNLOAD_DIR} processing={PROCESSING_DIR} "
         f"augmented={AUGMENTED_DIR} remediation={REMEDIATION_DIR} log={LOG_DIR}"
     )
+    rekordbox_index = (
+        RekordboxMetadataIndex.from_tsv(rekordbox_tsv)
+        if rekordbox_tsv is not None
+        else None
+    )
+    if rekordbox_index is not None:
+        logging.info(
+            "Loaded %d Rekordbox metadata row(s) from %s",
+            len(rekordbox_index.rows),
+            rekordbox_tsv,
+        )
+        _heartbeat(
+            f"loaded {len(rekordbox_index.rows)} Rekordbox metadata row(s)"
+        )
+
     ensure_directories()
     reset_processing_dir()
 
@@ -57,7 +74,11 @@ def run_pipeline() -> Path:
             ),
             session_factory=database.create_session,
         )
-        context = build_context(hydrator=hydrator, run_report=report)
+        context = build_context(
+            hydrator=hydrator,
+            run_report=report,
+            rekordbox_index=rekordbox_index,
+        )
         context.agent = fallback_agent
         pipeline = build_default_pipeline()
         pipeline.run(files, context, on_progress=_on_track_progress)
@@ -80,8 +101,19 @@ def _on_track_progress(index: int, total: int, source: Path) -> None:
     _heartbeat(f"[{index}/{total}] processing {source.name}")
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the track metadata pipeline")
+    parser.add_argument(
+        "--rekordbox-tsv",
+        type=Path,
+        help="Optional Rekordbox-exported metadata TSV used for BPM/key resolution",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    report_path = run_pipeline()
+    args = _parse_args()
+    report_path = run_pipeline(rekordbox_tsv=args.rekordbox_tsv)
     logging.info("Run report written to %s", report_path)
 
 

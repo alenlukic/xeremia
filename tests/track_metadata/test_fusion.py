@@ -7,6 +7,7 @@ from src.track_metadata.audio_features import (
     KEY_ANALYZER_PRIORITY,
     _canonicalize_key,
     _normalize_bpm,
+    bpm_values_octave_related,
     fuse_bpm,
     fuse_key,
 )
@@ -433,10 +434,13 @@ def test_fuse_bpm_falls_back_to_best_available_calibrated_analyzer(
     assert confidence == 0.0
 
 
-def test_fuse_bpm_normalizes_half_time_before_agreement():
-    bpm, confidence = fuse_bpm({"madmom": 64.0, "essentia": 128.0, "librosa": 129.0})
+def test_fuse_bpm_preserves_tempo_octaves_and_ignores_half_time_outlier():
+    bpm, confidence = fuse_bpm(
+        {"madmom": 64.0, "essentia": 128.0, "librosa": 129.0}
+    )
+    assert bpm_values_octave_related(64.0, 128.0)
     assert bpm == 128.0
-    assert confidence == 1.0
+    assert confidence == pytest.approx(2 / 3)
 
 
 def test_fuse_bpm_returns_none_for_empty_candidates():
@@ -447,7 +451,10 @@ def test_fuse_bpm_returns_none_for_empty_candidates():
 
 def test_bpm_priority_matches_48_track_calibration():
     stats = _fixture_bpm_stats()
-    assert tuple(sorted(stats, key=lambda analyzer: stats[analyzer]["mae"])) == BPM_ANALYZER_PRIORITY
+    assert (
+        tuple(sorted(stats, key=lambda analyzer: stats[analyzer]["mae"]))
+        == BPM_ANALYZER_PRIORITY
+    )
     assert stats["essentia"]["mae"] == pytest.approx(1.6633934974670408)
     assert stats["madmom"]["mae"] == pytest.approx(4.059749778826172)
     assert stats["librosa"]["mae"] == pytest.approx(8.228313527635363)
@@ -457,6 +464,7 @@ def test_bpm_priority_matches_48_track_calibration():
 
 
 def test_fuse_bpm_matches_48_track_calibration_fixture():
+    errors: list[float] = []
     within_1 = 0
     within_2 = 0
     all_analyzer_failures: set[str] = set()
@@ -466,6 +474,7 @@ def test_fuse_bpm_matches_48_track_calibration_fixture():
         assert bpm is not None
 
         error = abs(bpm - entry["ground_truth_bpm"])
+        errors.append(error)
         within_1 += error <= 1.0
         within_2 += error <= 2.0
 
@@ -475,8 +484,9 @@ def test_fuse_bpm_matches_48_track_calibration_fixture():
         ):
             all_analyzer_failures.add(entry["file"])
 
-    assert within_1 == 43
-    assert within_2 == 46
+    assert sum(errors) / len(errors) == pytest.approx(0.7970563570658363)
+    assert within_1 == 44
+    assert within_2 == 47
     assert all_analyzer_failures == KNOWN_BPM_ALL_ANALYZER_FAILURES
 
 
@@ -554,7 +564,10 @@ def test_fuse_key_keeps_best_analyzer_when_only_lower_priority_votes_agree():
 
 def test_key_priority_matches_48_track_calibration():
     exact = _fixture_key_stats()
-    assert tuple(sorted(exact, key=lambda analyzer: exact[analyzer], reverse=True)) == KEY_ANALYZER_PRIORITY
+    assert (
+        tuple(sorted(exact, key=lambda analyzer: exact[analyzer], reverse=True))
+        == KEY_ANALYZER_PRIORITY
+    )
     assert exact == {"madmom": 26, "librosa": 17, "essentia": 31}
 
 
