@@ -3,11 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from src.data_management.audio_file import AudioFile
-from src.data_management.config import CANONICAL_KEY_MAP
-from src.data_management.utils import normalize_key_symbols
 from src.db import database
-from src.track_metadata.label import apply_album_label_consistency
 from src.track_metadata.audio_features import analyze_missing_audio_features
+from src.track_metadata.key_utils import canonicalize_key
+from src.track_metadata.label import apply_album_label_consistency
 from src.track_metadata.matching import _compose_display_title
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.pipeline.config import (
@@ -60,13 +59,27 @@ def stage_hydrate(result: TrackResult, context: PipelineContext) -> None:
     )
     if conflicts:
         result.notes.extend(conflicts)
+    result.existing_metadata = existing
     result.metadata = hydrated
+
+    if context.rekordbox_index is not None:
+        rekordbox_row = context.rekordbox_index.match(
+            source=result.source, metadata=hydrated
+        )
+        if rekordbox_row is not None:
+            result.rekordbox_metadata = rekordbox_row.to_simple_metadata()
+            result.notes.append(f"rekordbox_match=row_{rekordbox_row.row_number}")
 
 
 def stage_analyze(result: TrackResult, context: PipelineContext) -> None:
     if result.working_path is None:
         raise ValueError("working path is missing before analyze stage")
-    analyze_missing_audio_features(result.working_path, result.metadata)
+    analyze_missing_audio_features(
+        result.working_path,
+        result.metadata,
+        result.existing_metadata,
+        result.rekordbox_metadata,
+    )
 
 
 def stage_classify_genre(result: TrackResult, context: PipelineContext) -> None:
@@ -78,15 +91,12 @@ def stage_classify_genre(result: TrackResult, context: PipelineContext) -> None:
 
 
 def stage_format(result: TrackResult, context: PipelineContext) -> None:
-    key = normalize_key_symbols(result.metadata.key)
+    canonical = canonicalize_key(result.metadata.key)
     bpm = result.metadata.bpm
-    if key is None or bpm is None:
+    if canonical is None or bpm is None:
         result.camelot_code = None
         return
 
-    canonical = CANONICAL_KEY_MAP.get(key.strip().lower(), key.strip().lower())
-    if canonical:
-        canonical = canonical[0].upper() + canonical[1:]
     result.metadata.key = canonical
     result.camelot_code = AudioFile.format_camelot_code(canonical)
 
@@ -150,5 +160,13 @@ def build_default_pipeline() -> Pipeline:
     )
 
 
-def build_context(hydrator: object, run_report: object) -> PipelineContext:
-    return PipelineContext(hydrator=hydrator, run_report=run_report)
+def build_context(
+    hydrator: object,
+    run_report: object,
+    rekordbox_index: object | None = None,
+) -> PipelineContext:
+    return PipelineContext(
+        hydrator=hydrator,
+        run_report=run_report,
+        rekordbox_index=rekordbox_index,
+    )

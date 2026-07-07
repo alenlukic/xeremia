@@ -14,7 +14,7 @@ The metadata agent is a batch processor that prepares newly downloaded audio fil
 for ingestion into the library. It runs as a standalone script and operates on files
 in a configured download directory.
 
-**Entry point:** `python -m src.track_metadata.metadata_agent`
+**Entry point:** `python -m src.track_metadata.metadata_agent [--rekordbox-tsv PATH]`
 
 ### Pipeline
 
@@ -46,9 +46,12 @@ Post-merge field resolution (genre and label, independent)
     └─ Label: catalog-number (title, then album) → direct label search → Beatport track page → qualified `CDR`
     │
     ▼
-Analyze missing audio features
-    ├─ BPM estimation (librosa beat tracking, if missing)
-    └─ Key estimation (Krumhansl-Schmuckler, if missing)
+Resolve BPM and key independently
+    ├─ Optional Rekordbox TSV + existing ID3 agreement → accept without analyzers
+    ├─ Rekordbox + Essentia agreement → accept without madmom/librosa
+    ├─ Otherwise require 3-of-4 Rekordbox/analyzer consensus
+    ├─ Broad disagreement with Rekordbox present → use Rekordbox
+    └─ Without Rekordbox: Essentia-first consensus with octave-error protection
     │
     ▼
 Write enriched ID3 tags back to file
@@ -67,7 +70,9 @@ Copy to Augmented Dir
 | `src/track_metadata/metadata_agent.py` | Orchestrates per-file processing |
 | `src/track_metadata/sources/hydrator.py` | `MetadataHydrator` — merges data from AcoustID, MusicBrainz, Discogs, OpenAI |
 | `src/track_metadata/tags.py` | ID3 read/write via mutagen |
-| `src/track_metadata/audio_features.py` | BPM/key estimation for tracks missing that data |
+| `src/track_metadata/audio_features.py` | Staged BPM/key resolution and analyzer fusion |
+| `src/track_metadata/rekordbox.py` | Rekordbox TSV parsing and deterministic track matching |
+| `src/track_metadata/key_utils.py` | Named-key and Camelot canonicalization |
 | `src/track_metadata/matching.py` | Filename seeding, fuzzy matching, field merging |
 | `src/track_metadata/utils.py` | Directory layout, staging, discovery, format conversion |
 
@@ -102,9 +107,13 @@ appendix written to `TRACK_METADATA_LOG_DIR`.
 
 ### Typical usage
 
-1. Drop new audio files into the download directory
-2. Run `python -m src.track_metadata.metadata_agent`
-3. Enriched files appear in the augmented directory, ready for ingestion
+1. Drop new audio files into the download directory.
+2. Optionally export a Rekordbox metadata TSV containing at least `Track Title`
+   and, when available, `BPM` and `Key`. Named musical keys and Camelot keys
+   such as `4A`/`04A` are accepted.
+3. Run `python -m src.track_metadata.metadata_agent`, or pass the export with
+   `python -m src.track_metadata.metadata_agent --rekordbox-tsv /path/to/export.tsv`.
+4. Enriched files appear in the augmented directory, ready for ingestion.
 
 ---
 

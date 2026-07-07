@@ -3,10 +3,54 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.track_metadata.matching import (
+    _clean_title_seed,
     _compose_display_title,
     _parse_filename_seed,
 )
 from src.track_metadata.models import SimpleMetadata
+
+
+def test_clean_title_seed_strips_production_metadata_cruft() -> None:
+    assert _clean_title_seed("Pressure v.4 24bit DM") == "Pressure"
+    assert _clean_title_seed("Track Title - 24bits") == "Track Title"
+    assert _clean_title_seed("Sunset Funk [MASTER v2]") == "Sunset Funk"
+
+
+def test_compose_display_title_strips_production_metadata_cruft() -> None:
+    metadata = SimpleMetadata(
+        artist="5euroGoldi",
+        title="Pressure v.4 24bit DM",
+        key="Fm",
+        bpm=156.0,
+    )
+    title = _compose_display_title(metadata, "04A")
+    assert title == "[04A - Fm - 156.00] 5euroGoldi - Pressure"
+
+
+def test_compose_display_title_preserves_apostrophes() -> None:
+    metadata = SimpleMetadata(
+        artist="Mixed Feelings",
+        title="My Body Says Let´s Go",
+        key="Bm",
+        bpm=158.0,
+    )
+    title = _compose_display_title(metadata, "10A")
+    assert title == "[10A - Bm - 158.00] Mixed Feelings - My Body Says Let's Go"
+
+
+def test_compose_display_title_titlecases_lowercase_remixer() -> None:
+    metadata = SimpleMetadata(
+        artist="Madonna",
+        title="4 Minutes feat. Justin Timberlake & Timbaland (mes amis Edit)",
+        remixer="mes amis",
+        key="Gm",
+        bpm=165.0,
+    )
+    title = _compose_display_title(metadata, "06A")
+    assert (
+        title
+        == "[06A - Gm - 165.00] Madonna - 4 Minutes feat. Justin Timberlake & Timbaland (Mes Amis Edit)"
+    )
 
 
 def test_parse_filename_seed_remix_prefix_sets_original_work_and_remixer_hint() -> None:
@@ -86,7 +130,7 @@ def test_compose_display_title_normalizes_multi_artist_separator_to_ampersand() 
         bpm=153.85,
     )
     title = _compose_display_title(metadata, "06A")
-    assert title == "[06A - Gm - 153.85] mes amis & DJ Holgersson - Atmos"
+    assert title == "[06A - Gm - 153.85] Mes Amis & DJ Holgersson - Atmos"
 
 
 def test_compose_display_title_normalizes_multi_remixer_separator_to_ampersand() -> None:

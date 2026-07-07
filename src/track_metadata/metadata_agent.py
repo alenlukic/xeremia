@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import logging
 from pathlib import Path
 
@@ -35,8 +36,19 @@ def purge_invalid_augmented_files(augmented_dir: Path = AUGMENTED_DIR) -> None:
         candidate.unlink(missing_ok=True)
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the track metadata agent")
+    parser.add_argument(
+        "--rekordbox-tsv",
+        type=Path,
+        help="Optional Rekordbox-exported metadata TSV used for BPM/key resolution",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    report_path = run_pipeline()
+    args = _parse_args()
+    report_path = run_pipeline(rekordbox_tsv=args.rekordbox_tsv)
     logging.info("Metadata pipeline completed. Report: %s", report_path)
 
 
