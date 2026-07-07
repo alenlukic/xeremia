@@ -925,7 +925,9 @@ class TestModelManagerIntegration:
         from src.feature_extraction.model_manager import _is_valid_onnx
 
         html = tmp_path / "bad.onnx"
-        html.write_text("<html><body>504 Gateway Timeout</body></html>")
+        html.write_text(
+            "<html><body>504 Gateway Timeout</body></html>", encoding="utf-8"
+        )
         assert not _is_valid_onnx(str(html))
 
     def test_is_valid_onnx_rejects_small(self, tmp_path):

@@ -92,35 +92,29 @@ class TrackRepository(Protocol):
         *,
         exclude_track_id: int | None = None,
         exclude_file_name: str | None = None,
-    ) -> ArtistGenreCounts:
-        ...
+    ) -> ArtistGenreCounts: ...
 
 
 class WebSearchClient(Protocol):
     def search_label_by_title(
         self, artist: str | None, title: str | None
-    ) -> list[LabelSearchObservation]:
-        ...
+    ) -> list[LabelSearchObservation]: ...
 
     def search_label_by_album(
         self, artist: str | None, album: str | None
-    ) -> list[LabelSearchObservation]:
-        ...
+    ) -> list[LabelSearchObservation]: ...
 
-    def detect_free_download(self, artist: str | None, title: str | None) -> bool:
-        ...
+    def detect_free_download(self, artist: str | None, title: str | None) -> bool: ...
 
 
 class BrowserResearchClient(Protocol):
     def inspect_beatport_artist_genres(
         self, artist: str
-    ) -> BeatportArtistGenreObservation | None:
-        ...
+    ) -> BeatportArtistGenreObservation | None: ...
 
     def inspect_beatport_track_label(
         self, artist: str, title: str
-    ) -> BeatportTrackLabelObservation | None:
-        ...
+    ) -> BeatportTrackLabelObservation | None: ...
 
 
 _ARTIST_MATCH_THRESHOLD = 0.82
@@ -165,7 +159,9 @@ class SqlAlchemyTrackRepository:
             .filter(ArtistTrack.artist_id.in_(matching_artist_ids))
             .all()
         )
-        track_ids = {int(link.track_id) for link in links if getattr(link, "track_id", None)}
+        track_ids = {
+            int(link.track_id) for link in links if getattr(link, "track_id", None)
+        }
         for track_id in track_ids:
             track = self._session.query(Track).filter_by(id=track_id).first()
             if track is None:

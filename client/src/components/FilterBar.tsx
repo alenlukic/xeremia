@@ -1,31 +1,52 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react'
 
 const CAMELOT_CODES = [
-  '01A','01B','02A','02B','03A','03B','04A','04B',
-  '05A','05B','06A','06B','07A','07B','08A','08B',
-  '09A','09B','10A','10B','11A','11B','12A','12B',
-];
+  '01A',
+  '01B',
+  '02A',
+  '02B',
+  '03A',
+  '03B',
+  '04A',
+  '04B',
+  '05A',
+  '05B',
+  '06A',
+  '06B',
+  '07A',
+  '07B',
+  '08A',
+  '08B',
+  '09A',
+  '09B',
+  '10A',
+  '10B',
+  '11A',
+  '11B',
+  '12A',
+  '12B',
+]
 
-const RANGE_DEBOUNCE_MS = 300;
+const RANGE_DEBOUNCE_MS = 300
 
 interface ColumnConfig {
-  id: string;
-  label: string;
+  id: string
+  label: string
 }
 
 interface Props {
-  camelotCodes: string[];
-  bpm: number | undefined;
-  bpmMin: number | undefined;
-  bpmMax: number | undefined;
-  setCamelotCodes: (codes: string[]) => void;
-  setBpm: (bpm: number | undefined) => void;
-  setBpmMin: (min: number | undefined) => void;
-  setBpmMax: (max: number | undefined) => void;
-  onClearFilters?: () => void;
-  configurableColumns?: ColumnConfig[];
-  columnVisibility?: Record<string, boolean>;
-  onToggleColumn?: (id: string) => void;
+  camelotCodes: string[]
+  bpm: number | undefined
+  bpmMin: number | undefined
+  bpmMax: number | undefined
+  setCamelotCodes: (codes: string[]) => void
+  setBpm: (bpm: number | undefined) => void
+  setBpmMin: (min: number | undefined) => void
+  setBpmMax: (max: number | undefined) => void
+  onClearFilters?: () => void
+  configurableColumns?: ColumnConfig[]
+  columnVisibility?: Record<string, boolean>
+  onToggleColumn?: (id: string) => void
 }
 
 export function FilterBar({
@@ -42,111 +63,138 @@ export function FilterBar({
   columnVisibility,
   onToggleColumn,
 }: Props) {
-  const [camelotOpen, setCamelotOpen] = useState(false);
-  const camelotRef = useRef<HTMLDivElement>(null);
-  const [colConfigOpen, setColConfigOpen] = useState(false);
-  const colConfigRef = useRef<HTMLDivElement>(null);
+  const [camelotOpen, setCamelotOpen] = useState(false)
+  const camelotRef = useRef<HTMLDivElement>(null)
+  const [colConfigOpen, setColConfigOpen] = useState(false)
+  const colConfigRef = useRef<HTMLDivElement>(null)
 
-  const [minText, setMinText] = useState(bpmMin != null ? String(bpmMin) : '');
-  const [maxText, setMaxText] = useState(bpmMax != null ? String(bpmMax) : '');
-  const minTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const maxTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [minText, setMinText] = useState(bpmMin != null ? String(bpmMin) : '')
+  const [maxText, setMaxText] = useState(bpmMax != null ? String(bpmMax) : '')
+  const minTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const maxTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Mirror numeric bpmMin/bpmMax props into the text inputs. Adjusting during
   // render (vs. in an effect) avoids a cascading render and the
   // react-hooks/set-state-in-effect warning.
-  const [prevBpmMin, setPrevBpmMin] = useState(bpmMin);
+  const [prevBpmMin, setPrevBpmMin] = useState(bpmMin)
   if (bpmMin !== prevBpmMin) {
-    setPrevBpmMin(bpmMin);
-    setMinText(bpmMin != null ? String(bpmMin) : '');
+    setPrevBpmMin(bpmMin)
+    setMinText(bpmMin != null ? String(bpmMin) : '')
   }
-  const [prevBpmMax, setPrevBpmMax] = useState(bpmMax);
+  const [prevBpmMax, setPrevBpmMax] = useState(bpmMax)
   if (bpmMax !== prevBpmMax) {
-    setPrevBpmMax(bpmMax);
-    setMaxText(bpmMax != null ? String(bpmMax) : '');
+    setPrevBpmMax(bpmMax)
+    setMaxText(bpmMax != null ? String(bpmMax) : '')
   }
 
   useEffect(() => {
     return () => {
-      clearTimeout(minTimer.current);
-      clearTimeout(maxTimer.current);
-    };
-  }, []);
+      clearTimeout(minTimer.current)
+      clearTimeout(maxTimer.current)
+    }
+  }, [])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (camelotRef.current && !camelotRef.current.contains(e.target as Node)) {
-        setCamelotOpen(false);
+      if (
+        camelotRef.current &&
+        !camelotRef.current.contains(e.target as Node)
+      ) {
+        setCamelotOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
-    if (!camelotOpen) return;
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setCamelotOpen(false);
+    if (!camelotOpen) {
+      return
     }
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [camelotOpen]);
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setCamelotOpen(false)
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [camelotOpen])
 
   useEffect(() => {
-    if (!colConfigOpen) return;
+    if (!colConfigOpen) {
+      return
+    }
     function handleClickOutside(e: MouseEvent) {
-      if (colConfigRef.current && !colConfigRef.current.contains(e.target as Node)) {
-        setColConfigOpen(false);
+      if (
+        colConfigRef.current &&
+        !colConfigRef.current.contains(e.target as Node)
+      ) {
+        setColConfigOpen(false)
       }
     }
     function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') setColConfigOpen(false);
+      if (e.key === 'Escape') {
+        setColConfigOpen(false)
+      }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [colConfigOpen]);
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [colConfigOpen])
 
   function toggleCode(code: string) {
     if (camelotCodes.includes(code)) {
-      setCamelotCodes(camelotCodes.filter((c) => c !== code));
+      setCamelotCodes(camelotCodes.filter((c) => c !== code))
     } else {
-      setCamelotCodes([...camelotCodes, code]);
+      setCamelotCodes([...camelotCodes, code])
     }
   }
 
   function parseNum(val: string): number | undefined {
-    const n = parseFloat(val);
-    return Number.isNaN(n) ? undefined : n;
+    if (val.trim() === '') {
+      return undefined
+    }
+    const n = Number(val)
+    return Number.isFinite(n) ? n : undefined
   }
 
   function handleMinChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const text = e.target.value;
-    setMinText(text);
-    if (text && bpm != null) setBpm(undefined);
-    clearTimeout(minTimer.current);
-    minTimer.current = setTimeout(() => setBpmMin(parseNum(text)), RANGE_DEBOUNCE_MS);
+    const text = e.target.value
+    setMinText(text)
+    if (text && bpm != null) {
+      setBpm(undefined)
+    }
+    clearTimeout(minTimer.current)
+    minTimer.current = setTimeout(
+      () => setBpmMin(parseNum(text)),
+      RANGE_DEBOUNCE_MS,
+    )
   }
 
   function handleMaxChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const text = e.target.value;
-    setMaxText(text);
-    if (text && bpm != null) setBpm(undefined);
-    clearTimeout(maxTimer.current);
-    maxTimer.current = setTimeout(() => setBpmMax(parseNum(text)), RANGE_DEBOUNCE_MS);
+    const text = e.target.value
+    setMaxText(text)
+    if (text && bpm != null) {
+      setBpm(undefined)
+    }
+    clearTimeout(maxTimer.current)
+    maxTimer.current = setTimeout(
+      () => setBpmMax(parseNum(text)),
+      RANGE_DEBOUNCE_MS,
+    )
   }
 
   function handleMinBlur() {
-    clearTimeout(minTimer.current);
-    setBpmMin(parseNum(minText));
+    clearTimeout(minTimer.current)
+    setBpmMin(parseNum(minText))
   }
 
   function handleMaxBlur() {
-    clearTimeout(maxTimer.current);
-    setBpmMax(parseNum(maxText));
+    clearTimeout(maxTimer.current)
+    setBpmMax(parseNum(maxText))
   }
 
   return (
@@ -162,7 +210,13 @@ export function FilterBar({
             <span className="caret">{camelotOpen ? '▲' : '▼'}</span>
           </button>
           {camelotCodes.length > 0 && (
-            <button className="clear-btn" onClick={() => setCamelotCodes([])} tabIndex={-1}>×</button>
+            <button
+              className="clear-btn"
+              onClick={() => setCamelotCodes([])}
+              tabIndex={-1}
+            >
+              ×
+            </button>
           )}
         </div>
         {camelotOpen && (
@@ -177,7 +231,10 @@ export function FilterBar({
               </button>
             ))}
             {camelotCodes.length > 0 && (
-              <button className="camelot-chip clear" onClick={() => setCamelotCodes([])}>
+              <button
+                className="camelot-chip clear"
+                onClick={() => setCamelotCodes([])}
+              >
                 Clear
               </button>
             )}
@@ -196,7 +253,13 @@ export function FilterBar({
             onChange={(e) => setBpm(parseNum(e.target.value))}
           />
           {bpm != null && (
-            <button className="clear-btn" onClick={() => setBpm(undefined)} tabIndex={-1}>×</button>
+            <button
+              className="clear-btn"
+              onClick={() => setBpm(undefined)}
+              tabIndex={-1}
+            >
+              ×
+            </button>
           )}
         </div>
       </div>
@@ -225,12 +288,12 @@ export function FilterBar({
             <button
               className="clear-btn"
               onClick={() => {
-                clearTimeout(minTimer.current);
-                clearTimeout(maxTimer.current);
-                setMinText('');
-                setMaxText('');
-                setBpmMin(undefined);
-                setBpmMax(undefined);
+                clearTimeout(minTimer.current)
+                clearTimeout(maxTimer.current)
+                setMinText('')
+                setMaxText('')
+                setBpmMin(undefined)
+                setBpmMax(undefined)
               }}
               tabIndex={-1}
             >
@@ -281,5 +344,5 @@ export function FilterBar({
         </div>
       )}
     </div>
-  );
+  )
 }

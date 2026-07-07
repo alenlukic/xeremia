@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pytest
 import soundfile as sf
 
 from src.track_metadata.utils import (
@@ -26,9 +27,9 @@ def test_ensure_and_reset_processing_dir(tmp_path):
     augmented_dir = tmp_path / "augmented"
     ensure_directories(download_dir, processing_dir, augmented_dir)
 
-    (processing_dir / "temp.txt").write_text("data")
+    (processing_dir / "temp.txt").write_text("data", encoding="utf-8")
     (processing_dir / "nested").mkdir()
-    (processing_dir / "nested" / "item.txt").write_text("more")
+    (processing_dir / "nested" / "item.txt").write_text("more", encoding="utf-8")
 
     reset_processing_dir(processing_dir)
 
@@ -42,13 +43,13 @@ def test_stage_and_copy_to_converted(tmp_path):
     ensure_directories(download_dir, processing_dir, augmented_dir)
 
     source = download_dir / "sample.mp3"
-    source.write_text("content")
+    source.write_text("content", encoding="utf-8")
 
     staged = stage_file(source, processing_dir)
     copied = copy_to_converted(staged, augmented_dir)
 
-    assert staged.read_text() == "content"
-    assert copied.read_text() == "content"
+    assert staged.read_text(encoding="utf-8") == "content"
+    assert copied.read_text(encoding="utf-8") == "content"
     assert copied.name == staged.name
 
 
@@ -58,7 +59,7 @@ def test_copy_to_converted_preserves_original_name(tmp_path):
     ensure_directories(tmp_path / "downloads", processing_dir, augmented_dir)
 
     renamed = processing_dir / "renamed.mp3"
-    renamed.write_text("audio")
+    renamed.write_text("audio", encoding="utf-8")
 
     copied = copy_to_converted(
         renamed, augmented_dir, original_name="original name.mp3"
@@ -77,7 +78,7 @@ def test_move_helpers_copy_to_expected_destinations(tmp_path):
     )
 
     source = processing_dir / "track.mp3"
-    source.write_text("audio")
+    source.write_text("audio", encoding="utf-8")
 
     augmented_copy = move_to_augmented(source, augmented_dir=augmented_dir)
     remediation_copy = move_to_remediation(source, remediation_dir=remediation_dir)
@@ -92,7 +93,7 @@ def test_sanitize_and_rename_file(tmp_path):
     ensure_directories(tmp_path / "downloads", processing_dir, augmented_dir)
 
     source = processing_dir / "file?.mp3"
-    source.write_text("audio")
+    source.write_text("audio", encoding="utf-8")
 
     cleaned = sanitize_filename("A?Title*")
     assert "?" not in cleaned
@@ -115,7 +116,7 @@ def test_rename_file_supports_metadata_first_title_only(tmp_path):
     ensure_directories(tmp_path / "downloads", processing_dir, augmented_dir)
 
     source = processing_dir / "old.mp3"
-    source.write_text("audio")
+    source.write_text("audio", encoding="utf-8")
 
     renamed = rename_file(source, "[06A - Gm - 151.00] Linds - Sunset Funk [MASTER v2]")
 
@@ -129,9 +130,9 @@ def test_rename_file_avoids_name_collisions(tmp_path):
     ensure_directories(tmp_path / "downloads", processing_dir, augmented_dir)
 
     source = processing_dir / "track.mp3"
-    source.write_text("audio")
+    source.write_text("audio", encoding="utf-8")
     existing = processing_dir / "[06A - Gm - 151.00] Linds - Sunset Funk.mp3"
-    existing.write_text("existing")
+    existing.write_text("existing", encoding="utf-8")
 
     renamed = rename_file(source, "[06A - Gm - 151.00] Linds - Sunset Funk")
 
@@ -150,7 +151,7 @@ def test_log_agent_response(tmp_path):
     )
 
     assert log_path.exists()
-    entry = json.loads(log_path.read_text().splitlines()[0])
+    entry = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
     assert entry["file"] == "track.mp3"
     assert entry["raw_response"] == '{"title": "Example"}'
 
@@ -162,12 +163,12 @@ def test_discover_new_audio_files_skips_existing_augmented(tmp_path):
     ensure_directories(download_dir, processing_dir, augmented_dir)
 
     in_downloads = download_dir / "track1.mp3"
-    in_downloads.write_text("a")
+    in_downloads.write_text("a", encoding="utf-8")
     also_in_downloads = download_dir / "track2.mp3"
-    also_in_downloads.write_text("b")
+    also_in_downloads.write_text("b", encoding="utf-8")
 
     already_augmented = augmented_dir / in_downloads.name
-    already_augmented.write_text("a-augmented")
+    already_augmented.write_text("a-augmented", encoding="utf-8")
 
     discovered = discover_new_audio_files(
         download_dir=download_dir, augmented_dir=augmented_dir
@@ -216,13 +217,10 @@ def test_convert_wav_to_aiff_preserves_subtype(tmp_path):
 
 def test_convert_wav_to_aiff_invalid_file(tmp_path):
     bad_wav = tmp_path / "bad.wav"
-    bad_wav.write_text("not audio data")
+    bad_wav.write_text("not audio data", encoding="utf-8")
 
-    try:
+    with pytest.raises(sf.LibsndfileError):
         convert_wav_to_aiff(bad_wav)
-        assert False, "Expected an exception"
-    except Exception:
-        pass
 
     assert bad_wav.exists(), "Original file should remain on failure"
 
@@ -233,9 +231,9 @@ def test_discover_includes_wav_files(tmp_path):
     ensure_directories(download_dir, tmp_path / "processing", augmented_dir)
 
     mp3_file = download_dir / "track.mp3"
-    mp3_file.write_text("mp3")
+    mp3_file.write_text("mp3", encoding="utf-8")
     wav_file = download_dir / "track2.wav"
-    wav_file.write_text("wav")
+    wav_file.write_text("wav", encoding="utf-8")
 
     discovered = discover_new_audio_files(
         download_dir=download_dir, augmented_dir=augmented_dir
@@ -251,8 +249,8 @@ def test_discover_skips_wav_with_aiff_equivalent_in_augmented(tmp_path):
     ensure_directories(download_dir, tmp_path / "processing", augmented_dir)
 
     wav_file = download_dir / "track.wav"
-    wav_file.write_text("wav")
-    (augmented_dir / "track.aiff").write_text("already converted")
+    wav_file.write_text("wav", encoding="utf-8")
+    (augmented_dir / "track.aiff").write_text("already converted", encoding="utf-8")
 
     discovered = discover_new_audio_files(
         download_dir=download_dir, augmented_dir=augmented_dir

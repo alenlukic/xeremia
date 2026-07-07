@@ -354,7 +354,9 @@ class TestAudioEndpoint:
 
     def _session_with_track(self, track):
         mock_session = MagicMock()
-        mock_session.query.return_value.filter_by.return_value.first.return_value = track
+        mock_session.query.return_value.filter_by.return_value.first.return_value = (
+            track
+        )
         return mock_session
 
     def test_returns_404_when_track_missing(self, client):

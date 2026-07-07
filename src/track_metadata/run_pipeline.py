@@ -45,9 +45,7 @@ def run_pipeline(rekordbox_tsv: Path | None = None) -> Path:
             len(rekordbox_index.rows),
             rekordbox_tsv,
         )
-        _heartbeat(
-            f"loaded {len(rekordbox_index.rows)} Rekordbox metadata row(s)"
-        )
+        _heartbeat(f"loaded {len(rekordbox_index.rows)} Rekordbox metadata row(s)")
 
     ensure_directories()
     reset_processing_dir()
@@ -65,11 +63,10 @@ def run_pipeline(rekordbox_tsv: Path | None = None) -> Path:
             candidate_resolver=(
                 None
                 if fallback_agent is None
-                else lambda file_path,
-                current,
-                sources,
-                missing: fallback_agent.resolve_metadata(
-                    file_path, current, sources, missing
+                else lambda file_path, current, sources, missing: (
+                    fallback_agent.resolve_metadata(
+                        file_path, current, sources, missing
+                    )
                 )
             ),
             session_factory=database.create_session,

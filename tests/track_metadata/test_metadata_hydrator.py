@@ -672,12 +672,16 @@ def test_hydrate_skips_remote_lookups_for_beatport_encoded_file(tmp_path: Path) 
     assert result.bpm is None
 
 
-def test_hydrate_resolves_remixer_from_web_search_for_remix_prefix(tmp_path: Path) -> None:
+def test_hydrate_resolves_remixer_from_web_search_for_remix_prefix(
+    tmp_path: Path,
+) -> None:
     class _RemixWebSource(MetadataSource):
         name = "web_search"
         merge_fields = None
 
-        def lookup(self, seed: SimpleMetadata, context: LookupContext) -> SimpleMetadata | None:
+        def lookup(
+            self, seed: SimpleMetadata, context: LookupContext
+        ) -> SimpleMetadata | None:
             return SimpleMetadata(
                 artist=seed.artist,
                 title=f"{seed.title} (LonelyFans Remix)",
@@ -748,7 +752,9 @@ def test_classify_free_download_genre_assigns_ravevival(tmp_path: Path) -> None:
     assert hydrator.classify_free_download_genre(metadata) == "Ravevival"
 
 
-def test_classify_free_download_genre_returns_none_below_threshold(tmp_path: Path) -> None:
+def test_classify_free_download_genre_returns_none_below_threshold(
+    tmp_path: Path,
+) -> None:
     class _FreeDownloadWeb:
         def detect_free_download(self, artist, title):
             return True
@@ -760,9 +766,7 @@ def test_classify_free_download_genre_returns_none_below_threshold(tmp_path: Pat
 
 def test_cache_miss_when_schema_version_changes(tmp_path: Path) -> None:
     mp3 = _staged_mp3(tmp_path, "artist - track.mp3")
-    hydrator = _make_hydrator(
-        tmp_path, catalog_sources=[_FakeSource("musicbrainz")]
-    )
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[_FakeSource("musicbrainz")])
     key = hydrator.cache.file_key(mp3)
     hydrator.cache._entries[key] = {
         "final": SimpleMetadata(title="Stale Title").to_dict(),
@@ -879,7 +883,9 @@ def test_resolve_from_candidates_records_error_agent_events(tmp_path: Path) -> N
     assert "boom" in events[0]["error"]
 
 
-def test_field_resolution_does_not_overwrite_existing_genre_or_label(tmp_path: Path) -> None:
+def test_field_resolution_does_not_overwrite_existing_genre_or_label(
+    tmp_path: Path,
+) -> None:
     from src.track_metadata.research import ArtistGenreCounts
 
     class _Repo:
@@ -929,7 +935,9 @@ def test_field_resolution_records_provenance_events(tmp_path: Path) -> None:
         agent_events=events,
     )
     assert result.genre == "Techno"
-    resolution_events = [event for event in events if event.get("type") == "field_resolution"]
+    resolution_events = [
+        event for event in events if event.get("type") == "field_resolution"
+    ]
     assert resolution_events
     assert resolution_events[0]["method"] == "artist_history"
 
@@ -959,7 +967,9 @@ def test_field_resolution_fail_open_on_web_errors(tmp_path: Path) -> None:
     assert any(event.get("outcome") == "error" for event in events)
 
 
-def test_external_research_can_be_disabled_without_disabling_db_genre(tmp_path: Path) -> None:
+def test_external_research_can_be_disabled_without_disabling_db_genre(
+    tmp_path: Path,
+) -> None:
     from src.track_metadata.research import ArtistGenreCounts
 
     class _Repo:

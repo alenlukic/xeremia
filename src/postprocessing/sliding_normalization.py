@@ -66,7 +66,7 @@ if __name__ == "__main__":
     for i, arg in enumerate(args):
         try:
             window_lens.append(int(arg))
-        except Exception:
+        except ValueError:
             file_paths.append(arg)
 
     for file_path in file_paths:

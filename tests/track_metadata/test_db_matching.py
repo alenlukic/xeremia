@@ -348,7 +348,9 @@ def test_score_track_match_awards_bpm_bonus_for_close_rekordbox_bpm():
     seed_full = "ATC - Around The World"
 
     without_rb = score_track_match(session, source, seed, seed_full, track, None)
-    with_rb = score_track_match(session, source, seed, seed_full, track, _RbRow(bpm=128.0))
+    with_rb = score_track_match(
+        session, source, seed, seed_full, track, _RbRow(bpm=128.0)
+    )
 
     assert without_rb is not None
     assert with_rb is not None
@@ -457,9 +459,7 @@ def test_find_matching_tracks_short_circuits_on_exact_filename():
         title="Around The World",
     )
 
-    matches = find_matching_tracks(
-        session, Path("ATC - Around The World.mp3")
-    )
+    matches = find_matching_tracks(session, Path("ATC - Around The World.mp3"))
 
     assert len(matches) == 1
     assert matches[0].track is track
@@ -487,9 +487,7 @@ def test_find_matching_tracks_orders_by_score_then_id_for_ties():
     _link(session, track_id=1, artist_id=10)
     _artist(session, "ATC", 10)
 
-    matches = find_matching_tracks(
-        session, Path("ATC - Around The World.mp3")
-    )
+    matches = find_matching_tracks(session, Path("ATC - Around The World.mp3"))
 
     assert len(matches) == 2
     assert matches[0].score == matches[1].score == 1.0
@@ -519,9 +517,7 @@ def test_find_matching_tracks_deprioritizes_collaborator_annotation_on_ties():
     _link(session, track_id=2, artist_id=10)
     _artist(session, "ATC", 10)
 
-    matches = find_matching_tracks(
-        session, Path("ATC - Around The World.mp3")
-    )
+    matches = find_matching_tracks(session, Path("ATC - Around The World.mp3"))
 
     assert len(matches) == 2
     assert matches[0].score == matches[1].score
@@ -533,9 +529,7 @@ def test_find_matching_tracks_returns_empty_when_no_track_meets_threshold():
     session = _FakeSession()
     _track(session, track_id=1, file_name="a.mp3", title="Completely Unrelated")
 
-    matches = find_matching_tracks(
-        session, Path("ATC - Around The World.mp3")
-    )
+    matches = find_matching_tracks(session, Path("ATC - Around The World.mp3"))
 
     assert matches == []
 

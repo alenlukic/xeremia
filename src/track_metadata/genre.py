@@ -119,7 +119,9 @@ def extract_usable_artists(artist: str | None) -> list[str]:
         return []
     tokens: list[str] = []
     for part in split_artist_string(artist):
-        for token in re.split(r"\s*(?:&| and | feat\.?| ft\.?)\s*", part, flags=re.IGNORECASE):
+        for token in re.split(
+            r"\s*(?:&| and | feat\.?| ft\.?)\s*", part, flags=re.IGNORECASE
+        ):
             cleaned = token.strip()
             if not cleaned:
                 continue
@@ -178,7 +180,13 @@ def resolve_artist_history_genre(
     ]
     selected, evidence = aggregate_artist_history(per_artist)
     outcome = "resolved" if selected else "unresolved"
-    confidence = "high" if selected else "ambiguous" if evidence.get("aggregate_counts") else "no_match"
+    confidence = (
+        "high"
+        if selected
+        else "ambiguous"
+        if evidence.get("aggregate_counts")
+        else "no_match"
+    )
     return selected, ResolutionProvenance(
         field="genre",
         method="artist_history",

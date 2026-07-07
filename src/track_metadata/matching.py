@@ -15,9 +15,7 @@ _PRESERVED_SHORT_TOKENS = frozenset(
 _IMMATERIAL_PAREN_SUFFIXES = frozenset(
     {"original mix", "extended mix", "extended", "original"}
 )
-_MASTERING_ENGINEER_SUFFIXES = frozenset(
-    {"dm", "mstr", "master", "rem", "rmx", "mix"}
-)
+_MASTERING_ENGINEER_SUFFIXES = frozenset({"dm", "mstr", "master", "rem", "rmx", "mix"})
 
 
 def _strip_production_metadata_cruft(title: str) -> str:
@@ -33,7 +31,10 @@ def _strip_production_metadata_cruft(title: str) -> str:
     )
     while True:
         match = re.search(r"\s+\b([A-Za-z]{2,3})\s*$", cleaned)
-        if match is None or match.group(1).casefold() not in _MASTERING_ENGINEER_SUFFIXES:
+        if (
+            match is None
+            or match.group(1).casefold() not in _MASTERING_ENGINEER_SUFFIXES
+        ):
             break
         cleaned = cleaned[: match.start()]
     return cleaned
@@ -247,9 +248,7 @@ def _compose_display_title(
                 paren_match.group(1),
                 flags=re.IGNORECASE,
             ).strip()
-            remixer_in_annotation = (
-                annotation_name.casefold() == remixer.casefold()
-            )
+            remixer_in_annotation = annotation_name.casefold() == remixer.casefold()
 
         if not is_original_mix and (
             remixer.casefold() not in title.casefold() or remixer_in_annotation

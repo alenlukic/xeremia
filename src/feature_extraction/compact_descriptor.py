@@ -124,10 +124,11 @@ def _extract_zone_vector(y, sr):
         ]
     )
 
-    assert len(descriptor) == DESCRIPTOR_DIMS, (
-        "Descriptor length mismatch: got %d, expected %d"
-        % (len(descriptor), DESCRIPTOR_DIMS)
-    )
+    if len(descriptor) != DESCRIPTOR_DIMS:
+        raise RuntimeError(
+            "DESCRIPTOR_LENGTH_MISMATCH: got %d values, expected %d"
+            % (len(descriptor), DESCRIPTOR_DIMS)
+        )
     return descriptor.astype(np.float32)
 
 

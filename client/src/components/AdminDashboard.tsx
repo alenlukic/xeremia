@@ -1,32 +1,59 @@
-import type { CacheStats, KeyDistEntry, BpmDistEntry, CacheEntry, CacheExit } from '../types';
+import type {
+  CacheStats,
+  KeyDistEntry,
+  BpmDistEntry,
+  CacheEntry,
+  CacheExit,
+} from '../types'
 
 interface Props {
-  stats: CacheStats | null;
-  loading: boolean;
-  error: string | null;
+  stats: CacheStats | null
+  loading: boolean
+  error: string | null
 }
 
 function ringColor(ratio: number): string {
-  const pct = ratio * 100;
-  if (pct >= 90) return '#ef4444';
-  if (pct >= 75) return '#fb923c';
-  if (pct >= 50) return '#facc15';
-  return '#4ade80';
+  const pct = ratio * 100
+  if (pct >= 90) {
+    return '#ef4444'
+  }
+  if (pct >= 75) {
+    return '#fb923c'
+  }
+  if (pct >= 50) {
+    return '#facc15'
+  }
+  return '#4ade80'
 }
 
-function UsageRing({ used, capacity, ratio }: { used: number; capacity: number; ratio: number }) {
-  const r = 52;
-  const stroke = 8;
-  const circumference = 2 * Math.PI * r;
-  const offset = circumference * (1 - Math.min(ratio, 1));
-  const pct = (ratio * 100).toFixed(1);
+function UsageRing({
+  used,
+  capacity,
+  ratio,
+}: {
+  used: number
+  capacity: number
+  ratio: number
+}) {
+  const r = 52
+  const stroke = 8
+  const circumference = 2 * Math.PI * r
+  const offset = circumference * (1 - Math.min(ratio, 1))
+  const pct = (ratio * 100).toFixed(1)
 
   return (
     <div className="admin-card admin-usage-card">
       <h3 className="admin-card-title">Cache Usage</h3>
       <div className="usage-ring-container">
         <svg viewBox="0 0 128 128" className="usage-ring-svg">
-          <circle cx="64" cy="64" r={r} fill="none" stroke="var(--border)" strokeWidth={stroke} />
+          <circle
+            cx="64"
+            cy="64"
+            r={r}
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth={stroke}
+          />
           <circle
             cx="64"
             cy="64"
@@ -48,14 +75,19 @@ function UsageRing({ used, capacity, ratio }: { used: number; capacity: number; 
         </div>
       </div>
     </div>
-  );
+  )
 }
 
-function HitRateCard({ hitRate, hits, misses, basis }: {
-  hitRate: number;
-  hits: number;
-  misses: number;
-  basis: string;
+function HitRateCard({
+  hitRate,
+  hits,
+  misses,
+  basis,
+}: {
+  hitRate: number
+  hits: number
+  misses: number
+  basis: string
 }) {
   return (
     <div className="admin-card admin-kpi-card">
@@ -66,18 +98,23 @@ function HitRateCard({ hitRate, hits, misses, basis }: {
       </div>
       <div className="kpi-basis text-muted">{basis.replace(/_/g, ' ')}</div>
     </div>
-  );
+  )
 }
 
-function BarChart({ data, labelKey, valueKey, title }: {
-  data: { label: string; value: number }[];
-  labelKey?: string;
-  valueKey?: string;
-  title: string;
+function BarChart({
+  data,
+  labelKey,
+  valueKey,
+  title,
+}: {
+  data: { label: string; value: number }[]
+  labelKey?: string
+  valueKey?: string
+  title: string
 }) {
-  void labelKey;
-  void valueKey;
-  const max = Math.max(1, ...data.map((d) => d.value));
+  void labelKey
+  void valueKey
+  const max = Math.max(1, ...data.map((d) => d.value))
   return (
     <div className="admin-card admin-chart-card">
       <h3 className="admin-card-title">{title}</h3>
@@ -100,21 +137,29 @@ function BarChart({ data, labelKey, valueKey, title }: {
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function formatTimestamp(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString();
+  return new Date(ts * 1000).toLocaleTimeString()
 }
 
-function RecentList({ title, entries, exits }: {
-  title: string;
-  entries?: CacheEntry[];
-  exits?: CacheExit[];
+function RecentList({
+  title,
+  entries,
+  exits,
+}: {
+  title: string
+  entries?: CacheEntry[]
+  exits?: CacheExit[]
 }) {
   const items = entries
     ? entries.map((e) => ({ pair: e.pair, time: e.timestamp, extra: null }))
-    : (exits ?? []).map((e) => ({ pair: e.pair, time: e.timestamp, extra: e.reason }));
+    : (exits ?? []).map((e) => ({
+        pair: e.pair,
+        time: e.timestamp,
+        extra: e.reason,
+      }))
 
   return (
     <div className="admin-card admin-recent-card">
@@ -139,7 +184,7 @@ function RecentList({ title, entries, exits }: {
         </ul>
       )}
     </div>
-  );
+  )
 }
 
 export function AdminDashboard({ stats, loading, error }: Props) {
@@ -148,7 +193,7 @@ export function AdminDashboard({ stats, loading, error }: Props) {
       <div className="admin-dashboard">
         <p className="table-status">Loading admin data…</p>
       </div>
-    );
+    )
   }
 
   if (error) {
@@ -156,7 +201,7 @@ export function AdminDashboard({ stats, loading, error }: Props) {
       <div className="admin-dashboard">
         <p className="table-status admin-error">{error}</p>
       </div>
-    );
+    )
   }
 
   if (!stats) {
@@ -164,23 +209,28 @@ export function AdminDashboard({ stats, loading, error }: Props) {
       <div className="admin-dashboard">
         <p className="table-status">No cache data available</p>
       </div>
-    );
+    )
   }
 
-  const keyData: { label: string; value: number }[] = stats.key_distribution.map(
-    (d: KeyDistEntry) => ({ label: d.key, value: d.count }),
-  );
-  const bpmData: { label: string; value: number }[] = stats.bpm_distribution.map(
-    (d: BpmDistEntry) => ({
+  const keyData: { label: string; value: number }[] =
+    stats.key_distribution.map((d: KeyDistEntry) => ({
+      label: d.key,
+      value: d.count,
+    }))
+  const bpmData: { label: string; value: number }[] =
+    stats.bpm_distribution.map((d: BpmDistEntry) => ({
       label: `${d.bin_start}–${d.bin_end}`,
       value: d.count,
-    }),
-  );
+    }))
 
   return (
     <div className="admin-dashboard">
       <div className="admin-top-row">
-        <UsageRing used={stats.used} capacity={stats.capacity} ratio={stats.usage_ratio} />
+        <UsageRing
+          used={stats.used}
+          capacity={stats.capacity}
+          ratio={stats.usage_ratio}
+        />
         <HitRateCard
           hitRate={stats.hit_rate}
           hits={stats.hits}
@@ -197,5 +247,5 @@ export function AdminDashboard({ stats, loading, error }: Props) {
         <RecentList title="Recent Exits" exits={stats.recent_exits} />
       </div>
     </div>
-  );
+  )
 }

@@ -64,7 +64,7 @@ def _get_src_module(import_path: str):
 def _extract_imports(filepath: Path):
     """Parse a Python file and return all src-internal import targets."""
     try:
-        tree = ast.parse(filepath.read_text(), filename=str(filepath))
+        tree = ast.parse(filepath.read_text(encoding="utf-8"), filename=str(filepath))
     except SyntaxError:
         return []
 

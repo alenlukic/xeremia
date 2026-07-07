@@ -1,57 +1,72 @@
-import { useState, useCallback } from 'react';
-import type { ExplorerNode, ExplorerEdge } from '../types';
+import { useState, useCallback } from 'react'
+import type { ExplorerNode, ExplorerEdge } from '../types'
 
 interface EdgeRewire {
-  parent_node_id: string;
-  child_node_id: string;
+  parent_node_id: string
+  child_node_id: string
 }
 
 interface Props {
-  node: ExplorerNode;
-  edges: ExplorerEdge[];
-  nodes: ExplorerNode[];
-  onConfirm: (rewireEdges: EdgeRewire[]) => void;
-  onCancel: () => void;
+  node: ExplorerNode
+  edges: ExplorerEdge[]
+  nodes: ExplorerNode[]
+  onConfirm: (rewireEdges: EdgeRewire[]) => void
+  onCancel: () => void
 }
 
-export function SetExplorerDeleteModal({ node, edges, nodes, onConfirm, onCancel }: Props) {
-  const incoming = edges.filter(e => e.child_node_id === node.node_id);
-  const outgoing = edges.filter(e => e.parent_node_id === node.node_id);
-  const parentIds = incoming.map(e => e.parent_node_id);
-  const childIds = outgoing.map(e => e.child_node_id);
+export function SetExplorerDeleteModal({
+  node,
+  edges,
+  nodes,
+  onConfirm,
+  onCancel,
+}: Props) {
+  const incoming = edges.filter((e) => e.child_node_id === node.node_id)
+  const outgoing = edges.filter((e) => e.parent_node_id === node.node_id)
+  const parentIds = incoming.map((e) => e.parent_node_id)
+  const childIds = outgoing.map((e) => e.child_node_id)
 
-  const parentNodes = nodes.filter(n => parentIds.includes(n.node_id));
-  const childNodes = nodes.filter(n => childIds.includes(n.node_id));
+  const parentNodes = nodes.filter((n) => parentIds.includes(n.node_id))
+  const childNodes = nodes.filter((n) => childIds.includes(n.node_id))
 
-  const defaultChoice = parentNodes.length === 1 ? parentNodes[0].node_id : undefined;
+  const defaultChoice =
+    parentNodes.length === 1 ? parentNodes[0].node_id : undefined
 
-  const [childResolutions, setChildResolutions] = useState<Record<string, string | undefined>>(() => {
-    const init: Record<string, string | undefined> = {};
+  const [childResolutions, setChildResolutions] = useState<
+    Record<string, string | undefined>
+  >(() => {
+    const init: Record<string, string | undefined> = {}
     for (const c of childNodes) {
-      init[c.node_id] = defaultChoice;
+      init[c.node_id] = defaultChoice
     }
-    return init;
-  });
+    return init
+  })
 
-  const setResolution = useCallback((childId: string, parentId: string | undefined) => {
-    setChildResolutions(prev => ({ ...prev, [childId]: parentId }));
-  }, []);
+  const setResolution = useCallback(
+    (childId: string, parentId: string | undefined) => {
+      setChildResolutions((prev) => ({ ...prev, [childId]: parentId }))
+    },
+    [],
+  )
 
   const handleConfirm = useCallback(() => {
-    const rewireEdges: EdgeRewire[] = [];
+    const rewireEdges: EdgeRewire[] = []
     for (const [childId, parentId] of Object.entries(childResolutions)) {
       if (parentId) {
-        rewireEdges.push({ parent_node_id: parentId, child_node_id: childId });
+        rewireEdges.push({ parent_node_id: parentId, child_node_id: childId })
       }
     }
-    onConfirm(rewireEdges);
-  }, [childResolutions, onConfirm]);
+    onConfirm(rewireEdges)
+  }, [childResolutions, onConfirm])
 
-  const hasChildren = childNodes.length > 0;
+  const hasChildren = childNodes.length > 0
 
   return (
     <div className="explorer-delete-overlay" onClick={onCancel}>
-      <div className="explorer-delete-modal" onClick={e => e.stopPropagation()}>
+      <div
+        className="explorer-delete-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3>Delete Node</h3>
         <p>
           Remove <strong>{node.track?.title ?? `Node ${node.node_id}`}</strong>?
@@ -60,7 +75,8 @@ export function SetExplorerDeleteModal({ node, edges, nodes, onConfirm, onCancel
         {incoming.length > 0 && (
           <div className="explorer-delete-section">
             <span className="text-muted">
-              Parents: {parentNodes.map(n => n.track?.title ?? n.node_id).join(', ')}
+              Parents:{' '}
+              {parentNodes.map((n) => n.track?.title ?? n.node_id).join(', ')}
             </span>
           </div>
         )}
@@ -70,8 +86,12 @@ export function SetExplorerDeleteModal({ node, edges, nodes, onConfirm, onCancel
             <p className="text-muted" style={{ marginBottom: 8 }}>
               Choose what happens to each child:
             </p>
-            {childNodes.map(child => (
-              <div key={child.node_id} className="explorer-delete-child-row" data-testid="delete-child-row">
+            {childNodes.map((child) => (
+              <div
+                key={child.node_id}
+                className="explorer-delete-child-row"
+                data-testid="delete-child-row"
+              >
                 <span className="explorer-delete-child-name">
                   {child.track?.title ?? child.node_id}
                 </span>
@@ -85,7 +105,7 @@ export function SetExplorerDeleteModal({ node, edges, nodes, onConfirm, onCancel
                     />
                     Orphan
                   </label>
-                  {parentNodes.map(p => (
+                  {parentNodes.map((p) => (
                     <label key={p.node_id}>
                       <input
                         type="radio"
@@ -103,7 +123,9 @@ export function SetExplorerDeleteModal({ node, edges, nodes, onConfirm, onCancel
         )}
 
         <div className="explorer-delete-buttons">
-          <button className="set-action-btn" onClick={onCancel}>Cancel</button>
+          <button className="set-action-btn" onClick={onCancel}>
+            Cancel
+          </button>
           <button
             className="set-action-btn set-action-btn--danger"
             onClick={handleConfirm}
@@ -113,5 +135,5 @@ export function SetExplorerDeleteModal({ node, edges, nodes, onConfirm, onCancel
         </div>
       </div>
     </div>
-  );
+  )
 }

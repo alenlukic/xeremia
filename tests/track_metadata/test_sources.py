@@ -411,7 +411,9 @@ def test_detect_free_download_uses_site_restricted_query() -> None:
     )
     captured: dict[str, str] = {}
 
-    def _get(url: str, *, params: dict[str, str] | None = None, timeout=None, **_kwargs):
+    def _get(
+        url: str, *, params: dict[str, str] | None = None, timeout=None, **_kwargs
+    ):
         captured["query"] = params["q"] if params else ""
         return _text_response(html)
 
@@ -426,5 +428,7 @@ def test_detect_free_download_requires_identity_match() -> None:
         "Other Artist - Other Track | SoundCloud</a>"
         '<div class="result__snippet">Free download</div>'
     )
-    client = WebSearchResearchClient(_client(lambda *_args, **_kwargs: _text_response(html)))
+    client = WebSearchResearchClient(
+        _client(lambda *_args, **_kwargs: _text_response(html))
+    )
     assert client.detect_free_download("Artist", "Track") is False

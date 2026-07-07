@@ -90,7 +90,7 @@ def run():
             except Exception:
                 failed += 1
                 now = datetime.datetime.utcnow().isoformat()
-                with open(LOG_FILE, "a") as f:
+                with open(LOG_FILE, "a", encoding="utf-8") as f:
                     f.write(
                         "====== TRACK %d | %s | %s ======\n%s\n"
                         % (track_id, now, file_name, traceback.format_exc())

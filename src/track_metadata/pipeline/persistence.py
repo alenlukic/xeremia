@@ -76,9 +76,7 @@ def _sync_artist_tracks(session: Any, track_id: int, metadata: SimpleMetadata) -
             continue
         artist = session.query(Artist).filter_by(id=link.artist_id).first()
         if artist is not None:
-            artist.track_count = max(
-                0, int(getattr(artist, "track_count", 0) or 0) - 1
-            )
+            artist.track_count = max(0, int(getattr(artist, "track_count", 0) or 0) - 1)
         session.delete(link)
         link_updates += 1
 

@@ -15,11 +15,8 @@ def test_resolve_metadata_logs_agent_response(tmp_path, monkeypatch) -> None:
     log_path = tmp_path / "agent.log"
     monkeypatch.setattr(
         "src.track_metadata.pipeline.agent.log_agent_response",
-        lambda file_name,
-        raw_text,
-        messages,
-        log_file_path=log_path: log_agent_response(
-            file_name, raw_text, messages, log_file_path=log_path
+        lambda file_name, raw_text, messages, log_file_path=log_path: (
+            log_agent_response(file_name, raw_text, messages, log_file_path=log_path)
         ),
     )
 
@@ -40,6 +37,6 @@ def test_resolve_metadata_logs_agent_response(tmp_path, monkeypatch) -> None:
     assert result is not None
     assert result.title == "Resolved Title"
     assert log_path.exists()
-    entry = json.loads(log_path.read_text().splitlines()[0])
+    entry = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
     assert entry["file"] == "track.mp3"
     assert json.loads(entry["raw_response"])["title"] == "Resolved Title"

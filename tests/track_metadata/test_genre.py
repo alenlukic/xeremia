@@ -10,7 +10,10 @@ from src.track_metadata.genre import (
     resolve_ravevival,
     resolve_single_genre,
 )
-from src.track_metadata.research import ArtistGenreCounts, BeatportArtistGenreObservation
+from src.track_metadata.research import (
+    ArtistGenreCounts,
+    BeatportArtistGenreObservation,
+)
 
 
 def test_resolve_ravevival_boundary_values():

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -13,6 +14,8 @@ from src.track_metadata.research import (
     ResolutionProvenance,
     WebSearchClient,
 )
+
+logger = logging.getLogger(__name__)
 
 _CATALOG_REJECT_PATTERNS = re.compile(
     r"(spotify|deezer|songlyrics|open\.spotify\.com|deezer\.com|songlyrics\.com|https?://)",
@@ -39,8 +42,6 @@ _CDR_FORMS = frozenset(
         "self",
     }
 )
-
-
 
 
 def _normalize_label_value(label: str | None) -> str | None:
@@ -113,7 +114,7 @@ def label_exists_in_db(session: Any, label: str) -> bool:
         if match is not None:
             return True
     except Exception:
-        pass
+        logger.debug("Database label lookup failed for %r", label, exc_info=True)
 
     if hasattr(session, "data"):
         for row in session.data.get(Track, []):

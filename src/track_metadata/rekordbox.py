@@ -71,9 +71,7 @@ class RekordboxMetadataIndex:
                 RekordboxMetadata(
                     title=title,
                     artist=(
-                        _clean_cell(raw.get(artist_header))
-                        if artist_header
-                        else None
+                        _clean_cell(raw.get(artist_header)) if artist_header else None
                     ),
                     bpm=_parse_bpm(raw.get(bpm_header)) if bpm_header else None,
                     key=canonicalize_key(raw.get(key_header)) if key_header else None,
@@ -115,9 +113,11 @@ class RekordboxMetadataIndex:
 
 def _decode_tsv(path: Path) -> str:
     raw = path.read_bytes()
-    encodings = (
-        ("utf-16",) if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else ()
-    ) + ("utf-8-sig", "utf-16", "cp1252")
+    encodings = (("utf-16",) if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else ()) + (
+        "utf-8-sig",
+        "utf-16",
+        "cp1252",
+    )
     for encoding in encodings:
         try:
             return raw.decode(encoding)
@@ -217,9 +217,7 @@ def _track_aliases(source: Path, metadata: SimpleMetadata) -> set[str]:
     aliases: set[str] = set()
     for value in values:
         aliases.update(_aliases(value))
-        value_without_prefix = (
-            _METADATA_PREFIX.sub("", value).strip() if value else ""
-        )
+        value_without_prefix = _METADATA_PREFIX.sub("", value).strip() if value else ""
         if " - " in value_without_prefix:
             _left, right = value_without_prefix.split(" - ", 1)
             aliases.update(_aliases(right))

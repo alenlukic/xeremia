@@ -1,46 +1,50 @@
-import { useState, useCallback } from 'react';
-import type { TracklistEntry, SearchSuggestion } from '../types';
-import { cleanTitle } from '../utils/trackTitle';
-import { searchTracks } from '../api/http';
-import { PlayButton } from './PlayButton';
+import { useState, useCallback } from 'react'
+import type { TracklistEntry, SearchSuggestion } from '../types'
+import { cleanTitle } from '../utils/trackTitle'
+import { searchTracks } from '../api/http'
+import { PlayButton } from './PlayButton'
 
 interface Props {
-  tracklist: TracklistEntry[];
-  onRemove: (trackId: number) => void;
-  onMoveToPool: (trackId: number) => void;
-  onReorder: (trackId: number, newPosition: number) => void;
-  onUpdateNote: (trackId: number, note: string) => void;
-  onAddTrack: (trackId: number, title?: string) => void;
+  tracklist: TracklistEntry[]
+  onRemove: (trackId: number) => void
+  onMoveToPool: (trackId: number) => void
+  onReorder: (trackId: number, newPosition: number) => void
+  onUpdateNote: (trackId: number, note: string) => void
+  onAddTrack: (trackId: number, title?: string) => void
 }
 
-function NoteInput({ trackId, initialNote, onSave }: {
-  trackId: number;
-  initialNote: string;
-  onSave: (trackId: number, note: string) => void;
+function NoteInput({
+  trackId,
+  initialNote,
+  onSave,
+}: {
+  trackId: number
+  initialNote: string
+  onSave: (trackId: number, note: string) => void
 }) {
-  const [value, setValue] = useState(initialNote);
+  const [value, setValue] = useState(initialNote)
   // `savedValue` is the last-persisted baseline used for the blur dirty-check.
   // It is updated on blur (to avoid duplicate saves) and cannot double as the
   // prop-change tracker: an async save updates the parent's `initialNote` only
   // after a round-trip, so a blur-driven `savedValue` change would otherwise
   // make the reset below fire and revert the input to the stale note.
-  const [savedValue, setSavedValue] = useState(initialNote);
+  const [savedValue, setSavedValue] = useState(initialNote)
   // Dedicated tracker for the `initialNote` prop. When the parent rebinds it, we
   // reset the input during render (see react.dev "adjusting state when a prop
   // changes") without needing an effect.
-  const [prevInitialNote, setPrevInitialNote] = useState(initialNote);
+  const [prevInitialNote, setPrevInitialNote] = useState(initialNote)
   if (initialNote !== prevInitialNote) {
-    setPrevInitialNote(initialNote);
-    setSavedValue(initialNote);
-    setValue(initialNote);
+    setPrevInitialNote(initialNote)
+    setSavedValue(initialNote)
+    setValue(initialNote)
   }
 
   const handleBlur = useCallback(() => {
     if (value !== savedValue) {
-      setSavedValue(value);
-      onSave(trackId, value);
+      setSavedValue(value)
+      onSave(trackId, value)
     }
-  }, [value, savedValue, trackId, onSave]);
+  }, [value, savedValue, trackId, onSave])
 
   return (
     <input
@@ -48,38 +52,54 @@ function NoteInput({ trackId, initialNote, onSave }: {
       type="text"
       placeholder="Add note…"
       value={value}
-      onChange={e => setValue(e.target.value)}
+      onChange={(e) => setValue(e.target.value)}
       onBlur={handleBlur}
-      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur()
+        }
+      }}
     />
-  );
+  )
 }
 
-export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onUpdateNote, onAddTrack }: Props) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
-  const [showSearch, setShowSearch] = useState(false);
+export function SetTracklist({
+  tracklist,
+  onRemove,
+  onMoveToPool,
+  onReorder,
+  onUpdateNote,
+  onAddTrack,
+}: Props) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([])
+  const [showSearch, setShowSearch] = useState(false)
 
   const handleSearch = useCallback(async (q: string) => {
-    setSearchQuery(q);
+    setSearchQuery(q)
     if (!q.trim()) {
-      setSearchResults([]);
-      setShowSearch(false);
-      return;
+      setSearchResults([])
+      setShowSearch(false)
+      return
     }
     try {
-      const results = await searchTracks(q);
-      setSearchResults(results);
-      setShowSearch(results.length > 0);
-    } catch { /* ignore */ }
-  }, []);
+      const results = await searchTracks(q)
+      setSearchResults(results)
+      setShowSearch(results.length > 0)
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
-  const handleSearchSelect = useCallback((s: SearchSuggestion) => {
-    onAddTrack(s.id, s.title);
-    setSearchQuery('');
-    setSearchResults([]);
-    setShowSearch(false);
-  }, [onAddTrack]);
+  const handleSearchSelect = useCallback(
+    (s: SearchSuggestion) => {
+      onAddTrack(s.id, s.title)
+      setSearchQuery('')
+      setSearchResults([])
+      setShowSearch(false)
+    },
+    [onAddTrack],
+  )
 
   return (
     <div className="set-tracklist">
@@ -90,11 +110,11 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
             className="set-tracklist-search"
             placeholder="Search to add…"
             value={searchQuery}
-            onChange={e => handleSearch(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
           />
           {showSearch && (
             <ul className="set-tracklist-search-dropdown">
-              {searchResults.map(s => (
+              {searchResults.map((s) => (
                 <li
                   key={s.id}
                   className="set-tracklist-search-item"
@@ -102,7 +122,9 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
                 >
                   <span>{s.title}</span>
                   <span className="text-muted">
-                    {s.camelot_code && <span className="mono"> {s.camelot_code}</span>}
+                    {s.camelot_code && (
+                      <span className="mono"> {s.camelot_code}</span>
+                    )}
                     {s.bpm != null && <span className="mono"> · {s.bpm}</span>}
                   </span>
                 </li>
@@ -112,7 +134,9 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
         </div>
       </div>
       {tracklist.length === 0 ? (
-        <p className="set-empty-tracks">Tracklist is empty. Move tracks from the pool or search above.</p>
+        <p className="set-empty-tracks">
+          Tracklist is empty. Move tracks from the pool or search above.
+        </p>
       ) : (
         <table className="set-tracklist-table">
           <colgroup>
@@ -140,15 +164,26 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
               <tr
                 key={entry.id}
                 draggable
-                onDragStart={e => e.dataTransfer.setData('text/plain', String(entry.track_id))}
+                onDragStart={(e) =>
+                  e.dataTransfer.setData('text/plain', String(entry.track_id))
+                }
               >
                 <td className="set-ws-cell-play">
-                  <PlayButton trackId={entry.track_id} title={entry.track?.title ?? ''} />
+                  <PlayButton
+                    trackId={entry.track_id}
+                    title={entry.track?.title ?? ''}
+                  />
                 </td>
                 <td className="mono set-ws-cell-num">{i + 1}</td>
-                <td className="set-ws-cell-title">{cleanTitle(entry.track, entry.track_id)}</td>
-                <td className="mono set-ws-cell-key">{entry.track?.camelot_code ?? '—'}</td>
-                <td className="mono set-ws-cell-bpm">{entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}</td>
+                <td className="set-ws-cell-title">
+                  {cleanTitle(entry.track, entry.track_id)}
+                </td>
+                <td className="mono set-ws-cell-key">
+                  {entry.track?.camelot_code ?? '—'}
+                </td>
+                <td className="mono set-ws-cell-bpm">
+                  {entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}
+                </td>
                 <td className="set-ws-cell-note">
                   <NoteInput
                     key={`note-${entry.track_id}`}
@@ -197,5 +232,5 @@ export function SetTracklist({ tracklist, onRemove, onMoveToPool, onReorder, onU
         </table>
       )}
     </div>
-  );
+  )
 }

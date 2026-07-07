@@ -131,8 +131,10 @@ def resolve_bpm(
             return FeatureResolution(existing, 1.0, "id3_essentia_agreement")
 
     madmom = _estimate_bpm_source("madmom", audio_path)
-    if essentia is not None and madmom is not None and bpm_values_agree(
-        essentia, madmom
+    if (
+        essentia is not None
+        and madmom is not None
+        and bpm_values_agree(essentia, madmom)
     ):
         return FeatureResolution(essentia, 1.0, "essentia_madmom_agreement")
 
@@ -264,9 +266,7 @@ def _estimate_bpm_source(source: str, audio_path: Path) -> float | None:
     return _positive_bpm(value)
 
 
-def _estimate_key_source(
-    source: str, audio_path: Path
-) -> tuple[str, float] | None:
+def _estimate_key_source(source: str, audio_path: Path) -> tuple[str, float] | None:
     if source == "essentia" and not ENABLE_ESSENTIA:
         return None
     estimators: dict[str, Callable[[Path], tuple[str, float] | None]] = {
@@ -369,9 +369,7 @@ def _is_gross_bpm_outlier(value: float, first: float, second: float) -> bool:
     )
 
 
-def _bpm_consensus_sources(
-    candidates: dict[str, float], *, minimum: int
-) -> set[str]:
+def _bpm_consensus_sources(candidates: dict[str, float], *, minimum: int) -> set[str]:
     sources = list(candidates)
     best: set[str] = set()
     for anchor in sources:
@@ -420,18 +418,14 @@ def fuse_key(
     fallback = ordered[0]
     fallback_key = canonical_candidates[fallback]
     supporters = [
-        source
-        for source in ordered
-        if canonical_candidates[source] == fallback_key
+        source for source in ordered if canonical_candidates[source] == fallback_key
     ]
     if len(supporters) >= 2:
         return fallback_key, len(supporters) / len(ordered)
     return fallback_key, 0.0
 
 
-def _key_consensus_sources(
-    candidates: dict[str, str], *, minimum: int
-) -> set[str]:
+def _key_consensus_sources(candidates: dict[str, str], *, minimum: int) -> set[str]:
     by_key: dict[str, set[str]] = {}
     for source, key in candidates.items():
         by_key.setdefault(key, set()).add(source)

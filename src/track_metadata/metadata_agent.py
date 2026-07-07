@@ -24,7 +24,8 @@ def purge_invalid_augmented_files(augmented_dir: Path = AUGMENTED_DIR) -> None:
 
         try:
             metadata = read_existing_metadata(candidate)
-        except Exception:
+        except Exception as exc:
+            logging.warning("Could not read metadata from %s: %s", candidate.name, exc)
             metadata = SimpleMetadata()
 
         if metadata.title:
