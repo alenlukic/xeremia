@@ -148,12 +148,18 @@ def score_track_match(
     artist/remixer gate so callers can drop it from the candidate set.
     """
     db_title = _clean_title_seed(extract_unformatted_title(track.title or "")) or ""
-    title_score = _similarity(_clean_title_seed(seed.title), db_title)
+    seed_title = _clean_title_seed(seed.title)
+    title_score = _similarity(seed_title, db_title)
     combined_score = _similarity(seed_full, db_title)
     score = max(
         title_score, combined_score, _similarity(seed_full, track.title or "")
     )
     if score < threshold:
+        return None
+    # Reject same-artist false positives where the cleaned work title diverges
+    # (e.g. Altinbas "Seele" vs "Sidereal") even when "artist - title" strings
+    # drift into the combined-similarity band.
+    if title_score < threshold:
         return None
 
     db_artist, db_remixer = artists_for_track(session, track)
@@ -198,6 +204,7 @@ def find_matching_tracks(
     rekordbox_index: RekordboxMetadataIndex | None = None,
     *,
     threshold: float = MATCH_THRESHOLD,
+    exclude_track_ids: set[int] | frozenset[int] | None = None,
 ) -> list[TrackMatch]:
     """Find DB tracks that match ``source``, best score first.
 
@@ -223,8 +230,11 @@ def find_matching_tracks(
         else None
     )
 
+    blocked_ids = exclude_track_ids or frozenset()
     matches: list[TrackMatch] = []
     for track in session.query(Track).all():
+        if track.id in blocked_ids:
+            continue
         score = score_track_match(
             session,
             source,

@@ -408,6 +408,43 @@ def test_score_track_match_remixer_credit_covers_missing_artist_match():
     assert score >= MATCH_THRESHOLD
 
 
+def test_score_track_match_rejects_same_artist_different_work_title():
+    session = _FakeSession()
+    track = _track(
+        session,
+        track_id=9703,
+        file_name="sidereal.mp3",
+        title="[06A - Gm - 140.00] Altinbas - Sidereal",
+    )
+    _link(session, track_id=9703, artist_id=10)
+    _artist(session, "Altinbas", 10)
+    source = Path("Altinbas - Seele (Original Mix).mp3")
+    seed = SimpleMetadata(artist="Altinbas", title="Seele")
+    seed_full = "Altinbas - Seele"
+
+    assert score_track_match(session, source, seed, seed_full, track, None) is None
+
+
+def test_find_matching_tracks_excludes_claimed_track_ids():
+    session = _FakeSession()
+    _track(
+        session,
+        track_id=1,
+        file_name="other.mp3",
+        title="Around The World",
+    )
+    _link(session, track_id=1, artist_id=10)
+    _artist(session, "ATC", 10)
+
+    matches = find_matching_tracks(
+        session,
+        Path("ATC - Around The World.mp3"),
+        exclude_track_ids={1},
+    )
+
+    assert matches == []
+
+
 # --- find_matching_tracks --------------------------------------------------------
 
 
