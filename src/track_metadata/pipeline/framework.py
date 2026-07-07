@@ -29,6 +29,7 @@ class TrackResult:
     missing_optional: list[str] = field(default_factory=list)
     agent_events: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    matched_track_id: int | None = None
 
 
 @dataclass

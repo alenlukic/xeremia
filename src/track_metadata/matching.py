@@ -377,3 +377,31 @@ def _best_year(*values: int | None) -> int | None:
         if value:
             return value
     return None
+
+
+def seed_metadata_from_filename(
+    source: Path, existing: SimpleMetadata
+) -> SimpleMetadata:
+    """Build the initial metadata seed used by both remote and DB-first hydration.
+
+    Remix-prefix filenames (``[Remix of <artist> - <title>]``) encode the original
+    work identity, so the parsed artist/title seed wins over imported tags while
+    the imported artist formatting is kept when it matches the parsed remixer.
+    For every other filename shape, imported tags win and the filename only fills
+    gaps. A remixer is inferred from the title annotation as a final fallback.
+    """
+    parsed_seed = _parse_filename_seed(source)
+    if source.stem.casefold().startswith("[remix of "):
+        seed = _merge_missing(parsed_seed, existing)
+        if (
+            parsed_seed.remixer
+            and existing.artist
+            and _normalize_for_match(parsed_seed.remixer)
+            == _normalize_for_match(existing.artist)
+        ):
+            seed.remixer = existing.artist
+    else:
+        seed = _merge_missing(existing, parsed_seed)
+    if seed.remixer is None:
+        seed.remixer = _extract_remixer(seed.title)
+    return seed
