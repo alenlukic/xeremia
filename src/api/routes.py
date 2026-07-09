@@ -3,7 +3,6 @@
 import logging
 import os
 from collections import Counter
-from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -48,6 +47,7 @@ from src.api.serializers import (
     serialize_trait_info,
 )
 from src.data_management.config import TrackDBCols
+from src.utils.audio_path import resolve_audio_path
 
 logger = logging.getLogger(__name__)
 
@@ -188,25 +188,17 @@ def api_track_audio(track_id: int):
                 detail=f"Unsupported audio format '{ext}'. Supported: MP3, WAV, AIFF, AIF.",
             )
 
-        file_path = Path(PROCESSED_MUSIC_DIR) / file_name
-        if not file_path.is_file():
-            # SMB-mounted volumes return flaky stat results for non-ASCII /
-            # substituted-char filenames; fall back to a readdir-based lookup
-            # before declaring the file missing.
-            from src.utils.audio_path import resolve_audio_path
-
-            resolved = resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
-            if resolved is None:
-                logger.warning(
-                    "Audio file not found on disk for track_id=%s file_name=%r",
-                    track_id,
-                    file_name,
-                )
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Audio file not found on disk for track {track_id}",
-                )
-            file_path = Path(resolved)
+        file_path = resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
+        if file_path is None:
+            logger.warning(
+                "Audio file not found on disk for track_id=%s file_name=%r",
+                track_id,
+                file_name,
+            )
+            raise HTTPException(
+                status_code=404,
+                detail=f"Audio file not found on disk for track {track_id}",
+            )
 
         media_type = _AUDIO_MEDIA_TYPES[ext]
         return FileResponse(

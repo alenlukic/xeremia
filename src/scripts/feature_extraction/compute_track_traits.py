@@ -27,46 +27,20 @@ import warnings
 warnings.simplefilter("ignore")
 
 from multiprocessing import Pipe, Process  # noqa: E402
-from os.path import join, splitext  # noqa: E402
+from os.path import splitext  # noqa: E402
 
 from src.db import database  # noqa: E402
 from src.models.track import Track  # noqa: E402
 from src.models.track_trait import TrackTrait  # noqa: E402
 from src.config import PROCESSED_MUSIC_DIR  # noqa: E402
+from src.feature_extraction.batching import chunk_contiguous  # noqa: E402
 from src.feature_extraction.config import TRAIT_WORKERS  # noqa: E402
+from src.utils.audio_path import resolve_audio_path  # noqa: E402
 from src.utils.file_operations import AUDIO_TYPES  # noqa: E402
 from src.errors import handle  # noqa: E402
 
 
 _PROGRESS_INTERVAL = 10
-
-
-def _chunkify(lst, n):
-    """Split lst into n roughly equal non-empty chunks."""
-    if not lst:
-        return []
-    n = min(n, len(lst))
-    size, rem = divmod(len(lst), n)
-    chunks, i = [], 0
-    for k in range(n):
-        extra = 1 if k < rem else 0
-        chunks.append(lst[i : i + size + extra])
-        i += size + extra
-    return [c for c in chunks if c]
-
-
-def _resolve_audio_path(music_dir, file_name):
-    """Return the on-disk audio path for a track, or None.
-
-    Thin back-compat wrapper around :func:`src.utils.audio_path.resolve_audio_path`,
-    which indexes the directory via ``os.scandir`` (readdir) and matches on the
-    bytes the filesystem actually stores — robust to NFC/NFD mismatches, stale
-    SMB stat caches, and ``?`` placeholders.  Only called after an OSError on
-    the direct path.
-    """
-    from src.utils.audio_path import resolve_audio_path
-
-    return resolve_audio_path(music_dir, file_name)
 
 
 def _compute_traits(chunk, result_transmitter):
@@ -98,22 +72,18 @@ def _compute_traits(chunk, result_transmitter):
     try:
         for track_id, file_name in chunk:
             try:
-                audio_path = join(PROCESSED_MUSIC_DIR, file_name)
+                audio_path = resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
                 print("  [%d] track %d: %s" % (pid, track_id, file_name), flush=True)
 
-                try:
-                    traits = extractor.compute(audio_path)
-                except (FileNotFoundError, OSError):
-                    fallback = _resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
-                    if fallback is None:
-                        print(
-                            "  [%d] track %d: file not found: %s"
-                            % (pid, track_id, file_name),
-                            flush=True,
-                        )
-                        n_failed += 1
-                        continue
-                    traits = extractor.compute(fallback)
+                if audio_path is None:
+                    print(
+                        "  [%d] track %d: file not found: %s"
+                        % (pid, track_id, file_name),
+                        flush=True,
+                    )
+                    n_failed += 1
+                    continue
+                traits = extractor.compute(audio_path)
 
                 row = TrackTrait(
                     track_id=track_id,
@@ -187,7 +157,7 @@ def run(track_ids, session):
         n_workers = min(TRAIT_WORKERS, num_tracks)
         print("Using %d worker(s) (TRAIT_WORKERS=%d)\n" % (n_workers, TRAIT_WORKERS))
 
-        chunks = _chunkify(tracks_to_process, n_workers)
+        chunks = chunk_contiguous(tracks_to_process, n_workers)
         del tracks_to_process
 
         workers = []

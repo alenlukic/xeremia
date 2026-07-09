@@ -12,7 +12,6 @@ from src.data_management.config import TrackDBCols
 from src.feature_extraction.config import DESCRIPTOR_VERSION
 from src.models.track_cosine_similarity import TrackCosineSimilarity
 from src.scripts.feature_extraction.compute_cosine_similarities import (
-    _chunkify,
     _classify_existing_pairs,
     _extract_candidate_ids,
     _get_tracks_for_processing,
@@ -141,25 +140,6 @@ class TestExtractCandidateIds:
         match.metadata = {TrackDBCols.ID: None}
         result = _extract_candidate_ids((([match], [], []), ""), source_track_id=1)
         assert result == set()
-
-
-# ---------------------------------------------------------------------------
-# _chunkify (same logic as compute_track_traits, smoke-tested here)
-# ---------------------------------------------------------------------------
-
-
-class TestChunkifyCosine:
-    def test_even_split(self):
-        result = _chunkify([1, 2, 3, 4], 2)
-        assert len(result) == 2
-
-    def test_empty_list(self):
-        assert _chunkify([], 3) == []
-
-    def test_all_items_present(self):
-        items = list(range(15))
-        chunks = _chunkify(items, 4)
-        assert sorted(x for c in chunks for x in c) == items
 
 
 # ---------------------------------------------------------------------------

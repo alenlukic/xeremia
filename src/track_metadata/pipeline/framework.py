@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -81,12 +80,6 @@ class Pipeline:
                 try:
                     stage.execute(result, context)
                 except Exception as exc:  # pragma: no cover - integration safety
-                    logging.warning(
-                        "Pipeline stage %r failed for %s: %s",
-                        stage.name,
-                        source,
-                        exc,
-                    )
                     result.status = TrackStatus.FAILED
                     result.notes.append(f"stage={stage.name} error={exc}")
                     break

@@ -429,3 +429,21 @@ class TestAudioEndpoint:
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("audio/wav")
         assert resp.content == b"wav-bytes"
+
+    def test_get_resolves_unicode_normalization_mismatch(self, client, tmp_path):
+        import unicodedata
+
+        track = MagicMock()
+        track.file_name = "Café.mp3"
+        disk_name = unicodedata.normalize("NFD", track.file_name)
+        (tmp_path / disk_name).write_bytes(b"normalized-audio")
+
+        mock_session = self._session_with_track(track)
+        with (
+            patch("src.api.routes._get_session", return_value=mock_session),
+            patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)),
+        ):
+            resp = client.get("/api/tracks/42/audio")
+
+        assert resp.status_code == 200
+        assert resp.content == b"normalized-audio"

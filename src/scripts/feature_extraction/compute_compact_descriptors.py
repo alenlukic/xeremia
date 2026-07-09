@@ -20,7 +20,7 @@ warnings.simplefilter("ignore")
 
 from multiprocessing import Pipe, Process  # noqa: E402
 from os import getpid  # noqa: E402
-from os.path import join, splitext  # noqa: E402
+from os.path import splitext  # noqa: E402
 
 import numpy as np  # noqa: E402
 
@@ -28,6 +28,7 @@ from src.db import database  # noqa: E402
 from src.models.track import Track  # noqa: E402
 from src.models.track_descriptor import TrackDescriptor  # noqa: E402
 from src.config import NUM_CORES, PROCESSED_MUSIC_DIR  # noqa: E402
+from src.utils.audio_path import resolve_audio_path  # noqa: E402
 from src.utils.file_operations import AUDIO_TYPES  # noqa: E402
 from src.errors import handle  # noqa: E402
 from src.feature_extraction.compact_descriptor import CompactDescriptor  # noqa: E402
@@ -47,25 +48,20 @@ def _compute_descriptors(chunk, result_transmitter):
 
     for track in chunk:
         try:
-            audio_path = join(PROCESSED_MUSIC_DIR, track.file_name)
+            audio_path = resolve_audio_path(PROCESSED_MUSIC_DIR, track.file_name)
             print("  [%d] track %d: %s" % (pid, track.id, track.file_name), flush=True)
 
-            desc = CompactDescriptor(track)
-            try:
-                desc.compute(audio_path=audio_path)
-            except (FileNotFoundError, OSError):
-                from src.utils.audio_path import resolve_audio_path
+            if audio_path is None:
+                print(
+                    "  [%d] track %d: file not found: %s"
+                    % (pid, track.id, track.file_name),
+                    flush=True,
+                )
+                n_failed += 1
+                continue
 
-                fallback = resolve_audio_path(PROCESSED_MUSIC_DIR, track.file_name)
-                if fallback is None:
-                    print(
-                        "  [%d] track %d: file not found: %s"
-                        % (pid, track.id, track.file_name),
-                        flush=True,
-                    )
-                    n_failed += 1
-                    continue
-                desc.compute(audio_path=fallback)
+            desc = CompactDescriptor(track)
+            desc.compute(audio_path=audio_path)
 
             if desc.global_vector is None:
                 n_skipped += 1

@@ -1,112 +1,185 @@
-"""Robust audio-path resolution for tracks on the processed-music volume.
+"""Resolve audio paths whose stored names differ from filesystem entries.
 
-The processed-music directory lives on an SMB-mounted volume whose
-``stat``/``open``-by-name lookups are unreliable for filenames containing
-non-ASCII characters: ``readdir`` (``os.scandir``) reliably enumerates the
-files, but a direct ``os.path.isfile``/``open`` on the joined path can fail
-due to Unicode-normalization mismatches (NFC vs NFD), stale directory
-caches, or historical ``?`` placeholders.  This module resolves a track's
-``file_name`` to an on-disk path by indexing the directory once via
-``os.scandir`` and matching against the bytes that ``readdir`` actually
-returned.
-
-Callers should first attempt ``os.path.join(music_dir, file_name)`` directly
-and only invoke :func:`resolve_audio_path` as a fallback on ``OSError``; it
-returns ``None`` when no readdir entry matches so the caller can treat the
-track as not-found.
+The processed-music directory may live on an SMB-mounted volume. Direct path
+lookups can fail when the database name and the directory entry differ by
+Unicode normalization, case, or historical filename substitutions. Resolution
+therefore falls back to directory enumeration and only accepts unambiguous
+matches.
 """
 
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Mapping
 import os
+from os import PathLike
+from os.path import dirname, isfile, join
+import re
 import unicodedata
-from os.path import join, splitext
+from typing import Union
 
-from src.utils.file_operations import AUDIO_TYPES
+PathInput = Union[str, PathLike[str]]
+AudioNameIndex = dict[str, tuple[str, ...]]
 
-_INDEX_CACHE = {}
-
-# Characters that the SMB/macOS volume replaces with ``_`` on write, so a DB
-# ``file_name`` may store the original glyph while the on-disk basename has an
-# underscore (e.g. ``A*S*Y*S`` -> ``A_S_Y_S``, ``F*cking`` -> ``F_cking``).
+_INDEX_CACHE: dict[str, AudioNameIndex] = {}
 _DISK_SUBSTITUTE_CHARS = str.maketrans({"*": "_", "?": "_"})
 
 
-def _name_variants(file_name):
-    """Yield lookup variants of ``file_name``: raw, then ``*``/``?`` -> ``_``."""
-    yield file_name
-    substituted = file_name.translate(_DISK_SUBSTITUTE_CHARS)
-    if substituted != file_name:
-        yield substituted
+def build_audio_index(directory: PathInput) -> AudioNameIndex:
+    """Index directory-entry names by normalized lookup keys.
 
-
-def build_audio_index(music_dir):
-    """Return a dict of lookup keys -> on-disk basename for audio files.
-
-    Keys populated per entry are the raw readdir basename plus its NFC, NFD,
-    and casefolded-NFC forms, so a DB ``file_name`` in any of those forms can
-    be matched back to the bytes the filesystem actually stores.  Building
-    the index once per process avoids a per-track ``os.listdir`` round-trip.
+    Each key maps to every matching on-disk name rather than arbitrarily choosing
+    one. Callers can therefore reject case or normalization collisions safely.
     """
-    index = {}
+    buckets: dict[str, set[str]] = defaultdict(set)
     try:
-        with os.scandir(music_dir) as it:
-            for entry in it:
+        with os.scandir(directory) as entries:
+            for entry in entries:
                 name = entry.name
-                if not name or splitext(name)[1].lower() not in AUDIO_TYPES:
+                if not name:
                     continue
-                nfc = unicodedata.normalize("NFC", name)
-                nfd = unicodedata.normalize("NFD", name)
-                for key in (name, nfc, nfd, nfc.casefold()):
-                    index.setdefault(key, name)
+                for key in _lookup_keys(name):
+                    buckets[key].add(name)
     except OSError:
-        pass
+        return {}
+
+    return {key: tuple(sorted(names)) for key, names in buckets.items()}
+
+
+def clear_audio_path_cache() -> None:
+    """Discard cached directory indexes.
+
+    Long-running ingestion processes should call this after mutating the
+    processed-music directory so later fallback lookups see the new contents.
+    """
+    _INDEX_CACHE.clear()
+
+
+def resolve_audio_path(
+    music_dir: PathInput,
+    file_name: str,
+    *,
+    index: Mapping[str, tuple[str, ...]] | None = None,
+) -> str | None:
+    """Return the existing path for ``file_name``, or ``None`` if unresolved.
+
+    Resolution attempts the direct path first, then scans the requested file's
+    parent directory. Fallback matching covers Unicode NFC/NFD differences,
+    unique case-insensitive matches, ``*``/``?`` to ``_`` substitutions, and
+    unique legacy placeholder matches. Ambiguous matches are rejected.
+    """
+    if not file_name:
+        return None
+
+    root = os.fspath(music_dir)
+    direct_path = join(root, file_name)
+    if isfile(direct_path):
+        return direct_path
+
+    relative_directory = dirname(file_name)
+    requested_name = os.path.basename(file_name)
+    if not requested_name:
+        return None
+
+    search_directory = join(root, relative_directory)
+    if index is not None:
+        match = _match_index(index, requested_name)
+        return join(search_directory, match) if match is not None else None
+
+    cache_key = os.path.abspath(search_directory)
+    directory_index = _get_audio_index(cache_key)
+    match = _match_index(directory_index, requested_name)
+    return join(search_directory, match) if match is not None else None
+
+
+def _get_audio_index(directory: str) -> AudioNameIndex:
+    index = _INDEX_CACHE.get(directory)
+    if index is None:
+        index = build_audio_index(directory)
+        _INDEX_CACHE[directory] = index
     return index
 
 
-def _get_index(music_dir):
-    idx = _INDEX_CACHE.get(music_dir)
-    if idx is None:
-        idx = build_audio_index(music_dir)
-        _INDEX_CACHE[music_dir] = idx
-    return idx
+def _lookup_keys(name: str) -> tuple[str, ...]:
+    nfc = unicodedata.normalize("NFC", name)
+    nfd = unicodedata.normalize("NFD", name)
+    return tuple(dict.fromkeys((name, nfc, nfd, nfc.casefold())))
 
 
-def resolve_audio_path(music_dir, file_name, index=None):
-    """Resolve ``file_name`` to an on-disk path via the readdir index.
+def _match_index(
+    index: Mapping[str, tuple[str, ...]], requested_name: str
+) -> str | None:
+    for variant in _name_variants(requested_name):
+        for key in _lookup_keys(variant):
+            match = _unique_index_match(index, key)
+            if match is not None:
+                return match
 
-    Returns the resolved path string, or ``None`` if no indexed entry matches.
-    Match strategy, in order: exact bytes, NFC, NFD, casefolded-NFC, then a
-    unique prefix match for ``?``-placeholder names (longest leading run of
-    ASCII, non-``?`` characters).
-    """
-    if index is None:
-        index = _get_index(music_dir)
-    if not index:
+    wildcard_match = _match_question_mark_placeholder(index, requested_name)
+    if wildcard_match is not None:
+        return wildcard_match
+
+    return _match_legacy_uncertain_prefix(index, requested_name)
+
+
+def _name_variants(file_name: str) -> tuple[str, ...]:
+    substituted = file_name.translate(_DISK_SUBSTITUTE_CHARS)
+    if substituted == file_name:
+        return (file_name,)
+    return (file_name, substituted)
+
+
+def _unique_index_match(
+    index: Mapping[str, tuple[str, ...]], lookup_key: str
+) -> str | None:
+    matches = index.get(lookup_key, ())
+    return matches[0] if len(matches) == 1 else None
+
+
+def _unique_names(index: Mapping[str, tuple[str, ...]]) -> tuple[str, ...]:
+    return tuple(sorted({name for names in index.values() for name in names}))
+
+
+def _match_question_mark_placeholder(
+    index: Mapping[str, tuple[str, ...]], requested_name: str
+) -> str | None:
+    placeholder_position = requested_name.find("?")
+    if placeholder_position <= 0:
         return None
 
-    for variant in _name_variants(file_name):
-        for key in (
-            variant,
-            unicodedata.normalize("NFC", variant),
-            unicodedata.normalize("NFD", variant),
-            unicodedata.normalize("NFC", variant).casefold(),
-        ):
-            hit = index.get(key)
-            if hit is not None:
-                return join(music_dir, hit)
+    normalized = unicodedata.normalize("NFC", requested_name)
+    pattern_parts = []
+    for character in normalized:
+        if character == "?":
+            pattern_parts.append(".")
+        elif character == "*":
+            pattern_parts.append(re.escape("_"))
+        else:
+            pattern_parts.append(re.escape(character))
+    pattern = re.compile("".join(pattern_parts), re.IGNORECASE)
 
-    prefix = ""
-    for ch in file_name:
-        if ch == "?" or ord(ch) > 127:
-            break
-        prefix += ch
-    if prefix:
-        matches = []
-        seen = set()
-        for name in index.values():
-            if name.startswith(prefix) and name not in seen:
-                seen.add(name)
-                matches.append(name)
-        if len(matches) == 1:
-            return join(music_dir, matches[0])
+    matches = [
+        name
+        for name in _unique_names(index)
+        if pattern.fullmatch(unicodedata.normalize("NFC", name)) is not None
+    ]
+    return matches[0] if len(matches) == 1 else None
 
-    return None
+
+def _match_legacy_uncertain_prefix(
+    index: Mapping[str, tuple[str, ...]], requested_name: str
+) -> str | None:
+    prefix_end = next(
+        (
+            position
+            for position, character in enumerate(requested_name)
+            if character == "?" or unicodedata.category(character).startswith("C")
+        ),
+        None,
+    )
+    if prefix_end in (None, 0):
+        return None
+
+    prefix = requested_name[:prefix_end]
+    matches = [name for name in _unique_names(index) if name.startswith(prefix)]
+    return matches[0] if len(matches) == 1 else None
