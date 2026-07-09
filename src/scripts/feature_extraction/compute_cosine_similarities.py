@@ -48,16 +48,22 @@ _PROGRESS_INTERVAL = 10
 
 
 def _chunkify(lst, n):
-    """Split lst into n roughly equal non-empty chunks."""
+    """Distribute lst across n workers using round-robin dealing.
+
+    Cosine neighbor counts vary systematically with track ID: higher-BPM
+    tracks (added later, so higher IDs) tend to have fewer harmonic
+    neighbors than older low-ID tracks. Contiguous slicing therefore
+    produced badly unbalanced worker load — the worker holding the dense
+    low-ID block ran far longer than the one holding the sparse high-ID
+    block. Round-robin dealing gives each worker an even, stratified mix
+    across the full ID range so runtimes stay balanced.
+    """
     if not lst:
         return []
     n = min(n, len(lst))
-    size, rem = divmod(len(lst), n)
-    chunks, i = [], 0
-    for k in range(n):
-        extra = 1 if k < rem else 0
-        chunks.append(lst[i : i + size + extra])
-        i += size + extra
+    chunks = [[] for _ in range(n)]
+    for i, item in enumerate(lst):
+        chunks[i % n].append(item)
     return [c for c in chunks if c]
 
 

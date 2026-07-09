@@ -53,8 +53,25 @@ def get_file_creation_time(full_path):
     return file_stat.st_ctime
 
 
+def _resolve_on_disk(track_name):
+    """Return an on-disk path for ``track_name``, falling back to the readdir
+    resolver when the direct path's ``stat`` is flaky on the SMB volume.
+
+    Returns the direct joined path (which may not exist) when no readdir
+    match is found, so the caller gets a normal ``FileNotFoundError`` rather
+    than a silent skip.
+    """
+    direct = join(PROCESSED_MUSIC_DIR, track_name)
+    if isfile(direct):
+        return direct
+    from src.utils.audio_path import resolve_audio_path
+
+    resolved = resolve_audio_path(PROCESSED_MUSIC_DIR, track_name)
+    return resolved if resolved is not None else direct
+
+
 def get_track_load_path(track):
-    file_path = join(PROCESSED_MUSIC_DIR, track.file_name)
+    file_path = _resolve_on_disk(track.file_name)
 
     if FILE_STAGING_DIR is None:
         return file_path
@@ -70,7 +87,7 @@ def stage_tracks(tracks):
         return
 
     for track_name in [t.file_name for t in tracks]:
-        file_path = join(PROCESSED_MUSIC_DIR, track_name)
+        file_path = _resolve_on_disk(track_name)
         if not isfile(file_path):
             continue
 
@@ -78,4 +95,10 @@ def stage_tracks(tracks):
         if isfile(staged_path):
             continue
 
-        copyfile(file_path, staged_path)
+        try:
+            copyfile(file_path, staged_path)
+        except OSError:
+            # Staging is a performance optimization, not a correctness
+            # requirement; a read/copy failure here just means the caller
+            # will read from the source path directly.
+            pass

@@ -56,40 +56,17 @@ def _chunkify(lst, n):
 
 
 def _resolve_audio_path(music_dir, file_name):
-    """Return the absolute audio path for a track.
+    """Return the on-disk audio path for a track, or None.
 
-    Falls back to a prefix substring match when the filename contains
-    non-ASCII characters or ``?`` placeholders that may not survive
-    filesystem round-trips.  The trigger fires at the first ``?`` or
-    first non-ASCII character, whichever appears first.
-    Returns the resolved path string, or None if no match is found.
-    Only called after an OSError on the direct path — avoids os.path.exists()
-    so that normal filesystem access patterns are preserved.
+    Thin back-compat wrapper around :func:`src.utils.audio_path.resolve_audio_path`,
+    which indexes the directory via ``os.scandir`` (readdir) and matches on the
+    bytes the filesystem actually stores — robust to NFC/NFD mismatches, stale
+    SMB stat caches, and ``?`` placeholders.  Only called after an OSError on
+    the direct path.
     """
-    trigger_pos = next(
-        (i for i, c in enumerate(file_name) if ord(c) > 127 or c == "?"),
-        None,
-    )
-    if trigger_pos is None:
-        return None
+    from src.utils.audio_path import resolve_audio_path
 
-    prefix = file_name[:trigger_pos]
-    search_dir = os.path.dirname(join(music_dir, prefix))
-    basename_prefix = os.path.basename(prefix)
-
-    if not os.path.isdir(search_dir):
-        return None
-
-    if not basename_prefix:
-        return None
-
-    for candidate in sorted(os.listdir(search_dir)):
-        if candidate.startswith(basename_prefix):
-            candidate_path = join(search_dir, candidate)
-            if os.path.isfile(candidate_path):
-                return candidate_path
-
-    return None
+    return resolve_audio_path(music_dir, file_name)
 
 
 def _compute_traits(chunk, result_transmitter):

@@ -51,7 +51,21 @@ def _compute_descriptors(chunk, result_transmitter):
             print("  [%d] track %d: %s" % (pid, track.id, track.file_name), flush=True)
 
             desc = CompactDescriptor(track)
-            desc.compute(audio_path=audio_path)
+            try:
+                desc.compute(audio_path=audio_path)
+            except (FileNotFoundError, OSError):
+                from src.utils.audio_path import resolve_audio_path
+
+                fallback = resolve_audio_path(PROCESSED_MUSIC_DIR, track.file_name)
+                if fallback is None:
+                    print(
+                        "  [%d] track %d: file not found: %s"
+                        % (pid, track.id, track.file_name),
+                        flush=True,
+                    )
+                    n_failed += 1
+                    continue
+                desc.compute(audio_path=fallback)
 
             if desc.global_vector is None:
                 n_skipped += 1
