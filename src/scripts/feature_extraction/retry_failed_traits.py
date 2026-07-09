@@ -12,7 +12,7 @@ Usage:
 import datetime
 import traceback
 import warnings
-from os.path import join, splitext
+from os.path import splitext
 from pathlib import Path
 
 warnings.simplefilter("ignore")
@@ -23,7 +23,7 @@ from src.models.track_trait import TrackTrait  # noqa: E402
 from src.config import PROCESSED_MUSIC_DIR  # noqa: E402
 from src.utils.file_operations import AUDIO_TYPES  # noqa: E402
 from src.feature_extraction.trait_extractor import TraitExtractor  # noqa: E402
-from src.scripts.feature_extraction.compute_track_traits import _resolve_audio_path  # noqa: E402
+from src.utils.audio_path import resolve_audio_path  # noqa: E402
 
 LOG_FILE = Path(__file__).resolve().parents[3] / "logs" / "trait_failure_retry.txt"
 
@@ -55,16 +55,12 @@ def run():
 
         for idx, (track_id, file_name) in enumerate(missing, 1):
             try:
-                audio_path = join(PROCESSED_MUSIC_DIR, file_name)
-                try:
-                    traits = extractor.compute(audio_path)
-                except (FileNotFoundError, OSError):
-                    fallback = _resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
-                    if fallback is None:
-                        print("  track %d: file not found: %s" % (track_id, file_name))
-                        failed += 1
-                        continue
-                    traits = extractor.compute(fallback)
+                audio_path = resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
+                if audio_path is None:
+                    print("  track %d: file not found: %s" % (track_id, file_name))
+                    failed += 1
+                    continue
+                traits = extractor.compute(audio_path)
 
                 row = TrackTrait(
                     track_id=track_id,

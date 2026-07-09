@@ -36,6 +36,7 @@ from src.db import database  # noqa: E402
 from src.models.track import Track  # noqa: E402
 from src.models.track_descriptor import TrackDescriptor  # noqa: E402
 from src.models.track_cosine_similarity import TrackCosineSimilarity  # noqa: E402
+from src.feature_extraction.batching import chunk_round_robin  # noqa: E402
 from src.feature_extraction.config import COSINE_WORKERS, DESCRIPTOR_VERSION  # noqa: E402
 from src.feature_extraction.compact_descriptor import unpack_vector  # noqa: E402
 from src.feature_extraction.track_similarity import ScorerName, compute_similarity  # noqa: E402
@@ -45,20 +46,6 @@ from src.errors import handle  # noqa: E402
 
 
 _PROGRESS_INTERVAL = 10
-
-
-def _chunkify(lst, n):
-    """Split lst into n roughly equal non-empty chunks."""
-    if not lst:
-        return []
-    n = min(n, len(lst))
-    size, rem = divmod(len(lst), n)
-    chunks, i = [], 0
-    for k in range(n):
-        extra = 1 if k < rem else 0
-        chunks.append(lst[i : i + size + extra])
-        i += size + extra
-    return [c for c in chunks if c]
 
 
 def _extract_candidate_ids(matches_result, source_track_id):
@@ -307,7 +294,7 @@ def run(track_ids, session, scorer_name=None, force=False):
 
         n_workers = min(COSINE_WORKERS, num_tracks)
         print("Using %d worker(s) (COSINE_WORKERS=%d)\n" % (n_workers, COSINE_WORKERS))
-        chunks = _chunkify(tracks_to_process, n_workers)
+        chunks = chunk_round_robin(tracks_to_process, n_workers)
         all_track_ids = frozenset(tracks_to_process)
 
         workers = []

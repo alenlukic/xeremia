@@ -26,18 +26,16 @@ import warnings
 warnings.simplefilter("ignore")
 
 from multiprocessing import Pipe, Process  # noqa: E402
-from os.path import join, splitext  # noqa: E402
+from os.path import splitext  # noqa: E402
 
 from src.db import database  # noqa: E402
 from src.models.track import Track  # noqa: E402
 from src.models.track_trait import TrackTrait  # noqa: E402
 from src.config import PROCESSED_MUSIC_DIR  # noqa: E402
+from src.feature_extraction.batching import chunk_contiguous  # noqa: E402
 from src.feature_extraction.config import TRAIT_VERSION, TRAIT_WORKERS  # noqa: E402
+from src.utils.audio_path import resolve_audio_path  # noqa: E402
 from src.utils.file_operations import AUDIO_TYPES  # noqa: E402
-from src.scripts.feature_extraction.compute_track_traits import (  # noqa: E402
-    _chunkify,
-    _resolve_audio_path,
-)
 
 _PROGRESS_INTERVAL = 10
 
@@ -69,20 +67,16 @@ def _backfill_chunk(chunk, result_transmitter):
     try:
         for trait_id, track_id, file_name in chunk:
             try:
-                audio_path = join(PROCESSED_MUSIC_DIR, file_name)
-                try:
-                    traits = extractor.compute(audio_path)
-                except (FileNotFoundError, OSError):
-                    fallback = _resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
-                    if fallback is None:
-                        print(
-                            "  [%d] track %d: file not found: %s"
-                            % (pid, track_id, file_name),
-                            flush=True,
-                        )
-                        n_fail += 1
-                        continue
-                    traits = extractor.compute(fallback)
+                audio_path = resolve_audio_path(PROCESSED_MUSIC_DIR, file_name)
+                if audio_path is None:
+                    print(
+                        "  [%d] track %d: file not found: %s"
+                        % (pid, track_id, file_name),
+                        flush=True,
+                    )
+                    n_fail += 1
+                    continue
+                traits = extractor.compute(audio_path)
 
                 row = worker_session.query(TrackTrait).filter_by(id=trait_id).first()
                 if row is None:
@@ -167,7 +161,7 @@ def run():
     n_workers = min(TRAIT_WORKERS, total)
     print("Using %d worker(s) (TRAIT_WORKERS=%d)\n" % (n_workers, TRAIT_WORKERS))
 
-    chunks = _chunkify(work_items, n_workers)
+    chunks = chunk_contiguous(work_items, n_workers)
 
     workers = []
     aggregators = []
