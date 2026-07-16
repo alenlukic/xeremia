@@ -203,6 +203,19 @@ class TracklistNoteUpdateRequest(BaseModel):
     note: str = ""
 
 
+class PoolSubgroupResponse(BaseModel):
+    id: int
+    set_id: int
+    name: str
+    display_order: int
+
+
+class PoolSubgroupMemberResponse(BaseModel):
+    id: int
+    subgroup_id: int
+    pool_entry_id: int
+
+
 class ExplorerNodeResponse(BaseModel):
     id: int
     set_id: int
@@ -226,6 +239,10 @@ class HydratedSetResponse(BaseModel):
     tracklist: List[TracklistEntryResponse]
     explorer_nodes: List[ExplorerNodeResponse]
     explorer_edges: List[ExplorerEdgeResponse]
+    pool_subgroups: List[PoolSubgroupResponse] = Field(default_factory=list)
+    pool_subgroup_memberships: List[PoolSubgroupMemberResponse] = Field(
+        default_factory=list
+    )
 
 
 class PoolAddRequest(BaseModel):
@@ -243,6 +260,22 @@ class TracklistReorderRequest(BaseModel):
 
 class MoveRequest(BaseModel):
     track_id: int
+
+
+class SubgroupCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class SubgroupRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class SubgroupReorderRequest(BaseModel):
+    subgroup_ids: List[int]
+
+
+class SubgroupMemberRequest(BaseModel):
+    pool_entry_id: int
 
 
 class ExplorerAddNodeRequest(BaseModel):

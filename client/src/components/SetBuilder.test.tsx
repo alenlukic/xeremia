@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SetBuilder } from './SetBuilder'
-import type { SetSummary, HydratedSet } from '../types'
+import type { PoolSubgroup, SetSummary, HydratedSet } from '../types'
 
 vi.mock('../api/http', () => ({
   fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
@@ -53,6 +53,12 @@ function defaultProps() {
     removeFromPool: noop,
     movePoolToTracklist: noop,
     addToPool: noop,
+    createSubgroup: asyncNoop as (name: string) => Promise<PoolSubgroup | null>,
+    renameSubgroup: async () => true,
+    deleteSubgroup: async () => true,
+    reorderSubgroups: async () => true,
+    addSubgroupMember: async () => true,
+    removeSubgroupMember: async () => true,
     removeFromTracklist: noop,
     moveTracklistToPool: noop,
     reorderTracklist: noop,

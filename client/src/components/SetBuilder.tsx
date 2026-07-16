@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { SetSummary, HydratedSet } from '../types'
+import type { PoolSubgroup, SetSummary, HydratedSet } from '../types'
 import type { PendingAdd } from '../hooks/useSetBuilder'
 import { exportSetM3u8 } from '../api/http'
 import { SetPoolTable } from './SetPoolTable'
@@ -21,6 +21,18 @@ interface Props {
   removeFromPool: (trackId: number) => void
   movePoolToTracklist: (trackId: number) => void
   addToPool: (trackId: number, title?: string) => void
+  createSubgroup: (name: string) => Promise<PoolSubgroup | null>
+  renameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
+  deleteSubgroup: (subgroupId: number) => Promise<boolean>
+  reorderSubgroups: (subgroupIds: number[]) => Promise<boolean>
+  addSubgroupMember: (
+    subgroupId: number,
+    poolEntryId: number,
+  ) => Promise<boolean>
+  removeSubgroupMember: (
+    subgroupId: number,
+    poolEntryId: number,
+  ) => Promise<boolean>
   removeFromTracklist: (trackId: number) => void
   moveTracklistToPool: (trackId: number) => void
   reorderTracklist: (trackId: number, newPosition: number) => void
@@ -65,6 +77,12 @@ export function SetBuilder({
   removeFromPool,
   movePoolToTracklist,
   addToPool,
+  createSubgroup,
+  renameSubgroup,
+  deleteSubgroup,
+  reorderSubgroups,
+  addSubgroupMember,
+  removeSubgroupMember,
   removeFromTracklist,
   moveTracklistToPool,
   reorderTracklist,
@@ -346,9 +364,19 @@ export function SetBuilder({
                   <div className="set-pool-accordion-content">
                     <SetPoolTable
                       pool={activeSet.pool}
+                      subgroups={activeSet.pool_subgroups ?? []}
+                      subgroupMemberships={
+                        activeSet.pool_subgroup_memberships ?? []
+                      }
                       onRemove={removeFromPool}
                       onMoveToTracklist={movePoolToTracklist}
                       onAddTrack={handlePoolAddTrack}
+                      onCreateSubgroup={createSubgroup}
+                      onRenameSubgroup={renameSubgroup}
+                      onDeleteSubgroup={deleteSubgroup}
+                      onReorderSubgroups={reorderSubgroups}
+                      onAddSubgroupMember={addSubgroupMember}
+                      onRemoveSubgroupMember={removeSubgroupMember}
                     />
                   </div>
                 )}
