@@ -21,12 +21,17 @@ from src.api.schemas import (
     MatchDetailResponse,
     MoveRequest,
     PoolAddRequest,
+    PoolSubgroupResponse,
     SearchSuggestion,
     SetCreateRequest,
     SetExportRequest,
     SetExportResponse,
     SetSummary,
     SetUpdateRequest,
+    SubgroupCreateRequest,
+    SubgroupMemberRequest,
+    SubgroupRenameRequest,
+    SubgroupReorderRequest,
     TracklistAddRequest,
     TracklistNoteUpdateRequest,
     TracklistReorderRequest,
@@ -633,6 +638,23 @@ def _serialize_hydrated(hydration, session) -> dict:
             }
             for e in hydration["explorer_edges"]
         ],
+        "pool_subgroups": [
+            {
+                "id": sg.id,
+                "set_id": sg.set_id,
+                "name": sg.name,
+                "display_order": sg.display_order,
+            }
+            for sg in hydration.get("pool_subgroups", [])
+        ],
+        "pool_subgroup_memberships": [
+            {
+                "id": m.id,
+                "subgroup_id": m.subgroup_id,
+                "pool_entry_id": m.pool_entry_id,
+            }
+            for m in hydration.get("pool_subgroup_memberships", [])
+        ],
     }
 
 
@@ -807,6 +829,160 @@ def api_pool_move_to_tracklist(set_id: int, body: MoveRequest):
         session.rollback()
         logger.exception("Pool move to tracklist failed")
         raise HTTPException(status_code=500, detail="Move failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Pool subgroup endpoints
+# ---------------------------------------------------------------------------
+
+
+def _serialize_subgroup(sg) -> dict:
+    return {
+        "id": sg.id,
+        "set_id": sg.set_id,
+        "name": sg.name,
+        "display_order": sg.display_order,
+    }
+
+
+@router.post(
+    "/sets/{set_id}/pool/subgroups",
+    response_model=PoolSubgroupResponse,
+    status_code=201,
+)
+def api_subgroup_create(set_id: int, body: SubgroupCreateRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        sg = svc.subgroup_create(set_id, body.name)
+        session.commit()
+        return _serialize_subgroup(sg)
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Subgroup create failed")
+        raise HTTPException(status_code=500, detail="Subgroup create failed")
+    finally:
+        session.close()
+
+
+@router.patch(
+    "/sets/{set_id}/pool/subgroups/{subgroup_id}",
+    response_model=PoolSubgroupResponse,
+)
+def api_subgroup_rename(set_id: int, subgroup_id: int, body: SubgroupRenameRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        sg = svc.subgroup_rename(set_id, subgroup_id, body.name)
+        if sg is None:
+            raise HTTPException(status_code=404, detail="Subgroup not found")
+        session.commit()
+        return _serialize_subgroup(sg)
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Subgroup rename failed")
+        raise HTTPException(status_code=500, detail="Subgroup rename failed")
+    finally:
+        session.close()
+
+
+@router.delete("/sets/{set_id}/pool/subgroups/{subgroup_id}", status_code=204)
+def api_subgroup_delete(set_id: int, subgroup_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        deleted = svc.subgroup_delete(set_id, subgroup_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Subgroup not found")
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Subgroup delete failed")
+        raise HTTPException(status_code=500, detail="Subgroup delete failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/pool/subgroups/reorder")
+def api_subgroup_reorder(set_id: int, body: SubgroupReorderRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.subgroup_reorder(set_id, body.subgroup_ids)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Subgroup reorder failed")
+        raise HTTPException(status_code=500, detail="Subgroup reorder failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/pool/subgroups/{subgroup_id}/members", status_code=201)
+def api_subgroup_add_member(set_id: int, subgroup_id: int, body: SubgroupMemberRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        member, error = svc.subgroup_add_track(set_id, subgroup_id, body.pool_entry_id)
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True, "member_id": member.id}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Subgroup add member failed")
+        raise HTTPException(status_code=500, detail="Subgroup add member failed")
+    finally:
+        session.close()
+
+
+@router.delete(
+    "/sets/{set_id}/pool/subgroups/{subgroup_id}/members/{pool_entry_id}",
+    status_code=204,
+)
+def api_subgroup_remove_member(set_id: int, subgroup_id: int, pool_entry_id: int):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.subgroup_remove_track(set_id, subgroup_id, pool_entry_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Subgroup remove member failed")
+        raise HTTPException(status_code=500, detail="Subgroup remove member failed")
     finally:
         session.close()
 

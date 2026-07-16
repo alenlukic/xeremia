@@ -22,6 +22,7 @@ logs/
 # Editors
 .vscode/
 .cursor/
+.mcp.json
 
 # Mac OS gunk
 .DS_Store
@@ -31,6 +32,8 @@ data/
 
 # ONNX model cache (downloaded at runtime)
 models/traits/
+
+src/scripts/migrations/
 
 # Node / Vite
 client/dist/

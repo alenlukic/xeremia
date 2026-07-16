@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { SetSummary, HydratedSet } from '../types'
+import type { SetSummary, HydratedSet, PoolSubgroup } from '../types'
 import {
   fetchSets,
   createSet as apiCreateSet,
@@ -8,6 +8,12 @@ import {
   poolAdd,
   poolRemove,
   poolMoveToTracklist,
+  subgroupCreate as apiSubgroupCreate,
+  subgroupRename as apiSubgroupRename,
+  subgroupDelete as apiSubgroupDelete,
+  subgroupReorder as apiSubgroupReorder,
+  subgroupAddMember as apiSubgroupAddMember,
+  subgroupRemoveMember as apiSubgroupRemoveMember,
   tracklistAdd,
   tracklistRemove,
   tracklistReorder,
@@ -138,10 +144,16 @@ export function useSetBuilder() {
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Only clear the stored id after a set has actually been active this
+  // session (e.g. it was deleted). On mount activeSetId is still null while
+  // the restore effect above reads the stored id asynchronously; removing
+  // here would clobber it before it can be restored.
+  const hadActiveSetRef = useRef(false)
   useEffect(() => {
     if (activeSetId !== null) {
+      hadActiveSetRef.current = true
       localStorage.setItem('xeremia-active-set-id', String(activeSetId))
-    } else {
+    } else if (hadActiveSetRef.current) {
       localStorage.removeItem('xeremia-active-set-id')
     }
   }, [activeSetId])
@@ -295,6 +307,122 @@ export function useSetBuilder() {
             friendlyError(err, 'Could not move track to tracklist.'),
           )
         }
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  const createSubgroup = useCallback(
+    async (name: string): Promise<PoolSubgroup | null> => {
+      if (activeSetId === null) {
+        return null
+      }
+      try {
+        const sg = await apiSubgroupCreate(activeSetId, name)
+        await refreshActive()
+        return sg
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not create group.'))
+        }
+        return null
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  const renameSubgroup = useCallback(
+    async (subgroupId: number, name: string): Promise<boolean> => {
+      if (activeSetId === null) {
+        return false
+      }
+      try {
+        await apiSubgroupRename(activeSetId, subgroupId, name)
+        await refreshActive()
+        return true
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not rename group.'))
+        }
+        return false
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  const deleteSubgroup = useCallback(
+    async (subgroupId: number): Promise<boolean> => {
+      if (activeSetId === null) {
+        return false
+      }
+      try {
+        await apiSubgroupDelete(activeSetId, subgroupId)
+        await refreshActive()
+        return true
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not delete group.'))
+        }
+        return false
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  const reorderSubgroups = useCallback(
+    async (subgroupIds: number[]): Promise<boolean> => {
+      if (activeSetId === null) {
+        return false
+      }
+      try {
+        await apiSubgroupReorder(activeSetId, subgroupIds)
+        await refreshActive()
+        return true
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not reorder groups.'))
+        }
+        return false
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  const addSubgroupMember = useCallback(
+    async (subgroupId: number, poolEntryId: number): Promise<boolean> => {
+      if (activeSetId === null) {
+        return false
+      }
+      try {
+        await apiSubgroupAddMember(activeSetId, subgroupId, poolEntryId)
+        await refreshActive()
+        return true
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not add to group.'))
+        }
+        return false
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  const removeSubgroupMember = useCallback(
+    async (subgroupId: number, poolEntryId: number): Promise<boolean> => {
+      if (activeSetId === null) {
+        return false
+      }
+      try {
+        await apiSubgroupRemoveMember(activeSetId, subgroupId, poolEntryId)
+        await refreshActive()
+        return true
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(
+            friendlyError(err, 'Could not remove from group.'),
+          )
+        }
+        return false
       }
     },
     [activeSetId, refreshActive, setErrorWithAutoClear],
@@ -598,6 +726,12 @@ export function useSetBuilder() {
     removeFromTracklist,
     movePoolToTracklist,
     moveTracklistToPool,
+    createSubgroup,
+    renameSubgroup,
+    deleteSubgroup,
+    reorderSubgroups,
+    addSubgroupMember,
+    removeSubgroupMember,
     reorderTracklist,
     updateTracklistNote,
     addExplorerNode,

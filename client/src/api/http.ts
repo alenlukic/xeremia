@@ -8,6 +8,7 @@ import type {
   TrackTraitEntry,
   SetSummary,
   HydratedSet,
+  PoolSubgroup,
 } from '../types'
 
 export async function fetchTracks(params: {
@@ -233,6 +234,97 @@ export async function poolMoveToTracklist(
   })
   if (!res.ok) {
     throw new Error(`Pool move to tracklist failed: ${res.status}`)
+  }
+}
+
+export async function subgroupCreate(
+  setId: number,
+  name: string,
+): Promise<PoolSubgroup> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    throw new Error(`Subgroup create failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function subgroupRename(
+  setId: number,
+  subgroupId: number,
+  name: string,
+): Promise<PoolSubgroup> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups/${subgroupId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    throw new Error(`Subgroup rename failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function subgroupDelete(
+  setId: number,
+  subgroupId: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups/${subgroupId}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    throw new Error(`Subgroup delete failed: ${res.status}`)
+  }
+}
+
+export async function subgroupReorder(
+  setId: number,
+  subgroupIds: number[],
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/subgroups/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subgroup_ids: subgroupIds }),
+  })
+  if (!res.ok) {
+    throw new Error(`Subgroup reorder failed: ${res.status}`)
+  }
+}
+
+export async function subgroupAddMember(
+  setId: number,
+  subgroupId: number,
+  poolEntryId: number,
+): Promise<void> {
+  const res = await fetch(
+    `/api/sets/${setId}/pool/subgroups/${subgroupId}/members`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pool_entry_id: poolEntryId }),
+    },
+  )
+  if (!res.ok) {
+    throw new Error(`Subgroup add member failed: ${res.status}`)
+  }
+}
+
+export async function subgroupRemoveMember(
+  setId: number,
+  subgroupId: number,
+  poolEntryId: number,
+): Promise<void> {
+  const res = await fetch(
+    `/api/sets/${setId}/pool/subgroups/${subgroupId}/members/${poolEntryId}`,
+    {
+      method: 'DELETE',
+    },
+  )
+  if (!res.ok) {
+    throw new Error(`Subgroup remove member failed: ${res.status}`)
   }
 }
 

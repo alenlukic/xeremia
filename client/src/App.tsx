@@ -517,6 +517,12 @@ export function App() {
               removeFromPool={setBuilder.removeFromPool}
               movePoolToTracklist={setBuilder.movePoolToTracklist}
               addToPool={setBuilder.addToPool}
+              createSubgroup={setBuilder.createSubgroup}
+              renameSubgroup={setBuilder.renameSubgroup}
+              deleteSubgroup={setBuilder.deleteSubgroup}
+              reorderSubgroups={setBuilder.reorderSubgroups}
+              addSubgroupMember={setBuilder.addSubgroupMember}
+              removeSubgroupMember={setBuilder.removeSubgroupMember}
               removeFromTracklist={setBuilder.removeFromTracklist}
               moveTracklistToPool={setBuilder.moveTracklistToPool}
               reorderTracklist={setBuilder.reorderTracklist}

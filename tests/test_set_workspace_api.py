@@ -11,6 +11,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from src.db import Base
 from src.models.dj_set import DjSet
 from src.models.set_pool_entry import SetPoolEntry
+from src.models.set_pool_subgroup import SetPoolSubgroup
+from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
 from src.models.set_tracklist_entry import SetTracklistEntry
 from src.models.set_explorer_node import SetExplorerNode
 from src.models.set_explorer_edge import SetExplorerEdge
@@ -20,6 +22,8 @@ from src.set_workspace.service import SetWorkspaceService
 _TABLES = [
     DjSet.__table__,
     SetPoolEntry.__table__,
+    SetPoolSubgroup.__table__,
+    SetPoolSubgroupMember.__table__,
     SetTracklistEntry.__table__,
     SetExplorerNode.__table__,
     SetExplorerEdge.__table__,
@@ -181,6 +185,192 @@ class TestPoolTracklistExclusivity:
         assert (
             session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=10).count() == 1
         )
+
+
+class TestPoolSubgroups:
+    def _set_with_pool(self, svc, session, track_ids=(10, 20)):
+        s = svc.create_set("S")
+        session.commit()
+        entries = {}
+        for tid in track_ids:
+            entry, _ = svc.pool_add(s.id, tid)
+            entries[tid] = entry
+        session.commit()
+        return s, entries
+
+    def test_create_assigns_incrementing_display_order(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, _ = self._set_with_pool(svc, session)
+        sg1 = svc.subgroup_create(s.id, "Warmup")
+        sg2 = svc.subgroup_create(s.id, "Peak")
+        session.commit()
+        assert sg1.display_order == 0
+        assert sg2.display_order == 1
+
+    def test_rename(self, svc: SetWorkspaceService, session: Session):
+        s, _ = self._set_with_pool(svc, session)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        renamed = svc.subgroup_rename(s.id, sg.id, "Openers")
+        assert renamed is not None
+        assert renamed.name == "Openers"
+
+    def test_rename_wrong_set_returns_none(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, _ = self._set_with_pool(svc, session)
+        other = svc.create_set("Other")
+        session.commit()
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        assert svc.subgroup_rename(other.id, sg.id, "Nope") is None
+
+    def test_delete_compacts_display_order(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, _ = self._set_with_pool(svc, session)
+        sg1 = svc.subgroup_create(s.id, "A")
+        sg2 = svc.subgroup_create(s.id, "B")
+        sg3 = svc.subgroup_create(s.id, "C")
+        session.commit()
+        assert svc.subgroup_delete(s.id, sg1.id) is True
+        session.commit()
+        assert sg2.display_order == 0
+        assert sg3.display_order == 1
+
+    def test_reorder(self, svc: SetWorkspaceService, session: Session):
+        s, _ = self._set_with_pool(svc, session)
+        sg1 = svc.subgroup_create(s.id, "A")
+        sg2 = svc.subgroup_create(s.id, "B")
+        session.commit()
+        ok, err = svc.subgroup_reorder(s.id, [sg2.id, sg1.id])
+        assert ok is True
+        assert err is None
+        assert sg2.display_order == 0
+        assert sg1.display_order == 1
+
+    def test_reorder_rejects_mismatched_ids(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, _ = self._set_with_pool(svc, session)
+        sg1 = svc.subgroup_create(s.id, "A")
+        session.commit()
+        ok, err = svc.subgroup_reorder(s.id, [sg1.id, 9999])
+        assert ok is False
+        assert err is not None
+
+    def test_reorder_rejects_duplicates(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, _ = self._set_with_pool(svc, session)
+        sg1 = svc.subgroup_create(s.id, "A")
+        session.commit()
+        ok, err = svc.subgroup_reorder(s.id, [sg1.id, sg1.id])
+        assert ok is False
+        assert "duplicate" in err.lower()
+
+    def test_add_and_remove_member(self, svc: SetWorkspaceService, session: Session):
+        s, entries = self._set_with_pool(svc, session)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        member, err = svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        assert err is None
+        assert member is not None
+        ok, err = svc.subgroup_remove_track(s.id, sg.id, entries[10].id)
+        assert ok is True
+        assert err is None
+
+    def test_add_member_dedup(self, svc: SetWorkspaceService, session: Session):
+        s, entries = self._set_with_pool(svc, session)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        m1, _ = svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        m2, err = svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        assert err is None
+        assert m1.id == m2.id
+
+    def test_add_member_rejects_foreign_pool_entry(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, _ = self._set_with_pool(svc, session)
+        other = svc.create_set("Other")
+        session.commit()
+        other_entry, _ = svc.pool_add(other.id, 30)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        member, err = svc.subgroup_add_track(s.id, sg.id, other_entry.id)
+        assert member is None
+        assert err is not None
+
+    def test_delete_subgroup_removes_memberships(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, entries = self._set_with_pool(svc, session)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        session.commit()
+        assert svc.subgroup_delete(s.id, sg.id) is True
+        session.commit()
+        assert session.query(SetPoolSubgroupMember).count() == 0
+        # Pool entries survive subgroup deletion.
+        assert session.query(SetPoolEntry).filter_by(set_id=s.id).count() == 2
+
+    def test_pool_remove_cleans_memberships(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, entries = self._set_with_pool(svc, session)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        session.commit()
+        assert svc.pool_remove(s.id, 10) is True
+        session.commit()
+        assert session.query(SetPoolSubgroupMember).count() == 0
+
+    def test_pool_move_to_tracklist_cleans_memberships(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, entries = self._set_with_pool(svc, session)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        session.commit()
+        ok, err = svc.pool_move_to_tracklist(s.id, 10)
+        assert ok is True
+        assert err is None
+        assert session.query(SetPoolSubgroupMember).count() == 0
+
+    def test_delete_set_cascades_subgroups(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, entries = self._set_with_pool(svc, session)
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        session.commit()
+        assert svc.delete_set(s.id) is True
+        session.commit()
+        assert session.query(SetPoolSubgroup).count() == 0
+        assert session.query(SetPoolSubgroupMember).count() == 0
+
+    def test_hydrate_includes_subgroups_and_memberships(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, entries = self._set_with_pool(svc, session)
+        sg2 = svc.subgroup_create(s.id, "Peak")
+        sg1 = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        svc.subgroup_reorder(s.id, [sg1.id, sg2.id])
+        svc.subgroup_add_track(s.id, sg1.id, entries[10].id)
+        session.commit()
+        hydration = svc.hydrate_set(s.id)
+        assert [sg.name for sg in hydration["pool_subgroups"]] == ["Warmup", "Peak"]
+        memberships = hydration["pool_subgroup_memberships"]
+        assert len(memberships) == 1
+        assert memberships[0].subgroup_id == sg1.id
+        assert memberships[0].pool_entry_id == entries[10].id
 
 
 class TestTracklistReorder:
