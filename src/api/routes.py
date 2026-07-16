@@ -21,6 +21,7 @@ from src.api.schemas import (
     MatchDetailResponse,
     MoveRequest,
     PoolAddRequest,
+    PoolReorderRequest,
     PoolSubgroupResponse,
     SearchSuggestion,
     SetCreateRequest,
@@ -807,6 +808,28 @@ def api_pool_remove(set_id: int, track_id: int):
         session.rollback()
         logger.exception("Pool remove failed")
         raise HTTPException(status_code=500, detail="Pool remove failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/pool/reorder")
+def api_pool_reorder(set_id: int, body: PoolReorderRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.pool_reorder(set_id, body.track_id, body.new_position)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Pool reorder failed")
+        raise HTTPException(status_code=500, detail="Reorder failed")
     finally:
         session.close()
 

@@ -10,6 +10,7 @@ vi.mock('../api/http', () => ({
   deleteSet: vi.fn(),
   poolAdd: vi.fn(),
   poolRemove: vi.fn(),
+  poolReorder: vi.fn(),
   poolMoveToTracklist: vi.fn(),
   tracklistAdd: vi.fn(),
   tracklistRemove: vi.fn(),

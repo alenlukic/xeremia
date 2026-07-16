@@ -74,6 +74,8 @@ export function SetTracklist({
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([])
   const [showSearch, setShowSearch] = useState(false)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
 
   const handleSearch = useCallback(async (q: string) => {
     setSearchQuery(q)
@@ -164,9 +166,43 @@ export function SetTracklist({
               <tr
                 key={entry.id}
                 draggable
-                onDragStart={(e) =>
-                  e.dataTransfer.setData('text/plain', String(entry.track_id))
+                className={
+                  (dragIndex === i ? 'set-row-dragging' : '') +
+                  (dropIndex === i && dragIndex !== null && dragIndex !== i
+                    ? ' set-row-drop-target'
+                    : '')
                 }
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', String(entry.track_id))
+                  e.dataTransfer.effectAllowed = 'move'
+                  setDragIndex(i)
+                }}
+                onDragOver={(e) => {
+                  if (dragIndex === null) {
+                    return
+                  }
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  setDropIndex(i)
+                }}
+                onDragLeave={() => {
+                  setDropIndex((prev) => (prev === i ? null : prev))
+                }}
+                onDrop={(e) => {
+                  if (dragIndex === null) {
+                    return
+                  }
+                  e.preventDefault()
+                  if (dragIndex !== i) {
+                    onReorder(tracklist[dragIndex].track_id, i)
+                  }
+                  setDragIndex(null)
+                  setDropIndex(null)
+                }}
+                onDragEnd={() => {
+                  setDragIndex(null)
+                  setDropIndex(null)
+                }}
               >
                 <td className="set-ws-cell-play">
                   <PlayButton

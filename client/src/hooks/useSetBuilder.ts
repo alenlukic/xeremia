@@ -7,6 +7,7 @@ import {
   deleteSet as apiDeleteSet,
   poolAdd,
   poolRemove,
+  poolReorder,
   poolMoveToTracklist,
   subgroupCreate as apiSubgroupCreate,
   subgroupRename as apiSubgroupRename,
@@ -466,6 +467,23 @@ export function useSetBuilder() {
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
+  const reorderPool = useCallback(
+    async (trackId: number, newPosition: number) => {
+      if (activeSetId === null) {
+        return
+      }
+      try {
+        await poolReorder(activeSetId, trackId, newPosition)
+        await refreshActive()
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not reorder pool.'))
+        }
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
   const updateTracklistNote = useCallback(
     async (trackId: number, note: string) => {
       if (activeSetId === null) {
@@ -733,6 +751,7 @@ export function useSetBuilder() {
     addSubgroupMember,
     removeSubgroupMember,
     reorderTracklist,
+    reorderPool,
     updateTracklistNote,
     addExplorerNode,
     deleteExplorerNode,

@@ -52,6 +52,7 @@ function defaultProps() {
     deleteSet: noop,
     removeFromPool: noop,
     movePoolToTracklist: noop,
+    reorderPool: noop,
     addToPool: noop,
     createSubgroup: asyncNoop as (name: string) => Promise<PoolSubgroup | null>,
     renameSubgroup: async () => true,

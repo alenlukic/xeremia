@@ -20,6 +20,7 @@ interface Props {
   deleteSet: (id: number) => void
   removeFromPool: (trackId: number) => void
   movePoolToTracklist: (trackId: number) => void
+  reorderPool: (trackId: number, newPosition: number) => void
   addToPool: (trackId: number, title?: string) => void
   createSubgroup: (name: string) => Promise<PoolSubgroup | null>
   renameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
@@ -76,6 +77,7 @@ export function SetBuilder({
   deleteSet,
   removeFromPool,
   movePoolToTracklist,
+  reorderPool,
   addToPool,
   createSubgroup,
   renameSubgroup,
@@ -370,6 +372,7 @@ export function SetBuilder({
                       }
                       onRemove={removeFromPool}
                       onMoveToTracklist={movePoolToTracklist}
+                      onReorder={reorderPool}
                       onAddTrack={handlePoolAddTrack}
                       onCreateSubgroup={createSubgroup}
                       onRenameSubgroup={renameSubgroup}
