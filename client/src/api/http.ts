@@ -223,6 +223,21 @@ export async function poolRemove(
   }
 }
 
+export async function poolReorder(
+  setId: number,
+  trackId: number,
+  newPosition: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_id: trackId, new_position: newPosition }),
+  })
+  if (!res.ok) {
+    throw new Error(`Pool reorder failed: ${res.status}`)
+  }
+}
+
 export async function poolMoveToTracklist(
   setId: number,
   trackId: number,

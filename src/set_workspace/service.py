@@ -175,6 +175,28 @@ class SetWorkspaceService:
             .all()
         )
 
+    def pool_reorder(
+        self, set_id: int, track_id: int, new_position: int
+    ) -> Tuple[bool, Optional[str]]:
+        entries = (
+            self.session.query(SetPoolEntry)
+            .filter_by(set_id=set_id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        entry = next((e for e in entries if e.track_id == track_id), None)
+        if entry is None:
+            return False, "Track not found in pool"
+
+        new_position = max(0, min(new_position, len(entries) - 1))
+        entries.remove(entry)
+        entries.insert(new_position, entry)
+        # Reassign densely: insertion_order may have gaps after removals.
+        for idx, e in enumerate(entries):
+            e.insertion_order = idx
+        self.session.flush()
+        return True, None
+
     def pool_move_to_tracklist(
         self, set_id: int, track_id: int
     ) -> Tuple[bool, Optional[str]]:

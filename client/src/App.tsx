@@ -516,6 +516,7 @@ export function App() {
               deleteSet={setBuilder.deleteSet}
               removeFromPool={setBuilder.removeFromPool}
               movePoolToTracklist={setBuilder.movePoolToTracklist}
+              reorderPool={setBuilder.reorderPool}
               addToPool={setBuilder.addToPool}
               createSubgroup={setBuilder.createSubgroup}
               renameSubgroup={setBuilder.renameSubgroup}

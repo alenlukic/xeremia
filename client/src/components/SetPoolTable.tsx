@@ -27,12 +27,24 @@ const POOL_SORT_COLUMNS: SortColumn[] = [
   { id: 'bpm', label: 'BPM' },
 ]
 
+interface RowReorderProps {
+  index: number
+  isDragging: boolean
+  isDropTarget: boolean
+  onDragStart: (index: number) => void
+  onDragOver: (index: number, e: React.DragEvent) => void
+  onDragLeave: (index: number) => void
+  onDrop: (index: number, e: React.DragEvent) => void
+  onDragEnd: () => void
+}
+
 interface Props {
   pool: PoolEntry[]
   subgroups: PoolSubgroup[]
   subgroupMemberships: PoolSubgroupMembership[]
   onRemove: (trackId: number) => void
   onMoveToTracklist: (trackId: number) => void
+  onReorder: (trackId: number, newPosition: number) => void
   onAddTrack: (trackId: number, title?: string) => void
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
   onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
@@ -136,6 +148,7 @@ function PoolRow({
   memberSubgroupIds,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
+  reorder,
 }: {
   entry: PoolEntry
   onRemove: (trackId: number) => void
@@ -150,15 +163,30 @@ function PoolRow({
     subgroupId: number,
     poolEntryId: number,
   ) => Promise<boolean>
+  reorder?: RowReorderProps
 }) {
   const title = cleanTitle(entry.track, entry.track_id)
 
   return (
     <tr
       draggable
-      onDragStart={(e) =>
-        e.dataTransfer.setData('text/plain', String(entry.track_id))
+      className={
+        reorder
+          ? (reorder.isDragging ? 'set-row-dragging' : '') +
+            (reorder.isDropTarget ? ' set-row-drop-target' : '')
+          : undefined
       }
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', String(entry.track_id))
+        if (reorder) {
+          e.dataTransfer.effectAllowed = 'move'
+          reorder.onDragStart(reorder.index)
+        }
+      }}
+      onDragOver={reorder ? (e) => reorder.onDragOver(reorder.index, e) : undefined}
+      onDragLeave={reorder ? () => reorder.onDragLeave(reorder.index) : undefined}
+      onDrop={reorder ? (e) => reorder.onDrop(reorder.index, e) : undefined}
+      onDragEnd={reorder ? () => reorder.onDragEnd() : undefined}
     >
       <td className="set-ws-cell-play">
         <PlayButton trackId={entry.track_id} title={entry.track?.title ?? ''} />
@@ -605,6 +633,7 @@ export function SetPoolTable({
   subgroupMemberships,
   onRemove,
   onMoveToTracklist,
+  onReorder,
   onAddTrack,
   onCreateSubgroup,
   onRenameSubgroup,
@@ -774,6 +803,65 @@ export function SetPoolTable({
     [filteredPool, sorting],
   )
 
+  // Row drag reordering only makes sense when rows follow the persisted pool
+  // order (# ascending). Subgroup tabs show a filtered subset in that same
+  // order, so drops there map to the target row's position in the full pool.
+  const rowReorderEnabled =
+    activeTab !== 'groups' &&
+    sorting.length === 1 &&
+    sorting[0].id === 'insertion_order' &&
+    !sorting[0].desc
+  const poolByOrder = useMemo(
+    () => [...pool].sort((a, b) => a.insertion_order - b.insertion_order),
+    [pool],
+  )
+  const [rowDragIndex, setRowDragIndex] = useState<number | null>(null)
+  const [rowDropIndex, setRowDropIndex] = useState<number | null>(null)
+
+  const handleRowDragStart = useCallback((index: number) => {
+    setRowDragIndex(index)
+  }, [])
+
+  const handleRowDragOver = useCallback(
+    (index: number, e: React.DragEvent) => {
+      if (rowDragIndex === null) {
+        return
+      }
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setRowDropIndex(index)
+    },
+    [rowDragIndex],
+  )
+
+  const handleRowDragLeave = useCallback((index: number) => {
+    setRowDropIndex((prev) => (prev === index ? null : prev))
+  }, [])
+
+  const handleRowDrop = useCallback(
+    (index: number, e: React.DragEvent) => {
+      if (rowDragIndex === null) {
+        return
+      }
+      e.preventDefault()
+      if (rowDragIndex !== index) {
+        // The backend takes the target's dense rank in the full pool; on a
+        // filtered subgroup tab the row index is not that rank.
+        const target = sorted[index]
+        const newPosition = poolByOrder.findIndex((p) => p.id === target.id)
+        onReorder(sorted[rowDragIndex].track_id, newPosition)
+      }
+      setRowDragIndex(null)
+      setRowDropIndex(null)
+    },
+    [rowDragIndex, sorted, poolByOrder, onReorder],
+  )
+
+  const handleRowDragEnd = useCallback(() => {
+    setRowDragIndex(null)
+    setRowDropIndex(null)
+  }, [])
+
   return (
     <div className="set-pool">
       <div className="set-pool-header">
@@ -878,7 +966,7 @@ export function SetPoolTable({
             onHeaderSort={handleHeaderSort}
           />
           <tbody>
-            {sorted.map((entry) => (
+            {sorted.map((entry, i) => (
               <PoolRow
                 key={entry.id}
                 entry={entry}
@@ -888,6 +976,23 @@ export function SetPoolTable({
                 memberSubgroupIds={membershipByEntry.get(entry.id) ?? new Set()}
                 onAddSubgroupMember={onAddSubgroupMember}
                 onRemoveSubgroupMember={onRemoveSubgroupMember}
+                reorder={
+                  rowReorderEnabled
+                    ? {
+                        index: i,
+                        isDragging: rowDragIndex === i,
+                        isDropTarget:
+                          rowDropIndex === i &&
+                          rowDragIndex !== null &&
+                          rowDragIndex !== i,
+                        onDragStart: handleRowDragStart,
+                        onDragOver: handleRowDragOver,
+                        onDragLeave: handleRowDragLeave,
+                        onDrop: handleRowDrop,
+                        onDragEnd: handleRowDragEnd,
+                      }
+                    : undefined
+                }
               />
             ))}
           </tbody>

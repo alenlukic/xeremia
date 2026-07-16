@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { SetTracklist } from './SetTracklist'
 import type { TracklistEntry } from '../types'
 
@@ -31,7 +31,10 @@ function makeEntry(
 
 const noop = () => {}
 
-function renderTracklist(entries: TracklistEntry[]) {
+function renderTracklist(
+  entries: TracklistEntry[],
+  extra?: Partial<React.ComponentProps<typeof SetTracklist>>,
+) {
   return render(
     <SetTracklist
       tracklist={entries}
@@ -40,9 +43,14 @@ function renderTracklist(entries: TracklistEntry[]) {
       onReorder={noop}
       onUpdateNote={noop}
       onAddTrack={noop}
+      {...extra}
     />,
   )
 }
+
+const dragData = () => ({
+  dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
+})
 
 describe('SetTracklist', () => {
   it('renders a semantic HTML table', () => {
@@ -109,5 +117,54 @@ describe('SetTracklist', () => {
   it('shows empty message when tracklist is empty', () => {
     renderTracklist([])
     expect(screen.getByText(/tracklist is empty/i)).toBeTruthy()
+  })
+})
+
+describe('SetTracklist drag-and-drop reordering', () => {
+  function makeEntries(): TracklistEntry[] {
+    return [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+      makeEntry({ id: 3, track_id: 30, position: 2 }),
+    ]
+  }
+
+  it('calls onReorder with dragged track and drop index', () => {
+    const onReorder = vi.fn()
+    const { container } = renderTracklist(makeEntries(), { onReorder })
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[0], dragData())
+    fireEvent.dragOver(rows[2], dragData())
+    fireEvent.drop(rows[2], dragData())
+    expect(onReorder).toHaveBeenCalledWith(10, 2)
+  })
+
+  it('marks the hovered row as drop target while dragging', () => {
+    const { container } = renderTracklist(makeEntries())
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[0], dragData())
+    fireEvent.dragOver(rows[1], dragData())
+    expect(rows[1].classList.contains('set-row-drop-target')).toBe(true)
+    expect(rows[0].classList.contains('set-row-dragging')).toBe(true)
+  })
+
+  it('does not call onReorder when dropped on the source row', () => {
+    const onReorder = vi.fn()
+    const { container } = renderTracklist(makeEntries(), { onReorder })
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[1], dragData())
+    fireEvent.dragOver(rows[1], dragData())
+    fireEvent.drop(rows[1], dragData())
+    expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it('clears drag state on dragEnd', () => {
+    const { container } = renderTracklist(makeEntries())
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[0], dragData())
+    fireEvent.dragOver(rows[2], dragData())
+    fireEvent.dragEnd(rows[0], dragData())
+    expect(rows[2].classList.contains('set-row-drop-target')).toBe(false)
+    expect(rows[0].classList.contains('set-row-dragging')).toBe(false)
   })
 })

@@ -45,6 +45,7 @@ function renderPool(
       subgroupMemberships={memberships}
       onRemove={noop}
       onMoveToTracklist={noop}
+      onReorder={noop}
       onAddTrack={noop}
       onCreateSubgroup={asyncNull}
       onRenameSubgroup={asyncTrue}
@@ -197,6 +198,86 @@ describe('SetPoolTable tiered sort bar', () => {
     const { container } = renderPool([makePoolEntry({ id: 1, track_id: 10 })])
     fireEvent.click(screen.getByRole('button', { name: /remove # sort/i }))
     expect(container.querySelectorAll('.sort-tier-pill').length).toBe(0)
+  })
+})
+
+describe('SetPoolTable drag-and-drop row reordering', () => {
+  const dragData = () => ({
+    dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
+  })
+
+  function makeEntries(): PoolEntry[] {
+    return [
+      makePoolEntry({ id: 1, track_id: 10, insertion_order: 0 }),
+      makePoolEntry({ id: 2, track_id: 20, insertion_order: 1 }),
+      makePoolEntry({ id: 3, track_id: 30, insertion_order: 2 }),
+    ]
+  }
+
+  it('calls onReorder with dragged track and drop index on the All tab', () => {
+    const onReorder = vi.fn()
+    const { container } = renderPool(makeEntries(), [], [], { onReorder })
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[2], dragData())
+    fireEvent.dragOver(rows[0], dragData())
+    fireEvent.drop(rows[0], dragData())
+    expect(onReorder).toHaveBeenCalledWith(30, 0)
+  })
+
+  it('marks the hovered row as drop target while dragging', () => {
+    const { container } = renderPool(makeEntries(), [], [], {})
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[0], dragData())
+    fireEvent.dragOver(rows[1], dragData())
+    expect(rows[1].classList.contains('set-row-drop-target')).toBe(true)
+    expect(rows[0].classList.contains('set-row-dragging')).toBe(true)
+  })
+
+  it('does not reorder when sorted by a column other than #', () => {
+    const onReorder = vi.fn()
+    const { container } = renderPool(makeEntries(), [], [], { onReorder })
+    fireEvent.click(screen.getByText(/^Title/, { selector: 'th' }))
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[0], dragData())
+    fireEvent.dragOver(rows[2], dragData())
+    fireEvent.drop(rows[2], dragData())
+    expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it('does not reorder when dropped on the source row', () => {
+    const onReorder = vi.fn()
+    const { container } = renderPool(makeEntries(), [], [], { onReorder })
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[1], dragData())
+    fireEvent.dragOver(rows[1], dragData())
+    fireEvent.drop(rows[1], dragData())
+    expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it('maps drop index to full-pool position on a subgroup tab', () => {
+    const onReorder = vi.fn()
+    const subgroups: PoolSubgroup[] = [
+      { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+    ]
+    // Subgroup members are entries 1 (order 0) and 3 (order 2); entry 2 is
+    // in the pool but not in the group.
+    const memberships: PoolSubgroupMembership[] = [
+      { id: 1, subgroup_id: 1, pool_entry_id: 1 },
+      { id: 2, subgroup_id: 1, pool_entry_id: 3 },
+    ]
+    const { container } = renderPool(makeEntries(), subgroups, memberships, {
+      onReorder,
+    })
+    fireEvent.click(
+      container.querySelectorAll('.pool-tab-bar .pool-tab')[2], // Warmup
+    )
+    const rows = container.querySelectorAll('tbody tr')
+    expect(rows.length).toBe(2)
+    // Drag track 30 (full-pool rank 2) onto track 10 (full-pool rank 0).
+    fireEvent.dragStart(rows[1], dragData())
+    fireEvent.dragOver(rows[0], dragData())
+    fireEvent.drop(rows[0], dragData())
+    expect(onReorder).toHaveBeenCalledWith(30, 0)
   })
 })
 

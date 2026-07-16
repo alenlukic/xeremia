@@ -74,6 +74,7 @@ vi.mock('./api/http', () => ({
   deleteSet: vi.fn().mockResolvedValue(undefined),
   poolAdd: vi.fn().mockResolvedValue(undefined),
   poolRemove: vi.fn().mockResolvedValue(undefined),
+  poolReorder: vi.fn().mockResolvedValue(undefined),
   poolMoveToTracklist: vi.fn().mockResolvedValue(undefined),
   tracklistAdd: vi.fn().mockResolvedValue(undefined),
   tracklistRemove: vi.fn().mockResolvedValue(undefined),

@@ -373,6 +373,80 @@ class TestPoolSubgroups:
         assert memberships[0].pool_entry_id == entries[10].id
 
 
+class TestPoolReorder:
+    def _pool_track_order(self, session, set_id):
+        entries = (
+            session.query(SetPoolEntry)
+            .filter_by(set_id=set_id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        )
+        return [e.track_id for e in entries]
+
+    def test_reorder_forward(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        ok, err = svc.pool_reorder(s.id, 10, 2)
+        assert ok is True
+        assert err is None
+        assert self._pool_track_order(session, s.id) == [20, 30, 10]
+
+    def test_reorder_backward(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        ok, err = svc.pool_reorder(s.id, 30, 0)
+        assert ok is True
+        assert self._pool_track_order(session, s.id) == [30, 10, 20]
+
+    def test_reorder_clamps_position(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+
+        ok, err = svc.pool_reorder(s.id, 10, 99)
+        assert ok is True
+        assert self._pool_track_order(session, s.id) == [20, 10]
+
+    def test_reorder_normalizes_gaps(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        for tid in [10, 20, 30]:
+            svc.pool_add(s.id, tid)
+        session.commit()
+        # pool_remove leaves a gap in insertion_order
+        svc.pool_remove(s.id, 20)
+        session.commit()
+
+        ok, err = svc.pool_reorder(s.id, 30, 0)
+        assert ok is True
+        assert self._pool_track_order(session, s.id) == [30, 10]
+        orders = [
+            e.insertion_order
+            for e in session.query(SetPoolEntry)
+            .filter_by(set_id=s.id)
+            .order_by(SetPoolEntry.insertion_order)
+            .all()
+        ]
+        assert orders == [0, 1]
+
+    def test_reorder_not_found(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.pool_reorder(s.id, 999, 0)
+        assert ok is False
+        assert err is not None
+
+
 class TestTracklistReorder:
     def test_reorder_forward(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
