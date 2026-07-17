@@ -64,6 +64,7 @@ body,
 .search-bar-wrapper {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   padding: 16px var(--content-gutter);
   flex-shrink: 0;
@@ -89,6 +90,7 @@ body,
 
 .search-input {
   width: 100%;
+  height: 48px;
   padding: 10px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -150,6 +152,7 @@ body,
 /* === Top-level Tabs === */
 .tab-bar {
   display: flex;
+  justify-content: center;
   gap: 0;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -1027,6 +1030,7 @@ body,
 .weight-controls-row {
   display: flex;
   align-items: stretch;
+  justify-content: center;
   flex-shrink: 0;
   column-gap: 16px;
   row-gap: 12px;
@@ -1273,7 +1277,7 @@ body,
 .weight-save-status {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 2px;
   padding-top: 8px;
   font-size: 12px;
@@ -1368,23 +1372,19 @@ body,
 }
 
 /* Transition weights card */
-.admin-weights-header {
+.admin-weights-body {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.admin-weights-header .admin-card-title {
-  margin-bottom: 0;
 }
 
 .admin-weights-actions {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: center;
+  justify-content: center;
 }
 
 .admin-empty {
@@ -2255,7 +2255,14 @@ body,
 
 .search-dual-actions {
   flex-direction: row;
-  gap: 4px;
+  gap: 8px;
+}
+
+.search-dual-actions .match-action-btn {
+  width: 64px;
+  height: 48px;
+  font-size: 12px;
+  padding: 4px 10px;
 }
 
 /* --- Explorer --- */
