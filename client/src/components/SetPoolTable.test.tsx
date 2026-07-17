@@ -40,6 +40,7 @@ function renderPool(
 ) {
   return render(
     <SetPoolTable
+      allTracks={[]}
       pool={entries}
       subgroups={subgroups}
       subgroupMemberships={memberships}

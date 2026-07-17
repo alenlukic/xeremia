@@ -11,9 +11,10 @@ import type {
   PoolSubgroup,
   PoolSubgroupMembership,
   SearchSuggestion,
+  Track,
 } from '../types'
 import { cleanTitle } from '../utils/trackTitle'
-import { searchTracks } from '../api/http'
+import { useTrackSearch } from '../hooks/useTrackSearch'
 import { PlayButton } from './PlayButton'
 import { SortTierBar } from './SortTierBar'
 import type { SortDescriptor, SortColumn } from './SortTierBar'
@@ -39,6 +40,7 @@ interface RowReorderProps {
 }
 
 interface Props {
+  allTracks: Track[]
   pool: PoolEntry[]
   subgroups: PoolSubgroup[]
   subgroupMemberships: PoolSubgroupMembership[]
@@ -628,6 +630,7 @@ function SubgroupSection({
 }
 
 export function SetPoolTable({
+  allTracks,
   pool,
   subgroups,
   subgroupMemberships,
@@ -643,8 +646,8 @@ export function SetPoolTable({
   onRemoveSubgroupMember,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([])
   const [showSearch, setShowSearch] = useState(false)
+  const { suggestions, search, clear } = useTrackSearch(allTracks)
   const [sorting, setSorting] = useState<SortDescriptor[]>([
     { id: 'insertion_order', desc: false },
   ])
@@ -710,21 +713,19 @@ export function SetPoolTable({
     return map
   }, [memberEntriesBySubgroup])
 
-  const handleSearch = useCallback(async (q: string) => {
-    setSearchQuery(q)
-    if (!q.trim()) {
-      setSearchResults([])
-      setShowSearch(false)
-      return
-    }
-    try {
-      const results = await searchTracks(q)
-      setSearchResults(results)
-      setShowSearch(results.length > 0)
-    } catch {
-      /* ignore */
-    }
-  }, [])
+  const handleSearch = useCallback(
+    (q: string) => {
+      setSearchQuery(q)
+      if (!q.trim()) {
+        clear()
+        setShowSearch(false)
+        return
+      }
+      search(q)
+      setShowSearch(true)
+    },
+    [search, clear],
+  )
 
   const handleSearchSelect = useCallback(
     (s: SearchSuggestion) => {
@@ -736,10 +737,10 @@ export function SetPoolTable({
       }
       onAddTrack(s.id, s.title)
       setSearchQuery('')
-      setSearchResults([])
+      clear()
       setShowSearch(false)
     },
-    [onAddTrack, activeTab],
+    [onAddTrack, activeTab, clear],
   )
 
   const handleHeaderSort = useCallback((col: string, e: React.MouseEvent) => {
@@ -877,9 +878,9 @@ export function SetPoolTable({
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
           />
-          {showSearch && (
+          {showSearch && suggestions.length > 0 && (
             <ul className="set-pool-search-dropdown">
-              {searchResults.map((s) => (
+              {suggestions.map((s) => (
                 <li
                   key={s.id}
                   className="set-pool-search-item"

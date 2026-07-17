@@ -176,7 +176,6 @@ export function App() {
       setDetailMatch(null)
       setTransitionChain([])
       selectTrack(track)
-      setActiveTab('matches')
       setSearchText('')
     },
     [selectTrack],

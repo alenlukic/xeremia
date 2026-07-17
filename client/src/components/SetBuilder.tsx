@@ -327,6 +327,7 @@ export function SetBuilder({
           {subTab === 'tracks' && (
             <div className="set-workspace-split">
               <SetTracklist
+                allTracks={allTracks}
                 tracklist={activeSet.tracklist}
                 onRemove={removeFromTracklist}
                 onMoveToPool={moveTracklistToPool}
@@ -367,6 +368,7 @@ export function SetBuilder({
                 ) : (
                   <div className="set-pool-accordion-content">
                     <SetPoolTable
+                      allTracks={allTracks}
                       pool={activeSet.pool}
                       subgroups={activeSet.pool_subgroups ?? []}
                       subgroupMemberships={
