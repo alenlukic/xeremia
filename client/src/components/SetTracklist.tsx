@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react'
-import type { TracklistEntry, SearchSuggestion } from '../types'
+import type { TracklistEntry, SearchSuggestion, Track } from '../types'
 import { cleanTitle } from '../utils/trackTitle'
-import { searchTracks } from '../api/http'
+import { useTrackSearch } from '../hooks/useTrackSearch'
 import { PlayButton } from './PlayButton'
 
 interface Props {
+  allTracks: Track[]
   tracklist: TracklistEntry[]
   onRemove: (trackId: number) => void
   onMoveToPool: (trackId: number) => void
@@ -64,6 +65,7 @@ function NoteInput({
 }
 
 export function SetTracklist({
+  allTracks,
   tracklist,
   onRemove,
   onMoveToPool,
@@ -72,35 +74,33 @@ export function SetTracklist({
   onAddTrack,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([])
   const [showSearch, setShowSearch] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const { suggestions, search, clear } = useTrackSearch(allTracks)
 
-  const handleSearch = useCallback(async (q: string) => {
-    setSearchQuery(q)
-    if (!q.trim()) {
-      setSearchResults([])
-      setShowSearch(false)
-      return
-    }
-    try {
-      const results = await searchTracks(q)
-      setSearchResults(results)
-      setShowSearch(results.length > 0)
-    } catch {
-      /* ignore */
-    }
-  }, [])
+  const handleSearch = useCallback(
+    (q: string) => {
+      setSearchQuery(q)
+      if (!q.trim()) {
+        clear()
+        setShowSearch(false)
+        return
+      }
+      search(q)
+      setShowSearch(true)
+    },
+    [search, clear],
+  )
 
   const handleSearchSelect = useCallback(
     (s: SearchSuggestion) => {
       onAddTrack(s.id, s.title)
       setSearchQuery('')
-      setSearchResults([])
+      clear()
       setShowSearch(false)
     },
-    [onAddTrack],
+    [onAddTrack, clear],
   )
 
   return (
@@ -114,9 +114,9 @@ export function SetTracklist({
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
           />
-          {showSearch && (
+          {showSearch && suggestions.length > 0 && (
             <ul className="set-tracklist-search-dropdown">
-              {searchResults.map((s) => (
+              {suggestions.map((s) => (
                 <li
                   key={s.id}
                   className="set-tracklist-search-item"

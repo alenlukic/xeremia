@@ -37,6 +37,7 @@ function renderTracklist(
 ) {
   return render(
     <SetTracklist
+      allTracks={[]}
       tracklist={entries}
       onRemove={noop}
       onMoveToPool={noop}
