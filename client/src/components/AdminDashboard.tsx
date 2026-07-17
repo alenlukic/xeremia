@@ -277,8 +277,20 @@ export function AdminDashboard({
   return (
     <div className="admin-dashboard">
       <div className="admin-card admin-weights-card">
-        <div className="admin-weights-header">
-          <h3 className="admin-card-title">Transition Weights</h3>
+        <h3 className="admin-card-title">Transition Weights</h3>
+        <div className="admin-weights-body">
+          {weightsLoading ? (
+            <p className="table-status">Loading weights…</p>
+          ) : (
+            <WeightControls
+              weights={weights}
+              setWeight={setWeight}
+              saving={weightsSaving}
+              saveSuccess={weightsSaveSuccess}
+              saveError={weightsError}
+              warningMessage={weightsWarning}
+            />
+          )}
           <div className="admin-weights-actions">
             <button
               className="weight-normalize-btn weight-normalize-btn--secondary"
@@ -296,18 +308,6 @@ export function AdminDashboard({
             </button>
           </div>
         </div>
-        {weightsLoading ? (
-          <p className="table-status">Loading weights…</p>
-        ) : (
-          <WeightControls
-            weights={weights}
-            setWeight={setWeight}
-            saving={weightsSaving}
-            saveSuccess={weightsSaveSuccess}
-            saveError={weightsError}
-            warningMessage={weightsWarning}
-          />
-        )}
       </div>
       <CacheStatsSection stats={stats} loading={loading} error={error} />
     </div>
