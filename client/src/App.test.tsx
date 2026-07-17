@@ -158,8 +158,14 @@ async function openBrowseTab() {
   })
 }
 
+async function openAdminTab() {
+  await act(async () => {
+    screen.getByRole('button', { name: 'Admin' }).click()
+  })
+}
+
 describe('Reset Weights', () => {
-  it('renders a Reset Weights button', async () => {
+  it('renders a Reset Weights button in the Admin tab', async () => {
     const httpMod = await import('./api/http')
     vi.mocked(httpMod.fetchWeights).mockResolvedValue({
       raw_weights: { BPM: 50, CAMELOT: 50 },
@@ -173,6 +179,7 @@ describe('Reset Weights', () => {
     await act(async () => {
       render(<App />)
     })
+    await openAdminTab()
 
     expect(
       screen.getByRole('button', { name: 'Reset Weights' }),
@@ -204,6 +211,7 @@ describe('Reset Weights', () => {
     await act(async () => {
       render(<App />)
     })
+    await openAdminTab()
 
     await act(async () => {
       screen.getByRole('button', { name: 'Reset Weights' }).click()
@@ -242,6 +250,7 @@ describe('Reset Weights', () => {
       await act(async () => {
         render(<App />)
       })
+      await openAdminTab()
 
       await act(async () => {
         screen.getByRole('button', { name: 'Reset Weights' }).click()

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { PoolSubgroup, SetSummary, HydratedSet } from '../types'
+import type { PoolSubgroup, SetSummary, HydratedSet, Track } from '../types'
 import type { PendingAdd } from '../hooks/useSetBuilder'
 import { exportSetM3u8 } from '../api/http'
 import { SetPoolTable } from './SetPoolTable'
@@ -9,6 +9,7 @@ import { SetExplorerCanvas } from './SetExplorerCanvas'
 type SubTab = 'tracks' | 'explorer'
 
 interface Props {
+  allTracks: Track[]
   sets: SetSummary[]
   activeSetId: number | null
   activeSet: HydratedSet | null
@@ -66,6 +67,7 @@ interface Props {
 }
 
 export function SetBuilder({
+  allTracks,
   sets,
   activeSetId,
   activeSet,
@@ -389,6 +391,7 @@ export function SetBuilder({
 
           {subTab === 'explorer' && (
             <SetExplorerCanvas
+              allTracks={allTracks}
               nodes={activeSet.explorer_nodes}
               edges={activeSet.explorer_edges}
               onAddNode={addExplorerNode}

@@ -3,6 +3,7 @@ import type {
   ExplorerNode,
   ExplorerEdge,
   SearchSuggestion,
+  Track,
   TransitionMatch,
 } from '../types'
 import {
@@ -10,11 +11,13 @@ import {
   edgeColorForColumn,
   ACTION_FILL,
 } from '../utils/explorer'
-import { searchTracks, fetchMatches } from '../api/http'
+import { fetchMatches } from '../api/http'
+import { useTrackSearch } from '../hooks/useTrackSearch'
 import { SetExplorerDeleteModal } from './SetExplorerDeleteModal'
 import { formatOverallScore } from '../utils'
 
 interface Props {
+  allTracks: Track[]
   nodes: ExplorerNode[]
   edges: ExplorerEdge[]
   onAddNode: (trackId: number, parentNodeId?: string, level?: number) => void
@@ -42,8 +45,6 @@ interface SiblingAddState {
   parentIds: string[]
   selectedParents: Set<string>
   searchQuery: string
-  searchResults: SearchSuggestion[]
-  showResults: boolean
 }
 
 interface ChildAddState {
@@ -484,6 +485,7 @@ const ExplorerEdgeItem = memo(function ExplorerEdgeItem({
 })
 
 export function SetExplorerCanvas({
+  allTracks,
   nodes,
   edges,
   onAddNode,
@@ -497,8 +499,16 @@ export function SetExplorerCanvas({
   fetchEdgeScores,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([])
-  const [showSearch, setShowSearch] = useState(false)
+  const {
+    suggestions: rootSuggestions,
+    search: rootSearch,
+    clear: rootClear,
+  } = useTrackSearch(allTracks)
+  const {
+    suggestions: siblingSuggestions,
+    search: siblingSearch,
+    clear: siblingClear,
+  } = useTrackSearch(allTracks)
   const [deleteTarget, setDeleteTarget] = useState<ExplorerNode | null>(null)
   const [edgeScores, setEdgeScores] = useState<Map<string, number | null>>(
     new Map(),
@@ -886,30 +896,21 @@ export function SetExplorerCanvas({
     return () => window.removeEventListener('keydown', handleEscape)
   }, [])
 
-  const handleSearchAdd = useCallback(async (q: string) => {
-    setSearchQuery(q)
-    if (!q.trim()) {
-      setSearchResults([])
-      setShowSearch(false)
-      return
-    }
-    try {
-      const results = await searchTracks(q)
-      setSearchResults(results)
-      setShowSearch(results.length > 0)
-    } catch {
-      /* ignore */
-    }
-  }, [])
+  const handleSearchAdd = useCallback(
+    (q: string) => {
+      setSearchQuery(q)
+      rootSearch(q)
+    },
+    [rootSearch],
+  )
 
   const handleSearchSelect = useCallback(
     (s: SearchSuggestion) => {
       stableOnAddNode(s.id)
       setSearchQuery('')
-      setSearchResults([])
-      setShowSearch(false)
+      rootClear()
     },
-    [stableOnAddNode],
+    [stableOnAddNode, rootClear],
   )
 
   const handleSvgClick = useCallback((e: React.MouseEvent) => {
@@ -1011,16 +1012,15 @@ export function SetExplorerCanvas({
         : []
       setSwapSource(null)
       setSelectedEdgeId(null)
+      siblingClear()
       setSiblingAdd({
         targetLevel: level,
         parentIds,
         selectedParents: new Set(parentIds),
         searchQuery: '',
-        searchResults: [],
-        showResults: false,
       })
     },
-    [],
+    [siblingClear],
   )
 
   const openChildAdd = useCallback(async (nodeId: string) => {
@@ -1054,25 +1054,13 @@ export function SetExplorerCanvas({
     [childAdd, stableOnAddNode],
   )
 
-  const handleSiblingSearch = useCallback(async (q: string) => {
-    setSiblingAdd((prev) => (prev ? { ...prev, searchQuery: q } : prev))
-    if (!q.trim()) {
-      setSiblingAdd((prev) =>
-        prev ? { ...prev, searchResults: [], showResults: false } : prev,
-      )
-      return
-    }
-    try {
-      const results = await searchTracks(q)
-      setSiblingAdd((prev) =>
-        prev
-          ? { ...prev, searchResults: results, showResults: results.length > 0 }
-          : prev,
-      )
-    } catch {
-      /* ignore */
-    }
-  }, [])
+  const handleSiblingSearch = useCallback(
+    (q: string) => {
+      setSiblingAdd((prev) => (prev ? { ...prev, searchQuery: q } : prev))
+      siblingSearch(q)
+    },
+    [siblingSearch],
+  )
 
   const toggleSiblingParent = useCallback((parentId: string) => {
     setSiblingAdd((prev) => {
@@ -1100,9 +1088,10 @@ export function SetExplorerCanvas({
       } else {
         await stableOnAddNode(s.id, undefined, siblingAdd.targetLevel)
       }
+      siblingClear()
       setSiblingAdd(null)
     },
-    [siblingAdd, stableOnAddNode],
+    [siblingAdd, stableOnAddNode, siblingClear],
   )
 
   const handleEdgeClick = useCallback((e: React.MouseEvent, edgeId: number) => {
@@ -1150,9 +1139,9 @@ export function SetExplorerCanvas({
             value={searchQuery}
             onChange={(e) => handleSearchAdd(e.target.value)}
           />
-          {showSearch && (
+          {searchQuery.trim() !== '' && rootSuggestions.length > 0 && (
             <ul className="set-explorer-search-dropdown">
-              {searchResults.map((s) => (
+              {rootSuggestions.map((s) => (
                 <li
                   key={s.id}
                   className="set-explorer-search-item"
@@ -1434,24 +1423,25 @@ export function SetExplorerCanvas({
                 autoFocus
                 data-testid="sibling-search-input"
               />
-              {siblingAdd.showResults && (
-                <ul className="set-explorer-search-dropdown">
-                  {siblingAdd.searchResults.map((s) => (
-                    <li
-                      key={s.id}
-                      className="set-explorer-search-item"
-                      onMouseDown={() => handleSiblingSelect(s)}
-                    >
-                      <span>{s.title}</span>
-                      <span className="text-muted">
-                        {s.camelot_code && (
-                          <span className="mono"> {s.camelot_code}</span>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {siblingAdd.searchQuery.trim() !== '' &&
+                siblingSuggestions.length > 0 && (
+                  <ul className="set-explorer-search-dropdown">
+                    {siblingSuggestions.map((s) => (
+                      <li
+                        key={s.id}
+                        className="set-explorer-search-item"
+                        onMouseDown={() => handleSiblingSelect(s)}
+                      >
+                        <span>{s.title}</span>
+                        <span className="text-muted">
+                          {s.camelot_code && (
+                            <span className="mono"> {s.camelot_code}</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
             </div>
 
             <div className="explorer-delete-buttons" style={{ marginTop: 12 }}>

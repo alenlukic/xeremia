@@ -5,11 +5,23 @@ import type {
   CacheEntry,
   CacheExit,
 } from '../types'
+import { WeightControls } from './WeightControls'
 
 interface Props {
   stats: CacheStats | null
   loading: boolean
   error: string | null
+  weights: Record<string, number>
+  weightsLoading: boolean
+  setWeight: (factor: string, value: number) => void
+  weightsSaving: boolean
+  weightsSaveSuccess: boolean
+  weightsError: string | null
+  weightsWarning: string | null
+  normalizeWeights: () => void
+  resetWeights: () => void
+  isSumValid: boolean
+  rawSum: number
 }
 
 function ringColor(ratio: number): string {
@@ -187,29 +199,25 @@ function RecentList({
   )
 }
 
-export function AdminDashboard({ stats, loading, error }: Props) {
+function CacheStatsSection({
+  stats,
+  loading,
+  error,
+}: {
+  stats: CacheStats | null
+  loading: boolean
+  error: string | null
+}) {
   if (loading) {
-    return (
-      <div className="admin-dashboard">
-        <p className="table-status">Loading admin data…</p>
-      </div>
-    )
+    return <p className="table-status">Loading admin data…</p>
   }
 
   if (error) {
-    return (
-      <div className="admin-dashboard">
-        <p className="table-status admin-error">{error}</p>
-      </div>
-    )
+    return <p className="table-status admin-error">{error}</p>
   }
 
   if (!stats) {
-    return (
-      <div className="admin-dashboard">
-        <p className="table-status">No cache data available</p>
-      </div>
-    )
+    return <p className="table-status">No cache data available</p>
   }
 
   const keyData: { label: string; value: number }[] =
@@ -224,7 +232,7 @@ export function AdminDashboard({ stats, loading, error }: Props) {
     }))
 
   return (
-    <div className="admin-dashboard">
+    <>
       <div className="admin-top-row">
         <UsageRing
           used={stats.used}
@@ -246,6 +254,62 @@ export function AdminDashboard({ stats, loading, error }: Props) {
         <RecentList title="Recent Entries" entries={stats.recent_entries} />
         <RecentList title="Recent Exits" exits={stats.recent_exits} />
       </div>
+    </>
+  )
+}
+
+export function AdminDashboard({
+  stats,
+  loading,
+  error,
+  weights,
+  weightsLoading,
+  setWeight,
+  weightsSaving,
+  weightsSaveSuccess,
+  weightsError,
+  weightsWarning,
+  normalizeWeights,
+  resetWeights,
+  isSumValid,
+  rawSum,
+}: Props) {
+  return (
+    <div className="admin-dashboard">
+      <div className="admin-card admin-weights-card">
+        <div className="admin-weights-header">
+          <h3 className="admin-card-title">Transition Weights</h3>
+          <div className="admin-weights-actions">
+            <button
+              className="weight-normalize-btn weight-normalize-btn--secondary"
+              onClick={resetWeights}
+            >
+              Reset Weights
+            </button>
+            <button
+              className={`weight-normalize-btn${isSumValid ? ' inactive' : ''}`}
+              disabled={isSumValid}
+              onClick={normalizeWeights}
+            >
+              Normalize Weights
+              {!isSumValid && ` (${Number(rawSum.toFixed(1))})`}
+            </button>
+          </div>
+        </div>
+        {weightsLoading ? (
+          <p className="table-status">Loading weights…</p>
+        ) : (
+          <WeightControls
+            weights={weights}
+            setWeight={setWeight}
+            saving={weightsSaving}
+            saveSuccess={weightsSaveSuccess}
+            saveError={weightsError}
+            warningMessage={weightsWarning}
+          />
+        )}
+      </div>
+      <CacheStatsSection stats={stats} loading={loading} error={error} />
     </div>
   )
 }

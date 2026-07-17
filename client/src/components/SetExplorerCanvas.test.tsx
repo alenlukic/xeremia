@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SetExplorerCanvas } from './SetExplorerCanvas'
-import type { ExplorerNode, ExplorerEdge } from '../types'
+import type { ExplorerNode, ExplorerEdge, Track } from '../types'
 import { edgeColorForColumn } from '../utils/explorer'
 
 vi.mock('../api/http', () => ({
@@ -69,6 +69,7 @@ function defaultProps(
   } = {},
 ) {
   return {
+    allTracks: [] as Track[],
     nodes: overrides.nodes ?? [],
     edges: overrides.edges ?? [],
     onAddNode: vi.fn(),

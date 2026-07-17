@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SetBuilder } from './SetBuilder'
-import type { PoolSubgroup, SetSummary, HydratedSet } from '../types'
+import type { PoolSubgroup, SetSummary, HydratedSet, Track } from '../types'
 
 vi.mock('../api/http', () => ({
   fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
@@ -41,6 +41,7 @@ const asyncNoop = async () => null
 
 function defaultProps() {
   return {
+    allTracks: [] as Track[],
     sets: [] as SetSummary[],
     activeSetId: null as number | null,
     activeSet: null as HydratedSet | null,
