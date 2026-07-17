@@ -1,19 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { SearchSuggestion, Track } from '../types'
-import { searchTracks } from '../api/http'
-
-const searchCache = new Map<string, SearchSuggestion[]>()
+import { useTrackSearch } from '../hooks/useTrackSearch'
 
 interface Props {
+  allTracks: Track[]
   selectedTrack: Track | SearchSuggestion | null
   selectTrack: (track: Track | SearchSuggestion) => void
   clearSelectedTrack: () => void
-  normalizeWeights: () => void
-  resetWeights: () => void
-  isSumValid: boolean
-  rawSum: number
   onSearchTextChange?: (text: string) => void
-  searchPadding?: { left: number; right: number } | null
   onAddToSet?: () => void
   onAddToPool?: () => void
   onAddToTracklist?: () => void
@@ -21,26 +15,21 @@ interface Props {
 }
 
 export function SearchPanel({
+  allTracks,
   selectedTrack,
   selectTrack,
   clearSelectedTrack,
-  normalizeWeights,
-  resetWeights,
-  isSumValid,
-  rawSum,
   onSearchTextChange,
-  searchPadding,
   onAddToSet,
   onAddToPool,
   onAddToTracklist,
   searchText,
 }: Props) {
   const [query, setQuery] = useState('')
-  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const { suggestions, search, clear } = useTrackSearch(allTracks)
 
   // Mirror `selectedTrack` into the query input and clear local state when the
   // parent resets `searchText`. Adjusting during render (vs. in effects) avoids
@@ -63,7 +52,7 @@ export function SearchPanel({
     setPrevSearchText(searchText)
     if (searchText === '' && !selectedTrack && query !== '') {
       setQuery('')
-      setSuggestions([])
+      clear()
       setOpen(false)
     }
   }
@@ -74,45 +63,18 @@ export function SearchPanel({
       setQuery(newQuery)
       clearSelectedTrack()
       onSearchTextChange?.(newQuery)
+      setActiveIdx(-1)
 
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current)
-      }
-
-      const trimmed = newQuery.trim()
-      if (!trimmed) {
-        setSuggestions([])
+      if (!newQuery.trim()) {
+        clear()
         setOpen(false)
         return
       }
-
-      const cached = searchCache.get(trimmed)
-      if (cached) {
-        setSuggestions(cached)
-        setOpen(cached.length > 0)
-        setActiveIdx(-1)
-        return
-      }
-
-      debounceRef.current = setTimeout(() => {
-        searchTracks(newQuery).then((results) => {
-          searchCache.set(trimmed, results)
-          setSuggestions(results)
-          setOpen(results.length > 0)
-          setActiveIdx(-1)
-        })
-      }, 200)
+      search(newQuery)
+      setOpen(true)
     },
-    [clearSelectedTrack, onSearchTextChange],
+    [clearSelectedTrack, onSearchTextChange, search, clear],
   )
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current)
-      }
-    }
-  }, [])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -151,18 +113,7 @@ export function SearchPanel({
   }
 
   return (
-    <div
-      className="search-bar-wrapper"
-      ref={containerRef}
-      style={
-        searchPadding
-          ? {
-              paddingLeft: searchPadding.left,
-              paddingRight: searchPadding.right,
-            }
-          : undefined
-      }
-    >
+    <div className="search-bar-wrapper" ref={containerRef}>
       <div className="search-input-container">
         <input
           type="text"
@@ -179,7 +130,7 @@ export function SearchPanel({
             className="clear-btn clear-btn--search"
             onClick={() => {
               setQuery('')
-              setSuggestions([])
+              clear()
               setOpen(false)
               clearSelectedTrack()
               onSearchTextChange?.('')
@@ -189,7 +140,7 @@ export function SearchPanel({
             ×
           </button>
         )}
-        {open && (
+        {open && suggestions.length > 0 && (
           <ul className="search-dropdown">
             {suggestions.map((s, i) => (
               <li
@@ -248,22 +199,6 @@ export function SearchPanel({
           + Set
         </button>
       )}
-      <div className="search-actions">
-        <button
-          className="weight-normalize-btn weight-normalize-btn--secondary"
-          onClick={resetWeights}
-        >
-          Reset Weights
-        </button>
-        <button
-          className={`weight-normalize-btn${isSumValid ? ' inactive' : ''}`}
-          disabled={isSumValid}
-          onClick={normalizeWeights}
-        >
-          Normalize Weights
-          {!isSumValid && ` (${Number(rawSum.toFixed(1))})`}
-        </button>
-      </div>
     </div>
   )
 }

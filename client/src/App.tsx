@@ -1,17 +1,9 @@
-import {
-  useState,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useMemo,
-} from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { SearchPanel } from './components/SearchPanel'
 import { FilterBar } from './components/FilterBar'
 import { TrackTable } from './components/TrackTable'
 import { MatchesPanel } from './components/MatchesPanel'
 import { MatchDetail } from './components/MatchDetail'
-import { WeightControls } from './components/WeightControls'
 import { AdminDashboard } from './components/AdminDashboard'
 import { SetBuilder } from './components/SetBuilder'
 import { useSelectedTrack } from './hooks/useSelectedTrack'
@@ -78,12 +70,6 @@ export function App() {
     TransitionChainEntry[]
   >([])
 
-  const gaugeRowRef = useRef<HTMLDivElement>(null)
-  const [searchPadding, setSearchPadding] = useState<{
-    left: number
-    right: number
-  } | null>(null)
-
   const {
     stats: cacheStats,
     loading: cacheLoading,
@@ -143,52 +129,6 @@ export function App() {
       [id]: prev[id] !== false ? false : true,
     }))
   }, [])
-
-  // Measure the weight-controls row to align the search panel padding with the
-  // gauge groups. This is a DOM-measurement useLayoutEffect: setState here is
-  // intentional (React endorses useLayoutEffect for measuring layout before
-  // paint). The react-hooks/set-state-in-effect rule is a false positive for
-  // this pattern, so it is scoped-and-documented rather than refactored.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useLayoutEffect(() => {
-    const wrapper = gaugeRowRef.current
-    if (!wrapper) {
-      setSearchPadding(null)
-      return
-    }
-
-    const row = wrapper.querySelector<HTMLElement>('.weight-controls-row')
-    if (!row) {
-      return
-    }
-
-    const measure = () => {
-      const groups = row.querySelectorAll(':scope > .gauge-group')
-      if (groups.length < 2) {
-        setSearchPadding(null)
-        return
-      }
-
-      const rowRect = row.getBoundingClientRect()
-      const rects = Array.from(groups).map((g) => g.getBoundingClientRect())
-      const allSameRow = rects.every((r) => Math.abs(r.top - rects[0].top) < 10)
-
-      if (allSameRow) {
-        setSearchPadding({
-          left: Math.round(rects[0].left - rowRect.left),
-          right: Math.round(rowRect.right - rects[rects.length - 1].right),
-        })
-      } else {
-        setSearchPadding(null)
-      }
-    }
-
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(row)
-    return () => ro.disconnect()
-  }, [weightsLoading])
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const browsePages = useMemo(() => {
     const pages: Track[][] = []
@@ -348,29 +288,12 @@ export function App() {
   return (
     <AudioPlayerProvider>
       <div className="app-shell-v2">
-        {!weightsLoading && Object.keys(weights).length > 0 && (
-          <div ref={gaugeRowRef}>
-            <WeightControls
-              weights={weights}
-              setWeight={setWeight}
-              saving={weightsSaving}
-              saveSuccess={weightsSaveSuccess}
-              saveError={weightsError}
-              warningMessage={weightsWarning}
-            />
-          </div>
-        )}
-
         <SearchPanel
+          allTracks={allTracks}
           selectedTrack={selectedTrack}
           selectTrack={handleSelectTrack}
           clearSelectedTrack={clearSelectedTrack}
-          normalizeWeights={normalizeWeights}
-          resetWeights={resetWeights}
-          isSumValid={isSumValid}
-          rawSum={rawSum}
           onSearchTextChange={setSearchText}
-          searchPadding={searchPadding}
           onAddToPool={handleAddSelectedToPool}
           onAddToTracklist={handleAddSelectedToTracklist}
           searchText={searchText}
@@ -501,10 +424,22 @@ export function App() {
               stats={cacheStats}
               loading={cacheLoading}
               error={cacheError}
+              weights={weights}
+              weightsLoading={weightsLoading}
+              setWeight={setWeight}
+              weightsSaving={weightsSaving}
+              weightsSaveSuccess={weightsSaveSuccess}
+              weightsError={weightsError}
+              weightsWarning={weightsWarning}
+              normalizeWeights={normalizeWeights}
+              resetWeights={resetWeights}
+              isSumValid={isSumValid}
+              rawSum={rawSum}
             />
           )}
           {activeTab === 'set' && (
             <SetBuilder
+              allTracks={allTracks}
               sets={setBuilder.sets}
               activeSetId={setBuilder.activeSetId}
               activeSet={setBuilder.activeSet}
