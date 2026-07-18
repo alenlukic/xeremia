@@ -42,15 +42,9 @@ const asyncNoop = async () => null
 function defaultProps() {
   return {
     allTracks: [] as Track[],
-    sets: [] as SetSummary[],
-    activeSetId: null as number | null,
     activeSet: null as HydratedSet | null,
     loading: false,
     error: null as string | null,
-    pendingAdd: null,
-    createSet: asyncNoop as (name: string) => Promise<SetSummary | null>,
-    selectSet: noop,
-    deleteSet: noop,
     removeFromPool: noop,
     movePoolToTracklist: noop,
     reorderPool: noop,
@@ -90,8 +84,6 @@ function defaultProps() {
       level: number,
     ) => Promise<unknown>,
     fetchEdgeScores: async () => ({ scores: [] as (number | null)[] }),
-    resolvePendingAdd: noop,
-    clearPendingAdd: noop,
     clearError: noop,
   }
 }
@@ -102,40 +94,21 @@ describe('SetBuilder', () => {
   })
 
   describe('empty state', () => {
-    it('shows empty state when no sets exist', () => {
+    it('renders nothing but does not crash when there is no active set', () => {
       render(<SetBuilder {...defaultProps()} />)
-      expect(screen.getByText(/No sets yet/)).toBeInTheDocument()
-      expect(screen.getByText('+ New Set')).toBeInTheDocument()
-    })
-
-    it('shows create input when "+ New Set" is clicked', async () => {
-      render(<SetBuilder {...defaultProps()} />)
-      await userEvent.click(screen.getByText('+ New Set'))
-      expect(screen.getByPlaceholderText('Set name…')).toBeInTheDocument()
-    })
-
-    it('calls createSet with name on confirm', async () => {
-      const createSet = vi.fn().mockResolvedValue(makeSetSummary())
-      render(<SetBuilder {...defaultProps()} createSet={createSet} />)
-      await userEvent.click(screen.getByText('+ New Set'))
-      await userEvent.type(
-        screen.getByPlaceholderText('Set name…'),
-        'Friday Night',
-      )
-      await userEvent.click(screen.getByText('Create'))
-      expect(createSet).toHaveBeenCalledWith('Friday Night')
+      expect(
+        screen.queryByRole('button', { name: 'Tracks' }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Explorer' }),
+      ).not.toBeInTheDocument()
     })
   })
 
   describe('sub-tab layout', () => {
     it('renders Tracks and Explorer sub-tabs when a set is active', () => {
       render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-        />,
+        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
       )
       expect(screen.getByRole('button', { name: 'Tracks' })).toBeInTheDocument()
       expect(
@@ -145,12 +118,7 @@ describe('SetBuilder', () => {
 
     it('defaults to Tracks sub-tab showing tracklist section and collapsed pool', () => {
       render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-        />,
+        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
       )
       expect(screen.getByText('Tracklist (0)')).toBeInTheDocument()
       expect(screen.getByLabelText('Expand pool')).toBeInTheDocument()
@@ -158,12 +126,7 @@ describe('SetBuilder', () => {
 
     it('collapsed expand tab shows a directional chevron', () => {
       render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-        />,
+        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
       )
       const expandBtn = screen.getByLabelText('Expand pool')
       expect(expandBtn).toHaveAttribute('title', 'Expand pool')
@@ -172,12 +135,7 @@ describe('SetBuilder', () => {
 
     it('expands pool accordion on click', async () => {
       render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-        />,
+        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
       )
       await userEvent.click(screen.getByLabelText('Expand pool'))
       expect(screen.getByText('Pool (0)')).toBeInTheDocument()
@@ -186,12 +144,7 @@ describe('SetBuilder', () => {
 
     it('collapse handle has title text and visible chevron', async () => {
       render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-        />,
+        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
       )
       await userEvent.click(screen.getByLabelText('Expand pool'))
       const collapseBtn = screen.getByLabelText('Collapse pool')
@@ -201,100 +154,10 @@ describe('SetBuilder', () => {
 
     it('switches to Explorer sub-tab', async () => {
       render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-        />,
+        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
       )
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
       expect(screen.getByText(/Explorer is empty/)).toBeInTheDocument()
-    })
-  })
-
-  describe('no-active-set prompt', () => {
-    it('shows create form when pendingAdd is set with no active set', () => {
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          pendingAdd={{ type: 'pool', trackId: 1, title: 'Test Track' }}
-        />,
-      )
-      expect(screen.getByPlaceholderText('Set name…')).toBeInTheDocument()
-      expect(screen.getByText(/Create a set to add/)).toBeInTheDocument()
-    })
-  })
-
-  describe('set selector', () => {
-    it('hides the selector while a set is active and reopens it via the back arrow', async () => {
-      const sets = [
-        makeSetSummary({ id: 1, name: 'Set A' }),
-        makeSetSummary({ id: 2, name: 'Set B' }),
-      ]
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={sets}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-        />,
-      )
-      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
-
-      await userEvent.click(screen.getByRole('button', { name: 'Choose set' }))
-      const select = screen.getByRole('combobox') as HTMLSelectElement
-      // The placeholder is shown (not the active set) so re-selecting the
-      // current set still fires a change event.
-      expect(select.value).toBe('')
-      // The workspace is hidden while the picker is open.
-      expect(
-        screen.queryByRole('button', { name: 'Tracks' }),
-      ).not.toBeInTheDocument()
-    })
-
-    it('re-selecting the current set from the picker reopens the workspace', async () => {
-      const selectSet = vi.fn()
-      const sets = [
-        makeSetSummary({ id: 1, name: 'Set A' }),
-        makeSetSummary({ id: 2, name: 'Set B' }),
-      ]
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={sets}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-          selectSet={selectSet}
-        />,
-      )
-      await userEvent.click(screen.getByRole('button', { name: 'Choose set' }))
-      await userEvent.selectOptions(screen.getByRole('combobox'), '1')
-      expect(selectSet).toHaveBeenCalledWith(1)
-      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Tracks' })).toBeInTheDocument()
-    })
-
-    it('calls selectSet and closes the picker when dropdown changes', async () => {
-      const selectSet = vi.fn()
-      const sets = [
-        makeSetSummary({ id: 1, name: 'Set A' }),
-        makeSetSummary({ id: 2, name: 'Set B' }),
-      ]
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={sets}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-          selectSet={selectSet}
-        />,
-      )
-      await userEvent.click(screen.getByRole('button', { name: 'Choose set' }))
-      await userEvent.selectOptions(screen.getByRole('combobox'), '2')
-      expect(selectSet).toHaveBeenCalledWith(2)
-      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Tracks' })).toBeInTheDocument()
     })
   })
 
@@ -325,8 +188,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
           movePoolToTracklist={movePoolToTracklist}
         />,
@@ -362,8 +223,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
           moveTracklistToPool={moveTracklistToPool}
         />,
@@ -373,30 +232,12 @@ describe('SetBuilder', () => {
     })
   })
 
-  describe('delete set', () => {
-    it('calls deleteSet when delete button is clicked', async () => {
-      const deleteSet = vi.fn()
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
-          activeSet={makeHydratedSet()}
-          deleteSet={deleteSet}
-        />,
-      )
-      await userEvent.click(screen.getByRole('button', { name: 'Choose set' }))
-      await userEvent.click(screen.getByTitle('Delete set'))
-      expect(deleteSet).toHaveBeenCalledWith(1)
-    })
-  })
 
   describe('error display', () => {
     it('shows error as a toast with alert role', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
           error="Something went wrong"
         />,
       )
@@ -410,7 +251,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
           error="Oops"
           clearError={clearError}
         />,
@@ -423,8 +263,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={makeHydratedSet()}
           error={null}
         />,
@@ -460,8 +298,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
         />,
       )
@@ -517,8 +353,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
         />,
       )
@@ -594,8 +428,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
           updateTracklistNote={updateTracklistNote}
         />,
@@ -661,8 +493,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
           addExplorerNode={addExplorerNode}
         />,
@@ -705,8 +535,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
         />,
       )
@@ -749,8 +577,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
         />,
       )
@@ -831,8 +657,6 @@ describe('SetBuilder', () => {
       render(
         <SetBuilder
           {...defaultProps()}
-          sets={[makeSetSummary()]}
-          activeSetId={1}
           activeSet={hydrated}
           deleteExplorerNode={deleteExplorerNode}
         />,

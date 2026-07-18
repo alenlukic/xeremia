@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SetExplorerCanvas } from './SetExplorerCanvas'
 import type { ExplorerNode, ExplorerEdge, Track } from '../types'
-import { edgeColorForColumn } from '../utils/explorer'
+import { colorForColumn } from '../utils/explorer'
 
 vi.mock('../api/http', () => ({
   searchTracks: vi.fn().mockResolvedValue([
@@ -153,6 +153,38 @@ describe('SetExplorerCanvas', () => {
 
       expect(screen.getByTestId('sibling-add-modal')).toBeInTheDocument()
       expect(screen.getByTestId('sibling-search-input')).toBeInTheDocument()
+    })
+
+    it('lists every node at the parent level as an inheritable connection, not just the rightmost sibling\'s existing parents', async () => {
+      // Two parents (p0, p1) exist at level 0, but only p0 is connected to
+      // the existing level-1 sibling. p1 has no children yet and must still
+      // show up as a selectable parent when adding another level-1 node.
+      const nodes = [
+        makeNode({ id: 1, node_id: 'p0', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'p1', track_id: 11, level: 0, col_index: 1 }),
+        makeNode({ id: 3, node_id: 'c0', track_id: 12, level: 1, col_index: 0 }),
+      ]
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'p0', child_node_id: 'c0' },
+      ]
+      render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />)
+
+      const addBtns = screen.getAllByTestId('level-add-btn')
+      const level1AddBtn = addBtns.find(
+        (b) => b.getAttribute('data-level') === '1',
+      )!
+      await userEvent.click(level1AddBtn)
+
+      const modal = within(screen.getByTestId('sibling-add-modal'))
+      expect(modal.getByText('Track 10')).toBeInTheDocument()
+      expect(modal.getByText('Track 11')).toBeInTheDocument()
+
+      const checkboxes = modal.getAllByRole('checkbox') as HTMLInputElement[]
+      expect(checkboxes).toHaveLength(2)
+      // p0 (already connected to the rightmost sibling) is pre-checked;
+      // p1 (no children yet) is offered but not pre-checked.
+      expect(checkboxes[0].checked).toBe(true)
+      expect(checkboxes[1].checked).toBe(false)
     })
   })
 
@@ -1062,13 +1094,11 @@ describe('SetExplorerCanvas', () => {
     const NODE_H = 48
     const V_GAP = 176
     const SLOT_W = 390
-    const TOP_PAD = 24 + 8
-    const EDGE_PAD = 40
+    const TOP_PAD = 48 + 8
     const EDGE_SLOTS = 5
+    const HALF_SLOT_SPAN = NODE_W / 2 / EDGE_SLOTS
     const LANE_STUB = 10
     const LANE_S = 6
-    const SLOT_STEP = 10
-    const BUCKET_GAP = 8
 
     function parentX(col: number) {
       return col * SLOT_W + (SLOT_W - NODE_W) / 2
@@ -1076,18 +1106,20 @@ describe('SetExplorerCanvas', () => {
     function parentBottom(level: number) {
       return TOP_PAD + level * (NODE_H + V_GAP) + NODE_H
     }
-    function nodeSlotX25(nodeX: number, laneIndex: number) {
-      const bucket = Math.floor(laneIndex / EDGE_SLOTS)
-      const slot = laneIndex % EDGE_SLOTS
-      return (
-        nodeX +
-        EDGE_PAD +
-        bucket * (EDGE_SLOTS * SLOT_STEP + BUCKET_GAP) +
-        slot * SLOT_STEP
-      )
+    // A node's departure (left half) / arrival (right half) slot is keyed by
+    // the partner's column index (0-4) only — never by the node's own column
+    // — so the x-offset never drifts with the node's own position in the
+    // level. The left/right split keeps departures and arrivals from ever
+    // landing on the same absolute x, even when a parent and an unrelated
+    // child share a column across adjacent levels.
+    function departureSlotX(nodeX: number, slotIdx: number) {
+      return nodeX + HALF_SLOT_SPAN * (slotIdx + 0.5)
+    }
+    function arrivalSlotX(nodeX: number, slotIdx: number) {
+      return nodeX + NODE_W / 2 + HALF_SLOT_SPAN * (slotIdx + 0.5)
     }
 
-    it('edge color is derived from the child column index', async () => {
+    it('edge color is derived from the parent column index', async () => {
       const nodes = [
         makeNode({
           id: 1,
@@ -1113,12 +1145,18 @@ describe('SetExplorerCanvas', () => {
       render(<SetExplorerCanvas {...props} />)
 
       const label = await screen.findByTestId('explorer-edge-label')
-      expect(label.getAttribute('fill')).toBe(edgeColorForColumn(0))
+      expect(label.getAttribute('fill')).toBe(colorForColumn(1))
     })
 
-    it('parent with 3 children produces 3 distinct stroke colors keyed off child columns', () => {
+    it('a parent with 3 children produces one shared stroke color, matching the parent node', () => {
       const nodes = [
-        makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
+        makeNode({
+          id: 1,
+          node_id: 'n1',
+          track_id: 10,
+          level: 0,
+          col_index: 2,
+        }),
         makeNode({
           id: 2,
           node_id: 'n2',
@@ -1152,9 +1190,60 @@ describe('SetExplorerCanvas', () => {
       expect(hitboxes.length).toBe(3)
       const visiblePaths = hitboxes.map((h) => h.nextElementSibling!)
       const strokes = visiblePaths.map((p) => p.getAttribute('stroke'))
-      expect(strokes[0]).toBe(edgeColorForColumn(0))
-      expect(strokes[1]).toBe(edgeColorForColumn(1))
-      expect(strokes[2]).toBe(edgeColorForColumn(2))
+      expect(strokes).toEqual([
+        colorForColumn(2),
+        colorForColumn(2),
+        colorForColumn(2),
+      ])
+
+      const parentNodeGroup = screen.getAllByTestId('explorer-node')[0]
+      const parentRect = Array.from(
+        parentNodeGroup.querySelectorAll('rect'),
+      ).find((r) => r.getAttribute('width') === '360')!
+      expect(parentRect.getAttribute('fill')).toBe(colorForColumn(2))
+    })
+
+    it('edges from different parents use distinct colors keyed off each parent column', () => {
+      const nodes = [
+        makeNode({
+          id: 1,
+          node_id: 'p0',
+          track_id: 10,
+          level: 0,
+          col_index: 0,
+        }),
+        makeNode({
+          id: 2,
+          node_id: 'p1',
+          track_id: 11,
+          level: 0,
+          col_index: 1,
+        }),
+        makeNode({
+          id: 3,
+          node_id: 'p2',
+          track_id: 12,
+          level: 0,
+          col_index: 2,
+        }),
+        makeNode({ id: 4, node_id: 'c0', track_id: 13, level: 1, col_index: 0 }),
+        makeNode({ id: 5, node_id: 'c1', track_id: 14, level: 1, col_index: 1 }),
+        makeNode({ id: 6, node_id: 'c2', track_id: 15, level: 1, col_index: 2 }),
+      ]
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'p0', child_node_id: 'c0' },
+        { id: 2, set_id: 1, parent_node_id: 'p1', child_node_id: 'c1' },
+        { id: 3, set_id: 1, parent_node_id: 'p2', child_node_id: 'c2' },
+      ]
+      render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />)
+
+      const hitboxes = screen.getAllByTestId('explorer-edge-hitbox')
+      expect(hitboxes.length).toBe(3)
+      const visiblePaths = hitboxes.map((h) => h.nextElementSibling!)
+      const strokes = visiblePaths.map((p) => p.getAttribute('stroke'))
+      expect(strokes[0]).toBe(colorForColumn(0))
+      expect(strokes[1]).toBe(colorForColumn(1))
+      expect(strokes[2]).toBe(colorForColumn(2))
     })
 
     it('score label has explorer-edge-label class for opacity styling', async () => {
@@ -1206,10 +1295,9 @@ describe('SetExplorerCanvas', () => {
 
       const label = await screen.findByTestId('explorer-edge-label')
       expect(label.getAttribute('text-anchor')).toBe('end')
-      // labelX = endX - 10, where endX = nodeSlotX(childX, laneIndex)
+      // labelX = endX - 10, where endX = arrivalSlotX(childX, parentColIdx)
       const childX = parentX(0) // n2 is col 0
-      const laneIndex = 0 * EDGE_SLOTS + 0
-      const endX = nodeSlotX25(childX, laneIndex)
+      const endX = arrivalSlotX(childX, 0)
       const labelXVal = Number(label.getAttribute('x')!)
       expect(labelXVal).toBeCloseTo(endX - 10, 1)
     })
@@ -1244,9 +1332,9 @@ describe('SetExplorerCanvas', () => {
       const d2 = hitboxes[1].getAttribute('d')!
       const startX1 = Number(d1.split(' ')[1])
       const startX2 = Number(d2.split(' ')[1])
-      // parent col 0 → child col 0: laneIndex=0; parent col 0 → child col 1: laneIndex=1
-      expect(startX1).toBeCloseTo(nodeSlotX25(parentX(0), 0), 1)
-      expect(startX2).toBeCloseTo(nodeSlotX25(parentX(0), 1), 1)
+      // startX is keyed by the target child's column: child col 0 vs col 1.
+      expect(startX1).toBeCloseTo(departureSlotX(parentX(0), 0), 1)
+      expect(startX2).toBeCloseTo(departureSlotX(parentX(0), 1), 1)
       expect(startX1).not.toBe(startX2)
     })
 
@@ -1292,9 +1380,11 @@ describe('SetExplorerCanvas', () => {
       const d2 = hitboxes[1].getAttribute('d')!
       const startX1 = Number(d1.split(' ')[1])
       const startX2 = Number(d2.split(' ')[1])
-      // n1(col 0)→n3(col 0): laneIndex=0*5+0=0; n2(col 1)→n4(col 1): laneIndex=1*5+1=6
-      expect(startX1).toBeCloseTo(nodeSlotX25(parentX(0), 0), 1)
-      expect(startX2).toBeCloseTo(nodeSlotX25(parentX(1), 6), 1)
+      // startX is keyed by the target child's column, relative to the
+      // parent's own node position — it must not drift with the parent's
+      // own column index (that drift was the source of overlapping lines).
+      expect(startX1).toBeCloseTo(departureSlotX(parentX(0), 0), 1)
+      expect(startX2).toBeCloseTo(departureSlotX(parentX(1), 1), 1)
     })
 
     it('child entry uses slot-aligned position, not child center', () => {
@@ -1312,8 +1402,8 @@ describe('SetExplorerCanvas', () => {
       const parts = d.split(' ')
       const endX = Number(parts[parts.length - 2])
       const childNodeX = parentX(0)
-      // n1(col 0)→n2(col 0): laneIndex=0, endX = nodeSlotX25(childNodeX, 0)
-      const expectedEndX = nodeSlotX25(childNodeX, 0)
+      // n1(col 0)→n2(col 0): endX = arrivalSlotX(childNodeX, parentColIdx=0)
+      const expectedEndX = arrivalSlotX(childNodeX, 0)
       expect(endX).toBeCloseTo(expectedEndX, 1)
     })
 
@@ -1407,7 +1497,7 @@ describe('SetExplorerCanvas', () => {
       expect(uniqueStarts.size).toBe(5)
     })
 
-    it('endX uses laneIndex = parentColIdx * 5 + childColIdx (25-slot system)', () => {
+    it('endX is keyed by the source parent column index', () => {
       const nodes = [
         makeNode({
           id: 1,
@@ -1435,8 +1525,8 @@ describe('SetExplorerCanvas', () => {
       const parts = d.split(' ')
       const endX = Number(parts[10])
       const childNodeX = parentX(0)
-      // n2(col 1)→n3(col 0): laneIndex = 1*5+0 = 5
-      const expectedEndX = nodeSlotX25(childNodeX, 5)
+      // n2(col 1)→n3(col 0): endX = arrivalSlotX(childNodeX, parentColIdx=1)
+      const expectedEndX = arrivalSlotX(childNodeX, 1)
       expect(endX).toBeCloseTo(expectedEndX, 1)
     })
 
@@ -1487,7 +1577,11 @@ describe('SetExplorerCanvas', () => {
       expect(laneYFromPath).toBeCloseTo(expectedLaneY, 1)
     })
 
-    it('same-column parent and child produce startX == endX (straight vertical)', () => {
+    it('same-column parent and child still get distinct departure/arrival x positions', () => {
+      // A departure stub and an arrival stub must never land on the same x
+      // — even for a straight-through same-column edge — because a node at
+      // the same column on a DIFFERENT level could otherwise coincide with
+      // it (see the regression test below for the concrete failure case).
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -1502,7 +1596,65 @@ describe('SetExplorerCanvas', () => {
       const parts = d.split(' ')
       const startX = Number(parts[1])
       const endX = Number(parts[10])
-      expect(startX).toBe(endX)
+      expect(startX).not.toBe(endX)
+      expect(endX - startX).toBeCloseTo(NODE_W / 2, 1)
+    })
+
+    it('regression: a parent and an unrelated child sharing a column across levels do not produce overlapping vertical segments', () => {
+      // Reproduces the exact case found in production data: a fully-connected
+      // 3x3 bipartite graph where Jakare (level 0, col 2) -> Emancipator and
+      // Asura (level 0, col 1) -> Jose Solano (level 1, col 2) used to land
+      // their departure/arrival stubs on the same x because Jakare and Jose
+      // Solano share column 2 across adjacent levels.
+      const nodes = [
+        makeNode({ id: 1, node_id: 'p0', track_id: 10, level: 0, col_index: 0 }),
+        makeNode({ id: 2, node_id: 'p1', track_id: 11, level: 0, col_index: 1 }),
+        makeNode({ id: 3, node_id: 'p2', track_id: 12, level: 0, col_index: 2 }),
+        makeNode({ id: 4, node_id: 'c0', track_id: 13, level: 1, col_index: 0 }),
+        makeNode({ id: 5, node_id: 'c1', track_id: 14, level: 1, col_index: 1 }),
+        makeNode({ id: 6, node_id: 'c2', track_id: 15, level: 1, col_index: 2 }),
+      ]
+      const edges: ExplorerEdge[] = []
+      let edgeId = 1
+      for (const parent of ['p0', 'p1', 'p2']) {
+        for (const child of ['c0', 'c1', 'c2']) {
+          edges.push({
+            id: edgeId++,
+            set_id: 1,
+            parent_node_id: parent,
+            child_node_id: child,
+          })
+        }
+      }
+      render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />)
+
+      const hitboxes = screen.getAllByTestId('explorer-edge-hitbox')
+      expect(hitboxes.length).toBe(9)
+
+      type Segment = { x: number; yMin: number; yMax: number }
+      const segments: Segment[] = []
+      for (const hitbox of hitboxes) {
+        const [x1, y1, , y2, x2, , , y3] = hitbox
+          .getAttribute('d')!
+          .replace(/[ML]/g, '')
+          .trim()
+          .split(/\s+/)
+          .map(Number)
+        segments.push({ x: x1, yMin: Math.min(y1, y2), yMax: Math.max(y1, y2) })
+        segments.push({ x: x2, yMin: Math.min(y2, y3), yMax: Math.max(y2, y3) })
+      }
+
+      for (let i = 0; i < segments.length; i++) {
+        for (let j = i + 1; j < segments.length; j++) {
+          const a = segments[i]
+          const b = segments[j]
+          if (Math.abs(a.x - b.x) > 0.5) {
+            continue
+          }
+          const rangesOverlap = a.yMin < b.yMax && b.yMin < a.yMax
+          expect(rangesOverlap).toBe(false)
+        }
+      }
     })
   })
 

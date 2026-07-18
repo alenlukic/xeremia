@@ -864,14 +864,14 @@ describe('Set tab', () => {
     expect(screen.getByRole('button', { name: 'Set' })).toBeInTheDocument()
   })
 
-  it('shows set builder when Set tab is clicked', async () => {
+  it('shows set picker controls when Set tab is clicked', async () => {
     await act(async () => {
       render(<App />)
     })
     await act(async () => {
       screen.getByRole('button', { name: 'Set' }).click()
     })
-    expect(screen.getByText(/No sets yet/)).toBeInTheDocument()
+    expect(screen.getByText('+ New')).toBeInTheDocument()
   })
 
   it('renders dual add-to-pool/tracklist buttons in matches panel', async () => {
@@ -986,7 +986,7 @@ describe('Browse panel', () => {
     await act(async () => {
       screen.getByRole('button', { name: 'Set' }).click()
     })
-    expect(screen.getByText(/No sets yet/)).toBeInTheDocument()
+    expect(screen.getByText('+ New')).toBeInTheDocument()
 
     const row = screen.getByText('Track 1').closest('tr')!
     await act(async () => {
@@ -996,7 +996,7 @@ describe('Browse panel', () => {
     await waitFor(() => {
       expect(vi.mocked(httpMod.fetchMatches).mock.calls.at(-1)?.[0]).toBe(1)
     })
-    expect(screen.getByText(/No sets yet/)).toBeInTheDocument()
+    expect(screen.getByText('+ New')).toBeInTheDocument()
   })
 })
 
