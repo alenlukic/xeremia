@@ -3,6 +3,7 @@ import type { TracklistEntry, SearchSuggestion, Track } from '../types'
 import { cleanTitle } from '../utils/trackTitle'
 import { TRACK_DRAG_MIME } from '../utils'
 import { useTrackSearch } from '../hooks/useTrackSearch'
+import { useResizableColumns } from '../hooks/useResizableColumns'
 import { PlayButton } from './PlayButton'
 
 interface Props {
@@ -80,6 +81,20 @@ export function SetTracklist({
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [externalDropActive, setExternalDropActive] = useState(false)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
+  const { widths: colWidths, beginResize } = useResizableColumns(
+    'xeremia-set-tracklist-col-widths',
+  )
+
+  const colStyle = (id: string) =>
+    colWidths[id] != null ? { width: colWidths[id] } : undefined
+
+  const resizer = (id: string) => (
+    <div
+      className="col-resizer"
+      onMouseDown={(e) => beginResize(id, e)}
+      onClick={(e) => e.stopPropagation()}
+    />
+  )
 
   const handleSearch = useCallback(
     (q: string) => {
@@ -175,21 +190,21 @@ export function SetTracklist({
         <table className="set-tracklist-table">
           <colgroup>
             <col className="set-ws-col-play" />
-            <col className="set-ws-col-num" />
-            <col className="set-ws-col-title" />
-            <col className="set-ws-col-key" />
-            <col className="set-ws-col-bpm" />
-            <col className="set-ws-col-note" />
+            <col className="set-ws-col-num" style={colStyle('num')} />
+            <col className="set-ws-col-title" style={colStyle('title')} />
+            <col className="set-ws-col-key" style={colStyle('key')} />
+            <col className="set-ws-col-bpm" style={colStyle('bpm')} />
+            <col className="set-ws-col-note" style={colStyle('note')} />
             <col className="set-ws-col-actions-tracklist" />
           </colgroup>
           <thead>
             <tr>
               <th className="set-ws-th"></th>
-              <th className="set-ws-th">#</th>
-              <th className="set-ws-th">Title</th>
-              <th className="set-ws-th">Key</th>
-              <th className="set-ws-th">BPM</th>
-              <th className="set-ws-th">Note</th>
+              <th className="set-ws-th">#{resizer('num')}</th>
+              <th className="set-ws-th">Title{resizer('title')}</th>
+              <th className="set-ws-th">Key{resizer('key')}</th>
+              <th className="set-ws-th">BPM{resizer('bpm')}</th>
+              <th className="set-ws-th">Note{resizer('note')}</th>
               <th className="set-ws-th set-ws-th-actions">Actions</th>
             </tr>
           </thead>
@@ -262,22 +277,6 @@ export function SetTracklist({
                 </td>
                 <td className="set-ws-cell-actions">
                   <div className="set-ws-actions-group">
-                    <button
-                      className="set-move-btn"
-                      disabled={i === 0}
-                      onClick={() => onReorder(entry.track_id, i - 1)}
-                      title="Move up"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      className="set-move-btn"
-                      disabled={i === tracklist.length - 1}
-                      onClick={() => onReorder(entry.track_id, i + 1)}
-                      title="Move down"
-                    >
-                      ↓
-                    </button>
                     <button
                       className="set-action-btn"
                       onClick={() => onMoveToPool(entry.track_id)}

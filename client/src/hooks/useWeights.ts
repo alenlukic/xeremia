@@ -126,16 +126,24 @@ export function useWeights(onSaveSuccess?: () => void): WeightsState {
     }, 500)
   }, [])
 
+  // Mirror of `weights` so setWeight can compute the next value without
+  // running side effects (persistWeights) inside a state updater, which must
+  // stay pure (StrictMode invokes updaters twice).
+  const weightsRef = useRef(weights)
+  useEffect(() => {
+    weightsRef.current = weights
+  }, [weights])
+
   const setWeight = useCallback(
     (factor: string, value: number) => {
-      setWeights((prev) => {
-        if (prev[factor] === value) {
-          return prev
-        }
-        const next = { ...prev, [factor]: value }
-        persistWeights(next)
-        return next
-      })
+      const prev = weightsRef.current
+      if (prev[factor] === value) {
+        return
+      }
+      const next = { ...prev, [factor]: value }
+      weightsRef.current = next
+      setWeights(next)
+      persistWeights(next)
     },
     [persistWeights],
   )

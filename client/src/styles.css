@@ -673,6 +673,8 @@ body,
 
 .track-table th:hover .col-resizer,
 .matches-table th:hover .col-resizer,
+.set-pool-table th:hover .col-resizer,
+.set-tracklist-table th:hover .col-resizer,
 .col-resizer--active {
   opacity: 1;
 }
@@ -1883,31 +1885,6 @@ body,
   flex-shrink: 0;
 }
 
-.set-move-btn {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-muted);
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all var(--transition);
-}
-
-.set-move-btn:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--text-muted);
-}
-
-.set-move-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
 .set-remove-btn {
   background: none;
   border: 1px solid var(--border);
@@ -2244,17 +2221,18 @@ body,
   width: 44px;
 }
 .set-ws-col-note {
-  width: 330px;
+  width: 180px;
 }
-/* Actions: tracklist has 4 buttons, pool has 2 — separate widths */
+/* Actions: both tables have 2 buttons; tracklist's are narrower */
 .set-ws-col-actions-tracklist {
-  width: 148px;
+  width: 96px;
 }
 .set-ws-col-actions-pool {
   width: 110px;
 }
 
 .set-ws-th {
+  position: relative;
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 600;

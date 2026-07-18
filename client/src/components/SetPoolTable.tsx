@@ -14,6 +14,7 @@ import type {
   Track,
 } from '../types'
 import { cleanTitle } from '../utils/trackTitle'
+import { useResizableColumns } from '../hooks/useResizableColumns'
 import { TRACK_DRAG_MIME } from '../utils'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { PlayButton } from './PlayButton'
@@ -239,11 +240,26 @@ function PoolTableHead({
   subgroups,
   sorting,
   onHeaderSort,
+  colWidths,
+  beginResize,
 }: {
   subgroups: PoolSubgroup[]
   sorting?: SortDescriptor[]
   onHeaderSort?: (col: string, e: React.MouseEvent) => void
+  colWidths?: Record<string, number>
+  beginResize?: (colId: string, e: React.MouseEvent) => void
 }) {
+  const colStyle = (id: string) =>
+    colWidths?.[id] != null ? { width: colWidths[id] } : undefined
+
+  const resizer = (id: string) =>
+    beginResize ? (
+      <div
+        className="col-resizer"
+        onMouseDown={(e) => beginResize(id, e)}
+        onClick={(e) => e.stopPropagation()}
+      />
+    ) : null
   const sortIndicator = (col: string) => {
     if (!sorting) {
       return null
@@ -276,11 +292,13 @@ function PoolTableHead({
     <>
       <colgroup>
         <col className="set-ws-col-play" />
-        <col className="set-ws-col-num" />
-        <col className="set-ws-col-title" />
-        <col className="set-ws-col-key" />
-        <col className="set-ws-col-bpm" />
-        {subgroups.length > 0 && <col className="set-ws-col-subgroups" />}
+        <col className="set-ws-col-num" style={colStyle('num')} />
+        <col className="set-ws-col-title" style={colStyle('title')} />
+        <col className="set-ws-col-key" style={colStyle('key')} />
+        <col className="set-ws-col-bpm" style={colStyle('bpm')} />
+        {subgroups.length > 0 && (
+          <col className="set-ws-col-subgroups" style={colStyle('subgroups')} />
+        )}
         <col className="set-ws-col-actions-pool" />
       </colgroup>
       <thead>
@@ -288,13 +306,23 @@ function PoolTableHead({
           <th className="set-ws-th"></th>
           <th {...sortableProps('insertion_order')}>
             #{sortIndicator('insertion_order')}
+            {resizer('num')}
           </th>
-          <th {...sortableProps('title')}>Title{sortIndicator('title')}</th>
+          <th {...sortableProps('title')}>
+            Title{sortIndicator('title')}
+            {resizer('title')}
+          </th>
           <th {...sortableProps('camelot_code')}>
             Key{sortIndicator('camelot_code')}
+            {resizer('key')}
           </th>
-          <th {...sortableProps('bpm')}>BPM{sortIndicator('bpm')}</th>
-          {subgroups.length > 0 && <th className="set-ws-th">Groups</th>}
+          <th {...sortableProps('bpm')}>
+            BPM{sortIndicator('bpm')}
+            {resizer('bpm')}
+          </th>
+          {subgroups.length > 0 && (
+            <th className="set-ws-th">Groups{resizer('subgroups')}</th>
+          )}
           <th className="set-ws-th set-ws-th-actions">Actions</th>
         </tr>
       </thead>
@@ -534,6 +562,8 @@ function SubgroupSection({
   onMoveToTracklist,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
+  colWidths,
+  beginResize,
 }: {
   subgroup: PoolSubgroup
   entries: PoolEntry[]
@@ -551,6 +581,8 @@ function SubgroupSection({
     subgroupId: number,
     poolEntryId: number,
   ) => Promise<boolean>
+  colWidths?: Record<string, number>
+  beginResize?: (colId: string, e: React.MouseEvent) => void
 }) {
   const {
     attributes,
@@ -609,7 +641,11 @@ function SubgroupSection({
         <p className="set-empty-tracks">No tracks in {subgroup.name}.</p>
       ) : (
         <table className="set-pool-table">
-          <PoolTableHead subgroups={subgroups} />
+          <PoolTableHead
+            subgroups={subgroups}
+            colWidths={colWidths}
+            beginResize={beginResize}
+          />
           <tbody>
             {sorted.map((entry) => (
               <PoolRow
@@ -646,6 +682,8 @@ export function SetPoolTable({
   onAddSubgroupMember,
   onRemoveSubgroupMember,
 }: Props) {
+  const { widths: poolColWidths, beginResize: beginPoolColResize } =
+    useResizableColumns('xeremia-set-pool-col-widths')
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
@@ -976,6 +1014,8 @@ export function SetPoolTable({
                     onMoveToTracklist={onMoveToTracklist}
                     onAddSubgroupMember={onAddSubgroupMember}
                     onRemoveSubgroupMember={onRemoveSubgroupMember}
+                    colWidths={poolColWidths}
+                    beginResize={beginPoolColResize}
                   />
                 )
               })}
@@ -997,6 +1037,8 @@ export function SetPoolTable({
             subgroups={subgroups}
             sorting={sorting}
             onHeaderSort={handleHeaderSort}
+            colWidths={poolColWidths}
+            beginResize={beginPoolColResize}
           />
           <tbody>
             {sorted.map((entry, i) => (
