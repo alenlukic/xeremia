@@ -48,6 +48,33 @@ def test_resolve_label_accepts_cdr_db_and_web():
     assert resolve_label("Unknown Label", web_verifier=lambda _label: False) is None
 
 
+def test_resolve_label_authoritative_keeps_beatport_label_without_db_or_web():
+    assert (
+        resolve_label("Limitation Music", authoritative=True) == "Limitation Music"
+    )
+    assert resolve_label("Spotify", authoritative=True) is None
+    assert (
+        resolve_label(
+            "My Album", album="My Album", title="Song", authoritative=True
+        )
+        is None
+    )
+
+
+def test_apply_album_label_consistency_preserves_authoritative_label():
+    shared_state: dict = {}
+    metadata = SimpleMetadata(
+        label="Limitation Music", album="Eko", title="Imbold (Original Mix)"
+    )
+    apply_album_label_consistency(
+        metadata,
+        shared_state,
+        source_catalog_id="beatport-1",
+        authoritative=True,
+    )
+    assert metadata.label == "Limitation Music"
+
+
 class _SessionWithLabel:
     def __init__(self, labels: list[str]):
         self.labels = labels

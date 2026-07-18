@@ -29,6 +29,7 @@ from src.track_metadata.pipeline.persistence import (
     update_track_records,
     upsert_track_records,
 )
+from src.track_metadata.sources.genre_lookups import is_beatport_encoded
 from src.track_metadata.tags import read_existing_metadata, write_tags
 from src.track_metadata.utils import (
     AUGMENTED_DIR,
@@ -97,12 +98,15 @@ def stage_hydrate(result: TrackResult, context: PipelineContext) -> None:
     creation_ts = datetime.fromtimestamp(
         get_file_creation_time(str(result.working_path))
     )
+    # Beatport TPUB is authoritative for label; do not fail-closed on DB/web.
+    beatport_label = is_beatport_encoded(result.working_path)
     conflicts = apply_album_label_consistency(
         hydrated,
         context.shared_state,
         source_catalog_id=hydrated.source_catalog_id,
         creation_timestamp=creation_ts,
         web_verifier=getattr(context.hydrator, "web_label_verifier", None),
+        authoritative=beatport_label,
     )
     if conflicts:
         result.notes.extend(conflicts)

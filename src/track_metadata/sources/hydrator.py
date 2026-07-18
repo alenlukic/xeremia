@@ -197,7 +197,11 @@ class MetadataHydrator:
         resolved.genre = (
             self._resolve_genre(resolved, sources, file_path) or resolved.genre
         )
-        apply_label_resolution(resolved, web_verifier=self.web_label_verifier)
+        apply_label_resolution(
+            resolved,
+            web_verifier=self.web_label_verifier,
+            authoritative=is_beatport_encoded(file_path),
+        )
         self._apply_field_resolution(
             resolved,
             file_path=file_path,
