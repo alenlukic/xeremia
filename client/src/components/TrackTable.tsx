@@ -18,6 +18,7 @@ import {
   type SortingState,
   type Updater,
 } from '@tanstack/react-table'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Track, SearchSuggestion } from '../types'
 import { formatFloat, formatBpm, displayGenre, TRACK_DRAG_MIME } from '../utils'
 import { PlayButton } from './PlayButton'
@@ -40,6 +41,9 @@ function computeColWidths(container: number): number[] {
     ...FLEX_MINS.map((m) => (m / TOTAL_FLEX) * flexBudget),
   ]
 }
+
+/** Fixed row height (px) assumed by the virtualizer; matches td padding+line. */
+const ROW_HEIGHT = 55
 
 const COLUMN_IDS = [
   'camelot_code',
@@ -284,6 +288,26 @@ export const TrackTable = memo(function TrackTable({
   const totalWidth = table.getTotalSize()
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth
 
+  const rows = table.getRowModel().rows
+
+  // Row virtualization: only the visible window of rows is mounted. With the
+  // full collection loaded (thousands of rows), rendering every row made any
+  // re-render of this table (column resize, selection changes) block the main
+  // thread for seconds.
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => wrapperRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 12,
+  })
+  const virtualRows = rowVirtualizer.getVirtualItems()
+  const virtualTotal = rowVirtualizer.getTotalSize()
+  const padTop = virtualRows.length > 0 ? virtualRows[0].start : 0
+  const padBottom =
+    virtualRows.length > 0
+      ? virtualTotal - virtualRows[virtualRows.length - 1].end
+      : 0
+
   const handleTopScroll = useCallback(() => {
     if (ignoreNextScroll.current === 'top') {
       ignoreNextScroll.current = null
@@ -464,33 +488,52 @@ export const TrackTable = memo(function TrackTable({
                 </td>
               </tr>
             ) : (
-              table.getRowModel().rows.map((row) => {
-                const isSelected = selectedTrack?.id === row.original.id
-                return (
-                  <tr
-                    key={row.id}
-                    className={isSelected ? 'row-selected' : ''}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData(
-                        TRACK_DRAG_MIME,
-                        String(row.original.id),
-                      )
-                      e.dataTransfer.effectAllowed = 'copy'
-                    }}
-                    onClick={() => selectTrack(row.original)}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
-                    ))}
+              <>
+                {padTop > 0 && (
+                  <tr aria-hidden="true">
+                    <td
+                      colSpan={table.getVisibleLeafColumns().length}
+                      style={{ height: padTop, padding: 0, border: 'none' }}
+                    />
                   </tr>
-                )
-              })
+                )}
+                {virtualRows.map((virtualRow) => {
+                  const row = rows[virtualRow.index]
+                  const isSelected = selectedTrack?.id === row.original.id
+                  return (
+                    <tr
+                      key={row.id}
+                      className={isSelected ? 'row-selected' : ''}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(
+                          TRACK_DRAG_MIME,
+                          String(row.original.id),
+                        )
+                        e.dataTransfer.effectAllowed = 'copy'
+                      }}
+                      onClick={() => selectTrack(row.original)}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td key={cell.id}>
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+                {padBottom > 0 && (
+                  <tr aria-hidden="true">
+                    <td
+                      colSpan={table.getVisibleLeafColumns().length}
+                      style={{ height: padBottom, padding: 0, border: 'none' }}
+                    />
+                  </tr>
+                )}
+              </>
             )}
           </tbody>
         </table>

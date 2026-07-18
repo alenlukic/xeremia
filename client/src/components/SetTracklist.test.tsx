@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { SetTracklist } from './SetTracklist'
 import type { TracklistEntry } from '../types'
@@ -118,6 +118,46 @@ describe('SetTracklist', () => {
   it('shows empty message when tracklist is empty', () => {
     renderTracklist([])
     expect(screen.getByText(/tracklist is empty/i)).toBeTruthy()
+  })
+
+  it('does not render move up/down buttons (reordering is drag-and-drop)', () => {
+    renderTracklist([
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+    ])
+    expect(screen.queryByTitle('Move up')).toBeNull()
+    expect(screen.queryByTitle('Move down')).toBeNull()
+    expect(screen.getAllByTitle('Move to pool')).toHaveLength(2)
+  })
+})
+
+describe('SetTracklist column resizing', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('renders resize handles on resizable column headers', () => {
+    const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })])
+    const titleTh = screen.getByRole('columnheader', { name: 'Title' })
+    expect(titleTh.querySelector('.col-resizer')).toBeTruthy()
+    expect(container.querySelectorAll('.col-resizer')).toHaveLength(5)
+  })
+
+  it('drag on a resize handle sets the column width and persists it', () => {
+    const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })])
+    const noteTh = screen.getByRole('columnheader', { name: 'Note' })
+    const handle = noteTh.querySelector('.col-resizer')!
+
+    // jsdom reports zero widths, so the drag lands at MIN_COL_WIDTH (40px).
+    fireEvent.mouseDown(handle, { clientX: 300 })
+    fireEvent.mouseMove(document, { clientX: 240 })
+    fireEvent.mouseUp(document)
+
+    const noteCol = container.querySelector<HTMLElement>('col.set-ws-col-note')!
+    expect(noteCol.style.width).toBe('40px')
+    expect(
+      JSON.parse(localStorage.getItem('xeremia-set-tracklist-col-widths')!),
+    ).toEqual({ note: 40 })
   })
 })
 
