@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { SearchPanel } from './components/SearchPanel'
+import { NavRail } from './components/NavRail'
+import type { BottomView } from './components/NavRail'
 import { FilterBar } from './components/FilterBar'
 import { TrackTable } from './components/TrackTable'
 import { MatchesPanel } from './components/MatchesPanel'
@@ -19,8 +21,6 @@ import type {
   TransitionMatch,
   TransitionChainEntry,
 } from './types'
-
-type TabKey = 'matches' | 'browse' | 'admin' | 'set'
 
 const BROWSE_PAGE_SIZE = 250
 
@@ -61,7 +61,7 @@ export function App() {
     traitsError,
   } = useCollectionCache()
 
-  const [activeTab, setActiveTab] = useState<TabKey>('matches')
+  const [bottomView, setBottomView] = useState<BottomView>('matches')
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
   const [searchText, setSearchText] = useState('')
   const [loadedPages, setLoadedPages] = useState(1)
@@ -75,7 +75,7 @@ export function App() {
     loading: cacheLoading,
     error: cacheError,
     refresh: refreshCacheStats,
-  } = useCacheStats(activeTab === 'admin')
+  } = useCacheStats(bottomView === 'admin')
 
   const {
     selectedTrack,
@@ -112,6 +112,13 @@ export function App() {
   } = useWeights(refetchMatches)
 
   const setBuilder = useSetBuilder()
+  // Depend on the individual callbacks (stable across renders), not the
+  // `setBuilder` object, whose identity changes every render and would
+  // otherwise defeat memo() on TrackTable/MatchesPanel via the handlers below.
+  const {
+    addToPool: setBuilderAddToPool,
+    addToTracklist: setBuilderAddToTracklist,
+  } = setBuilder
 
   const [browseColumnVisibility, setBrowseColumnVisibility] =
     useState<Record<string, boolean>>(loadColumnVisibility)
@@ -181,14 +188,6 @@ export function App() {
     [selectTrack],
   )
 
-  const handleBrowseSelect = useCallback(
-    (track: Track) => {
-      handleSelectTrack(track)
-      setActiveTab('matches')
-    },
-    [handleSelectTrack],
-  )
-
   const handleUseAsSource = useCallback(
     (candidateId: number) => {
       if (!selectedTrack) {
@@ -232,20 +231,20 @@ export function App() {
     (candidateId: number) => {
       const track = allTracks.find((t) => t.id === candidateId)
       if (track) {
-        setBuilder.addToPool(track.id, track.title)
+        setBuilderAddToPool(track.id, track.title)
       }
     },
-    [allTracks, setBuilder],
+    [allTracks, setBuilderAddToPool],
   )
 
   const handleAddToTracklist = useCallback(
     (candidateId: number) => {
       const track = allTracks.find((t) => t.id === candidateId)
       if (track) {
-        setBuilder.addToTracklist(track.id, track.title)
+        setBuilderAddToTracklist(track.id, track.title)
       }
     },
-    [allTracks, setBuilder],
+    [allTracks, setBuilderAddToTracklist],
   )
 
   const handleAddSelectedToPool = useCallback(() => {
@@ -254,9 +253,9 @@ export function App() {
     }
     const track = allTracks.find((t) => t.id === selectedTrack.id)
     if (track) {
-      setBuilder.addToPool(track.id, track.title)
+      setBuilderAddToPool(track.id, track.title)
     }
-  }, [selectedTrack, allTracks, setBuilder])
+  }, [selectedTrack, allTracks, setBuilderAddToPool])
 
   const handleAddSelectedToTracklist = useCallback(() => {
     if (!selectedTrack) {
@@ -264,9 +263,9 @@ export function App() {
     }
     const track = allTracks.find((t) => t.id === selectedTrack.id)
     if (track) {
-      setBuilder.addToTracklist(track.id, track.title)
+      setBuilderAddToTracklist(track.id, track.title)
     }
-  }, [selectedTrack, allTracks, setBuilder])
+  }, [selectedTrack, allTracks, setBuilderAddToTracklist])
 
   const handleClearFilters = useCallback(() => {
     setCamelotCodes([])
@@ -287,49 +286,74 @@ export function App() {
   return (
     <AudioPlayerProvider>
       <div className="app-shell-v2">
-        <SearchPanel
-          allTracks={allTracks}
-          selectedTrack={selectedTrack}
-          selectTrack={handleSelectTrack}
-          clearSelectedTrack={clearSelectedTrack}
-          onSearchTextChange={setSearchText}
-          onAddToPool={handleAddSelectedToPool}
-          onAddToTracklist={handleAddSelectedToTracklist}
-          searchText={searchText}
+        <NavRail
+          bottomView={bottomView}
+          onSelectMatches={() => {
+            setBottomView('matches')
+            setDetailMatch(null)
+          }}
+          onSelectSet={() => setBottomView('set')}
+          onSelectAdmin={() => setBottomView('admin')}
+          setLabel={setTabLabel}
         />
 
-        <div className="tab-bar">
-          <button
-            className={`tab${activeTab === 'matches' ? ' active' : ''}`}
-            onClick={() => {
-              setActiveTab('matches')
-              setDetailMatch(null)
-            }}
+        <div className="top-region">
+          <div className="search-rail">
+            <SearchPanel
+              allTracks={allTracks}
+              selectedTrack={selectedTrack}
+              selectTrack={handleSelectTrack}
+              clearSelectedTrack={clearSelectedTrack}
+              onSearchTextChange={setSearchText}
+              onAddToPool={handleAddSelectedToPool}
+              onAddToTracklist={handleAddSelectedToTracklist}
+              searchText={searchText}
+              onTrackDrop={handleUseAsSource}
+            />
+            <FilterBar
+              camelotCodes={filters.camelotCodes}
+              bpm={filters.bpm}
+              bpmMin={filters.bpmMin}
+              bpmMax={filters.bpmMax}
+              setCamelotCodes={setCamelotCodes}
+              setBpm={setBpm}
+              setBpmMin={setBpmMin}
+              setBpmMax={setBpmMax}
+              configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
+              columnVisibility={browseColumnVisibility}
+              onToggleColumn={toggleBrowseColumn}
+              onClearFilters={handleClearFilters}
+            />
+          </div>
+          <div
+            className="browse-panel"
+            role="region"
+            aria-label="Browse tracks"
           >
-            Matches
-          </button>
-          <button
-            className={`tab${activeTab === 'browse' ? ' active' : ''}`}
-            onClick={() => setActiveTab('browse')}
-          >
-            Browse
-          </button>
-          <button
-            className={`tab${activeTab === 'admin' ? ' active' : ''}`}
-            onClick={() => setActiveTab('admin')}
-          >
-            Admin
-          </button>
-          <button
-            className={`tab${activeTab === 'set' ? ' active' : ''}`}
-            onClick={() => setActiveTab('set')}
-          >
-            {setTabLabel}
-          </button>
+            <div className="table-panel">
+              {traitsError && (
+                <p className="table-status table-status--error">
+                  Failed to load track traits — {traitsError}
+                </p>
+              )}
+              <TrackTable
+                tracks={browseTracks}
+                loading={collectionLoading}
+                selectedTrack={selectedTrack}
+                selectTrack={handleSelectTrack}
+                hasMore={!selectedTrack ? hasMorePages : undefined}
+                onLoadMore={!selectedTrack ? handleLoadMore : undefined}
+                error={tracksError}
+                columnVisibility={browseColumnVisibility}
+                onAddToPool={handleAddToPool}
+                onAddToTracklist={handleAddToTracklist}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="tab-content">
-          {activeTab === 'matches' &&
+        <div className="bottom-region">
+          {bottomView === 'matches' &&
             transitionChain.length > 0 &&
             selectedTrack && (
               <div className="transition-chain">
@@ -358,7 +382,7 @@ export function App() {
                 <span className="chain-current">{selectedTrack.title}</span>
               </div>
             )}
-          {activeTab === 'matches' && !detailMatch && (
+          {bottomView === 'matches' && !detailMatch && (
             <div className="table-panel">
               <MatchesPanel
                 selectedTrack={selectedTrack}
@@ -372,7 +396,7 @@ export function App() {
               />
             </div>
           )}
-          {activeTab === 'matches' && detailMatch && (
+          {bottomView === 'matches' && detailMatch && (
             <MatchDetail
               sourceTrack={selectedTrack}
               match={detailMatch}
@@ -383,42 +407,7 @@ export function App() {
               onAddToTracklist={handleAddToTracklist}
             />
           )}
-          {activeTab === 'browse' && (
-            <div className="table-panel">
-              <FilterBar
-                camelotCodes={filters.camelotCodes}
-                bpm={filters.bpm}
-                bpmMin={filters.bpmMin}
-                bpmMax={filters.bpmMax}
-                setCamelotCodes={setCamelotCodes}
-                setBpm={setBpm}
-                setBpmMin={setBpmMin}
-                setBpmMax={setBpmMax}
-                configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
-                columnVisibility={browseColumnVisibility}
-                onToggleColumn={toggleBrowseColumn}
-                onClearFilters={handleClearFilters}
-              />
-              {traitsError && (
-                <p className="table-status table-status--error">
-                  Failed to load track traits — {traitsError}
-                </p>
-              )}
-              <TrackTable
-                tracks={browseTracks}
-                loading={collectionLoading}
-                selectedTrack={selectedTrack}
-                selectTrack={handleBrowseSelect}
-                hasMore={!selectedTrack ? hasMorePages : undefined}
-                onLoadMore={!selectedTrack ? handleLoadMore : undefined}
-                error={tracksError}
-                columnVisibility={browseColumnVisibility}
-                onAddToPool={handleAddToPool}
-                onAddToTracklist={handleAddToTracklist}
-              />
-            </div>
-          )}
-          {activeTab === 'admin' && (
+          {bottomView === 'admin' && (
             <AdminDashboard
               stats={cacheStats}
               loading={cacheLoading}
@@ -436,7 +425,7 @@ export function App() {
               rawSum={rawSum}
             />
           )}
-          {activeTab === 'set' && (
+          {bottomView === 'set' && (
             <SetBuilder
               allTracks={allTracks}
               sets={setBuilder.sets}

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { SearchSuggestion, Track } from '../types'
 import { useTrackSearch } from '../hooks/useTrackSearch'
+import { TRACK_DRAG_MIME } from '../utils'
 
 interface Props {
   allTracks: Track[]
@@ -12,6 +13,7 @@ interface Props {
   onAddToPool?: () => void
   onAddToTracklist?: () => void
   searchText?: string
+  onTrackDrop?: (trackId: number) => void
 }
 
 export function SearchPanel({
@@ -24,10 +26,12 @@ export function SearchPanel({
   onAddToPool,
   onAddToTracklist,
   searchText,
+  onTrackDrop,
 }: Props) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
+  const [dropActive, setDropActive] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
 
@@ -113,7 +117,35 @@ export function SearchPanel({
   }
 
   return (
-    <div className="search-bar-wrapper" ref={containerRef}>
+    <div
+      className={`search-bar-wrapper${dropActive ? ' search-drop-active' : ''}`}
+      ref={containerRef}
+      onDragOver={(e) => {
+        if (!onTrackDrop || !e.dataTransfer?.types?.includes(TRACK_DRAG_MIME)) {
+          return
+        }
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+        setDropActive(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setDropActive(false)
+        }
+      }}
+      onDrop={(e) => {
+        setDropActive(false)
+        if (!onTrackDrop) {
+          return
+        }
+        const raw = e.dataTransfer?.getData?.(TRACK_DRAG_MIME)
+        const trackId = Number(raw)
+        if (raw && Number.isInteger(trackId)) {
+          e.preventDefault()
+          onTrackDrop(trackId)
+        }
+      }}
+    >
       <div className="search-input-container">
         <input
           type="text"

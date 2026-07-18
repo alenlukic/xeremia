@@ -14,6 +14,14 @@ export function cleanTitle(title: string): string {
   return dashParts.length > 1 ? dashParts.slice(1).join(' - ') : afterPrefix
 }
 
+/**
+ * Custom dataTransfer MIME type for dragging a track (payload: track id string).
+ * Distinct from the `text/plain` payloads used by column-header reorder and
+ * internal pool/tracklist row reorder, so cross-region track drags never
+ * collide with those.
+ */
+export const TRACK_DRAG_MIME = 'application/x-xeremia-track'
+
 export function formatFloat(value: number | null | undefined): string {
   if (value == null) {
     return '—'

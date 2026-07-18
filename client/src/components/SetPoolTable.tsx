@@ -14,6 +14,7 @@ import type {
   Track,
 } from '../types'
 import { cleanTitle } from '../utils/trackTitle'
+import { TRACK_DRAG_MIME } from '../utils'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { PlayButton } from './PlayButton'
 import { SortTierBar } from './SortTierBar'
@@ -818,6 +819,7 @@ export function SetPoolTable({
   )
   const [rowDragIndex, setRowDragIndex] = useState<number | null>(null)
   const [rowDropIndex, setRowDropIndex] = useState<number | null>(null)
+  const [externalDropActive, setExternalDropActive] = useState(false)
 
   const handleRowDragStart = useCallback((index: number) => {
     setRowDragIndex(index)
@@ -863,8 +865,38 @@ export function SetPoolTable({
     setRowDropIndex(null)
   }, [])
 
+  // External track drops (e.g. rows dragged from the browse table) carry the
+  // custom track MIME; internal row-reorder drags carry only text/plain and
+  // are ignored here. Row-level handlers skip preventDefault for external
+  // drags, so the events bubble up to this container.
   return (
-    <div className="set-pool">
+    <div
+      className={`set-pool${externalDropActive ? ' set-drop-active' : ''}`}
+      onDragOver={(e) => {
+        if (!e.dataTransfer?.types?.includes(TRACK_DRAG_MIME)) {
+          return
+        }
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+        setExternalDropActive(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setExternalDropActive(false)
+        }
+      }}
+      onDrop={(e) => {
+        setExternalDropActive(false)
+        const raw = e.dataTransfer?.getData?.(TRACK_DRAG_MIME)
+        const trackId = Number(raw)
+        if (!raw || !Number.isInteger(trackId)) {
+          return
+        }
+        e.preventDefault()
+        const track = allTracks.find((t) => t.id === trackId)
+        onAddTrack(trackId, track?.title)
+      }}
+    >
       <div className="set-pool-header">
         <h3 className="set-section-title">Pool ({pool.length})</h3>
         <div className="set-pool-search-wrapper">

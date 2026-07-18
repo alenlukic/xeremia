@@ -19,7 +19,7 @@ import {
   type Updater,
 } from '@tanstack/react-table'
 import type { Track, SearchSuggestion, TransitionMatch } from '../types'
-import { formatScore, formatOverallScore } from '../utils'
+import { formatScore, formatOverallScore, TRACK_DRAG_MIME } from '../utils'
 import { PlayButton } from './PlayButton'
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key'
@@ -549,6 +549,10 @@ export const MatchesPanel = memo(function MatchesPanel({
   )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
+    // Track-row drags are not droppable on column headers.
+    if (e.dataTransfer?.types?.includes(TRACK_DRAG_MIME)) {
+      return
+    }
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
   }, [])
@@ -743,6 +747,14 @@ export const MatchesPanel = memo(function MatchesPanel({
                 table.getRowModel().rows.map((row) => (
                   <tr
                     key={row.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(
+                        TRACK_DRAG_MIME,
+                        String(row.original.candidate_id),
+                      )
+                      e.dataTransfer.effectAllowed = 'copy'
+                    }}
                     style={loading ? { opacity: 0.6 } : undefined}
                   >
                     {row.getVisibleCells().map((cell) => (

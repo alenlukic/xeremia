@@ -60,15 +60,25 @@ body,
   overflow: hidden;
 }
 
-/* === Persistent Search Bar === */
+/* === Search Rail (search + browse toggle + filters in one compact row) === */
+.search-rail {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px var(--content-gutter);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  /* Above the browse overlay (z-60) so rail dropdowns render over it. */
+  position: relative;
+  z-index: 70;
+}
+
 .search-bar-wrapper {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 16px var(--content-gutter);
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  flex: 1;
+  min-width: 240px;
   overflow: visible;
 }
 
@@ -76,7 +86,27 @@ body,
   position: relative;
   flex: 1;
   min-width: 0;
-  max-width: 768px;
+}
+
+/* Compact variant of the browse FilterBar when it lives in the search rail. */
+.search-rail .filter-bar {
+  padding: 0;
+  border-bottom: none;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  /* Rail gap (12px) + 4px = 16px between "+ TL" and the filter controls. */
+  margin-left: 4px;
+}
+
+.search-rail .filter-label {
+  display: none;
+}
+
+/* Filter-bar gap (10px) + 6px = 16px between Clear Filters and Columns. */
+.search-rail .column-config-group {
+  margin-left: 6px;
 }
 
 .search-add-to-set-btn {
@@ -90,8 +120,8 @@ body,
 
 .search-input {
   width: 100%;
-  height: 48px;
-  padding: 10px 14px;
+  height: 34px;
+  padding: 6px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -149,14 +179,73 @@ body,
   color: var(--text-muted);
 }
 
-/* === Top-level Tabs === */
-.tab-bar {
+/* === Nav Rail === */
+.nav-rail {
   display: flex;
-  justify-content: center;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
+  align-items: center;
+  height: 48px;
   flex-shrink: 0;
   padding: 0 var(--content-gutter);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-rail .tab {
+  height: 100%;
+}
+
+.nav-rail-menu-wrapper {
+  margin-left: auto;
+  position: relative;
+}
+
+.nav-rail-menu-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 6px 10px;
+  transition: color var(--transition);
+}
+
+.nav-rail-menu-toggle:hover {
+  color: var(--text);
+}
+
+.nav-rail-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  min-width: 140px;
+  padding: 4px;
+}
+
+.nav-rail-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background var(--transition);
+}
+
+.nav-rail-menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.nav-rail-menu-item.active {
+  color: var(--accent);
 }
 
 .tab {
@@ -182,12 +271,45 @@ body,
   border-bottom-color: var(--accent);
 }
 
-/* === Tab Content === */
-.tab-content {
+/* === Viewport Regions (top 1/3 search+browse, bottom 2/3 active view) === */
+.top-region {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+
+.browse-panel {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.bottom-region {
+  flex: 2;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.browse-panel .table-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+/* === Drag-and-drop affordances === */
+.search-drop-active .search-input {
+  border-color: var(--accent);
+}
+
+.set-drop-active {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 
 /* === Table Panel (bordered content wrapper) === */
@@ -586,6 +708,7 @@ body,
 }
 
 .matches-table tbody tr {
+  cursor: grab;
   transition: background var(--transition);
 }
 
@@ -687,6 +810,7 @@ body,
   color: var(--text);
   border-color: var(--accent);
 }
+
 
 /* --- Transition chain breadcrumb --- */
 .transition-chain {
@@ -1977,6 +2101,20 @@ body,
   margin-bottom: 12px;
 }
 
+.set-back-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 6px 10px 6px 0;
+  transition: color var(--transition);
+}
+
+.set-back-btn:hover {
+  color: var(--text);
+}
+
 .set-sub-tab {
   padding: 8px 18px;
   background: none;
@@ -2259,10 +2397,9 @@ body,
 }
 
 .search-dual-actions .match-action-btn {
-  width: 64px;
-  height: 48px;
+  height: 34px;
   font-size: 12px;
-  padding: 4px 10px;
+  padding: 4px 12px;
 }
 
 /* --- Explorer --- */

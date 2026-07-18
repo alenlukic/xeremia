@@ -108,6 +108,9 @@ export function SetBuilder({
   const [newSetName, setNewSetName] = useState('')
   const [showNewInput, setShowNewInput] = useState(false)
   const [poolExpanded, setPoolExpanded] = useState(false)
+  // The set picker (dropdown + new/delete) and the workspace swap in place:
+  // picking a set shows the workspace; the back arrow returns to the picker.
+  const [pickerOpen, setPickerOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -128,6 +131,9 @@ export function SetBuilder({
     number | null | undefined
   >(undefined)
   if (pendingAdd !== prevPendingAdd || activeSetId !== prevActiveSetId) {
+    if (activeSetId !== prevActiveSetId && activeSetId != null) {
+      setPickerOpen(false)
+    }
     setPrevPendingAdd(pendingAdd)
     setPrevActiveSetId(activeSetId)
     if (pendingAdd && !activeSetId) {
@@ -210,82 +216,92 @@ export function SetBuilder({
     )
   }
 
+  const showPicker = pickerOpen || !activeSet
+
   return (
     <div className="set-builder">
-      <div className="set-header">
-        <div className="set-selector">
-          {sets.length > 0 && (
-            <select
-              className="set-select"
-              value={activeSetId ?? ''}
-              onChange={(e) => {
-                if (e.target.value === '') {
-                  return
-                }
-                const val = Number(e.target.value)
-                if (Number.isInteger(val)) {
-                  selectSet(val)
-                }
-              }}
-            >
-              <option value="" disabled>
-                Select a set…
-              </option>
-              {sets.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} (P:{s.pool_count} T:{s.tracklist_count})
+      {showPicker && (
+        <div className="set-header">
+          <div className="set-selector">
+            {sets.length > 0 && (
+              <select
+                className="set-select"
+                // While the picker is open (via the back arrow) the placeholder
+                // is shown instead of the active set, so re-picking the current
+                // set still fires onChange and re-renders the workspace.
+                value={pickerOpen ? '' : (activeSetId ?? '')}
+                onChange={(e) => {
+                  if (e.target.value === '') {
+                    return
+                  }
+                  const val = Number(e.target.value)
+                  if (Number.isInteger(val)) {
+                    selectSet(val)
+                    // Re-picking the current set doesn't change activeSetId,
+                    // so close the picker here rather than via the id tracker.
+                    setPickerOpen(false)
+                  }
+                }}
+              >
+                <option value="" disabled>
+                  Select a set…
                 </option>
-              ))}
-            </select>
-          )}
-          <button
-            className="set-create-btn"
-            onClick={() => setShowNewInput(true)}
-          >
-            + New
-          </button>
-          {activeSetId && (
+                {sets.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} (P:{s.pool_count} T:{s.tracklist_count})
+                  </option>
+                ))}
+              </select>
+            )}
             <button
-              className="set-delete-btn"
-              onClick={() => deleteSet(activeSetId)}
-              title="Delete set"
+              className="set-create-btn"
+              onClick={() => setShowNewInput(true)}
             >
-              ×
+              + New
             </button>
+            {activeSetId && (
+              <button
+                className="set-delete-btn"
+                onClick={() => deleteSet(activeSetId)}
+                title="Delete set"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {showNewInput && (
+            <div className="set-new-input-row">
+              {pendingAdd && (
+                <span className="set-pending-hint">
+                  Create a set to add "{pendingAdd.title}" to {pendingAdd.type}
+                </span>
+              )}
+              <input
+                ref={inputRef}
+                className="set-name-input"
+                placeholder="Set name…"
+                value={newSetName}
+                onChange={(e) => setNewSetName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleCreateSet()
+                  }
+                  if (e.key === 'Escape') {
+                    handleCancelCreate()
+                  }
+                }}
+              />
+              <button className="set-create-confirm" onClick={handleCreateSet}>
+                Create
+              </button>
+              <button className="set-action-btn" onClick={handleCancelCreate}>
+                Cancel
+              </button>
+            </div>
           )}
         </div>
-
-        {showNewInput && (
-          <div className="set-new-input-row">
-            {pendingAdd && (
-              <span className="set-pending-hint">
-                Create a set to add "{pendingAdd.title}" to {pendingAdd.type}
-              </span>
-            )}
-            <input
-              ref={inputRef}
-              className="set-name-input"
-              placeholder="Set name…"
-              value={newSetName}
-              onChange={(e) => setNewSetName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleCreateSet()
-                }
-                if (e.key === 'Escape') {
-                  handleCancelCreate()
-                }
-              }}
-            />
-            <button className="set-create-confirm" onClick={handleCreateSet}>
-              Create
-            </button>
-            <button className="set-action-btn" onClick={handleCancelCreate}>
-              Cancel
-            </button>
-          </div>
-        )}
-      </div>
+      )}
 
       {error && (
         <div className="set-toast" role="alert">
@@ -302,9 +318,17 @@ export function SetBuilder({
 
       {!activeSet && loading && <p className="table-status">Loading set…</p>}
 
-      {activeSet && (
+      {activeSet && !showPicker && (
         <>
           <div className="set-sub-tabs">
+            <button
+              className="set-back-btn"
+              aria-label="Choose set"
+              title="Choose set"
+              onClick={() => setPickerOpen(true)}
+            >
+              ←
+            </button>
             <button
               className={`set-sub-tab${subTab === 'tracks' ? ' active' : ''}`}
               onClick={() => setSubTab('tracks')}

@@ -227,7 +227,7 @@ describe('SetBuilder', () => {
   })
 
   describe('set selector', () => {
-    it('renders set selector when sets exist', () => {
+    it('hides the selector while a set is active and reopens it via the back arrow', async () => {
       const sets = [
         makeSetSummary({ id: 1, name: 'Set A' }),
         makeSetSummary({ id: 2, name: 'Set B' }),
@@ -240,11 +240,20 @@ describe('SetBuilder', () => {
           activeSet={makeHydratedSet()}
         />,
       )
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Choose set' }))
       const select = screen.getByRole('combobox') as HTMLSelectElement
-      expect(select.value).toBe('1')
+      // The placeholder is shown (not the active set) so re-selecting the
+      // current set still fires a change event.
+      expect(select.value).toBe('')
+      // The workspace is hidden while the picker is open.
+      expect(
+        screen.queryByRole('button', { name: 'Tracks' }),
+      ).not.toBeInTheDocument()
     })
 
-    it('calls selectSet when dropdown changes', async () => {
+    it('re-selecting the current set from the picker reopens the workspace', async () => {
       const selectSet = vi.fn()
       const sets = [
         makeSetSummary({ id: 1, name: 'Set A' }),
@@ -259,8 +268,33 @@ describe('SetBuilder', () => {
           selectSet={selectSet}
         />,
       )
+      await userEvent.click(screen.getByRole('button', { name: 'Choose set' }))
+      await userEvent.selectOptions(screen.getByRole('combobox'), '1')
+      expect(selectSet).toHaveBeenCalledWith(1)
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Tracks' })).toBeInTheDocument()
+    })
+
+    it('calls selectSet and closes the picker when dropdown changes', async () => {
+      const selectSet = vi.fn()
+      const sets = [
+        makeSetSummary({ id: 1, name: 'Set A' }),
+        makeSetSummary({ id: 2, name: 'Set B' }),
+      ]
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          sets={sets}
+          activeSetId={1}
+          activeSet={makeHydratedSet()}
+          selectSet={selectSet}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Choose set' }))
       await userEvent.selectOptions(screen.getByRole('combobox'), '2')
       expect(selectSet).toHaveBeenCalledWith(2)
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Tracks' })).toBeInTheDocument()
     })
   })
 
@@ -351,6 +385,7 @@ describe('SetBuilder', () => {
           deleteSet={deleteSet}
         />,
       )
+      await userEvent.click(screen.getByRole('button', { name: 'Choose set' }))
       await userEvent.click(screen.getByTitle('Delete set'))
       expect(deleteSet).toHaveBeenCalledWith(1)
     })
