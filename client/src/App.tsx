@@ -62,7 +62,6 @@ export function App() {
   } = useCollectionCache()
 
   const [bottomView, setBottomView] = useState<BottomView>('matches')
-  const [browseOpen, setBrowseOpen] = useState(false)
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
   const [searchText, setSearchText] = useState('')
   const [loadedPages, setLoadedPages] = useState(1)
@@ -113,6 +112,13 @@ export function App() {
   } = useWeights(refetchMatches)
 
   const setBuilder = useSetBuilder()
+  // Depend on the individual callbacks (stable across renders), not the
+  // `setBuilder` object, whose identity changes every render and would
+  // otherwise defeat memo() on TrackTable/MatchesPanel via the handlers below.
+  const {
+    addToPool: setBuilderAddToPool,
+    addToTracklist: setBuilderAddToTracklist,
+  } = setBuilder
 
   const [browseColumnVisibility, setBrowseColumnVisibility] =
     useState<Record<string, boolean>>(loadColumnVisibility)
@@ -225,20 +231,20 @@ export function App() {
     (candidateId: number) => {
       const track = allTracks.find((t) => t.id === candidateId)
       if (track) {
-        setBuilder.addToPool(track.id, track.title)
+        setBuilderAddToPool(track.id, track.title)
       }
     },
-    [allTracks, setBuilder],
+    [allTracks, setBuilderAddToPool],
   )
 
   const handleAddToTracklist = useCallback(
     (candidateId: number) => {
       const track = allTracks.find((t) => t.id === candidateId)
       if (track) {
-        setBuilder.addToTracklist(track.id, track.title)
+        setBuilderAddToTracklist(track.id, track.title)
       }
     },
-    [allTracks, setBuilder],
+    [allTracks, setBuilderAddToTracklist],
   )
 
   const handleAddSelectedToPool = useCallback(() => {
@@ -247,9 +253,9 @@ export function App() {
     }
     const track = allTracks.find((t) => t.id === selectedTrack.id)
     if (track) {
-      setBuilder.addToPool(track.id, track.title)
+      setBuilderAddToPool(track.id, track.title)
     }
-  }, [selectedTrack, allTracks, setBuilder])
+  }, [selectedTrack, allTracks, setBuilderAddToPool])
 
   const handleAddSelectedToTracklist = useCallback(() => {
     if (!selectedTrack) {
@@ -257,9 +263,9 @@ export function App() {
     }
     const track = allTracks.find((t) => t.id === selectedTrack.id)
     if (track) {
-      setBuilder.addToTracklist(track.id, track.title)
+      setBuilderAddToTracklist(track.id, track.title)
     }
-  }, [selectedTrack, allTracks, setBuilder])
+  }, [selectedTrack, allTracks, setBuilderAddToTracklist])
 
   const handleClearFilters = useCallback(() => {
     setCamelotCodes([])
@@ -267,21 +273,6 @@ export function App() {
     setBpmMax(undefined)
     setSearchText('')
   }, [setCamelotCodes, setBpmMin, setBpmMax])
-
-  // Close the browse overlay on Escape, unless a nested dropdown already
-  // consumed the key (FilterBar marks those events via preventDefault).
-  useEffect(() => {
-    if (!browseOpen) {
-      return
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !e.defaultPrevented) {
-        setBrowseOpen(false)
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [browseOpen])
 
   const setTabLabel = useMemo(() => {
     if (setBuilder.activeSet) {
@@ -317,51 +308,47 @@ export function App() {
               onAddToPool={handleAddSelectedToPool}
               onAddToTracklist={handleAddSelectedToTracklist}
               searchText={searchText}
-              browseOpen={browseOpen}
-              onToggleBrowse={() => setBrowseOpen((prev) => !prev)}
               onTrackDrop={handleUseAsSource}
             />
-            {browseOpen && (
-              <FilterBar
-                camelotCodes={filters.camelotCodes}
-                bpm={filters.bpm}
-                bpmMin={filters.bpmMin}
-                bpmMax={filters.bpmMax}
-                setCamelotCodes={setCamelotCodes}
-                setBpm={setBpm}
-                setBpmMin={setBpmMin}
-                setBpmMax={setBpmMax}
-                configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
-                columnVisibility={browseColumnVisibility}
-                onToggleColumn={toggleBrowseColumn}
-                onClearFilters={handleClearFilters}
-              />
-            )}
+            <FilterBar
+              camelotCodes={filters.camelotCodes}
+              bpm={filters.bpm}
+              bpmMin={filters.bpmMin}
+              bpmMax={filters.bpmMax}
+              setCamelotCodes={setCamelotCodes}
+              setBpm={setBpm}
+              setBpmMin={setBpmMin}
+              setBpmMax={setBpmMax}
+              configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
+              columnVisibility={browseColumnVisibility}
+              onToggleColumn={toggleBrowseColumn}
+              onClearFilters={handleClearFilters}
+            />
           </div>
-          <div className="top-region-body">
-            {browseOpen && (
-              <div className="browse-overlay" role="region" aria-label="Browse tracks">
-                <div className="table-panel">
-                  {traitsError && (
-                    <p className="table-status table-status--error">
-                      Failed to load track traits — {traitsError}
-                    </p>
-                  )}
-                  <TrackTable
-                    tracks={browseTracks}
-                    loading={collectionLoading}
-                    selectedTrack={selectedTrack}
-                    selectTrack={handleSelectTrack}
-                    hasMore={!selectedTrack ? hasMorePages : undefined}
-                    onLoadMore={!selectedTrack ? handleLoadMore : undefined}
-                    error={tracksError}
-                    columnVisibility={browseColumnVisibility}
-                    onAddToPool={handleAddToPool}
-                    onAddToTracklist={handleAddToTracklist}
-                  />
-                </div>
-              </div>
-            )}
+          <div
+            className="browse-panel"
+            role="region"
+            aria-label="Browse tracks"
+          >
+            <div className="table-panel">
+              {traitsError && (
+                <p className="table-status table-status--error">
+                  Failed to load track traits — {traitsError}
+                </p>
+              )}
+              <TrackTable
+                tracks={browseTracks}
+                loading={collectionLoading}
+                selectedTrack={selectedTrack}
+                selectTrack={handleSelectTrack}
+                hasMore={!selectedTrack ? hasMorePages : undefined}
+                onLoadMore={!selectedTrack ? handleLoadMore : undefined}
+                error={tracksError}
+                columnVisibility={browseColumnVisibility}
+                onAddToPool={handleAddToPool}
+                onAddToTracklist={handleAddToTracklist}
+              />
+            </div>
           </div>
         </div>
 

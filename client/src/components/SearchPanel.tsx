@@ -13,8 +13,6 @@ interface Props {
   onAddToPool?: () => void
   onAddToTracklist?: () => void
   searchText?: string
-  browseOpen?: boolean
-  onToggleBrowse?: () => void
   onTrackDrop?: (trackId: number) => void
 }
 
@@ -28,8 +26,6 @@ export function SearchPanel({
   onAddToPool,
   onAddToTracklist,
   searchText,
-  browseOpen,
-  onToggleBrowse,
   onTrackDrop,
 }: Props) {
   const [query, setQuery] = useState('')
@@ -116,9 +112,6 @@ export function SearchPanel({
       e.preventDefault()
       handleSelect(suggestions[activeIdx])
     } else if (e.key === 'Escape') {
-      // Consume the key so the browse overlay (which skips defaultPrevented
-      // events) stays open when Escape just dismisses the suggestions.
-      e.preventDefault()
       setOpen(false)
     }
   }
@@ -201,15 +194,6 @@ export function SearchPanel({
           </ul>
         )}
       </div>
-      {onToggleBrowse && (
-        <button
-          className={`match-action-btn browse-toggle-btn${browseOpen ? ' active' : ''}`}
-          aria-pressed={browseOpen}
-          onClick={onToggleBrowse}
-        >
-          Browse
-        </button>
-      )}
       {onAddToPool || onAddToTracklist ? (
         <div className="set-dual-actions search-dual-actions">
           {onAddToPool && (

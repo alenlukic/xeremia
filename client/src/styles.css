@@ -77,7 +77,7 @@ body,
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 1 480px;
+  flex: 1;
   min-width: 240px;
   overflow: visible;
 }
@@ -95,12 +95,18 @@ body,
   gap: 10px;
   align-items: center;
   flex-wrap: nowrap;
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 auto;
+  /* Rail gap (12px) + 4px = 16px between "+ TL" and the filter controls. */
+  margin-left: 4px;
 }
 
 .search-rail .filter-label {
   display: none;
+}
+
+/* Filter-bar gap (10px) + 6px = 16px between Clear Filters and Columns. */
+.search-rail .column-config-group {
+  margin-left: 6px;
 }
 
 .search-add-to-set-btn {
@@ -275,10 +281,12 @@ body,
   border-bottom: 1px solid var(--border);
 }
 
-.top-region-body {
+.browse-panel {
   flex: 1;
   min-height: 0;
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .bottom-region {
@@ -289,18 +297,7 @@ body,
   overflow: hidden;
 }
 
-/* === Browse Overlay (confined to the top region) === */
-.browse-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 60;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.browse-overlay .table-panel {
+.browse-panel .table-panel {
   flex: 1;
   min-height: 0;
 }
@@ -814,16 +811,6 @@ body,
   border-color: var(--accent);
 }
 
-.browse-toggle-btn {
-  flex-shrink: 0;
-  font-size: 13px;
-  padding: 7px 14px;
-}
-
-.browse-toggle-btn.active {
-  color: var(--accent);
-  border-color: var(--accent);
-}
 
 /* --- Transition chain breadcrumb --- */
 .transition-chain {
@@ -2112,6 +2099,20 @@ body,
   gap: 0;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
+}
+
+.set-back-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 6px 10px 6px 0;
+  transition: color var(--transition);
+}
+
+.set-back-btn:hover {
+  color: var(--text);
 }
 
 .set-sub-tab {

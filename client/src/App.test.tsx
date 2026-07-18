@@ -158,10 +158,11 @@ function getRowCount(): number {
   return document.querySelectorAll('.track-table tbody tr').length
 }
 
+// The browse table is always visible in the top region; rendering the app is
+// all it takes. Kept as a helper so browse-centric tests read naturally.
 async function openBrowseTab() {
-  render(<App />)
   await act(async () => {
-    screen.getByRole('button', { name: 'Browse' }).click()
+    render(<App />)
   })
 }
 
@@ -341,26 +342,6 @@ describe('Browse infinite scroll', () => {
     })
   })
 
-  it('preserves loaded progress when the browse overlay is closed and reopened', async () => {
-    await openBrowseTab()
-
-    await act(async () => {
-      triggerLoadMore()
-    })
-    expect(getRowCount()).toBe(500)
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
-    expect(getRowCount()).toBe(0)
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
-
-    expect(getRowCount()).toBe(500)
-  })
-
   it('restores loaded progress when returning to a previous filter key', async () => {
     await openBrowseTab()
 
@@ -427,9 +408,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     await act(async () => {
       screen.getByText('Track 1').click()
@@ -461,9 +439,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     await act(async () => {
       screen.getByText('Track 1').click()
@@ -487,9 +462,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     expect(screen.getByText(/Failed to load tracks/)).toBeInTheDocument()
     expect(screen.getByText(/Failed to fetch tracks: 503/)).toBeInTheDocument()
@@ -507,9 +479,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     expect(screen.getByText('No tracks found')).toBeInTheDocument()
     expect(screen.queryByText(/Failed to load tracks/)).not.toBeInTheDocument()
@@ -526,9 +495,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     expect(screen.getByText(/Failed to load track traits/)).toBeInTheDocument()
     expect(
@@ -674,10 +640,6 @@ function makeTransitionMatch(
 }
 
 async function selectTrackViaBrowse(trackTitle: string) {
-  await act(async () => {
-    screen.getByRole('button', { name: 'Browse' }).click()
-  })
-
   const row = screen.getByText(trackTitle).closest('tr')!
   await act(async () => {
     row.click()
@@ -807,9 +769,6 @@ describe('Browse column visibility localStorage round-trip', () => {
     localStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false }))
 
     const { unmount } = render(<App />)
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     const headers = () =>
       screen.getAllByRole('columnheader').map((h) => h.textContent)
@@ -832,9 +791,6 @@ describe('Browse column visibility localStorage round-trip', () => {
     unmount()
 
     render(<App />)
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     expect(headers()).toContain('BPM')
 
@@ -845,9 +801,6 @@ describe('Browse column visibility localStorage round-trip', () => {
 
   it('starts with all columns visible when localStorage has no saved state', async () => {
     render(<App />)
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     const headers = screen
       .getAllByRole('columnheader')
@@ -877,9 +830,6 @@ describe('Browse column visibility – invalid localStorage values', () => {
       localStorage.setItem(COL_VIS_KEY, stored)
 
       render(<App />)
-      await act(async () => {
-        screen.getByRole('button', { name: 'Browse' }).click()
-      })
 
       const headers = screen
         .getAllByRole('columnheader')
@@ -897,9 +847,6 @@ describe('Browse column visibility – invalid localStorage values', () => {
     )
 
     render(<App />)
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
 
     const headers = screen
       .getAllByRole('columnheader')
@@ -1022,62 +969,16 @@ describe('Nav rail and Admin menu', () => {
   })
 })
 
-describe('Browse overlay', () => {
-  it('opens over the top region while the bottom view stays mounted', async () => {
+describe('Browse panel', () => {
+  it('is always visible in the top region alongside the bottom view', async () => {
     await openBrowseTab()
 
-    expect(document.querySelector('.browse-overlay')).toBeInTheDocument()
+    expect(document.querySelector('.browse-panel')).toBeInTheDocument()
     expect(getRowCount()).toBe(250)
     expect(
       screen.getByText('Select a track to see matches'),
     ).toBeInTheDocument()
-  })
-
-  it('closes when the Browse toggle is clicked again', async () => {
-    await openBrowseTab()
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
-    expect(document.querySelector('.browse-overlay')).not.toBeInTheDocument()
-  })
-
-  it('shows the filter controls in the search rail only while browsing', async () => {
-    await openBrowseTab()
     expect(screen.getByRole('button', { name: /All keys/ })).toBeInTheDocument()
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
-    expect(
-      screen.queryByRole('button', { name: /All keys/ }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('closes on Escape', async () => {
-    await openBrowseTab()
-
-    await act(async () => {
-      fireEvent.keyDown(document.body, { key: 'Escape' })
-    })
-    expect(document.querySelector('.browse-overlay')).not.toBeInTheDocument()
-  })
-
-  it('keeps the overlay open when Escape closes the camelot dropdown', async () => {
-    await openBrowseTab()
-
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click()
-    })
-    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument()
-
-    await act(async () => {
-      fireEvent.keyDown(document.body, { key: 'Escape' })
-    })
-    expect(
-      screen.queryByRole('button', { name: '03A' }),
-    ).not.toBeInTheDocument()
-    expect(document.querySelector('.browse-overlay')).toBeInTheDocument()
   })
 
   it('selecting a browse row loads matches without leaving the Set view', async () => {
@@ -1092,9 +993,6 @@ describe('Browse overlay', () => {
     })
     expect(screen.getByText(/No sets yet/)).toBeInTheDocument()
 
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
     const row = screen.getByText('Track 1').closest('tr')!
     await act(async () => {
       row.click()
@@ -1149,9 +1047,6 @@ describe('Cross-region drag and drop', () => {
     })
     await waitFor(() => {
       expect(document.querySelector('.set-tracklist')).toBeInTheDocument()
-    })
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
     })
     return httpMod
   }
