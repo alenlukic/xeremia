@@ -15,13 +15,18 @@ import type {
 } from '../types'
 import { cleanTitle } from '../utils/trackTitle'
 import { useResizableColumns } from '../hooks/useResizableColumns'
-import { TRACK_DRAG_MIME } from '../utils'
+import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { PlayButton } from './PlayButton'
 import { SortTierBar } from './SortTierBar'
 import type { SortDescriptor, SortColumn } from './SortTierBar'
 
 type PoolTab = 'all' | 'groups' | number
+
+type SubgroupMemberAction = (
+  subgroupId: number,
+  poolEntryId: number,
+) => Promise<boolean>
 
 const POOL_SORT_COLUMNS: SortColumn[] = [
   { id: 'insertion_order', label: '#' },
@@ -54,29 +59,23 @@ interface Props {
   onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
   onDeleteSubgroup: (subgroupId: number) => Promise<boolean>
   onReorderSubgroups: (subgroupIds: number[]) => Promise<boolean>
-  onAddSubgroupMember: (
-    subgroupId: number,
-    poolEntryId: number,
-  ) => Promise<boolean>
-  onRemoveSubgroupMember: (
-    subgroupId: number,
-    poolEntryId: number,
-  ) => Promise<boolean>
+  onAddSubgroupMember: SubgroupMemberAction
+  onRemoveSubgroupMember: SubgroupMemberAction
 }
 
 function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
-  if (col === 'title') {
-    return (a.track?.title ?? '').localeCompare(b.track?.title ?? '')
+  switch (col) {
+    case 'title':
+      return (a.track?.title ?? '').localeCompare(b.track?.title ?? '')
+    case 'bpm':
+      return (a.track?.bpm ?? 0) - (b.track?.bpm ?? 0)
+    case 'camelot_code':
+      return (a.track?.camelot_code ?? '').localeCompare(
+        b.track?.camelot_code ?? '',
+      )
+    default:
+      return a.insertion_order - b.insertion_order
   }
-  if (col === 'bpm') {
-    return (a.track?.bpm ?? 0) - (b.track?.bpm ?? 0)
-  }
-  if (col === 'camelot_code') {
-    return (a.track?.camelot_code ?? '').localeCompare(
-      b.track?.camelot_code ?? '',
-    )
-  }
-  return a.insertion_order - b.insertion_order
 }
 
 function sortEntries(
@@ -94,6 +93,25 @@ function sortEntries(
   })
 }
 
+function groupMembershipIds(
+  memberships: PoolSubgroupMembership[],
+  key: (m: PoolSubgroupMembership) => number,
+  value: (m: PoolSubgroupMembership) => number,
+): Map<number, Set<number>> {
+  const map = new Map<number, Set<number>>()
+
+  for (const m of memberships) {
+    let ids = map.get(key(m))
+    if (!ids) {
+      ids = new Set()
+      map.set(key(m), ids)
+    }
+    ids.add(value(m))
+  }
+
+  return map
+}
+
 function SubgroupChips({
   entry,
   subgroups,
@@ -104,14 +122,8 @@ function SubgroupChips({
   entry: PoolEntry
   subgroups: PoolSubgroup[]
   memberSubgroupIds: Set<number>
-  onAddSubgroupMember: (
-    subgroupId: number,
-    poolEntryId: number,
-  ) => Promise<boolean>
-  onRemoveSubgroupMember: (
-    subgroupId: number,
-    poolEntryId: number,
-  ) => Promise<boolean>
+  onAddSubgroupMember: SubgroupMemberAction
+  onRemoveSubgroupMember: SubgroupMemberAction
 }) {
   const handleToggle = useCallback(
     (sgId: number) => {
@@ -159,14 +171,8 @@ function PoolRow({
   onMoveToTracklist: (trackId: number) => void
   subgroups: PoolSubgroup[]
   memberSubgroupIds: Set<number>
-  onAddSubgroupMember: (
-    subgroupId: number,
-    poolEntryId: number,
-  ) => Promise<boolean>
-  onRemoveSubgroupMember: (
-    subgroupId: number,
-    poolEntryId: number,
-  ) => Promise<boolean>
+  onAddSubgroupMember: SubgroupMemberAction
+  onRemoveSubgroupMember: SubgroupMemberAction
   reorder?: RowReorderProps
 }) {
   const title = cleanTitle(entry.track, entry.track_id)
@@ -187,8 +193,12 @@ function PoolRow({
           reorder.onDragStart(reorder.index)
         }
       }}
-      onDragOver={reorder ? (e) => reorder.onDragOver(reorder.index, e) : undefined}
-      onDragLeave={reorder ? () => reorder.onDragLeave(reorder.index) : undefined}
+      onDragOver={
+        reorder ? (e) => reorder.onDragOver(reorder.index, e) : undefined
+      }
+      onDragLeave={
+        reorder ? () => reorder.onDragLeave(reorder.index) : undefined
+      }
       onDrop={reorder ? (e) => reorder.onDrop(reorder.index, e) : undefined}
       onDragEnd={reorder ? () => reorder.onDragEnd() : undefined}
     >
@@ -573,14 +583,8 @@ function SubgroupSection({
   index: number
   onRemove: (trackId: number) => void
   onMoveToTracklist: (trackId: number) => void
-  onAddSubgroupMember: (
-    subgroupId: number,
-    poolEntryId: number,
-  ) => Promise<boolean>
-  onRemoveSubgroupMember: (
-    subgroupId: number,
-    poolEntryId: number,
-  ) => Promise<boolean>
+  onAddSubgroupMember: SubgroupMemberAction
+  onRemoveSubgroupMember: SubgroupMemberAction
   colWidths?: Record<string, number>
   beginResize?: (colId: string, e: React.MouseEvent) => void
 }) {
@@ -592,6 +596,9 @@ function SubgroupSection({
     isDragging,
   } = useDraggable({
     id: `section-${subgroup.id}`,
+    // dnd-kit's types don't admit undefined here, but passing it is the only
+    // way to suppress the default role="button"/tabIndex on the header, which
+    // would otherwise hijack keyboard focus for a mouse-only drag affordance.
     attributes: {
       role: undefined as unknown as string,
       tabIndex: undefined as unknown as number,
@@ -718,31 +725,25 @@ export function SetPoolTable({
     }
   }, [pool, onAddSubgroupMember])
 
-  const membershipByEntry = useMemo(() => {
-    const map = new Map<number, Set<number>>()
-    for (const m of subgroupMemberships) {
-      let s = map.get(m.pool_entry_id)
-      if (!s) {
-        s = new Set()
-        map.set(m.pool_entry_id, s)
-      }
-      s.add(m.subgroup_id)
-    }
-    return map
-  }, [subgroupMemberships])
+  const membershipByEntry = useMemo(
+    () =>
+      groupMembershipIds(
+        subgroupMemberships,
+        (m) => m.pool_entry_id,
+        (m) => m.subgroup_id,
+      ),
+    [subgroupMemberships],
+  )
 
-  const memberEntriesBySubgroup = useMemo(() => {
-    const map = new Map<number, Set<number>>()
-    for (const m of subgroupMemberships) {
-      let s = map.get(m.subgroup_id)
-      if (!s) {
-        s = new Set()
-        map.set(m.subgroup_id, s)
-      }
-      s.add(m.pool_entry_id)
-    }
-    return map
-  }, [subgroupMemberships])
+  const memberEntriesBySubgroup = useMemo(
+    () =>
+      groupMembershipIds(
+        subgroupMemberships,
+        (m) => m.subgroup_id,
+        (m) => m.pool_entry_id,
+      ),
+    [subgroupMemberships],
+  )
 
   const memberCounts = useMemo(() => {
     const map = new Map<number, number>()
@@ -857,7 +858,15 @@ export function SetPoolTable({
   )
   const [rowDragIndex, setRowDragIndex] = useState<number | null>(null)
   const [rowDropIndex, setRowDropIndex] = useState<number | null>(null)
-  const [externalDropActive, setExternalDropActive] = useState(false)
+
+  const handleExternalDrop = useCallback(
+    (trackId: number) => {
+      const track = allTracks.find((t) => t.id === trackId)
+      onAddTrack(trackId, track?.title)
+    },
+    [allTracks, onAddTrack],
+  )
+  const { dropActive, dropHandlers } = useExternalTrackDrop(handleExternalDrop)
 
   const handleRowDragStart = useCallback((index: number) => {
     setRowDragIndex(index)
@@ -903,37 +912,10 @@ export function SetPoolTable({
     setRowDropIndex(null)
   }, [])
 
-  // External track drops (e.g. rows dragged from the browse table) carry the
-  // custom track MIME; internal row-reorder drags carry only text/plain and
-  // are ignored here. Row-level handlers skip preventDefault for external
-  // drags, so the events bubble up to this container.
   return (
     <div
-      className={`set-pool${externalDropActive ? ' set-drop-active' : ''}`}
-      onDragOver={(e) => {
-        if (!e.dataTransfer?.types?.includes(TRACK_DRAG_MIME)) {
-          return
-        }
-        e.preventDefault()
-        e.dataTransfer.dropEffect = 'copy'
-        setExternalDropActive(true)
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setExternalDropActive(false)
-        }
-      }}
-      onDrop={(e) => {
-        setExternalDropActive(false)
-        const raw = e.dataTransfer?.getData?.(TRACK_DRAG_MIME)
-        const trackId = Number(raw)
-        if (!raw || !Number.isInteger(trackId)) {
-          return
-        }
-        e.preventDefault()
-        const track = allTracks.find((t) => t.id === trackId)
-        onAddTrack(trackId, track?.title)
-      }}
+      className={`set-pool${dropActive ? ' set-drop-active' : ''}`}
+      {...dropHandlers}
     >
       <div className="set-pool-header">
         <h3 className="set-section-title">Pool ({pool.length})</h3>

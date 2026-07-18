@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import type { SearchSuggestion, Track } from '../types'
 import { useTrackSearch } from '../hooks/useTrackSearch'
-import { TRACK_DRAG_MIME } from '../utils'
+import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
+import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 
 interface Props {
   allTracks: Track[]
@@ -31,9 +32,9 @@ export function SearchPanel({
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
-  const [dropActive, setDropActive] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
+  const { dropActive, dropHandlers } = useExternalTrackDrop(onTrackDrop)
 
   // Mirror `selectedTrack` into the query input and clear local state when the
   // parent resets `searchText`. Adjusting during render (vs. in effects) avoids
@@ -80,18 +81,7 @@ export function SearchPanel({
     [clearSelectedTrack, onSearchTextChange, search, clear],
   )
 
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  useDismissOnOutsideClick(containerRef, open, () => setOpen(false))
 
   function handleSelect(suggestion: SearchSuggestion) {
     selectTrack(suggestion)
@@ -120,31 +110,7 @@ export function SearchPanel({
     <div
       className={`search-bar-wrapper${dropActive ? ' search-drop-active' : ''}`}
       ref={containerRef}
-      onDragOver={(e) => {
-        if (!onTrackDrop || !e.dataTransfer?.types?.includes(TRACK_DRAG_MIME)) {
-          return
-        }
-        e.preventDefault()
-        e.dataTransfer.dropEffect = 'copy'
-        setDropActive(true)
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setDropActive(false)
-        }
-      }}
-      onDrop={(e) => {
-        setDropActive(false)
-        if (!onTrackDrop) {
-          return
-        }
-        const raw = e.dataTransfer?.getData?.(TRACK_DRAG_MIME)
-        const trackId = Number(raw)
-        if (raw && Number.isInteger(trackId)) {
-          e.preventDefault()
-          onTrackDrop(trackId)
-        }
-      }}
+      {...dropHandlers}
     >
       <div className="search-input-container">
         <input

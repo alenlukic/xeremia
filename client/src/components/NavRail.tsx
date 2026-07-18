@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 
 export type BottomView = 'matches' | 'set' | 'admin'
 
@@ -20,14 +21,11 @@ export function NavRail({
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
+
   useEffect(() => {
     if (!menuOpen) {
       return
-    }
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
     }
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
@@ -35,12 +33,8 @@ export function NavRail({
         setMenuOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
     document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [menuOpen])
 
   return (

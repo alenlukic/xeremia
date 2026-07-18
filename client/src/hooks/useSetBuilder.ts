@@ -313,6 +313,30 @@ export function useSetBuilder() {
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
+  // Shared skeleton for the boolean subgroup mutations below: no-op without
+  // an active set, rehydrate on success, surface a friendly error on failure.
+  const runSubgroupMutation = useCallback(
+    async (
+      mutate: (setId: number) => Promise<unknown>,
+      failureMessage: string,
+    ): Promise<boolean> => {
+      if (activeSetId === null) {
+        return false
+      }
+      try {
+        await mutate(activeSetId)
+        await refreshActive()
+        return true
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, failureMessage))
+        }
+        return false
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
   const createSubgroup = useCallback(
     async (name: string): Promise<PoolSubgroup | null> => {
       if (activeSetId === null) {
@@ -333,100 +357,48 @@ export function useSetBuilder() {
   )
 
   const renameSubgroup = useCallback(
-    async (subgroupId: number, name: string): Promise<boolean> => {
-      if (activeSetId === null) {
-        return false
-      }
-      try {
-        await apiSubgroupRename(activeSetId, subgroupId, name)
-        await refreshActive()
-        return true
-      } catch (err) {
-        if (mountedRef.current) {
-          setErrorWithAutoClear(friendlyError(err, 'Could not rename group.'))
-        }
-        return false
-      }
-    },
-    [activeSetId, refreshActive, setErrorWithAutoClear],
+    (subgroupId: number, name: string) =>
+      runSubgroupMutation(
+        (setId) => apiSubgroupRename(setId, subgroupId, name),
+        'Could not rename group.',
+      ),
+    [runSubgroupMutation],
   )
 
   const deleteSubgroup = useCallback(
-    async (subgroupId: number): Promise<boolean> => {
-      if (activeSetId === null) {
-        return false
-      }
-      try {
-        await apiSubgroupDelete(activeSetId, subgroupId)
-        await refreshActive()
-        return true
-      } catch (err) {
-        if (mountedRef.current) {
-          setErrorWithAutoClear(friendlyError(err, 'Could not delete group.'))
-        }
-        return false
-      }
-    },
-    [activeSetId, refreshActive, setErrorWithAutoClear],
+    (subgroupId: number) =>
+      runSubgroupMutation(
+        (setId) => apiSubgroupDelete(setId, subgroupId),
+        'Could not delete group.',
+      ),
+    [runSubgroupMutation],
   )
 
   const reorderSubgroups = useCallback(
-    async (subgroupIds: number[]): Promise<boolean> => {
-      if (activeSetId === null) {
-        return false
-      }
-      try {
-        await apiSubgroupReorder(activeSetId, subgroupIds)
-        await refreshActive()
-        return true
-      } catch (err) {
-        if (mountedRef.current) {
-          setErrorWithAutoClear(friendlyError(err, 'Could not reorder groups.'))
-        }
-        return false
-      }
-    },
-    [activeSetId, refreshActive, setErrorWithAutoClear],
+    (subgroupIds: number[]) =>
+      runSubgroupMutation(
+        (setId) => apiSubgroupReorder(setId, subgroupIds),
+        'Could not reorder groups.',
+      ),
+    [runSubgroupMutation],
   )
 
   const addSubgroupMember = useCallback(
-    async (subgroupId: number, poolEntryId: number): Promise<boolean> => {
-      if (activeSetId === null) {
-        return false
-      }
-      try {
-        await apiSubgroupAddMember(activeSetId, subgroupId, poolEntryId)
-        await refreshActive()
-        return true
-      } catch (err) {
-        if (mountedRef.current) {
-          setErrorWithAutoClear(friendlyError(err, 'Could not add to group.'))
-        }
-        return false
-      }
-    },
-    [activeSetId, refreshActive, setErrorWithAutoClear],
+    (subgroupId: number, poolEntryId: number) =>
+      runSubgroupMutation(
+        (setId) => apiSubgroupAddMember(setId, subgroupId, poolEntryId),
+        'Could not add to group.',
+      ),
+    [runSubgroupMutation],
   )
 
   const removeSubgroupMember = useCallback(
-    async (subgroupId: number, poolEntryId: number): Promise<boolean> => {
-      if (activeSetId === null) {
-        return false
-      }
-      try {
-        await apiSubgroupRemoveMember(activeSetId, subgroupId, poolEntryId)
-        await refreshActive()
-        return true
-      } catch (err) {
-        if (mountedRef.current) {
-          setErrorWithAutoClear(
-            friendlyError(err, 'Could not remove from group.'),
-          )
-        }
-        return false
-      }
-    },
-    [activeSetId, refreshActive, setErrorWithAutoClear],
+    (subgroupId: number, poolEntryId: number) =>
+      runSubgroupMutation(
+        (setId) => apiSubgroupRemoveMember(setId, subgroupId, poolEntryId),
+        'Could not remove from group.',
+      ),
+    [runSubgroupMutation],
   )
 
   const moveTracklistToPool = useCallback(

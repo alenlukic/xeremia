@@ -640,13 +640,7 @@ def _serialize_hydrated(hydration, session) -> dict:
             for e in hydration["explorer_edges"]
         ],
         "pool_subgroups": [
-            {
-                "id": sg.id,
-                "set_id": sg.set_id,
-                "name": sg.name,
-                "display_order": sg.display_order,
-            }
-            for sg in hydration.get("pool_subgroups", [])
+            _serialize_subgroup(sg) for sg in hydration.get("pool_subgroups", [])
         ],
         "pool_subgroup_memberships": [
             {

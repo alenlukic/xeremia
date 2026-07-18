@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react'
 import type { TracklistEntry, SearchSuggestion, Track } from '../types'
 import { cleanTitle } from '../utils/trackTitle'
-import { TRACK_DRAG_MIME } from '../utils'
 import { useTrackSearch } from '../hooks/useTrackSearch'
+import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import { useResizableColumns } from '../hooks/useResizableColumns'
 import { PlayButton } from './PlayButton'
 
@@ -79,11 +79,19 @@ export function SetTracklist({
   const [showSearch, setShowSearch] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
-  const [externalDropActive, setExternalDropActive] = useState(false)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
   const { widths: colWidths, beginResize } = useResizableColumns(
     'xeremia-set-tracklist-col-widths',
   )
+
+  const handleExternalDrop = useCallback(
+    (trackId: number) => {
+      const track = allTracks.find((t) => t.id === trackId)
+      onAddTrack(trackId, track?.title)
+    },
+    [allTracks, onAddTrack],
+  )
+  const { dropActive, dropHandlers } = useExternalTrackDrop(handleExternalDrop)
 
   const colStyle = (id: string) =>
     colWidths[id] != null ? { width: colWidths[id] } : undefined
@@ -120,37 +128,10 @@ export function SetTracklist({
     [onAddTrack, clear],
   )
 
-  // External track drops (e.g. rows dragged from the browse table) carry the
-  // custom track MIME; internal row-reorder drags carry only text/plain and
-  // are ignored here. Row-level handlers skip preventDefault for external
-  // drags, so the events bubble up to this container.
   return (
     <div
-      className={`set-tracklist${externalDropActive ? ' set-drop-active' : ''}`}
-      onDragOver={(e) => {
-        if (!e.dataTransfer?.types?.includes(TRACK_DRAG_MIME)) {
-          return
-        }
-        e.preventDefault()
-        e.dataTransfer.dropEffect = 'copy'
-        setExternalDropActive(true)
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setExternalDropActive(false)
-        }
-      }}
-      onDrop={(e) => {
-        setExternalDropActive(false)
-        const raw = e.dataTransfer?.getData?.(TRACK_DRAG_MIME)
-        const trackId = Number(raw)
-        if (!raw || !Number.isInteger(trackId)) {
-          return
-        }
-        e.preventDefault()
-        const track = allTracks.find((t) => t.id === trackId)
-        onAddTrack(trackId, track?.title)
-      }}
+      className={`set-tracklist${dropActive ? ' set-drop-active' : ''}`}
+      {...dropHandlers}
     >
       <div className="set-tracklist-header">
         <h3 className="set-section-title">Tracklist ({tracklist.length})</h3>

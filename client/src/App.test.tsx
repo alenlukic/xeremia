@@ -408,7 +408,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-
     await act(async () => {
       screen.getByText('Track 1').click()
     })
@@ -439,7 +438,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-
     await act(async () => {
       screen.getByText('Track 1').click()
     })
@@ -462,7 +460,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-
     expect(screen.getByText(/Failed to load tracks/)).toBeInTheDocument()
     expect(screen.getByText(/Failed to fetch tracks: 503/)).toBeInTheDocument()
     expect(screen.queryByText('No tracks found')).not.toBeInTheDocument()
@@ -479,7 +476,6 @@ describe('Error state handling', () => {
 
     render(<App />)
 
-
     expect(screen.getByText('No tracks found')).toBeInTheDocument()
     expect(screen.queryByText(/Failed to load tracks/)).not.toBeInTheDocument()
   })
@@ -494,7 +490,6 @@ describe('Error state handling', () => {
     })
 
     render(<App />)
-
 
     expect(screen.getByText(/Failed to load track traits/)).toBeInTheDocument()
     expect(
@@ -1067,7 +1062,9 @@ describe('Cross-region drag and drop', () => {
     fireEvent.dragStart(row, { dataTransfer: dt })
     expect(dt.getData(TRACK_MIME)).toBe('2')
 
-    const searchBar = document.querySelector<HTMLElement>('.search-bar-wrapper')!
+    const searchBar = document.querySelector<HTMLElement>(
+      '.search-bar-wrapper',
+    )!
     fireEvent.dragOver(searchBar, { dataTransfer: dt })
     expect(searchBar.className).toContain('search-drop-active')
 

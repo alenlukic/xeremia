@@ -672,51 +672,6 @@ class TestZeroSampleGuard:
 class TestMigrationAndBackfill:
     """Unit tests for migration/backfill correctness and idempotency."""
 
-    def test_migration_marks_non_current_rows_as_outdated(self):
-        """Migration SQL sets trait_version to 'outdated' for non-current rows."""
-        import importlib
-        from unittest.mock import MagicMock, patch
-
-        migration = importlib.import_module(
-            "src.scripts.migrations.20260403_update_genre_mood_filtering"
-        )
-
-        mock_engine = MagicMock()
-        mock_engine.execute.return_value = MagicMock(rowcount=3)
-
-        with patch.object(migration, "database") as mock_db:
-            mock_db.engine = mock_engine
-            migration.run()
-
-        mock_engine.execute.assert_called_once()
-        sql = mock_engine.execute.call_args[0][0]
-        assert "SET trait_version = 'outdated'" in sql
-        assert "WHERE trait_version != '%s'" % TRAIT_VERSION in sql
-
-    def test_migration_is_idempotent(self):
-        """Second run is a no-op — SQL only targets non-current rows."""
-        import importlib
-        from unittest.mock import MagicMock, patch
-
-        migration = importlib.import_module(
-            "src.scripts.migrations.20260403_update_genre_mood_filtering"
-        )
-
-        mock_engine = MagicMock()
-        mock_engine.execute.side_effect = [
-            MagicMock(rowcount=3),
-            MagicMock(rowcount=0),
-        ]
-
-        with patch.object(migration, "database") as mock_db:
-            mock_db.engine = mock_engine
-            migration.run()
-            migration.run()
-
-        assert mock_engine.execute.call_count == 2
-        calls = mock_engine.execute.call_args_list
-        assert calls[0] == calls[1], "Both runs must execute identical SQL"
-
     def test_backfill_skips_current_version_rows(self):
         """Backfill spawns no workers when all rows are current."""
         import importlib

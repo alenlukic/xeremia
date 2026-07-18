@@ -9,7 +9,11 @@ function loadWidths(storageKey: string): Record<string, number> {
       return {}
     }
     const parsed: unknown = JSON.parse(raw)
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       return {}
     }
     const widths: Record<string, number> = {}
@@ -39,41 +43,38 @@ export function useResizableColumns(storageKey: string) {
     localStorage.setItem(storageKey, JSON.stringify(widths))
   }, [storageKey, widths])
 
-  const beginResize = useCallback(
-    (colId: string, e: React.MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const th = (e.target as HTMLElement).closest('th')
-      if (!th) {
-        return
-      }
-      const startWidth = th.getBoundingClientRect().width
-      const startX = e.clientX
+  const beginResize = useCallback((colId: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const th = (e.target as HTMLElement).closest('th')
+    if (!th) {
+      return
+    }
+    const startWidth = th.getBoundingClientRect().width
+    const startX = e.clientX
 
-      function handleMove(ev: MouseEvent) {
-        const next = Math.max(
-          MIN_COL_WIDTH,
-          Math.round(startWidth + ev.clientX - startX),
-        )
-        setWidths((prev) =>
-          prev[colId] === next ? prev : { ...prev, [colId]: next },
-        )
-      }
+    function handleMove(ev: MouseEvent) {
+      const next = Math.max(
+        MIN_COL_WIDTH,
+        Math.round(startWidth + ev.clientX - startX),
+      )
+      setWidths((prev) =>
+        prev[colId] === next ? prev : { ...prev, [colId]: next },
+      )
+    }
 
-      function handleUp() {
-        document.removeEventListener('mousemove', handleMove)
-        document.removeEventListener('mouseup', handleUp)
-        document.body.style.removeProperty('cursor')
-        document.body.style.removeProperty('user-select')
-      }
+    function handleUp() {
+      document.removeEventListener('mousemove', handleMove)
+      document.removeEventListener('mouseup', handleUp)
+      document.body.style.removeProperty('cursor')
+      document.body.style.removeProperty('user-select')
+    }
 
-      document.addEventListener('mousemove', handleMove)
-      document.addEventListener('mouseup', handleUp)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-    },
-    [],
-  )
+    document.addEventListener('mousemove', handleMove)
+    document.addEventListener('mouseup', handleUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [])
 
   return { widths, beginResize }
 }
