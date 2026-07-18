@@ -6,11 +6,7 @@ import type {
   Track,
   TransitionMatch,
 } from '../types'
-import {
-  nodeColorForLevel,
-  edgeColorForColumn,
-  ACTION_FILL,
-} from '../utils/explorer'
+import { colorForColumn, ACTION_FILL } from '../utils/explorer'
 import { fetchMatches } from '../api/http'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { SetExplorerDeleteModal } from './SetExplorerDeleteModal'
@@ -74,17 +70,22 @@ const NODE_H = 48
 const V_GAP = 176
 const MAX_COLS = 5
 const SLOT_W = 390
-const ACTION_H = 24
-const ACTION_LABEL_SIZE = 10
-const ACTION_GAP = 4
-const TOP_PAD = ACTION_H + 8
+const ACTION_H = 48
+const ACTION_LABEL_SIZE = 20
+const ACTION_GAP = 8
+const ACTION_ROW_MARGIN = 8
+const TOP_PAD = ACTION_H + ACTION_ROW_MARGIN
 const LEVEL_ADD_W = 70
 const LEVEL_ADD_H = 28
 const LEVEL_ADD_GAP = 16
 const EDGE_SLOTS = 5
-const EDGE_PAD = 40
-const SLOT_STEP = 10 // px between adjacent slots within a bucket
-const BUCKET_GAP = 8 // extra px between bucket groups (visually separates parent clusters)
+// Departure slots (left half) and arrival slots (right half) of a node's
+// width never share an x-coordinate, even though `nodeX` itself repeats
+// across levels whenever a parent and an unrelated child land in the same
+// column — without this split, a departure stub on one node and an arrival
+// stub on a same-column node at a different level could compute the same
+// absolute x and their vertical runs could genuinely overlap.
+const HALF_SLOT_SPAN = NODE_W / 2 / EDGE_SLOTS
 const LANE_STUB = 10
 const LANE_S = 6
 const ZOOM_STORAGE_KEY = 'explorer-zoom'
@@ -105,17 +106,19 @@ function readStoredZoom(): number {
   }
 }
 
-// 25 node slots: 5 parent-column buckets × 5 child-column sub-slots each.
-// laneIndex = parentColIdx * EDGE_SLOTS + childColIdx → unique departure and arrival per edge.
-function nodeSlotX(nodeX: number, laneIndex: number): number {
-  const bucket = Math.floor(laneIndex / EDGE_SLOTS)
-  const slot = laneIndex % EDGE_SLOTS
-  return (
-    nodeX +
-    EDGE_PAD +
-    bucket * (EDGE_SLOTS * SLOT_STEP + BUCKET_GAP) +
-    slot * SLOT_STEP
-  )
+// Each node has 5 departure slots (left half of its width) and 5 arrival
+// slots (right half). A parent emits a line to a given child from the
+// departure slot matching that CHILD's column index; a child receives a
+// line from the arrival slot matching that PARENT's column index. A node
+// can have at most one edge per distinct partner column, so within each
+// half every edge gets a unique x-offset — and the left/right split keeps
+// departures and arrivals from colliding with each other across levels.
+function departureSlotX(nodeX: number, slotIdx: number): number {
+  return nodeX + HALF_SLOT_SPAN * (slotIdx + 0.5)
+}
+
+function arrivalSlotX(nodeX: number, slotIdx: number): number {
+  return nodeX + NODE_W / 2 + HALF_SLOT_SPAN * (slotIdx + 0.5)
 }
 
 function truncateForSvg(text: string, max = 56): string {
@@ -180,7 +183,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   onNodeToTracklist,
   onAddNode,
 }: ExplorerNodeItemProps) {
-  const color = nodeColorForLevel(level)
+  const color = colorForColumn(colIndex)
   const fullTitle = trackTitle ?? String(trackId)
   const title = truncateForSvg(fullTitle)
 
@@ -198,7 +201,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       label: '×',
       ariaLabel: 'Delete node',
       fill: ACTION_FILL.danger,
-      w: 22,
+      w: 44,
       action: () => onSetDeleteTarget(nodeId),
     },
     {
@@ -206,7 +209,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       label: '↕',
       ariaLabel: 'Swap track IDs',
       fill: ACTION_FILL.accent,
-      w: 22,
+      w: 44,
       action: () => onSetSwapSource(nodeId),
     },
     {
@@ -214,7 +217,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       label: '+Child',
       ariaLabel: 'Add child node',
       fill: ACTION_FILL.accent,
-      w: 38,
+      w: 76,
       testId: 'child-add-btn',
       action: () => openChildAdd(nodeId),
     },
@@ -225,7 +228,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       label: '→TL',
       ariaLabel: 'Add to Tracklist',
       fill: ACTION_FILL.success,
-      w: 26,
+      w: 52,
       action: () => onNodeToTracklist(nodeId),
     })
   }
@@ -254,7 +257,9 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       data-level={level}
       data-col-index={colIndex}
     >
-      <g transform={`translate(${actionsStartX}, ${-(ACTION_H + 4)})`}>
+      <g
+        transform={`translate(${actionsStartX}, ${-(ACTION_H + ACTION_ROW_MARGIN)})`}
+      >
         <g
           className={`explorer-action-row ${isSelected ? 'explorer-action-row--visible' : ''}`}
           data-testid="explorer-action-row"
@@ -291,10 +296,10 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
               <rect
                 width={a.w}
                 height={ACTION_H}
-                rx={4}
+                rx={8}
                 fill="var(--surface)"
                 stroke="var(--border)"
-                strokeWidth={0.5}
+                strokeWidth={1}
               >
                 <title>{a.ariaLabel}</title>
               </rect>
@@ -393,10 +398,13 @@ const ExplorerEdgeItem = memo(function ExplorerEdgeItem({
 }: ExplorerEdgeItemProps) {
   const parentBottom = parentY + NODE_H
   const childTop = childY
-  const strokeColor = edgeColorForColumn(childColIdx)
+  const strokeColor = colorForColumn(parentColIdx)
   const laneIndex = parentColIdx * EDGE_SLOTS + childColIdx
-  const startX = nodeSlotX(parentX, laneIndex)
-  const endX = nodeSlotX(childX, laneIndex)
+  // Parent emits from the departure slot matching the child's column; child
+  // receives into the arrival slot matching the parent's column (see
+  // departureSlotX/arrivalSlotX above).
+  const startX = departureSlotX(parentX, childColIdx)
+  const endX = arrivalSlotX(childX, parentColIdx)
   const laneY = parentBottom + LANE_STUB + laneIndex * LANE_S
   const pathD = `M ${startX} ${parentBottom} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${childTop}`
   const labelX = endX - 10
@@ -527,6 +535,7 @@ export function SetExplorerCanvas({
   // taking array references as dependencies (array identity changes every render).
   const nodesRef = useRef(nodes)
   const edgesRef = useRef(edges)
+  const byLevelMapRef = useRef<Map<number, LayoutNode[]>>(new Map())
   // Refs for volatile UI state consumed by stable callbacks — prevents callbacks
   // from changing identity on every render, which would defeat React.memo on sub-components.
   const connectDragRef = useRef<ConnectDragState | null>(null)
@@ -725,6 +734,10 @@ export function SetExplorerCanvas({
         byLevelMap: byLevel,
       }
     }, [nodes])
+
+  useEffect(() => {
+    byLevelMapRef.current = byLevelMap
+  }, [byLevelMap])
 
   const levelEntries = useMemo(() => {
     const entries: { level: number; nodesAtLevel: LayoutNode[] }[] = []
@@ -999,13 +1012,18 @@ export function SetExplorerCanvas({
 
   const openLevelAdd = useCallback(
     (level: number, nodesAtLevel: LayoutNode[]) => {
+      // Every node at the parent level is a candidate connection, not just
+      // the ones already wired to the rightmost sibling — otherwise parents
+      // added after the rightmost sibling never appear as options.
+      const parentLevelNodes = byLevelMapRef.current.get(level - 1) ?? []
+      const parentIds = parentLevelNodes.map((n) => n.node.node_id)
       const rightmost =
         nodesAtLevel.length > 0
           ? nodesAtLevel.reduce((a, b) =>
               a.node.col_index >= b.node.col_index ? a : b,
             )
           : null
-      const parentIds = rightmost
+      const inheritedParentIds = rightmost
         ? edgesRef.current
             .filter((e) => e.child_node_id === rightmost.node.node_id)
             .map((e) => e.parent_node_id)
@@ -1016,7 +1034,7 @@ export function SetExplorerCanvas({
       setSiblingAdd({
         targetLevel: level,
         parentIds,
-        selectedParents: new Set(parentIds),
+        selectedParents: new Set(inheritedParentIds),
         searchQuery: '',
       })
     },
@@ -1242,7 +1260,8 @@ export function SetExplorerCanvas({
               if (!parent || !child) {
                 return null
               }
-              const parentColIdx = columnIndices.get(edge.parent_node_id) ?? 0
+              const parentColIdx =
+                (columnIndices.get(edge.parent_node_id) ?? 0) % EDGE_SLOTS
               const childColIdx =
                 (columnIndices.get(edge.child_node_id) ?? 0) % EDGE_SLOTS
               const nodeKey = `${edge.parent_node_id}-${edge.child_node_id}`

@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
+import { SetPickerControls } from './SetPickerControls'
+import type { SetSummary } from '../types'
+import type { PendingAdd } from '../hooks/useSetBuilder'
 
 export type BottomView = 'matches' | 'set' | 'admin'
 
@@ -9,6 +12,14 @@ interface Props {
   onSelectSet: () => void
   onSelectAdmin: () => void
   setLabel: string
+  sets: SetSummary[]
+  activeSetId: number | null
+  pendingAdd: PendingAdd | null
+  createSet: (name: string) => Promise<SetSummary | null>
+  selectSet: (id: number) => void
+  deleteSet: (id: number) => void
+  resolvePendingAdd: (setId: number) => void
+  clearPendingAdd: () => void
 }
 
 export function NavRail({
@@ -17,6 +28,14 @@ export function NavRail({
   onSelectSet,
   onSelectAdmin,
   setLabel,
+  sets,
+  activeSetId,
+  pendingAdd,
+  createSet,
+  selectSet,
+  deleteSet,
+  resolvePendingAdd,
+  clearPendingAdd,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -51,6 +70,18 @@ export function NavRail({
       >
         {setLabel}
       </button>
+      {bottomView === 'set' && (
+        <SetPickerControls
+          sets={sets}
+          activeSetId={activeSetId}
+          pendingAdd={pendingAdd}
+          createSet={createSet}
+          selectSet={selectSet}
+          deleteSet={deleteSet}
+          resolvePendingAdd={resolvePendingAdd}
+          clearPendingAdd={clearPendingAdd}
+        />
+      )}
       <div className="nav-rail-menu-wrapper" ref={menuRef}>
         <button
           className="nav-rail-menu-toggle"
