@@ -24,6 +24,26 @@ class SetWorkspaceService:
     def __init__(self, session):
         self.session = session
 
+    # --- Internal helpers ---
+
+    def _next_order(self, order_column, set_id: int) -> int:
+        """Next value for a per-set ordering column: max + 1, or 0 when empty."""
+        current_max = (
+            self.session.query(order_column)
+            .filter_by(set_id=set_id)
+            .order_by(order_column.desc())
+            .first()
+        )
+        return (current_max[0] + 1) if current_max else 0
+
+    def _get_subgroup(self, set_id: int, subgroup_id: int) -> Optional[SetPoolSubgroup]:
+        """Fetch a subgroup only when it belongs to the given set."""
+        return (
+            self.session.query(SetPoolSubgroup)
+            .filter_by(id=subgroup_id, set_id=set_id)
+            .first()
+        )
+
     # --- Set CRUD ---
 
     def list_sets(self) -> List[DjSet]:
@@ -137,14 +157,7 @@ class SetWorkspaceService:
         if in_tracklist:
             return None, "Track is already in the tracklist for this set"
 
-        max_order = (
-            self.session.query(SetPoolEntry.insertion_order)
-            .filter_by(set_id=set_id)
-            .order_by(SetPoolEntry.insertion_order.desc())
-            .first()
-        )
-        next_order = (max_order[0] + 1) if max_order else 0
-
+        next_order = self._next_order(SetPoolEntry.insertion_order, set_id)
         entry = SetPoolEntry(
             set_id=set_id, track_id=track_id, insertion_order=next_order
         )
@@ -208,14 +221,7 @@ class SetWorkspaceService:
         if pool_entry is None:
             return False, "Track not found in pool"
 
-        max_pos = (
-            self.session.query(SetTracklistEntry.position)
-            .filter_by(set_id=set_id)
-            .order_by(SetTracklistEntry.position.desc())
-            .first()
-        )
-        next_pos = (max_pos[0] + 1) if max_pos else 0
-
+        next_pos = self._next_order(SetTracklistEntry.position, set_id)
         self.session.query(SetPoolSubgroupMember).filter_by(
             pool_entry_id=pool_entry.id,
         ).delete()
@@ -230,13 +236,7 @@ class SetWorkspaceService:
     # --- Pool subgroup operations ---
 
     def subgroup_create(self, set_id: int, name: str) -> SetPoolSubgroup:
-        max_order = (
-            self.session.query(SetPoolSubgroup.display_order)
-            .filter_by(set_id=set_id)
-            .order_by(SetPoolSubgroup.display_order.desc())
-            .first()
-        )
-        next_order = (max_order[0] + 1) if max_order else 0
+        next_order = self._next_order(SetPoolSubgroup.display_order, set_id)
         sg = SetPoolSubgroup(set_id=set_id, name=name, display_order=next_order)
         self.session.add(sg)
         self.session.flush()
@@ -245,11 +245,7 @@ class SetWorkspaceService:
     def subgroup_rename(
         self, set_id: int, subgroup_id: int, name: str
     ) -> Optional[SetPoolSubgroup]:
-        sg = (
-            self.session.query(SetPoolSubgroup)
-            .filter_by(id=subgroup_id, set_id=set_id)
-            .first()
-        )
+        sg = self._get_subgroup(set_id, subgroup_id)
         if sg is None:
             return None
         sg.name = name
@@ -257,11 +253,7 @@ class SetWorkspaceService:
         return sg
 
     def subgroup_delete(self, set_id: int, subgroup_id: int) -> bool:
-        sg = (
-            self.session.query(SetPoolSubgroup)
-            .filter_by(id=subgroup_id, set_id=set_id)
-            .first()
-        )
+        sg = self._get_subgroup(set_id, subgroup_id)
         if sg is None:
             return False
         self.session.query(SetPoolSubgroupMember).filter_by(
@@ -306,11 +298,7 @@ class SetWorkspaceService:
     def subgroup_add_track(
         self, set_id: int, subgroup_id: int, pool_entry_id: int
     ) -> Tuple[Optional[SetPoolSubgroupMember], Optional[str]]:
-        sg = (
-            self.session.query(SetPoolSubgroup)
-            .filter_by(id=subgroup_id, set_id=set_id)
-            .first()
-        )
+        sg = self._get_subgroup(set_id, subgroup_id)
         if sg is None:
             return None, "Subgroup does not belong to this set"
 
@@ -339,11 +327,7 @@ class SetWorkspaceService:
     def subgroup_remove_track(
         self, set_id: int, subgroup_id: int, pool_entry_id: int
     ) -> Tuple[bool, Optional[str]]:
-        sg = (
-            self.session.query(SetPoolSubgroup)
-            .filter_by(id=subgroup_id, set_id=set_id)
-            .first()
-        )
+        sg = self._get_subgroup(set_id, subgroup_id)
         if sg is None:
             return False, "Subgroup does not belong to this set"
 
@@ -379,14 +363,7 @@ class SetWorkspaceService:
         if in_pool:
             return None, "Track is already in the pool for this set"
 
-        max_pos = (
-            self.session.query(SetTracklistEntry.position)
-            .filter_by(set_id=set_id)
-            .order_by(SetTracklistEntry.position.desc())
-            .first()
-        )
-        next_pos = (max_pos[0] + 1) if max_pos else 0
-
+        next_pos = self._next_order(SetTracklistEntry.position, set_id)
         entry = SetTracklistEntry(set_id=set_id, track_id=track_id, position=next_pos)
         self.session.add(entry)
         self.session.flush()
@@ -493,14 +470,7 @@ class SetWorkspaceService:
         for e in later:
             e.position -= 1
 
-        max_order = (
-            self.session.query(SetPoolEntry.insertion_order)
-            .filter_by(set_id=set_id)
-            .order_by(SetPoolEntry.insertion_order.desc())
-            .first()
-        )
-        next_order = (max_order[0] + 1) if max_order else 0
-
+        next_order = self._next_order(SetPoolEntry.insertion_order, set_id)
         pool_entry = SetPoolEntry(
             set_id=set_id, track_id=track_id, insertion_order=next_order
         )
@@ -735,14 +705,7 @@ class SetWorkspaceService:
         if in_pool:
             self.session.delete(in_pool)
 
-        max_pos = (
-            self.session.query(SetTracklistEntry.position)
-            .filter_by(set_id=set_id)
-            .order_by(SetTracklistEntry.position.desc())
-            .first()
-        )
-        next_pos = (max_pos[0] + 1) if max_pos else 0
-
+        next_pos = self._next_order(SetTracklistEntry.position, set_id)
         entry = SetTracklistEntry(
             set_id=set_id,
             track_id=node.track_id,

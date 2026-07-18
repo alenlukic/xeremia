@@ -88,14 +88,17 @@ export function searchTracksLocal(
   query: string,
   limit: number = SEARCH_LIMIT,
 ): SearchSuggestion[] {
-  const trimmed = query.trim().toLowerCase()
-  if (!trimmed) {
+  const rawQuery = query.trim()
+  if (!rawQuery) {
     return []
   }
+
+  const trimmed = rawQuery.toLowerCase()
   const tokens = words(trimmed)
-  const camelotQuery = query.trim().toUpperCase()
+  const camelotQuery = rawQuery.toUpperCase()
+
   const bpmQuery = Number(trimmed)
-  const hasBpmQuery = trimmed !== '' && Number.isFinite(bpmQuery)
+  const hasBpmQuery = Number.isFinite(bpmQuery)
 
   const scored: { entry: IndexEntry; score: number }[] = []
 
@@ -104,6 +107,7 @@ export function searchTracksLocal(
     if (entry.camelotUc && entry.camelotUc === camelotQuery) {
       exactScore += CAMELOT_BOOST
     }
+
     if (
       hasBpmQuery &&
       entry.track.bpm != null &&

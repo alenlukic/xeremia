@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
+import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 
 export interface SortDescriptor {
   id: string
@@ -28,21 +29,7 @@ export function SortTierBar({
     (c) => !sorting.some((s) => s.id === c.id),
   )
 
-  useEffect(() => {
-    if (!menuOpen) {
-      return
-    }
-    const handler = (e: MouseEvent) => {
-      if (
-        wrapperRef.current &&
-        !wrapperRef.current.contains(e.target as Node)
-      ) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [menuOpen])
+  useDismissOnOutsideClick(wrapperRef, menuOpen, () => setMenuOpen(false))
 
   const addTier = useCallback(
     (colId: string) => {
