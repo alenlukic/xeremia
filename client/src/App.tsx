@@ -295,6 +295,14 @@ export function App() {
           onSelectSet={() => setBottomView('set')}
           onSelectAdmin={() => setBottomView('admin')}
           setLabel={setTabLabel}
+          sets={setBuilder.sets}
+          activeSetId={setBuilder.activeSetId}
+          pendingAdd={setBuilder.pendingAdd}
+          createSet={setBuilder.createSet}
+          selectSet={setBuilder.selectSet}
+          deleteSet={setBuilder.deleteSet}
+          resolvePendingAdd={setBuilder.resolvePendingAdd}
+          clearPendingAdd={setBuilder.clearPendingAdd}
         />
 
         <div className="top-region">
@@ -428,15 +436,9 @@ export function App() {
           {bottomView === 'set' && (
             <SetBuilder
               allTracks={allTracks}
-              sets={setBuilder.sets}
-              activeSetId={setBuilder.activeSetId}
               activeSet={setBuilder.activeSet}
               loading={setBuilder.loading}
               error={setBuilder.error}
-              pendingAdd={setBuilder.pendingAdd}
-              createSet={setBuilder.createSet}
-              selectSet={setBuilder.selectSet}
-              deleteSet={setBuilder.deleteSet}
               removeFromPool={setBuilder.removeFromPool}
               movePoolToTracklist={setBuilder.movePoolToTracklist}
               reorderPool={setBuilder.reorderPool}
@@ -460,8 +462,6 @@ export function App() {
               explorerNodeAddToTracklist={setBuilder.explorerNodeAddToTracklist}
               addSiblingNode={setBuilder.addSiblingNode}
               fetchEdgeScores={setBuilder.fetchEdgeScores}
-              resolvePendingAdd={setBuilder.resolvePendingAdd}
-              clearPendingAdd={setBuilder.clearPendingAdd}
               clearError={setBuilder.clearError}
             />
           )}
