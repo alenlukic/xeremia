@@ -672,6 +672,34 @@ def test_hydrate_skips_remote_lookups_for_beatport_encoded_file(tmp_path: Path) 
     assert result.bpm is None
 
 
+def test_hydrate_preserves_beatport_tpub_label_without_db_or_web(
+    tmp_path: Path,
+) -> None:
+    from mutagen.id3 import ID3, TENC, TIT2, TPE1, TPUB
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Beatport Label Track.mp3")
+    tags = ID3(str(mp3))
+    tags.add(TENC(encoding=3, text="Beatport"))
+    tags.add(TPE1(encoding=3, text="Artist"))
+    tags.add(TIT2(encoding=3, text="Title"))
+    tags.add(TPUB(encoding=3, text="Limitation Music"))
+    tags.save(str(mp3), v2_version=4)
+
+    hydrator = _make_hydrator(tmp_path, catalog_sources=[])
+    # Force the non-skip hydration path while still treating Beatport as
+    # authoritative for label resolution.
+    hydrator.skip_beatport_hydration = False
+    result = hydrator.hydrate(
+        mp3,
+        SimpleMetadata(
+            artist="Artist",
+            title="Title",
+            label="Limitation Music",
+        ),
+    )
+    assert result.label == "Limitation Music"
+
+
 def test_hydrate_resolves_remixer_from_web_search_for_remix_prefix(
     tmp_path: Path,
 ) -> None:

@@ -144,7 +144,13 @@ def resolve_label(
     title: str | None = None,
     session: Any = None,
     web_verifier: WebLabelVerifier | None = None,
+    authoritative: bool = False,
 ) -> str | None:
+    """Resolve a candidate label.
+
+    When ``authoritative`` is True (Beatport ID3 ``TPUB``), keep the label after
+    basic sanity checks without requiring DB presence or web verification.
+    """
     canonical = canonicalize_label(label)
     if canonical is None:
         return None
@@ -157,6 +163,9 @@ def resolve_label(
 
     if canonical == "CDR":
         return "CDR"
+
+    if authoritative:
+        return canonical
 
     if label_exists_in_db(session, canonical):
         return canonical
@@ -172,6 +181,7 @@ def apply_label_resolution(
     *,
     session: Any = None,
     web_verifier: WebLabelVerifier | None = None,
+    authoritative: bool = False,
 ) -> None:
     metadata.label = resolve_label(
         metadata.label,
@@ -179,6 +189,7 @@ def apply_label_resolution(
         title=metadata.title,
         session=session,
         web_verifier=web_verifier,
+        authoritative=authoritative,
     )
 
 
@@ -245,12 +256,14 @@ def resolve_album_label_for_group(
     *,
     session: Any = None,
     web_verifier: WebLabelVerifier | None = None,
+    authoritative: bool = False,
 ) -> tuple[str | None, list[str]]:
     conflicts: list[str] = []
     resolved = resolve_label(
         candidate_label,
         session=session,
         web_verifier=web_verifier,
+        authoritative=authoritative,
     )
     if resolved is None:
         return None, conflicts
@@ -276,6 +289,7 @@ def apply_album_label_consistency(
     creation_timestamp: Any = None,
     session: Any = None,
     web_verifier: WebLabelVerifier | None = None,
+    authoritative: bool = False,
 ) -> list[str]:
     group_key = album_group_key(
         source_catalog_id=source_catalog_id,
@@ -283,7 +297,12 @@ def apply_album_label_consistency(
         creation_timestamp=_parse_creation_timestamp(creation_timestamp),
     )
     if group_key is None:
-        apply_label_resolution(metadata, session=session, web_verifier=web_verifier)
+        apply_label_resolution(
+            metadata,
+            session=session,
+            web_verifier=web_verifier,
+            authoritative=authoritative,
+        )
         return []
 
     label, conflicts = resolve_album_label_for_group(
@@ -292,6 +311,7 @@ def apply_album_label_consistency(
         shared_state,
         session=session,
         web_verifier=web_verifier,
+        authoritative=authoritative,
     )
     metadata.label = label
     return conflicts

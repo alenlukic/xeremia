@@ -8,6 +8,7 @@ from typing import Any
 from src.data_management.audio_file import AudioFile
 from src.data_management.config import CANONICAL_KEY_MAP
 from src.track_metadata.label import resolve_label
+from src.track_metadata.sources.genre_lookups import is_beatport_encoded
 from src.track_metadata.genre import normalize_genre_value
 from src.models.artist import Artist
 from src.models.artist_track import ArtistTrack
@@ -102,13 +103,19 @@ def _apply_track_fields(
     metadata: SimpleMetadata,
     date_added: str | None,
     session: Any,
+    file_ref: str | Path | None = None,
 ) -> str | None:
     title = (metadata.title or "").strip()
     key = _canonical_key(metadata.key)
     camelot_code = AudioFile.format_camelot_code(key)
     genre = normalize_genre_value(metadata.genre)
+    authoritative = isinstance(file_ref, Path) and is_beatport_encoded(file_ref)
     label = resolve_label(
-        metadata.label, album=metadata.album, title=title, session=session
+        metadata.label,
+        album=metadata.album,
+        title=title,
+        session=session,
+        authoritative=authoritative,
     )
 
     track.file_name = file_name
@@ -145,6 +152,7 @@ def update_track_records(
         metadata=metadata,
         date_added=date_added,
         session=session,
+        file_ref=file_ref,
     )
     session.commit()
 
@@ -168,8 +176,13 @@ def upsert_track_records(
     key = _canonical_key(metadata.key)
     camelot_code = AudioFile.format_camelot_code(key)
     genre = normalize_genre_value(metadata.genre)
+    authoritative = isinstance(file_ref, Path) and is_beatport_encoded(file_ref)
     label = resolve_label(
-        metadata.label, album=metadata.album, title=title, session=session
+        metadata.label,
+        album=metadata.album,
+        title=title,
+        session=session,
+        authoritative=authoritative,
     )
 
     track = session.query(Track).filter_by(file_name=file_name).first()
