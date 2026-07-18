@@ -3,7 +3,7 @@ from os import path
 from time import ctime
 
 import mutagen
-from mutagen.id3 import TIT2, TCON, TBPM, TKEY, TPUB, COMM
+from mutagen.id3 import TIT2, TCON, TBPM, TKEY, TPUB, TXXX, COMM
 
 from src.config import PROCESSED_MUSIC_DIR
 from src.data_management.config import (
@@ -317,6 +317,8 @@ class AudioFile:
                 id3[tag] = TKEY(text=text)
             elif tag == ID3Tag.LABEL.value:
                 id3[tag] = TPUB(text=text)
+            elif tag == ID3Tag.ENERGY.value:
+                id3[tag] = TXXX(desc="EnergyLevel", text=text)
             elif (
                 tag == ID3Tag.COMMENT.value
                 or tag == ID3Tag.COMMENT_ENG.value
