@@ -19,7 +19,7 @@ import {
   type Updater,
 } from '@tanstack/react-table'
 import type { Track, SearchSuggestion } from '../types'
-import { formatFloat, formatBpm, displayGenre } from '../utils'
+import { formatFloat, formatBpm, displayGenre, TRACK_DRAG_MIME } from '../utils'
 import { PlayButton } from './PlayButton'
 
 const col = createColumnHelper<Track>()
@@ -316,6 +316,10 @@ export const TrackTable = memo(function TrackTable({
   )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
+    // Track-row drags are not droppable on column headers.
+    if (e.dataTransfer?.types?.includes(TRACK_DRAG_MIME)) {
+      return
+    }
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
   }, [])
@@ -466,6 +470,14 @@ export const TrackTable = memo(function TrackTable({
                   <tr
                     key={row.id}
                     className={isSelected ? 'row-selected' : ''}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(
+                        TRACK_DRAG_MIME,
+                        String(row.original.id),
+                      )
+                      e.dataTransfer.effectAllowed = 'copy'
+                    }}
                     onClick={() => selectTrack(row.original)}
                   >
                     {row.getVisibleCells().map((cell) => (

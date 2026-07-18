@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act, waitFor } from '@testing-library/react'
+import {
+  render,
+  screen,
+  act,
+  waitFor,
+  within,
+  fireEvent,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from './App'
 import type { Track, TransitionMatch } from './types'
@@ -159,6 +166,9 @@ async function openBrowseTab() {
 }
 
 async function openAdminTab() {
+  await act(async () => {
+    screen.getByRole('button', { name: 'Menu' }).click()
+  })
   await act(async () => {
     screen.getByRole('button', { name: 'Admin' }).click()
   })
@@ -331,7 +341,7 @@ describe('Browse infinite scroll', () => {
     })
   })
 
-  it('preserves loaded progress on tab switch with unchanged filters', async () => {
+  it('preserves loaded progress when the browse overlay is closed and reopened', async () => {
     await openBrowseTab()
 
     await act(async () => {
@@ -340,8 +350,10 @@ describe('Browse infinite scroll', () => {
     expect(getRowCount()).toBe(500)
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Matches' }).click()
+      screen.getByRole('button', { name: 'Browse' }).click()
     })
+    expect(getRowCount()).toBe(0)
+
     await act(async () => {
       screen.getByRole('button', { name: 'Browse' }).click()
     })
@@ -767,11 +779,10 @@ describe('Transition chaining', () => {
       expect(document.querySelectorAll('.chain-entry').length).toBe(1)
     })
 
-    await act(async () => {
-      screen.getByRole('button', { name: 'Browse' }).click()
-    })
-
-    const row = screen.getByText('Track 2').closest('tr')!
+    // The browse overlay is still open from selectTrackViaBrowse; scope the
+    // query to it since the matches table also shows a "Track 2" candidate.
+    const browseTable = document.querySelector<HTMLElement>('.track-table')!
+    const row = within(browseTable).getByText('Track 2').closest('tr')!
     await act(async () => {
       row.click()
     })
@@ -947,5 +958,285 @@ describe('Set tab', () => {
     const tlBtns = screen.getAllByTitle('Add to Tracklist')
     expect(poolBtns.length).toBeGreaterThan(0)
     expect(tlBtns.length).toBeGreaterThan(0)
+  })
+})
+
+describe('Nav rail and Admin menu', () => {
+  it('shows the admin dashboard via the menu and deselects rail tabs', async () => {
+    await act(async () => {
+      render(<App />)
+    })
+
+    await openAdminTab()
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /reset weights/i }),
+      ).toBeInTheDocument()
+    })
+    expect(
+      screen.getByRole('button', { name: 'Matches' }).className,
+    ).not.toContain('active')
+    expect(screen.getByRole('button', { name: 'Set' }).className).not.toContain(
+      'active',
+    )
+  })
+
+  it('closes the menu on outside click without changing the view', async () => {
+    await act(async () => {
+      render(<App />)
+    })
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Menu' }).click()
+    })
+    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.mouseDown(document.body)
+    })
+    expect(
+      screen.queryByRole('button', { name: 'Admin' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Matches' }).className).toContain(
+      'active',
+    )
+  })
+
+  it('closes the menu on Escape', async () => {
+    await act(async () => {
+      render(<App />)
+    })
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Menu' }).click()
+    })
+    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+    })
+    expect(
+      screen.queryByRole('button', { name: 'Admin' }),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('Browse overlay', () => {
+  it('opens over the top region while the bottom view stays mounted', async () => {
+    await openBrowseTab()
+
+    expect(document.querySelector('.browse-overlay')).toBeInTheDocument()
+    expect(getRowCount()).toBe(250)
+    expect(
+      screen.getByText('Select a track to see matches'),
+    ).toBeInTheDocument()
+  })
+
+  it('closes when the Browse toggle is clicked again', async () => {
+    await openBrowseTab()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click()
+    })
+    expect(document.querySelector('.browse-overlay')).not.toBeInTheDocument()
+  })
+
+  it('shows the filter controls in the search rail only while browsing', async () => {
+    await openBrowseTab()
+    expect(screen.getByRole('button', { name: /All keys/ })).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click()
+    })
+    expect(
+      screen.queryByRole('button', { name: /All keys/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('closes on Escape', async () => {
+    await openBrowseTab()
+
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+    })
+    expect(document.querySelector('.browse-overlay')).not.toBeInTheDocument()
+  })
+
+  it('keeps the overlay open when Escape closes the camelot dropdown', async () => {
+    await openBrowseTab()
+
+    await act(async () => {
+      screen.getByRole('button', { name: /All keys/ }).click()
+    })
+    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+    })
+    expect(
+      screen.queryByRole('button', { name: '03A' }),
+    ).not.toBeInTheDocument()
+    expect(document.querySelector('.browse-overlay')).toBeInTheDocument()
+  })
+
+  it('selecting a browse row loads matches without leaving the Set view', async () => {
+    const httpMod = await import('./api/http')
+    vi.mocked(httpMod.fetchMatches).mockClear()
+
+    await act(async () => {
+      render(<App />)
+    })
+    await act(async () => {
+      screen.getByRole('button', { name: 'Set' }).click()
+    })
+    expect(screen.getByText(/No sets yet/)).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click()
+    })
+    const row = screen.getByText('Track 1').closest('tr')!
+    await act(async () => {
+      row.click()
+    })
+
+    await waitFor(() => {
+      expect(vi.mocked(httpMod.fetchMatches).mock.calls.at(-1)?.[0]).toBe(1)
+    })
+    expect(screen.getByText(/No sets yet/)).toBeInTheDocument()
+  })
+})
+
+describe('Cross-region drag and drop', () => {
+  const TRACK_MIME = 'application/x-xeremia-track'
+
+  function makeDataTransfer(data: Record<string, string> = {}) {
+    const dt = {
+      data,
+      types: Object.keys(data),
+      setData(type: string, value: string) {
+        dt.data[type] = value
+        dt.types = Object.keys(dt.data)
+      },
+      getData(type: string) {
+        return dt.data[type] ?? ''
+      },
+      effectAllowed: '',
+      dropEffect: '',
+    }
+    return dt
+  }
+
+  async function renderWithActiveSet() {
+    const httpMod = await import('./api/http')
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      {
+        id: 1,
+        name: 'Test',
+        created_at: '',
+        updated_at: '',
+        pool_count: 0,
+        tracklist_count: 0,
+      },
+    ])
+    localStorage.setItem('xeremia-active-set-id', '1')
+
+    await act(async () => {
+      render(<App />)
+    })
+    await act(async () => {
+      screen.getByRole('button', { name: /^Set/ }).click()
+    })
+    await waitFor(() => {
+      expect(document.querySelector('.set-tracklist')).toBeInTheDocument()
+    })
+    await act(async () => {
+      screen.getByRole('button', { name: 'Browse' }).click()
+    })
+    return httpMod
+  }
+
+  it('dropping a matches row on the search bar re-searches with use-as-source semantics', async () => {
+    const httpMod = await import('./api/http')
+    const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' })
+    vi.mocked(httpMod.fetchMatches).mockResolvedValue([match])
+
+    await act(async () => {
+      render(<App />)
+    })
+    await selectTrackViaBrowse('Track 1')
+
+    const matchesTable = document.querySelector<HTMLElement>('.matches-table')!
+    const row = within(matchesTable).getByText('Track 2').closest('tr')!
+    const dt = makeDataTransfer()
+    fireEvent.dragStart(row, { dataTransfer: dt })
+    expect(dt.getData(TRACK_MIME)).toBe('2')
+
+    const searchBar = document.querySelector<HTMLElement>('.search-bar-wrapper')!
+    fireEvent.dragOver(searchBar, { dataTransfer: dt })
+    expect(searchBar.className).toContain('search-drop-active')
+
+    await act(async () => {
+      fireEvent.drop(searchBar, { dataTransfer: dt })
+    })
+
+    await waitFor(() => {
+      const chainEntries = document.querySelectorAll('.chain-entry')
+      expect(chainEntries.length).toBe(1)
+      expect(chainEntries[0].textContent).toBe('Track 1')
+    })
+  })
+
+  it('dropping a browse row adds to the tracklist and pool when Set view is active', async () => {
+    const httpMod = await renderWithActiveSet()
+    vi.mocked(httpMod.tracklistAdd).mockClear()
+    vi.mocked(httpMod.poolAdd).mockClear()
+
+    const browseTable = document.querySelector<HTMLElement>('.track-table')!
+    const row3 = within(browseTable).getByText('Track 3').closest('tr')!
+    const dt = makeDataTransfer()
+    fireEvent.dragStart(row3, { dataTransfer: dt })
+    expect(dt.getData(TRACK_MIME)).toBe('3')
+
+    const tracklist = document.querySelector<HTMLElement>('.set-tracklist')!
+    fireEvent.dragOver(tracklist, { dataTransfer: dt })
+    expect(tracklist.className).toContain('set-drop-active')
+    await act(async () => {
+      fireEvent.drop(tracklist, { dataTransfer: dt })
+    })
+    await waitFor(() => {
+      expect(httpMod.tracklistAdd).toHaveBeenCalledWith(1, 3)
+    })
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Expand pool' }).click()
+    })
+    const row4 = within(browseTable).getByText('Track 4').closest('tr')!
+    const dt2 = makeDataTransfer()
+    fireEvent.dragStart(row4, { dataTransfer: dt2 })
+
+    const pool = document.querySelector<HTMLElement>('.set-pool')!
+    fireEvent.dragOver(pool, { dataTransfer: dt2 })
+    expect(pool.className).toContain('set-drop-active')
+    await act(async () => {
+      fireEvent.drop(pool, { dataTransfer: dt2 })
+    })
+    await waitFor(() => {
+      expect(httpMod.poolAdd).toHaveBeenCalledWith(1, 4)
+    })
+  })
+
+  it('ignores text/plain-only drags on the set drop targets', async () => {
+    const httpMod = await renderWithActiveSet()
+    vi.mocked(httpMod.tracklistAdd).mockClear()
+
+    const tracklist = document.querySelector<HTMLElement>('.set-tracklist')!
+    const dt = makeDataTransfer({ 'text/plain': '7' })
+    fireEvent.dragOver(tracklist, { dataTransfer: dt })
+    expect(tracklist.className).not.toContain('set-drop-active')
+    await act(async () => {
+      fireEvent.drop(tracklist, { dataTransfer: dt })
+    })
+    expect(httpMod.tracklistAdd).not.toHaveBeenCalled()
   })
 })

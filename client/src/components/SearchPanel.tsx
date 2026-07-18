@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { SearchSuggestion, Track } from '../types'
 import { useTrackSearch } from '../hooks/useTrackSearch'
+import { TRACK_DRAG_MIME } from '../utils'
 
 interface Props {
   allTracks: Track[]
@@ -12,6 +13,9 @@ interface Props {
   onAddToPool?: () => void
   onAddToTracklist?: () => void
   searchText?: string
+  browseOpen?: boolean
+  onToggleBrowse?: () => void
+  onTrackDrop?: (trackId: number) => void
 }
 
 export function SearchPanel({
@@ -24,10 +28,14 @@ export function SearchPanel({
   onAddToPool,
   onAddToTracklist,
   searchText,
+  browseOpen,
+  onToggleBrowse,
+  onTrackDrop,
 }: Props) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
+  const [dropActive, setDropActive] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
 
@@ -108,12 +116,43 @@ export function SearchPanel({
       e.preventDefault()
       handleSelect(suggestions[activeIdx])
     } else if (e.key === 'Escape') {
+      // Consume the key so the browse overlay (which skips defaultPrevented
+      // events) stays open when Escape just dismisses the suggestions.
+      e.preventDefault()
       setOpen(false)
     }
   }
 
   return (
-    <div className="search-bar-wrapper" ref={containerRef}>
+    <div
+      className={`search-bar-wrapper${dropActive ? ' search-drop-active' : ''}`}
+      ref={containerRef}
+      onDragOver={(e) => {
+        if (!onTrackDrop || !e.dataTransfer?.types?.includes(TRACK_DRAG_MIME)) {
+          return
+        }
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+        setDropActive(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setDropActive(false)
+        }
+      }}
+      onDrop={(e) => {
+        setDropActive(false)
+        if (!onTrackDrop) {
+          return
+        }
+        const raw = e.dataTransfer?.getData?.(TRACK_DRAG_MIME)
+        const trackId = Number(raw)
+        if (raw && Number.isInteger(trackId)) {
+          e.preventDefault()
+          onTrackDrop(trackId)
+        }
+      }}
+    >
       <div className="search-input-container">
         <input
           type="text"
@@ -162,6 +201,15 @@ export function SearchPanel({
           </ul>
         )}
       </div>
+      {onToggleBrowse && (
+        <button
+          className={`match-action-btn browse-toggle-btn${browseOpen ? ' active' : ''}`}
+          aria-pressed={browseOpen}
+          onClick={onToggleBrowse}
+        >
+          Browse
+        </button>
+      )}
       {onAddToPool || onAddToTracklist ? (
         <div className="set-dual-actions search-dual-actions">
           {onAddToPool && (

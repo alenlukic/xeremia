@@ -113,11 +113,14 @@ export function FilterBar({
     }
     function handleEscape(e: KeyboardEvent) {
       if (e.key === 'Escape') {
+        // Capture phase + preventDefault so Escape closes only this dropdown,
+        // not the browse overlay (which skips defaultPrevented events).
+        e.preventDefault()
         setCamelotOpen(false)
       }
     }
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
+    document.addEventListener('keydown', handleEscape, true)
+    return () => document.removeEventListener('keydown', handleEscape, true)
   }, [camelotOpen])
 
   useEffect(() => {
@@ -134,14 +137,17 @@ export function FilterBar({
     }
     function handleEscape(e: KeyboardEvent) {
       if (e.key === 'Escape') {
+        // Capture phase + preventDefault so Escape closes only this dropdown,
+        // not the browse overlay (which skips defaultPrevented events).
+        e.preventDefault()
         setColConfigOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleEscape)
+    document.addEventListener('keydown', handleEscape, true)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('keydown', handleEscape, true)
     }
   }, [colConfigOpen])
 
