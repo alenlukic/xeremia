@@ -1,6 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { SetPoolTable } from './SetPoolTable'
+import { TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types'
 
 vi.mock('../api/http', () => ({
@@ -55,6 +62,7 @@ function renderPool(
       onReorderSubgroups={asyncTrue}
       onAddSubgroupMember={asyncTrue}
       onRemoveSubgroupMember={asyncTrue}
+      onDropFromTracklist={noop}
       {...extra}
     />,
   )
@@ -202,6 +210,86 @@ describe('SetPoolTable tiered sort bar', () => {
     const { container } = renderPool([makePoolEntry({ id: 1, track_id: 10 })])
     fireEvent.click(screen.getByRole('button', { name: /remove # sort/i }))
     expect(container.querySelectorAll('.sort-tier-pill').length).toBe(0)
+  })
+})
+
+describe('SetPoolTable per-group sorting', () => {
+  const subgroups: PoolSubgroup[] = [
+    { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+    { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
+  ]
+
+  function entryWithTitle(id: number, order: number, title: string): PoolEntry {
+    const entry = makePoolEntry({
+      id,
+      track_id: id * 10,
+      insertion_order: order,
+    })
+    entry.track = { ...entry.track!, title }
+    return entry
+  }
+
+  // Insertion order Zulu → Mike → Alpha, so a title sort visibly reorders.
+  // Warmup holds Zulu + Mike; Peak holds Mike + Alpha.
+  function makeEntries(): PoolEntry[] {
+    return [
+      entryWithTitle(1, 0, 'Zulu'),
+      entryWithTitle(2, 1, 'Mike'),
+      entryWithTitle(3, 2, 'Alpha'),
+    ]
+  }
+
+  const memberships: PoolSubgroupMembership[] = [
+    { id: 1, subgroup_id: 1, pool_entry_id: 1 },
+    { id: 2, subgroup_id: 1, pool_entry_id: 2 },
+    { id: 3, subgroup_id: 2, pool_entry_id: 2 },
+    { id: 4, subgroup_id: 2, pool_entry_id: 3 },
+  ]
+
+  function rowTitles(root: Element): string[] {
+    return Array.from(root.querySelectorAll('.set-ws-cell-title')).map(
+      (td) => td.textContent ?? '',
+    )
+  }
+
+  it('sorting a group tab does not affect the All tab', () => {
+    const { container } = renderPool(makeEntries(), subgroups, memberships)
+    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
+    fireEvent.click(tabs[2]) // Warmup
+    fireEvent.click(screen.getByText(/^Title/, { selector: 'th' }))
+    expect(rowTitles(container)).toEqual(['Mike', 'Zulu'])
+
+    fireEvent.click(tabs[0]) // All
+    expect(rowTitles(container)).toEqual(['Zulu', 'Mike', 'Alpha'])
+  })
+
+  it('each Groups-view section has its own sort controls and state', () => {
+    const { container } = renderPool(makeEntries(), subgroups, memberships)
+    fireEvent.click(container.querySelectorAll('.pool-tab-bar .pool-tab')[1])
+
+    const sections = container.querySelectorAll('.subgroup-section')
+    expect(sections.length).toBe(2)
+    // Each section gets its own tier bar; the global one is hidden.
+    expect(container.querySelectorAll('.sort-tier-bar').length).toBe(2)
+
+    fireEvent.click(within(sections[0] as HTMLElement).getByText(/^Title/))
+    expect(rowTitles(sections[0])).toEqual(['Mike', 'Zulu'])
+    expect(rowTitles(sections[1])).toEqual(['Mike', 'Alpha'])
+  })
+
+  it("sorting a Groups-view section carries to that group's tab", () => {
+    const { container } = renderPool(makeEntries(), subgroups, memberships)
+    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
+    fireEvent.click(tabs[1]) // Groups
+
+    const sections = container.querySelectorAll('.subgroup-section')
+    fireEvent.click(within(sections[0] as HTMLElement).getByText(/^Title/))
+
+    fireEvent.click(tabs[2]) // Warmup tab shares the section's sort scope
+    expect(rowTitles(container)).toEqual(['Mike', 'Zulu'])
+
+    fireEvent.click(tabs[3]) // Peak keeps its own default order
+    expect(rowTitles(container)).toEqual(['Mike', 'Alpha'])
   })
 })
 
@@ -468,5 +556,151 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     expect(onRemoveSubgroupMember).toHaveBeenCalledWith(1, 10)
     fireEvent.click(chips[1]) // inactive → add to Peak
     expect(onAddSubgroupMember).toHaveBeenCalledWith(2, 10)
+  })
+})
+
+describe('SetPoolTable tab drag-and-drop reordering', () => {
+  const subgroups: PoolSubgroup[] = [
+    { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+    { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
+    { id: 3, set_id: 1, name: 'Cooldown', display_order: 2 },
+  ]
+
+  const dragData = () => ({
+    dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
+  })
+
+  function getWrappers(container: HTMLElement) {
+    return container.querySelectorAll('.pool-tab-wrapper')
+  }
+
+  it('does not render move left/right arrow buttons', () => {
+    renderPool([makePoolEntry({ id: 1, track_id: 10 })], subgroups)
+    expect(screen.queryByTitle('Move left')).toBeNull()
+    expect(screen.queryByTitle('Move right')).toBeNull()
+  })
+
+  it('dropping a dragged tab on another tab reorders the subgroups', () => {
+    const onReorderSubgroups = vi.fn().mockResolvedValue(true)
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onReorderSubgroups },
+    )
+    const wrappers = getWrappers(container)
+    fireEvent.dragStart(wrappers[0], dragData())
+    fireEvent.dragOver(wrappers[2], dragData())
+    fireEvent.drop(wrappers[2], dragData())
+    expect(onReorderSubgroups).toHaveBeenCalledWith([2, 3, 1])
+  })
+
+  it('marks the hovered tab as drop target while dragging', () => {
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+    )
+    const wrappers = getWrappers(container)
+    fireEvent.dragStart(wrappers[0], dragData())
+    fireEvent.dragOver(wrappers[1], dragData())
+    expect(
+      wrappers[1].classList.contains('pool-tab-wrapper--drop-target'),
+    ).toBe(true)
+    expect(wrappers[0].classList.contains('pool-tab-wrapper--dragging')).toBe(
+      true,
+    )
+  })
+
+  it('does not reorder when dropped on the source tab', () => {
+    const onReorderSubgroups = vi.fn().mockResolvedValue(true)
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onReorderSubgroups },
+    )
+    const wrappers = getWrappers(container)
+    fireEvent.dragStart(wrappers[1], dragData())
+    fireEvent.dragOver(wrappers[1], dragData())
+    fireEvent.drop(wrappers[1], dragData())
+    expect(onReorderSubgroups).not.toHaveBeenCalled()
+  })
+
+  it('clears drag state on dragEnd', () => {
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+    )
+    const wrappers = getWrappers(container)
+    fireEvent.dragStart(wrappers[0], dragData())
+    fireEvent.dragOver(wrappers[2], dragData())
+    fireEvent.dragEnd(wrappers[0], dragData())
+    expect(
+      wrappers[2].classList.contains('pool-tab-wrapper--drop-target'),
+    ).toBe(false)
+    expect(wrappers[0].classList.contains('pool-tab-wrapper--dragging')).toBe(
+      false,
+    )
+  })
+})
+
+describe('SetPoolTable cross-panel drag-and-drop', () => {
+  const crossDragData = (mime: string, trackId: number) => ({
+    dataTransfer: {
+      types: [mime],
+      getData: (m: string) => (m === mime ? String(trackId) : ''),
+      setData: noop,
+      effectAllowed: '',
+      dropEffect: '',
+    },
+  })
+
+  it('tags row drags with the pool row MIME type', () => {
+    const setData = vi.fn()
+    const { container } = renderPool([makePoolEntry({ id: 1, track_id: 10 })])
+    const row = container.querySelector('tbody tr')!
+    fireEvent.dragStart(row, {
+      dataTransfer: { setData, effectAllowed: '', dropEffect: '' },
+    })
+    expect(setData).toHaveBeenCalledWith(POOL_ROW_MIME, '10')
+  })
+
+  it('moves a dropped tracklist row into the pool', () => {
+    const onDropFromTracklist = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      [],
+      [],
+      { onDropFromTracklist },
+    )
+    const panel = container.querySelector('.set-pool')!
+    fireEvent.drop(panel, crossDragData(TRACKLIST_ROW_MIME, 20))
+    expect(onDropFromTracklist).toHaveBeenCalledWith(20)
+  })
+
+  it('ignores drops of its own row MIME type', () => {
+    const onDropFromTracklist = vi.fn()
+    const onAddTrack = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      [],
+      [],
+      { onDropFromTracklist, onAddTrack },
+    )
+    const panel = container.querySelector('.set-pool')!
+    fireEvent.drop(panel, crossDragData(POOL_ROW_MIME, 10))
+    expect(onDropFromTracklist).not.toHaveBeenCalled()
+    expect(onAddTrack).not.toHaveBeenCalled()
+  })
+})
+
+describe('SetPoolTable title display', () => {
+  it('shows the metadata prefix verbatim, matching the track browser', () => {
+    const entry = makePoolEntry({ id: 1, track_id: 10 })
+    entry.track = { ...entry.track!, title: '[05A - Cm - 130.00] Pool Song' }
+    const { container } = renderPool([entry])
+    expect(container.querySelector('.set-ws-cell-title')?.textContent).toBe(
+      '[05A - Cm - 130.00] Pool Song',
+    )
   })
 })

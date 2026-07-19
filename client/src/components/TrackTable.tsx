@@ -3,7 +3,6 @@ import {
   useState,
   useRef,
   useLayoutEffect,
-  useEffect,
   useMemo,
   useCallback,
 } from 'react'
@@ -171,8 +170,6 @@ interface Props {
   loading: boolean
   selectedTrack: Track | SearchSuggestion | null
   selectTrack: (track: Track) => void
-  hasMore?: boolean
-  onLoadMore?: () => void
   error?: string | null
   columnVisibility?: Record<string, boolean>
   onAddToSet?: (trackId: number) => void
@@ -185,8 +182,6 @@ export const TrackTable = memo(function TrackTable({
   loading,
   selectedTrack,
   selectTrack,
-  hasMore,
-  onLoadMore,
   error,
   columnVisibility,
   onAddToSet,
@@ -196,7 +191,6 @@ export const TrackTable = memo(function TrackTable({
   const outerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const topScrollRef = useRef<HTMLDivElement>(null)
-  const sentinelRef = useRef<HTMLDivElement>(null)
 
   const [containerWidth, setContainerWidth] = useState(0)
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
@@ -445,20 +439,6 @@ export const TrackTable = memo(function TrackTable({
     setDraggedColumn(null)
   }, [])
 
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el || !hasMore || !onLoadMore) {
-      return
-    }
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) {
-        onLoadMore()
-      }
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasMore, onLoadMore, tracks.length])
-
   return (
     <div className="track-table-outer" ref={outerRef}>
       {isOverflowing && (
@@ -616,11 +596,6 @@ export const TrackTable = memo(function TrackTable({
             )}
           </tbody>
         </table>
-        {hasMore && (
-          <div ref={sentinelRef} className="scroll-sentinel">
-            Loading more tracks…
-          </div>
-        )}
       </div>
     </div>
   )

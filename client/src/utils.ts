@@ -22,6 +22,15 @@ export function cleanTitle(title: string): string {
  */
 export const TRACK_DRAG_MIME = 'application/x-xeremia-track'
 
+/**
+ * MIME types identifying row drags that originate inside the set workspace
+ * (payload: track id string). Each panel tags its rows with its own type so
+ * the opposite panel can accept them as a move, while a panel never reacts to
+ * its own rows — those drags are handled by row-level reorder handlers.
+ */
+export const TRACKLIST_ROW_MIME = 'application/x-xeremia-tracklist-row'
+export const POOL_ROW_MIME = 'application/x-xeremia-pool-row'
+
 export function formatFloat(value: number | null | undefined): string {
   if (value == null) {
     return '—'
