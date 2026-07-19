@@ -16,6 +16,7 @@ function makeTrack(overrides: Partial<Track> & { id: number }): Track {
     genre: null,
     label: null,
     energy: null,
+    date_added: null,
     ...overrides,
   }
 }

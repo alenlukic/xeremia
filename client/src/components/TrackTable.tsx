@@ -15,6 +15,7 @@ import {
   createColumnHelper,
   type ColumnSizingState,
   type ColumnOrderState,
+  type SortingFn,
   type SortingState,
   type Updater,
 } from '@tanstack/react-table'
@@ -26,18 +27,41 @@ import { PlayButton } from './PlayButton'
 const col = createColumnHelper<Track>()
 
 const FIXED_PX = 90
-const FIXED_COUNT = 4
+const DATE_ADDED_PX = 110
+const FIXED_IDS = ['camelot_code', 'key', 'bpm', 'energy', 'date_added']
+const FIXED_WIDTHS: Record<string, number> = {
+  camelot_code: FIXED_PX,
+  key: FIXED_PX,
+  bpm: FIXED_PX,
+  energy: FIXED_PX,
+  date_added: DATE_ADDED_PX,
+}
+const PLAY_COL_PX = 32
+const ACTION_COL_PX = 74
+const ALWAYS_VISIBLE_FIXED_PX = PLAY_COL_PX + ACTION_COL_PX
 const FLEX_MINS = [280, 100, 100]
 const TOTAL_FLEX = FLEX_MINS.reduce((a, b) => a + b, 0)
-const TOTAL_FIXED = FIXED_COUNT * FIXED_PX
 
-function computeColWidths(container: number): number[] {
+/**
+ * Fixed-width reservation must reflect only the currently visible fixed data
+ * columns (key/energy can be hidden) plus the always-present play/action
+ * columns — reserving space for hidden columns, or omitting the play/action
+ * columns, would leave the table narrower or wider than its container,
+ * producing a stray gap or an unwanted horizontal scrollbar.
+ */
+function computeColWidths(
+  container: number,
+  visibleFixedIds: readonly string[],
+): number[] {
   if (container <= 0) {
-    return Array(FIXED_COUNT).fill(FIXED_PX).concat(FLEX_MINS)
+    return FIXED_IDS.map((id) => FIXED_WIDTHS[id]).concat(FLEX_MINS)
   }
-  const flexBudget = Math.max(container - TOTAL_FIXED, TOTAL_FLEX)
+  const totalVisibleFixed =
+    visibleFixedIds.reduce((sum, id) => sum + FIXED_WIDTHS[id], 0) +
+    ALWAYS_VISIBLE_FIXED_PX
+  const flexBudget = Math.max(container - totalVisibleFixed, TOTAL_FLEX)
   return [
-    ...Array<number>(FIXED_COUNT).fill(FIXED_PX),
+    ...FIXED_IDS.map((id) => FIXED_WIDTHS[id]),
     ...FLEX_MINS.map((m) => (m / TOTAL_FLEX) * flexBudget),
   ]
 }
@@ -45,15 +69,48 @@ function computeColWidths(container: number): number[] {
 /** Fixed row height (px) assumed by the virtualizer; matches td padding+line. */
 const ROW_HEIGHT = 55
 
-const COLUMN_IDS = [
-  'camelot_code',
-  'key',
-  'bpm',
-  'energy',
-  'title',
-  'label',
-  'genre',
-]
+const COLUMN_IDS = [...FIXED_IDS, 'title', 'label', 'genre']
+
+/**
+ * `date_added` is stored as Python's `ctime()` output (e.g. "Wed Apr 15
+ * 15:59:11 2026"), which sorts wrong lexicographically. Parse to a timestamp
+ * for comparison instead; unparseable or missing values sort after real
+ * dates regardless of direction, so `desc` still surfaces relevant dates.
+ */
+function dateAddedTimestamp(value: string | null): number | null {
+  if (!value) {
+    return null
+  }
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? null : time
+}
+
+const sortDateAdded: SortingFn<Track> = (rowA, rowB) => {
+  const a = dateAddedTimestamp(rowA.original.date_added)
+  const b = dateAddedTimestamp(rowB.original.date_added)
+  if (a === null && b === null) {
+    return 0
+  }
+  if (a === null) {
+    return 1
+  }
+  if (b === null) {
+    return -1
+  }
+  return a - b
+}
+
+function formatDateAdded(value: string | null): string {
+  const time = dateAddedTimestamp(value)
+  if (time === null) {
+    return '—'
+  }
+  return new Date(time).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
 
 const dataColumns = [
   col.accessor('camelot_code', {
@@ -80,6 +137,15 @@ const dataColumns = [
     minSize: 50,
     cell: (info) => (
       <span className="mono">{formatFloat(info.getValue())}</span>
+    ),
+  }),
+  col.accessor('date_added', {
+    header: 'Date Added',
+    size: DATE_ADDED_PX,
+    minSize: 70,
+    sortingFn: sortDateAdded,
+    cell: (info) => (
+      <span className="mono">{formatDateAdded(info.getValue())}</span>
     ),
   }),
   col.accessor('title', {
@@ -136,9 +202,9 @@ export const TrackTable = memo(function TrackTable({
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([
     'play',
-    ...COLUMN_IDS.slice(0, 4),
+    ...COLUMN_IDS.slice(0, FIXED_IDS.length),
     'add_to_set',
-    ...COLUMN_IDS.slice(4),
+    ...COLUMN_IDS.slice(FIXED_IDS.length),
   ])
   const [sorting, setSorting] = useState<SortingState>([])
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
@@ -162,17 +228,22 @@ export const TrackTable = memo(function TrackTable({
     return () => ro.disconnect()
   }, [])
 
+  const visibleFixedIds = useMemo(
+    () => FIXED_IDS.filter((id) => columnVisibility?.[id] !== false),
+    [columnVisibility],
+  )
+
   const responsiveSizing = useMemo(() => {
     if (containerWidth <= 0) {
       return {}
     }
-    const widths = computeColWidths(containerWidth)
+    const widths = computeColWidths(containerWidth, visibleFixedIds)
     const sizing: ColumnSizingState = {}
     COLUMN_IDS.forEach((id, i) => {
       sizing[id] = widths[i]
     })
     return sizing
-  }, [containerWidth])
+  }, [containerWidth, visibleFixedIds])
 
   const effectiveSizing = useMemo(() => {
     if (Object.keys(columnSizing).length > 0) {
@@ -196,7 +267,7 @@ export const TrackTable = memo(function TrackTable({
       col.display({
         id: 'add_to_set',
         header: '',
-        size: 74,
+        size: ACTION_COL_PX,
         minSize: 60,
         enableSorting: false,
         cell: ({ row }) =>
@@ -248,7 +319,7 @@ export const TrackTable = memo(function TrackTable({
       col.display({
         id: 'play',
         header: '',
-        size: 32,
+        size: PLAY_COL_PX,
         minSize: 28,
         enableSorting: false,
         cell: ({ row }) => (
@@ -287,6 +358,7 @@ export const TrackTable = memo(function TrackTable({
 
   const totalWidth = table.getTotalSize()
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth
+  const isUnderflowing = containerWidth > 0 && totalWidth < containerWidth
 
   const rows = table.getRowModel().rows
 
@@ -405,7 +477,14 @@ export const TrackTable = memo(function TrackTable({
       >
         <table
           className="track-table"
-          style={containerWidth > 0 ? { width: totalWidth } : undefined}
+          style={
+            containerWidth > 0
+              ? {
+                  width: totalWidth,
+                  margin: isUnderflowing ? '0 auto' : undefined,
+                }
+              : undefined
+          }
         >
           <thead>
             {table.getHeaderGroups().map((hg) => (

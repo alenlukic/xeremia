@@ -88,7 +88,7 @@ export function SetBuilder({
   clearError,
 }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('tracks')
-  const [poolExpanded, setPoolExpanded] = useState(false)
+  const [poolExpanded, setPoolExpanded] = useState(true)
 
   const handleExport = useCallback(async () => {
     if (!activeSet || activeSet.tracklist.length === 0) {

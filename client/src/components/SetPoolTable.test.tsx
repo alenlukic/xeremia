@@ -23,6 +23,7 @@ function makePoolEntry(
       genre: null,
       label: null,
       energy: null,
+      date_added: null,
     },
     ...overrides,
   }
@@ -117,6 +118,7 @@ describe('SetPoolTable multi-sort', () => {
           genre: null,
           label: null,
           energy: null,
+          date_added: null,
         },
       }),
       makePoolEntry({
@@ -133,6 +135,7 @@ describe('SetPoolTable multi-sort', () => {
           genre: null,
           label: null,
           energy: null,
+          date_added: null,
         },
       }),
     ]

@@ -110,6 +110,7 @@ function makeTracks(count: number): Track[] {
       genre: 'Electronic',
       label: 'Label',
       energy: 0.5,
+      date_added: null,
     }
   })
 }
@@ -751,17 +752,17 @@ describe('Transition chaining', () => {
   })
 })
 
-describe('Browse column visibility localStorage round-trip', () => {
+describe('Browse column visibility sessionStorage round-trip', () => {
   const COL_VIS_KEY = 'xeremia-browse-col-visibility'
 
   beforeEach(() => {
-    localStorage.removeItem(COL_VIS_KEY)
+    sessionStorage.removeItem(COL_VIS_KEY)
   })
 
-  it('restores hidden column from localStorage, persists toggle, and survives remount', async () => {
+  it('restores hidden column from sessionStorage, persists toggle, and survives remount', async () => {
     const user = userEvent.setup()
 
-    localStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false }))
+    sessionStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false }))
 
     const { unmount } = render(<App />)
 
@@ -777,7 +778,7 @@ describe('Browse column visibility localStorage round-trip', () => {
     await user.click(bpmCheckbox)
 
     await waitFor(() => {
-      const stored = JSON.parse(localStorage.getItem(COL_VIS_KEY)!)
+      const stored = JSON.parse(sessionStorage.getItem(COL_VIS_KEY)!)
       expect(stored.bpm).toBe(true)
     })
 
@@ -794,7 +795,7 @@ describe('Browse column visibility localStorage round-trip', () => {
     expect(restoredCheckbox.checked).toBe(true)
   })
 
-  it('starts with all columns visible when localStorage has no saved state', async () => {
+  it('starts with default columns visible (Key and Energy hidden) when localStorage has no saved state', async () => {
     render(<App />)
 
     const headers = screen
@@ -802,15 +803,16 @@ describe('Browse column visibility localStorage round-trip', () => {
       .map((h) => h.textContent)
     expect(headers).toContain('BPM')
     expect(headers).toContain('Camelot')
-    expect(headers).toContain('Energy')
+    expect(headers).not.toContain('Key')
+    expect(headers).not.toContain('Energy')
   })
 })
 
-describe('Browse column visibility – invalid localStorage values', () => {
+describe('Browse column visibility – invalid sessionStorage values', () => {
   const COL_VIS_KEY = 'xeremia-browse-col-visibility'
 
   beforeEach(() => {
-    localStorage.removeItem(COL_VIS_KEY)
+    sessionStorage.removeItem(COL_VIS_KEY)
   })
 
   it.each([
@@ -820,9 +822,9 @@ describe('Browse column visibility – invalid localStorage values', () => {
     ['string', '"hello"'],
     ['null', 'null'],
   ])(
-    'falls back to all columns visible when stored value is a %s',
+    'falls back to default column visibility (Key and Energy hidden) when stored value is a %s',
     async (_label, stored) => {
-      localStorage.setItem(COL_VIS_KEY, stored)
+      sessionStorage.setItem(COL_VIS_KEY, stored)
 
       render(<App />)
 
@@ -831,12 +833,13 @@ describe('Browse column visibility – invalid localStorage values', () => {
         .map((h) => h.textContent)
       expect(headers).toContain('BPM')
       expect(headers).toContain('Camelot')
-      expect(headers).toContain('Energy')
+      expect(headers).not.toContain('Key')
+      expect(headers).not.toContain('Energy')
     },
   )
 
   it('restores valid object visibility maps correctly', async () => {
-    localStorage.setItem(
+    sessionStorage.setItem(
       COL_VIS_KEY,
       JSON.stringify({ bpm: false, energy: false }),
     )
@@ -1100,9 +1103,6 @@ describe('Cross-region drag and drop', () => {
       expect(httpMod.tracklistAdd).toHaveBeenCalledWith(1, 3)
     })
 
-    await act(async () => {
-      screen.getByRole('button', { name: 'Expand pool' }).click()
-    })
     const row4 = within(browseTable).getByText('Track 4').closest('tr')!
     const dt2 = makeDataTransfer()
     fireEvent.dragStart(row4, { dataTransfer: dt2 })

@@ -22,7 +22,9 @@
   --info: #1e88e5;
   --radius: 6px;
   --transition: 120ms ease;
-  --content-gutter: 32px;
+  --content-gutter: 8px;
+  --nav-rail-height: 48px;
+  --nav-chevron-height: 16px;
 }
 
 /* === Reset === */
@@ -61,6 +63,10 @@ body,
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  /* Reserves the sliver the collapsed nav-trigger chevron hangs into, so it
+     never overlaps page content and the trigger area stays exactly that
+     size. */
+  padding-top: var(--nav-chevron-height);
 }
 
 /* === Search Rail (search + browse toggle + filters in one compact row) === */
@@ -70,7 +76,6 @@ body,
   gap: 12px;
   padding: 8px var(--content-gutter);
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
   /* Above the browse overlay (z-60) so rail dropdowns render over it. */
   position: relative;
   z-index: 70;
@@ -182,14 +187,69 @@ body,
   color: var(--text-muted);
 }
 
-/* === Nav Rail === */
+/* === Nav Rail (autohide, overlays top of viewport) === */
+/* Trigger area is exactly the chevron's footprint: the reserved app-shell
+   top margin, matched here so hover-to-reveal only fires in that sliver
+   rather than across a wider band of page content. */
+.nav-trigger-zone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--nav-chevron-height);
+  z-index: 95;
+}
+
+.nav-trigger-chevron {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: var(--nav-chevron-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  z-index: 101;
+  transition: top var(--transition);
+}
+
+/* Stays attached to the bottom edge of the nav bar once it unfurls, instead
+   of disappearing, so the affordance keeps mapping to the same control. */
+.nav-trigger-chevron--open {
+  top: var(--nav-rail-height);
+}
+
 .nav-rail {
   display: flex;
   align-items: center;
-  height: 48px;
+  height: var(--nav-rail-height);
   flex-shrink: 0;
   padding: 0 var(--content-gutter);
   border-bottom: 1px solid var(--border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--bg);
+  transform: translateY(-100%);
+  opacity: 0;
+  transition:
+    transform var(--transition),
+    opacity var(--transition);
+}
+
+.nav-rail.nav-rail--visible {
+  transform: translateY(0);
+  opacity: 1;
 }
 
 .nav-rail .tab {
@@ -281,7 +341,6 @@ body,
   display: flex;
   flex-direction: column;
   position: relative;
-  border-bottom: 1px solid var(--border);
 }
 
 .browse-panel {
@@ -290,6 +349,80 @@ body,
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* === Playback Bar === */
+.playback-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  opacity: 0.7;
+  z-index: 200;
+}
+
+.playback-bar-play-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.playback-bar-title {
+  flex-shrink: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.playback-bar-time {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.playback-bar-scrubber {
+  flex: 1;
+  min-width: 80px;
+}
+
+.playback-bar-volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.playback-bar-volume input[type='range'] {
+  width: 80px;
+}
+
+.playback-bar-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.playback-bar-close:hover {
+  color: var(--text);
 }
 
 .bottom-region {
@@ -322,8 +455,7 @@ body,
   flex: 1;
   overflow: hidden;
   margin: 0 var(--content-gutter);
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
+  border: 1px solid var(--border);
 }
 
 /* === Bucket Sub-tabs === */
@@ -815,7 +947,6 @@ body,
   color: var(--text);
   border-color: var(--accent);
 }
-
 
 /* --- Transition chain breadcrumb --- */
 .transition-chain {
@@ -2676,6 +2807,13 @@ body,
   flex: 1;
   min-width: 0;
   overflow: auto;
+}
+
+/* Match the tracklist's full-height flush bottom edge: unlike .set-tracklist,
+   .set-pool sits inside an extra accordion wrapper and won't stretch to fill
+   it without an explicit height. */
+.set-pool {
+  height: 100%;
 }
 
 /* --- Tracklist fills remaining space --- */
