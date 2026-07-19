@@ -364,6 +364,103 @@ describe('Browse table', () => {
     const firstRow = document.querySelector('.track-table tbody tr')
     expect(firstRow?.textContent).toContain('Track 600')
   })
+
+  it('restores filters, sorting, and scroll after search selection is cleared', async () => {
+    await openBrowseTab()
+
+    await userEvent.click(screen.getByRole('button', { name: /All keys/ }))
+    await userEvent.click(screen.getByRole('button', { name: '01A' }))
+
+    const dateHeader = screen.getByText('Date Added')
+    await userEvent.click(dateHeader)
+    await userEvent.click(dateHeader)
+
+    const wrapper = document.querySelector<HTMLElement>(
+      '.track-table-wrapper',
+    )!
+    Object.defineProperties(wrapper, {
+      scrollHeight: { configurable: true, value: 1_200 },
+      clientHeight: { configurable: true, value: 200 },
+    })
+    wrapper.scrollTop = 440
+    fireEvent.scroll(wrapper)
+
+    const searchInput = screen.getByPlaceholderText('Search tracks…')
+    await userEvent.type(searchInput, 'Track 30')
+    const suggestionTitle = await screen.findByText('Track 30', {
+      selector: '.search-item-title',
+    })
+    fireEvent.mouseDown(suggestionTitle.closest('li')!)
+
+    await waitFor(() => {
+      expect(getRowCount()).toBe(1)
+    })
+    wrapper.scrollTop = 0
+    fireEvent.scroll(wrapper)
+
+    await userEvent.click(
+      document.querySelector<HTMLButtonElement>('.clear-btn--search')!,
+    )
+
+    await waitFor(() => {
+      expect(getRowCount()).toBe(300)
+      expect(document.querySelector('.track-table tbody tr')?.textContent).toContain(
+        'Track 300',
+      )
+    })
+    expect(
+      document.querySelector('.filter-camelot-toggle')?.textContent,
+    ).toContain('01A')
+    expect(wrapper.scrollTop).toBe(440)
+  })
+
+  it('restores scroll after bottom-view switches and browser collapse', async () => {
+    vi.mocked(useCollectionCache).mockReturnValue({
+      allTracks: makeTracks(10),
+      traitMap: new Map(),
+      loading: false,
+      tracksError: null,
+      traitsError: null,
+    })
+    await openBrowseTab()
+
+    const wrapper = document.querySelector<HTMLElement>(
+      '.track-table-wrapper',
+    )!
+    const geometry = { scrollHeight: 1_200, clientHeight: 200 }
+    Object.defineProperties(wrapper, {
+      scrollHeight: {
+        configurable: true,
+        get: () => geometry.scrollHeight,
+      },
+      clientHeight: {
+        configurable: true,
+        get: () => geometry.clientHeight,
+      },
+    })
+    wrapper.scrollTop = 700
+    fireEvent.scroll(wrapper)
+
+    geometry.clientHeight = 600
+    await userEvent.click(screen.getByRole('button', { name: 'Set' }))
+    wrapper.scrollTop = 600
+    fireEvent.scroll(wrapper)
+
+    geometry.clientHeight = 200
+    await userEvent.click(screen.getByRole('button', { name: 'Matches' }))
+    expect(wrapper.scrollTop).toBe(700)
+
+    geometry.scrollHeight = 0
+    geometry.clientHeight = 0
+    await userEvent.click(screen.getByLabelText('Collapse track browser'))
+    wrapper.scrollTop = 0
+    fireEvent.scroll(wrapper)
+
+    geometry.scrollHeight = 1_200
+    geometry.clientHeight = 200
+    await userEvent.click(screen.getByLabelText('Expand track browser'))
+    expect(wrapper.scrollTop).toBe(700)
+  })
 })
 
 describe('Error state handling', () => {
@@ -851,22 +948,23 @@ describe('Set tab', () => {
     expect(screen.getByText('+ New')).toBeInTheDocument()
   })
 
-  it('hands the reclaimed sub-tab height to the browser only in set view', async () => {
+  it('uses the same reclaimed browser split in Matches and Set views', async () => {
     await act(async () => {
       render(<App />)
     })
     const topRegion = document.querySelector('.top-region')!
-    expect(topRegion.classList.contains('top-region--reclaim')).toBe(false)
+    const matchesLayoutClass = topRegion.className
+    expect(topRegion.classList.contains('top-region--reclaim')).toBe(true)
 
     await act(async () => {
       screen.getByRole('button', { name: 'Set' }).click()
     })
-    expect(topRegion.classList.contains('top-region--reclaim')).toBe(true)
+    expect(topRegion.className).toBe(matchesLayoutClass)
 
     await act(async () => {
       screen.getByRole('button', { name: 'Matches' }).click()
     })
-    expect(topRegion.classList.contains('top-region--reclaim')).toBe(false)
+    expect(topRegion.className).toBe(matchesLayoutClass)
   })
 
   it('does not render the Tracks/Explorer rail outside the set view', async () => {

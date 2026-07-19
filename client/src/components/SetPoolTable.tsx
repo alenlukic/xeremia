@@ -165,7 +165,7 @@ function SubgroupChips({
   )
 
   return (
-    <div className="subgroup-chips">
+    <div className="subgroup-chips subgroup-chips--stack">
       {subgroups.map((sg) => (
         <button
           key={sg.id}

@@ -172,6 +172,7 @@ interface Props {
   selectTrack: (track: Track) => void
   error?: string | null
   columnVisibility?: Record<string, boolean>
+  scrollRestorationKey?: string
   onAddToSet?: (trackId: number) => void
   onAddToPool?: (trackId: number) => void
   onAddToTracklist?: (trackId: number) => void
@@ -184,6 +185,7 @@ export const TrackTable = memo(function TrackTable({
   selectTrack,
   error,
   columnVisibility,
+  scrollRestorationKey,
   onAddToSet,
   onAddToPool,
   onAddToTracklist,
@@ -204,6 +206,7 @@ export const TrackTable = memo(function TrackTable({
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null)
+  const savedScrollTop = useRef(0)
 
   useLayoutEffect(() => {
     const el = outerRef.current
@@ -374,6 +377,12 @@ export const TrackTable = memo(function TrackTable({
       ? virtualTotal - virtualRows[virtualRows.length - 1].end
       : 0
 
+  useLayoutEffect(() => {
+    if (!selectedTrack && wrapperRef.current) {
+      wrapperRef.current.scrollTop = savedScrollTop.current
+    }
+  }, [selectedTrack, tracks, sorting, scrollRestorationKey])
+
   const handleTopScroll = useCallback(() => {
     if (ignoreNextScroll.current === 'top') {
       ignoreNextScroll.current = null
@@ -386,15 +395,26 @@ export const TrackTable = memo(function TrackTable({
   }, [])
 
   const handleWrapperScroll = useCallback(() => {
+    const wrapper = wrapperRef.current
+    if (wrapper && !selectedTrack) {
+      const maxScrollTop = Math.max(0, wrapper.scrollHeight - wrapper.clientHeight)
+      const wasClamped =
+        wrapper.scrollTop < savedScrollTop.current &&
+        wrapper.scrollTop >= maxScrollTop &&
+        savedScrollTop.current > maxScrollTop
+      if (!wasClamped) {
+        savedScrollTop.current = wrapper.scrollTop
+      }
+    }
     if (ignoreNextScroll.current === 'wrapper') {
       ignoreNextScroll.current = null
       return
     }
-    if (topScrollRef.current && wrapperRef.current) {
+    if (topScrollRef.current && wrapper) {
       ignoreNextScroll.current = 'top'
-      topScrollRef.current.scrollLeft = wrapperRef.current.scrollLeft
+      topScrollRef.current.scrollLeft = wrapper.scrollLeft
     }
-  }, [])
+  }, [selectedTrack])
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, columnId: string) => {
@@ -453,7 +473,7 @@ export const TrackTable = memo(function TrackTable({
       <div
         className="track-table-wrapper"
         ref={wrapperRef}
-        onScroll={isOverflowing ? handleWrapperScroll : undefined}
+        onScroll={handleWrapperScroll}
       >
         <table
           className="track-table"

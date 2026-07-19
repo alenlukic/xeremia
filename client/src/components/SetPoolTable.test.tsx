@@ -435,6 +435,44 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     expect(activeChips[0].textContent).toBe('Warmup')
   })
 
+  it('stacks Groups-column chips one per line for multi-group rows', () => {
+    const manyGroups: PoolSubgroup[] = [
+      { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+      { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
+      { id: 3, set_id: 1, name: 'Cooldown', display_order: 2 },
+    ]
+    const memberships: PoolSubgroupMembership[] = [
+      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
+      { id: 2, subgroup_id: 2, pool_entry_id: 10 },
+      { id: 3, subgroup_id: 3, pool_entry_id: 10 },
+    ]
+    const { container } = renderPool(makeEntries(), manyGroups, memberships)
+    const cell = container.querySelector('td.set-ws-cell-subgroups')!
+    const stack = cell.querySelector('.subgroup-chips')!
+    expect(stack.classList.contains('subgroup-chips--stack')).toBe(true)
+    const chips = stack.querySelectorAll(':scope > .subgroup-chip')
+    expect(chips.length).toBe(3)
+    expect(Array.from(chips).map((chip) => chip.textContent)).toEqual([
+      'Warmup',
+      'Peak',
+      'Cooldown',
+    ])
+    expect(chips[0].classList.contains('active')).toBe(true)
+    expect(chips[1].classList.contains('active')).toBe(true)
+    expect(chips[2].classList.contains('active')).toBe(true)
+  })
+
+  it('renders inactive Groups chips when a row has no memberships', () => {
+    const { container } = renderPool(makeEntries(), subgroups, [])
+    const cell = container.querySelector('td.set-ws-cell-subgroups')!
+    const stack = cell.querySelector('.subgroup-chips.subgroup-chips--stack')!
+    const chips = stack.querySelectorAll(':scope > .subgroup-chip')
+    expect(chips.length).toBe(2)
+    expect(
+      Array.from(chips).every((chip) => !chip.classList.contains('active')),
+    ).toBe(true)
+  })
+
   it('clicking subgroup tab shows only filtered tracks', () => {
     const memberships: PoolSubgroupMembership[] = [
       { id: 1, subgroup_id: 1, pool_entry_id: 10 },

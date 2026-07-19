@@ -411,10 +411,10 @@ body,
   position: relative;
 }
 
-/* Set view: the sub-tab bar the set workspace used to carry (35px + 12px
-   margin = 47px) was moved into a hover rail. Handing the top region a 70.5px
-   basis at 1:2 grow gives it exactly (2/3) × 70.5 ≈ 47px more than the plain
-   1:2 split — the browser reclaims that height, not the tracklist/pool. */
+/* Matches and Set share the reclaimed browser height. The Set sub-tab bar
+   (35px + 12px margin = 47px) moved into a hover rail, and a 70.5px basis at
+   1:2 grow gives the top region exactly (2/3) × 70.5 ≈ 47px more than the
+   plain split. */
 .top-region--reclaim {
   flex: 1 1 70.5px;
 }
@@ -3297,7 +3297,10 @@ body,
 .subgroup-chips {
   display: flex;
   gap: 3px;
-  flex-wrap: wrap;
+}
+.subgroup-chips--stack {
+  flex-direction: column;
+  align-items: flex-start;
 }
 .subgroup-chip {
   background: var(--surface);

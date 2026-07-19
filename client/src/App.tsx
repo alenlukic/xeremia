@@ -318,11 +318,10 @@ export function App() {
             Track Browser
           </button>
         )}
-        {/* The set view no longer carries its sub-tab bar (moved to a hover
-            rail), so its region shed that height; the reclaim class hands it
-            to the browser instead of letting the tracklist/pool grow. */}
+        {/* Keep Matches on the same browser/bottom-panel split as Set, whose
+            removed sub-tab bar lets the browser reclaim that height. */}
         <div
-          className={`top-region${bottomView === 'set' ? ' top-region--reclaim' : ''}`}
+          className={`top-region${bottomView === 'set' || bottomView === 'matches' ? ' top-region--reclaim' : ''}`}
           hidden={regionSplit === 'top-collapsed'}
         >
           <div className="search-rail">
@@ -370,6 +369,7 @@ export function App() {
                 selectTrack={handleSelectTrack}
                 error={tracksError}
                 columnVisibility={browseColumnVisibility}
+                scrollRestorationKey={`${bottomView}:${regionSplit}`}
                 onAddToPool={handleAddToPool}
                 onAddToTracklist={handleAddToTracklist}
               />
