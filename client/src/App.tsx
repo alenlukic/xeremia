@@ -8,6 +8,7 @@ import { MatchesPanel } from './components/MatchesPanel'
 import { MatchDetail } from './components/MatchDetail'
 import { AdminDashboard } from './components/AdminDashboard'
 import { SetBuilder } from './components/SetBuilder'
+import { PlaybackBar } from './components/PlaybackBar'
 import { useSelectedTrack } from './hooks/useSelectedTrack'
 import { useTrackFilters } from './hooks/useTrackFilters'
 import { useCollectionCache } from './hooks/useCollectionCache'
@@ -26,11 +27,14 @@ const BROWSE_PAGE_SIZE = 250
 
 const COL_VIS_STORAGE_KEY = 'xeremia-browse-col-visibility'
 
+const BOTTOM_VIEW_STORAGE_KEY = 'xeremia-bottom-view'
+
 const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'camelot_code', label: 'Camelot' },
   { id: 'key', label: 'Key' },
   { id: 'bpm', label: 'BPM' },
   { id: 'energy', label: 'Energy' },
+  { id: 'date_added', label: 'Date Added' },
   { id: 'label', label: 'Label' },
   { id: 'genre', label: 'Genre' },
 ]
@@ -39,16 +43,35 @@ function isPlainObject(v: unknown): v is Record<string, boolean> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
+function loadBottomView(): BottomView {
+  try {
+    const raw = localStorage.getItem(BOTTOM_VIEW_STORAGE_KEY)
+    if (raw === 'matches' || raw === 'set' || raw === 'admin') {
+      return raw
+    }
+  } catch {
+    /* ignore storage access errors */
+  }
+  return 'matches'
+}
+
+const DEFAULT_BROWSE_COLUMN_VISIBILITY: Record<string, boolean> = {
+  key: false,
+  energy: false,
+}
+
+// Column selection is scoped to the browser session (sessionStorage), unlike
+// the other view-state keys above, which persist indefinitely (localStorage).
 function loadColumnVisibility(): Record<string, boolean> {
   try {
-    const raw = localStorage.getItem(COL_VIS_STORAGE_KEY)
+    const raw = sessionStorage.getItem(COL_VIS_STORAGE_KEY)
     if (!raw) {
-      return {}
+      return DEFAULT_BROWSE_COLUMN_VISIBILITY
     }
     const parsed: unknown = JSON.parse(raw)
-    return isPlainObject(parsed) ? parsed : {}
+    return isPlainObject(parsed) ? parsed : DEFAULT_BROWSE_COLUMN_VISIBILITY
   } catch {
-    return {}
+    return DEFAULT_BROWSE_COLUMN_VISIBILITY
   }
 }
 
@@ -61,7 +84,11 @@ export function App() {
     traitsError,
   } = useCollectionCache()
 
-  const [bottomView, setBottomView] = useState<BottomView>('matches')
+  const [bottomView, setBottomView] = useState<BottomView>(loadBottomView)
+
+  useEffect(() => {
+    localStorage.setItem(BOTTOM_VIEW_STORAGE_KEY, bottomView)
+  }, [bottomView])
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
   const [searchText, setSearchText] = useState('')
   const [loadedPages, setLoadedPages] = useState(1)
@@ -124,7 +151,7 @@ export function App() {
     useState<Record<string, boolean>>(loadColumnVisibility)
 
   useEffect(() => {
-    localStorage.setItem(
+    sessionStorage.setItem(
       COL_VIS_STORAGE_KEY,
       JSON.stringify(browseColumnVisibility),
     )
@@ -467,6 +494,7 @@ export function App() {
           )}
         </div>
       </div>
+      <PlaybackBar />
     </AudioPlayerProvider>
   )
 }

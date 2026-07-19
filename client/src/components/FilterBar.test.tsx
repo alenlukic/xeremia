@@ -127,6 +127,7 @@ describe('TrackTable column visibility', () => {
     genre: 'House',
     label: 'Toolroom',
     energy: 0.75,
+    date_added: null,
   }
 
   it('hides a column when columnVisibility marks it false while Title remains', () => {

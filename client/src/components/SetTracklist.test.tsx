@@ -24,6 +24,7 @@ function makeEntry(
       genre: null,
       label: null,
       energy: null,
+      date_added: null,
     },
     ...overrides,
   }

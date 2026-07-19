@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SetBuilder } from './SetBuilder'
 import type { PoolSubgroup, SetSummary, HydratedSet, Track } from '../types'
@@ -107,55 +107,45 @@ describe('SetBuilder', () => {
 
   describe('sub-tab layout', () => {
     it('renders Tracks and Explorer sub-tabs when a set is active', () => {
-      render(
-        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
-      )
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       expect(screen.getByRole('button', { name: 'Tracks' })).toBeInTheDocument()
       expect(
         screen.getByRole('button', { name: 'Explorer' }),
       ).toBeInTheDocument()
     })
 
-    it('defaults to Tracks sub-tab showing tracklist section and collapsed pool', () => {
-      render(
-        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
-      )
+    it('defaults to Tracks sub-tab showing tracklist and expanded pool', () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       expect(screen.getByText('Tracklist (0)')).toBeInTheDocument()
-      expect(screen.getByLabelText('Expand pool')).toBeInTheDocument()
+      expect(screen.getByText('Pool (0)')).toBeInTheDocument()
+      expect(screen.getByLabelText('Collapse pool')).toBeInTheDocument()
     })
 
-    it('collapsed expand tab shows a directional chevron', () => {
-      render(
-        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
-      )
+    it('collapsed expand tab shows a directional chevron', async () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
+      await userEvent.click(screen.getByLabelText('Collapse pool'))
       const expandBtn = screen.getByLabelText('Expand pool')
       expect(expandBtn).toHaveAttribute('title', 'Expand pool')
       expect(expandBtn.textContent).toContain('›')
     })
 
     it('expands pool accordion on click', async () => {
-      render(
-        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
-      )
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
+      await userEvent.click(screen.getByLabelText('Collapse pool'))
       await userEvent.click(screen.getByLabelText('Expand pool'))
       expect(screen.getByText('Pool (0)')).toBeInTheDocument()
       expect(screen.getByLabelText('Collapse pool')).toBeInTheDocument()
     })
 
-    it('collapse handle has title text and visible chevron', async () => {
-      render(
-        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
-      )
-      await userEvent.click(screen.getByLabelText('Expand pool'))
+    it('collapse handle has title text and visible chevron', () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       const collapseBtn = screen.getByLabelText('Collapse pool')
       expect(collapseBtn).toHaveAttribute('title', 'Collapse pool')
       expect(collapseBtn.textContent).toContain('‹')
     })
 
     it('switches to Explorer sub-tab', async () => {
-      render(
-        <SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />,
-      )
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
       expect(screen.getByText(/Explorer is empty/)).toBeInTheDocument()
     })
@@ -181,6 +171,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
@@ -192,7 +183,6 @@ describe('SetBuilder', () => {
           movePoolToTracklist={movePoolToTracklist}
         />,
       )
-      await userEvent.click(screen.getByLabelText('Expand pool'))
       await userEvent.click(screen.getByTitle('Move to tracklist'))
       expect(movePoolToTracklist).toHaveBeenCalledWith(10)
     })
@@ -216,6 +206,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
@@ -232,15 +223,9 @@ describe('SetBuilder', () => {
     })
   })
 
-
   describe('error display', () => {
     it('shows error as a toast with alert role', () => {
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          error="Something went wrong"
-        />,
-      )
+      render(<SetBuilder {...defaultProps()} error="Something went wrong" />)
       const toast = screen.getByRole('alert')
       expect(toast).toBeInTheDocument()
       expect(toast).toHaveTextContent('Something went wrong')
@@ -249,11 +234,7 @@ describe('SetBuilder', () => {
     it('calls clearError when toast dismiss is clicked', async () => {
       const clearError = vi.fn()
       render(
-        <SetBuilder
-          {...defaultProps()}
-          error="Oops"
-          clearError={clearError}
-        />,
+        <SetBuilder {...defaultProps()} error="Oops" clearError={clearError} />,
       )
       await userEvent.click(screen.getByLabelText('Dismiss'))
       expect(clearError).toHaveBeenCalled()
@@ -291,20 +272,17 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
       })
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          activeSet={hydrated}
-        />,
-      )
-      expect(screen.getByText('#')).toBeInTheDocument()
-      expect(screen.getByText('Title')).toBeInTheDocument()
-      expect(screen.getByText('Note')).toBeInTheDocument()
-      expect(screen.getByText('Actions')).toBeInTheDocument()
+      render(<SetBuilder {...defaultProps()} activeSet={hydrated} />)
+      const tracklist = document.querySelector<HTMLElement>('.set-tracklist')!
+      expect(within(tracklist).getByText('#')).toBeInTheDocument()
+      expect(within(tracklist).getByText('Title')).toBeInTheDocument()
+      expect(within(tracklist).getByText('Note')).toBeInTheDocument()
+      expect(within(tracklist).getByText('Actions')).toBeInTheDocument()
     })
   })
 
@@ -328,6 +306,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
           {
@@ -346,16 +325,12 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
       })
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          activeSet={hydrated}
-        />,
-      )
+      render(<SetBuilder {...defaultProps()} activeSet={hydrated} />)
       const noteInputs = screen.getAllByPlaceholderText('Add note…')
       expect(noteInputs).toHaveLength(2)
       expect(noteInputs[0]).toHaveValue('hello')
@@ -373,6 +348,7 @@ describe('SetBuilder', () => {
         genre: null,
         label: null,
         energy: null,
+        date_added: null,
       }
       const entry = {
         id: 1,
@@ -421,6 +397,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
@@ -464,6 +441,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
@@ -485,6 +463,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
@@ -497,8 +476,6 @@ describe('SetBuilder', () => {
           addExplorerNode={addExplorerNode}
         />,
       )
-
-      await userEvent.click(screen.getByLabelText('Expand pool'))
 
       const row = screen.getByText('Drag Me').closest('tr')!
       expect(row).toHaveAttribute('draggable', 'true')
@@ -528,16 +505,12 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
       })
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          activeSet={hydrated}
-        />,
-      )
+      render(<SetBuilder {...defaultProps()} activeSet={hydrated} />)
 
       const row = screen.getByText('TL Drag').closest('[draggable]')!
       expect(row).toHaveAttribute('draggable', 'true')
@@ -569,17 +542,13 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],
         explorer_edges: [],
       })
-      render(
-        <SetBuilder
-          {...defaultProps()}
-          activeSet={hydrated}
-        />,
-      )
+      render(<SetBuilder {...defaultProps()} activeSet={hydrated} />)
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
       const addBtns = screen.getAllByTestId('level-add-btn')
       expect(addBtns.length).toBeGreaterThan(0)
@@ -607,6 +576,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
           {
@@ -626,6 +596,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
           {
@@ -645,6 +616,7 @@ describe('SetBuilder', () => {
               genre: null,
               label: null,
               energy: null,
+              date_added: null,
             },
           },
         ],

@@ -39,6 +39,8 @@ class Track(Base):
 
     label = Column("label", String(128), index=True)
 
+    date_added = Column("date_added", String, index=True)
+
     comment = Column("comment", String(1024))
 
     def get_id_title_identifier(self):

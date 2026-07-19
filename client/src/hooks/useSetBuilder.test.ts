@@ -49,6 +49,7 @@ function makeTrack(id: number, title = `Track ${id}`): Track {
     genre: null,
     label: null,
     energy: null,
+    date_added: null,
   }
 }
 

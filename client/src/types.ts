@@ -8,6 +8,7 @@ export interface Track {
   genre: string | null
   label: string | null
   energy: number | null
+  date_added: string | null
 }
 
 export interface SearchSuggestion {

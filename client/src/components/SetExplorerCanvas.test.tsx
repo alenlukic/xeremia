@@ -56,6 +56,7 @@ function makeNode(
       genre: null,
       label: null,
       energy: null,
+      date_added: null,
     },
     ...overrides,
   }
@@ -155,14 +156,32 @@ describe('SetExplorerCanvas', () => {
       expect(screen.getByTestId('sibling-search-input')).toBeInTheDocument()
     })
 
-    it('lists every node at the parent level as an inheritable connection, not just the rightmost sibling\'s existing parents', async () => {
+    it("lists every node at the parent level as an inheritable connection, not just the rightmost sibling's existing parents", async () => {
       // Two parents (p0, p1) exist at level 0, but only p0 is connected to
       // the existing level-1 sibling. p1 has no children yet and must still
       // show up as a selectable parent when adding another level-1 node.
       const nodes = [
-        makeNode({ id: 1, node_id: 'p0', track_id: 10, level: 0, col_index: 0 }),
-        makeNode({ id: 2, node_id: 'p1', track_id: 11, level: 0, col_index: 1 }),
-        makeNode({ id: 3, node_id: 'c0', track_id: 12, level: 1, col_index: 0 }),
+        makeNode({
+          id: 1,
+          node_id: 'p0',
+          track_id: 10,
+          level: 0,
+          col_index: 0,
+        }),
+        makeNode({
+          id: 2,
+          node_id: 'p1',
+          track_id: 11,
+          level: 0,
+          col_index: 1,
+        }),
+        makeNode({
+          id: 3,
+          node_id: 'c0',
+          track_id: 12,
+          level: 1,
+          col_index: 0,
+        }),
       ]
       const edges: ExplorerEdge[] = [
         { id: 1, set_id: 1, parent_node_id: 'p0', child_node_id: 'c0' },
@@ -482,6 +501,7 @@ describe('SetExplorerCanvas', () => {
         genre: null,
         label: null,
         energy: null,
+        date_added: null,
       }
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
 
@@ -523,6 +543,7 @@ describe('SetExplorerCanvas', () => {
         genre: null,
         label: null,
         energy: null,
+        date_added: null,
       }
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
 
@@ -548,6 +569,7 @@ describe('SetExplorerCanvas', () => {
         genre: null,
         label: null,
         energy: null,
+        date_added: null,
       }
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
 
@@ -1226,9 +1248,27 @@ describe('SetExplorerCanvas', () => {
           level: 0,
           col_index: 2,
         }),
-        makeNode({ id: 4, node_id: 'c0', track_id: 13, level: 1, col_index: 0 }),
-        makeNode({ id: 5, node_id: 'c1', track_id: 14, level: 1, col_index: 1 }),
-        makeNode({ id: 6, node_id: 'c2', track_id: 15, level: 1, col_index: 2 }),
+        makeNode({
+          id: 4,
+          node_id: 'c0',
+          track_id: 13,
+          level: 1,
+          col_index: 0,
+        }),
+        makeNode({
+          id: 5,
+          node_id: 'c1',
+          track_id: 14,
+          level: 1,
+          col_index: 1,
+        }),
+        makeNode({
+          id: 6,
+          node_id: 'c2',
+          track_id: 15,
+          level: 1,
+          col_index: 2,
+        }),
       ]
       const edges: ExplorerEdge[] = [
         { id: 1, set_id: 1, parent_node_id: 'p0', child_node_id: 'c0' },
@@ -1607,12 +1647,48 @@ describe('SetExplorerCanvas', () => {
       // their departure/arrival stubs on the same x because Jakare and Jose
       // Solano share column 2 across adjacent levels.
       const nodes = [
-        makeNode({ id: 1, node_id: 'p0', track_id: 10, level: 0, col_index: 0 }),
-        makeNode({ id: 2, node_id: 'p1', track_id: 11, level: 0, col_index: 1 }),
-        makeNode({ id: 3, node_id: 'p2', track_id: 12, level: 0, col_index: 2 }),
-        makeNode({ id: 4, node_id: 'c0', track_id: 13, level: 1, col_index: 0 }),
-        makeNode({ id: 5, node_id: 'c1', track_id: 14, level: 1, col_index: 1 }),
-        makeNode({ id: 6, node_id: 'c2', track_id: 15, level: 1, col_index: 2 }),
+        makeNode({
+          id: 1,
+          node_id: 'p0',
+          track_id: 10,
+          level: 0,
+          col_index: 0,
+        }),
+        makeNode({
+          id: 2,
+          node_id: 'p1',
+          track_id: 11,
+          level: 0,
+          col_index: 1,
+        }),
+        makeNode({
+          id: 3,
+          node_id: 'p2',
+          track_id: 12,
+          level: 0,
+          col_index: 2,
+        }),
+        makeNode({
+          id: 4,
+          node_id: 'c0',
+          track_id: 13,
+          level: 1,
+          col_index: 0,
+        }),
+        makeNode({
+          id: 5,
+          node_id: 'c1',
+          track_id: 14,
+          level: 1,
+          col_index: 1,
+        }),
+        makeNode({
+          id: 6,
+          node_id: 'c2',
+          track_id: 15,
+          level: 1,
+          col_index: 2,
+        }),
       ]
       const edges: ExplorerEdge[] = []
       let edgeId = 1
