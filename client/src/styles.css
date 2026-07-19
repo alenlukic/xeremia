@@ -64,9 +64,8 @@ body,
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  /* Reserves the sliver the collapsed nav hover-rail chevron hangs into, so it
-     never overlaps page content and the trigger area stays exactly that
-     size. */
+  /* Reserves the sliver the collapsed nav chevron hangs into, so its click
+     target never overlaps page content. */
   padding-top: var(--nav-chevron-height);
 }
 
@@ -188,30 +187,7 @@ body,
   color: var(--text-muted);
 }
 
-/* === Hover Rail (shared auto-hide bar: horizontal top nav, vertical side nav) === */
-/* Trigger area is exactly the chevron's footprint: the reserved edge sliver,
-   matched here so hover-to-reveal only fires in that sliver rather than
-   across a wider band of page content. */
-.hover-rail-trigger {
-  z-index: 95;
-}
-
-.hover-rail-trigger--horizontal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--nav-chevron-height);
-}
-
-.hover-rail-trigger--vertical {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: var(--nav-chevron-height);
-}
-
+/* === Hover Rail (shared collapsible bar: horizontal top nav, vertical side nav) === */
 .hover-rail-chevron {
   display: flex;
   align-items: center;
@@ -220,13 +196,17 @@ body,
   border: 1px solid var(--border);
   color: var(--text-muted);
   font-size: 12px;
+  font-family: inherit;
   line-height: 1;
+  padding: 0;
+  cursor: pointer;
   z-index: 101;
 }
 
 .hover-rail-chevron-glyph {
   display: inline-block;
   line-height: 1;
+  transition: transform var(--transition);
 }
 
 .hover-rail-chevron--horizontal {
@@ -257,6 +237,16 @@ body,
   transform: rotate(-90deg);
 }
 
+.hover-rail-chevron--horizontal.hover-rail-chevron--open
+  .hover-rail-chevron-glyph {
+  transform: rotate(180deg);
+}
+
+.hover-rail-chevron--vertical.hover-rail-chevron--open
+  .hover-rail-chevron-glyph {
+  transform: rotate(90deg);
+}
+
 /* Stays attached to the far edge of the rail once it unfurls, instead of
    disappearing, so the affordance keeps mapping to the same control. */
 .hover-rail-chevron--horizontal.hover-rail-chevron--open {
@@ -268,10 +258,7 @@ body,
 }
 
 .hover-rail {
-  opacity: 0;
-  transition:
-    transform var(--transition),
-    opacity var(--transition);
+  transition: transform var(--transition);
 }
 
 .hover-rail--horizontal {
@@ -291,14 +278,6 @@ body,
   width: var(--side-rail-width);
   z-index: 100;
   transform: translateX(-100%);
-}
-
-.hover-rail--visible {
-  opacity: 0.7;
-}
-
-.hover-rail--opaque {
-  opacity: 1;
 }
 
 .hover-rail--horizontal.hover-rail--visible {
@@ -1985,8 +1964,8 @@ body,
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* Left edge reserves the vertical hover-rail chevron's sliver (like the
-     app shell's top padding does for the nav chevron); the rail itself is
+  /* Left edge reserves the vertical rail chevron's sliver (like the app
+     shell's top padding does for the nav chevron); the rail itself is
      positioned against this container. */
   position: relative;
   padding: 8px var(--content-gutter) 8px var(--nav-chevron-height);

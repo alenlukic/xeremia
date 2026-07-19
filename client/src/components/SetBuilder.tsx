@@ -153,7 +153,7 @@ export function SetBuilder({
 
       {activeSet && (
         <>
-          <HoverRail opaque orientation="vertical" className="set-side-rail">
+          <HoverRail orientation="vertical" className="set-side-rail">
             <button
               className={`set-side-tab${subTab === 'tracks' ? ' active' : ''}`}
               onClick={() => setSubTab('tracks')}

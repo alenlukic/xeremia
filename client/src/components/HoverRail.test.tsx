@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, fireEvent, act } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, fireEvent, screen } from '@testing-library/react'
+import styles from '../styles.css?raw'
 import { HoverRail } from './HoverRail'
 
 function renderRail(orientation: 'horizontal' | 'vertical' = 'horizontal') {
@@ -11,95 +12,84 @@ function renderRail(orientation: 'horizontal' | 'vertical' = 'horizontal') {
 }
 
 describe('HoverRail', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('opens only after the pointer dwells on the trigger for the show delay', () => {
+  it('opens and closes when its chevron is clicked', () => {
     const { container } = renderRail()
     const rail = container.querySelector('.hover-rail')!
-    const trigger = container.querySelector('.hover-rail-trigger')!
+    const openButton = screen.getByRole('button', {
+      name: 'Open horizontal navigation',
+    })
 
     expect(rail.classList.contains('hover-rail--visible')).toBe(false)
-    fireEvent.mouseEnter(trigger)
-    act(() => {
-      vi.advanceTimersByTime(199)
-    })
-    expect(rail.classList.contains('hover-rail--visible')).toBe(false)
-    act(() => {
-      vi.advanceTimersByTime(1)
-    })
+    expect(openButton).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(openButton)
+
     expect(rail.classList.contains('hover-rail--visible')).toBe(true)
-  })
-
-  it('does not open when the pointer leaves the trigger before the delay', () => {
-    const { container } = renderRail()
-    const trigger = container.querySelector('.hover-rail-trigger')!
-
-    fireEvent.mouseEnter(trigger)
-    act(() => {
-      vi.advanceTimersByTime(100)
+    const closeButton = screen.getByRole('button', {
+      name: 'Close horizontal navigation',
     })
-    fireEvent.mouseLeave(trigger)
-    act(() => {
-      vi.advanceTimersByTime(500)
-    })
-    expect(
-      container
-        .querySelector('.hover-rail')!
-        .classList.contains('hover-rail--visible'),
-    ).toBe(false)
-  })
+    expect(closeButton).toHaveAttribute('aria-expanded', 'true')
+    expect(closeButton).toHaveClass('hover-rail-chevron--open')
 
-  it('hides again after the hide delay unless the rail is hovered', () => {
-    const { container } = renderRail()
-    const rail = container.querySelector('.hover-rail')!
+    fireEvent.click(closeButton)
 
-    fireEvent.mouseEnter(container.querySelector('.hover-rail-trigger')!)
-    act(() => {
-      vi.advanceTimersByTime(200)
-    })
-    expect(rail.classList.contains('hover-rail--visible')).toBe(true)
-    act(() => {
-      vi.advanceTimersByTime(400)
-    })
     expect(rail.classList.contains('hover-rail--visible')).toBe(false)
+    expect(openButton).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('stays open while hovered and hides after the pointer leaves the rail', () => {
+  it('does not change state in response to pointer hover', () => {
     const { container } = renderRail()
     const rail = container.querySelector('.hover-rail')!
-
-    fireEvent.mouseEnter(container.querySelector('.hover-rail-trigger')!)
-    act(() => {
-      vi.advanceTimersByTime(200)
+    const chevron = screen.getByRole('button', {
+      name: 'Open horizontal navigation',
     })
+
+    fireEvent.mouseEnter(chevron)
+    fireEvent.mouseLeave(chevron)
+    expect(rail.classList.contains('hover-rail--visible')).toBe(false)
+
+    fireEvent.click(chevron)
     fireEvent.mouseEnter(rail)
-    act(() => {
-      vi.advanceTimersByTime(1000)
-    })
-    expect(rail.classList.contains('hover-rail--visible')).toBe(true)
-
     fireEvent.mouseLeave(rail)
-    act(() => {
-      vi.advanceTimersByTime(400)
-    })
-    expect(rail.classList.contains('hover-rail--visible')).toBe(false)
+    expect(rail.classList.contains('hover-rail--visible')).toBe(true)
   })
 
-  it('renders orientation variant classes on trigger, chevron, and rail', () => {
+  it('renders orientation variants without a separate mouse trigger', () => {
     const { container } = renderRail('vertical')
-    expect(
-      container.querySelector('.hover-rail-trigger--vertical'),
-    ).toBeTruthy()
     expect(
       container.querySelector('.hover-rail-chevron--vertical'),
     ).toBeTruthy()
     expect(container.querySelector('.hover-rail--vertical')).toBeTruthy()
     expect(container.querySelector('.test-rail')).toBeTruthy()
+    expect(container.querySelector('.hover-rail-trigger')).toBeNull()
+    expect(
+      screen.getByRole('button', { name: 'Open vertical navigation' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps child navigation actions usable while open', () => {
+    const onSelect = vi.fn()
+    render(
+      <HoverRail orientation="horizontal">
+        <button onClick={onSelect}>Item</button>
+      </HoverRail>,
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open horizontal navigation' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Item' }))
+
+    expect(onSelect).toHaveBeenCalledOnce()
+  })
+
+  it('does not apply opacity styling to rail components', () => {
+    const railStyles = styles.slice(
+      styles.indexOf('/* === Hover Rail'),
+      styles.indexOf('.tab {'),
+    )
+
+    expect(railStyles).not.toMatch(/\bopacity\s*:/)
+    expect(railStyles).not.toContain('hover-rail--opaque')
   })
 })
