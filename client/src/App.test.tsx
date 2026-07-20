@@ -804,6 +804,72 @@ async function selectTrackViaBrowse(trackTitle: string) {
 }
 
 describe('Transition chaining', () => {
+  it('keeps browse search results stable across consecutive match links', async () => {
+    const httpMod = await import('./api/http')
+    const matchForTrack2 = makeTransitionMatch({
+      candidate_id: 2,
+      title: 'Track 2',
+    })
+    const matchForTrack3 = makeTransitionMatch({
+      candidate_id: 3,
+      title: 'Track 3',
+    })
+    vi.mocked(httpMod.fetchMatches)
+      .mockResolvedValue([])
+      .mockResolvedValueOnce([matchForTrack2])
+      .mockResolvedValueOnce([matchForTrack3])
+
+    await act(async () => {
+      render(<App />)
+    })
+
+    await selectTrackViaBrowse('Track 1')
+    const searchInput = screen.getByPlaceholderText('Search tracks…')
+    await userEvent.clear(searchInput)
+    await userEvent.type(searchInput, 'Track 60')
+
+    await waitFor(() => {
+      expect(searchInput).toHaveValue('Track 60')
+      expect(getRowCount()).toBe(2)
+      expect(screen.getByTitle('Use as source track')).toHaveTextContent(
+        'Track 2',
+      )
+    })
+
+    await userEvent.click(screen.getByTitle('Use as source track'))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Track 2', { selector: '.matches-source-title' }),
+      ).toBeInTheDocument()
+      expect(screen.getByTitle('Use as source track')).toHaveTextContent(
+        'Track 3',
+      )
+    })
+    expect(searchInput).toHaveValue('Track 60')
+    expect(getRowCount()).toBe(2)
+    expect(document.querySelectorAll('.chain-entry')).toHaveLength(1)
+
+    await userEvent.click(screen.getByTitle('Use as source track'))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Track 3', { selector: '.matches-source-title' }),
+      ).toBeInTheDocument()
+      expect(document.querySelectorAll('.chain-entry')).toHaveLength(2)
+    })
+    expect(searchInput).toHaveValue('Track 60')
+    expect(getRowCount()).toBe(2)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear matches' }))
+
+    expect(searchInput).toHaveValue('Track 60')
+    expect(getRowCount()).toBe(2)
+    expect(
+      screen.getByText('Select a track to see matches'),
+    ).toBeInTheDocument()
+  })
+
   it('renders transition chain breadcrumb after Use as source', async () => {
     const httpMod = await import('./api/http')
     const matchForTrack2 = makeTransitionMatch({
@@ -894,8 +960,11 @@ describe('Transition chaining', () => {
       expect(document.querySelectorAll('.chain-entry').length).toBe(1)
     })
 
-    // The browse overlay is still open from selectTrackViaBrowse; scope the
-    // query to it since the matches table also shows a "Track 2" candidate.
+    // Match chaining no longer replaces browse selection. Clear the original
+    // browse focus, then make a genuinely fresh selection from the browse table.
+    await userEvent.click(
+      document.querySelector<HTMLButtonElement>('.clear-btn--search')!,
+    )
     const browseTable = document.querySelector<HTMLElement>('.track-table')!
     const row = within(browseTable).getByText('Track 2').closest('tr')!
     await act(async () => {
@@ -1112,6 +1181,8 @@ describe('Cross-region drag and drop', () => {
       expect(chainEntries.length).toBe(1)
       expect(chainEntries[0].textContent).toBe('Track 1')
     })
+    expect(screen.getByPlaceholderText('Search tracks…')).toHaveValue('Track 2')
+    expect(getRowCount()).toBe(1)
   })
 
   it('dropping a browse row adds to the tracklist and pool when Set view is active', async () => {
