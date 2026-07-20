@@ -13,7 +13,6 @@ import {
   flexRender,
   createColumnHelper,
   type ColumnSizingState,
-  type ColumnOrderState,
   type SortingFn,
   type SortingState,
   type Updater,
@@ -29,6 +28,16 @@ import {
   TRACK_DRAG_MIME,
 } from '../utils'
 import { PlayButton } from './PlayButton'
+import {
+  TableColumnControls,
+  TableColumnEmptyRecovery,
+} from './TableColumnControls'
+import {
+  TABLE_REGISTRIES,
+  inactiveColumns,
+  visibleColumnIds,
+  type NormalizedTableConfig,
+} from '../tablePreferences'
 
 const col = createColumnHelper<Track>()
 
@@ -156,7 +165,12 @@ interface Props {
   selectedTrack: Track | SearchSuggestion | null
   selectTrack: (track: Track) => void
   error?: string | null
-  columnVisibility?: Record<string, boolean>
+  tableConfig: NormalizedTableConfig
+  onToggleColumnVisibility: (columnId: string) => void
+  onReorderColumn: (draggedId: string, targetId: string) => void
+  onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
+  onColumnWidthChange: (columnId: string, width: number) => void
+  onColumnWidthFlush: (columnId: string, width: number) => void
   scrollRestorationKey?: string
   onAddToSet?: (trackId: number) => void
   onAddToPool?: (trackId: number) => void
@@ -169,7 +183,12 @@ export const TrackTable = memo(function TrackTable({
   selectedTrack,
   selectTrack,
   error,
-  columnVisibility,
+  tableConfig,
+  onToggleColumnVisibility,
+  onReorderColumn,
+  onInsertColumnAfter,
+  onColumnWidthChange,
+  onColumnWidthFlush,
   scrollRestorationKey,
   onAddToSet,
   onAddToPool,
@@ -180,15 +199,12 @@ export const TrackTable = memo(function TrackTable({
   const topScrollRef = useRef<HTMLDivElement>(null)
 
   const [containerWidth, setContainerWidth] = useState(0)
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([
-    'play',
-    ...COLUMN_IDS.slice(0, FIXED_IDS.length),
-    'add_to_set',
-    ...COLUMN_IDS.slice(FIXED_IDS.length),
-  ])
   const [sorting, setSorting] = useState<SortingState>([])
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+
+  const columnVisibility = tableConfig.columnVisibility
+  const columnOrder = tableConfig.columnOrder
+  const columnSizing = tableConfig.columnWidths
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null)
   const savedScrollTop = useRef(0)
@@ -234,21 +250,31 @@ export const TrackTable = memo(function TrackTable({
     return responsiveSizing
   }, [columnSizing, responsiveSizing])
 
+  const hiddenInactive = inactiveColumns('search', tableConfig)
+  const visibleIds = visibleColumnIds(tableConfig)
+  const registryById = useMemo(
+    () => new Map(TABLE_REGISTRIES.search.map((entry) => [entry.id, entry])),
+    [],
+  )
+
   const handleColumnSizingChange = useCallback(
     (updater: Updater<ColumnSizingState>) => {
-      setColumnSizing((prev) => {
-        const base = Object.keys(prev).length > 0 ? prev : responsiveSizing
-        return typeof updater === 'function' ? updater(base) : updater
-      })
+      const base = columnSizing
+      const next = typeof updater === 'function' ? updater(base) : updater
+      for (const [id, width] of Object.entries(next)) {
+        if (base[id] !== width) {
+          onColumnWidthChange(id, width)
+        }
+      }
     },
-    [responsiveSizing],
+    [columnSizing, onColumnWidthChange],
   )
 
   const addToSetColumn = useMemo(
     () =>
       col.display({
         id: 'add_to_set',
-        header: '',
+        header: 'Actions',
         size: ACTION_COL_PX,
         minSize: 60,
         enableSorting: false,
@@ -332,7 +358,6 @@ export const TrackTable = memo(function TrackTable({
     },
     columnResizeMode: 'onChange',
     onColumnSizingChange: handleColumnSizingChange,
-    onColumnOrderChange: setColumnOrder,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -422,30 +447,34 @@ export const TrackTable = memo(function TrackTable({
     e.dataTransfer.dropEffect = 'move'
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
-    e.preventDefault()
-    const draggedId = e.dataTransfer.getData('text/plain')
-    if (!draggedId || draggedId === targetId) {
-      setDraggedColumn(null)
-      return
-    }
-    setColumnOrder((prev) => {
-      const next = [...prev]
-      const fromIdx = next.indexOf(draggedId)
-      const toIdx = next.indexOf(targetId)
-      if (fromIdx === -1 || toIdx === -1) {
-        return prev
+  const handleDrop = useCallback(
+    (e: React.DragEvent, targetId: string) => {
+      e.preventDefault()
+      const draggedId = e.dataTransfer.getData('text/plain')
+      if (!draggedId || draggedId === targetId) {
+        setDraggedColumn(null)
+        return
       }
-      next.splice(fromIdx, 1)
-      next.splice(toIdx, 0, draggedId)
-      return next
-    })
-    setDraggedColumn(null)
-  }, [])
+      onReorderColumn(draggedId, targetId)
+      setDraggedColumn(null)
+    },
+    [onReorderColumn],
+  )
 
   const handleDragEnd = useCallback(() => {
     setDraggedColumn(null)
   }, [])
+
+  if (visibleIds.length === 0) {
+    return (
+      <div className="track-table-outer">
+        <TableColumnEmptyRecovery
+          inactiveColumns={hiddenInactive}
+          onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="track-table-outer" ref={outerRef}>
@@ -503,9 +532,30 @@ export const TrackTable = memo(function TrackTable({
                             : undefined
                         }
                       >
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
+                        {header.column.id === 'play' ? (
+                          flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )
+                        ) : (
+                          <TableColumnControls
+                            label={
+                              registryById.get(header.column.id)?.label ??
+                              String(header.column.columnDef.header ?? '')
+                            }
+                            inactiveColumns={hiddenInactive}
+                            onRemove={() =>
+                              onToggleColumnVisibility(header.column.id)
+                            }
+                            onInsertAfter={(columnId) =>
+                              onInsertColumnAfter(header.column.id, columnId)
+                            }
+                          >
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                          </TableColumnControls>
                         )}
                         {sorted && (
                           <span className="sort-indicator">
@@ -518,6 +568,14 @@ export const TrackTable = memo(function TrackTable({
                           className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
+                          onMouseUp={() => {
+                            if (header.column.getIsResizing()) {
+                              onColumnWidthFlush(
+                                header.column.id,
+                                header.getSize(),
+                              )
+                            }
+                          }}
                         />
                       )}
                     </th>

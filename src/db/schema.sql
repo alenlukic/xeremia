@@ -227,6 +227,19 @@ CREATE TABLE IF NOT EXISTS public.scoring_weight_override (
 
 
 --
+-- Name: table_preference; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.table_preference (
+    table_id character varying(32) NOT NULL,
+    column_order jsonb NOT NULL,
+    column_visibility jsonb NOT NULL,
+    column_widths jsonb NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: scoring_weight_override_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -689,6 +702,14 @@ ALTER TABLE ONLY public.scoring_weight_override
 
 ALTER TABLE ONLY public.scoring_weight_override
     ADD CONSTRAINT scoring_weight_override_scope_key UNIQUE (scope);
+
+
+--
+-- Name: table_preference table_preference_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.table_preference
+    ADD CONSTRAINT table_preference_pkey PRIMARY KEY (table_id);
 
 
 --

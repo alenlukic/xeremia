@@ -195,3 +195,20 @@ export interface HydratedSet {
   pool_subgroups?: PoolSubgroup[]
   pool_subgroup_memberships?: PoolSubgroupMembership[]
 }
+
+export type TableId = 'search' | 'matches' | 'tracklist' | 'pool'
+
+export interface TablePreferenceConfig {
+  column_order: string[]
+  column_visibility: Record<string, boolean>
+  column_widths: Record<string, number>
+}
+
+export interface TablePreferenceResponse extends TablePreferenceConfig {
+  table_id: TableId
+  updated_at?: string | null
+}
+
+export interface TablePreferencesListResponse {
+  preferences: TablePreferenceResponse[]
+}

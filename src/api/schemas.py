@@ -1,6 +1,7 @@
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 
 class TrackResponse(BaseModel):
@@ -323,3 +324,69 @@ class ExplorerEdgeScoreRequest(BaseModel):
 
 class ExplorerEdgeScoreResponse(BaseModel):
     scores: List[Optional[float]]
+
+
+# ---------------------------------------------------------------------------
+# Table preferences (installation-global)
+# ---------------------------------------------------------------------------
+
+_MIN_COL_WIDTH = 40
+_MAX_COL_WIDTH = 2000
+
+
+class TableId(str, Enum):
+    search = "search"
+    matches = "matches"
+    tracklist = "tracklist"
+    pool = "pool"
+
+
+class TablePreferenceConfig(BaseModel):
+    column_order: List[str] = Field(..., min_length=1)
+    column_visibility: Dict[str, bool]
+    column_widths: Dict[str, float]
+
+    @validator("column_order")
+    def validate_column_order(cls, value: List[str]) -> List[str]:
+        seen: set[str] = set()
+        unique: List[str] = []
+        for col_id in value:
+            if not col_id or not isinstance(col_id, str):
+                raise ValueError("column_order entries must be non-empty strings")
+            if col_id in seen:
+                raise ValueError("column_order must not contain duplicate ids")
+            seen.add(col_id)
+            unique.append(col_id)
+        return unique
+
+    @validator("column_visibility")
+    def validate_visibility(cls, value: Dict[str, bool]) -> Dict[str, bool]:
+        for key, visible in value.items():
+            if not key:
+                raise ValueError("column_visibility keys must be non-empty strings")
+            if not isinstance(visible, bool):
+                raise ValueError("column_visibility values must be booleans")
+        return value
+
+    @validator("column_widths")
+    def validate_widths(cls, value: Dict[str, float]) -> Dict[str, float]:
+        for key, width in value.items():
+            if not key:
+                raise ValueError("column_widths keys must be non-empty strings")
+            if not isinstance(width, (int, float)) or not (
+                _MIN_COL_WIDTH <= float(width) <= _MAX_COL_WIDTH
+            ):
+                raise ValueError(
+                    "column_widths values must be finite numbers between "
+                    f"{_MIN_COL_WIDTH} and {_MAX_COL_WIDTH}"
+                )
+        return {k: float(v) for k, v in value.items()}
+
+
+class TablePreferenceResponse(TablePreferenceConfig):
+    table_id: TableId
+    updated_at: Optional[str] = None
+
+
+class TablePreferencesListResponse(BaseModel):
+    preferences: List[TablePreferenceResponse]

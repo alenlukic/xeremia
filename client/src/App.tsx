@@ -18,6 +18,7 @@ import { useCollectionCache } from './hooks/useCollectionCache'
 import { useCacheStats } from './hooks/useCacheStats'
 import { useWeights } from './hooks/useWeights'
 import { useSetBuilder } from './hooks/useSetBuilder'
+import { useTablePreferences } from './hooks/useTablePreferences'
 import { AudioPlayerProvider } from './hooks/useAudioPlayer'
 import type {
   Track,
@@ -26,46 +27,10 @@ import type {
   TransitionChainEntry,
 } from './types'
 
-const COL_VIS_STORAGE_KEY = 'xeremia-browse-col-visibility'
-
-const BROWSE_CONFIGURABLE_COLUMNS = [
-  { id: 'camelot_code', label: 'Camelot' },
-  { id: 'key', label: 'Key' },
-  { id: 'bpm', label: 'BPM' },
-  { id: 'energy', label: 'Energy' },
-  { id: 'date_added', label: 'Date Added' },
-  { id: 'label', label: 'Label' },
-  { id: 'genre', label: 'Genre' },
-]
-
-function isPlainObject(v: unknown): v is Record<string, boolean> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
 /** Top row: track browser (left) vs. matches (right). */
 type TopSplit = 'split' | 'browser-collapsed' | 'matches-collapsed'
 /** Whole-row collapse: top (browser + matches) vs. bottom (set workspace). */
 type RowSplit = 'split' | 'top-collapsed' | 'bottom-collapsed'
-
-const DEFAULT_BROWSE_COLUMN_VISIBILITY: Record<string, boolean> = {
-  key: false,
-  energy: false,
-}
-
-// Column selection is scoped to the browser session (sessionStorage), unlike
-// the other view-state keys above, which persist indefinitely (localStorage).
-function loadColumnVisibility(): Record<string, boolean> {
-  try {
-    const raw = sessionStorage.getItem(COL_VIS_STORAGE_KEY)
-    if (!raw) {
-      return DEFAULT_BROWSE_COLUMN_VISIBILITY
-    }
-    const parsed: unknown = JSON.parse(raw)
-    return isPlainObject(parsed) ? parsed : DEFAULT_BROWSE_COLUMN_VISIBILITY
-  } catch {
-    return DEFAULT_BROWSE_COLUMN_VISIBILITY
-  }
-}
 
 export function App() {
   const {
@@ -75,6 +40,8 @@ export function App() {
     tracksError,
     traitsError,
   } = useCollectionCache()
+
+  const tablePrefs = useTablePreferences()
 
   const [topSplit, setTopSplit] = useState<TopSplit>('split')
   const [rowSplit, setRowSplit] = useState<RowSplit>('split')
@@ -96,6 +63,9 @@ export function App() {
 
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
   const [searchText, setSearchText] = useState('')
+  const [browseSelection, setBrowseSelection] = useState<
+    Track | SearchSuggestion | null
+  >(null)
   const [transitionChain, setTransitionChain] = useState<
     TransitionChainEntry[]
   >([])
@@ -108,12 +78,12 @@ export function App() {
   } = useCacheStats(adminOpen)
 
   const {
-    selectedTrack,
+    matchSource,
     matches,
     matchesLoading,
     matchesError,
-    selectTrack,
-    clearSelectedTrack,
+    selectMatchSource,
+    clearMatchSource,
     refetchMatches,
   } = useSelectedTrack(refreshCacheStats)
 
@@ -141,63 +111,55 @@ export function App() {
   } = useWeights(refetchMatches)
 
   const setBuilder = useSetBuilder()
-  // Depend on the individual callbacks (stable across renders), not the
-  // `setBuilder` object, whose identity changes every render and would
-  // otherwise defeat memo() on TrackTable/MatchesPanel via the handlers below.
   const {
     addToPool: setBuilderAddToPool,
     addToTracklist: setBuilderAddToTracklist,
   } = setBuilder
 
-  const [browseColumnVisibility, setBrowseColumnVisibility] =
-    useState<Record<string, boolean>>(loadColumnVisibility)
-
-  useEffect(() => {
-    sessionStorage.setItem(
-      COL_VIS_STORAGE_KEY,
-      JSON.stringify(browseColumnVisibility),
-    )
-  }, [browseColumnVisibility])
-
-  const toggleBrowseColumn = useCallback((id: string) => {
-    setBrowseColumnVisibility((prev) => ({
-      ...prev,
-      [id]: prev[id] !== false ? false : true,
-    }))
-  }, [])
-
   const browseTracks = useMemo(
     () =>
-      selectedTrack
-        ? allTracks.filter((t) => t.id === selectedTrack.id)
+      browseSelection
+        ? allTracks.filter((t) => t.id === browseSelection.id)
         : filteredTracks,
-    [selectedTrack, allTracks, filteredTracks],
+    [browseSelection, allTracks, filteredTracks],
   )
 
   const handleSelectTrack = useCallback(
     (track: Track | SearchSuggestion) => {
       setDetailMatch(null)
       setTransitionChain([])
-      selectTrack(track)
+      setBrowseSelection(track)
+      selectMatchSource(track)
       setSearchText('')
     },
-    [selectTrack],
+    [selectMatchSource],
   )
+
+  const handleClearBrowse = useCallback(() => {
+    setBrowseSelection(null)
+  }, [])
+
+  const handleClearMatches = useCallback(() => {
+    setDetailMatch(null)
+    setTransitionChain([])
+    clearMatchSource()
+  }, [clearMatchSource])
 
   const handleUseAsSource = useCallback(
     (candidateId: number) => {
-      if (!selectedTrack) {
+      if (!matchSource) {
         return
       }
       const candidate = allTracks.find((t) => t.id === candidateId)
       if (!candidate) {
         return
       }
-      setTransitionChain((prev) => [...prev, { track: selectedTrack }])
+      setTransitionChain((prev) => [...prev, { track: matchSource }])
       setDetailMatch(null)
-      selectTrack(candidate)
+      setBrowseSelection(candidate)
+      selectMatchSource(candidate)
     },
-    [selectedTrack, allTracks, selectTrack],
+    [matchSource, allTracks, selectMatchSource],
   )
 
   const handleChainNavigate = useCallback(
@@ -208,9 +170,10 @@ export function App() {
       }
       setTransitionChain((prev) => prev.slice(0, index))
       setDetailMatch(null)
-      selectTrack(entry.track)
+      setBrowseSelection(entry.track)
+      selectMatchSource(entry.track)
     },
-    [transitionChain, selectTrack],
+    [transitionChain, selectMatchSource],
   )
 
   const handleChainBack = useCallback(() => {
@@ -220,8 +183,9 @@ export function App() {
     const last = transitionChain[transitionChain.length - 1]
     setTransitionChain((prev) => prev.slice(0, -1))
     setDetailMatch(null)
-    selectTrack(last.track)
-  }, [transitionChain, selectTrack])
+    setBrowseSelection(last.track)
+    selectMatchSource(last.track)
+  }, [transitionChain, selectMatchSource])
 
   const handleAddToPool = useCallback(
     (candidateId: number) => {
@@ -256,6 +220,9 @@ export function App() {
     />
   )
 
+  const searchConfig = tablePrefs.configs.search
+  const matchesConfig = tablePrefs.configs.matches
+
   return (
     <AudioPlayerProvider>
       <div className="app-shell-v2">
@@ -287,9 +254,9 @@ export function App() {
             <div className="browse-controls">
               <SearchPanel
                 allTracks={allTracks}
-                selectedTrack={selectedTrack}
+                selectedTrack={browseSelection}
                 selectTrack={handleSelectTrack}
-                clearSelectedTrack={clearSelectedTrack}
+                clearBrowseSelection={handleClearBrowse}
                 onSearchTextChange={setSearchText}
                 searchText={searchText}
                 onTrackDrop={handleUseAsSource}
@@ -303,9 +270,6 @@ export function App() {
                 setBpm={setBpm}
                 setBpmMin={setBpmMin}
                 setBpmMax={setBpmMax}
-                configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
-                columnVisibility={browseColumnVisibility}
-                onToggleColumn={toggleBrowseColumn}
               />
             </div>
             {traitsError && (
@@ -316,10 +280,25 @@ export function App() {
             <TrackTable
               tracks={browseTracks}
               loading={collectionLoading}
-              selectedTrack={selectedTrack}
+              selectedTrack={browseSelection}
               selectTrack={handleSelectTrack}
               error={tracksError}
-              columnVisibility={browseColumnVisibility}
+              tableConfig={searchConfig}
+              onToggleColumnVisibility={(id) =>
+                tablePrefs.toggleVisibility('search', id)
+              }
+              onReorderColumn={(draggedId, targetId) =>
+                tablePrefs.reorderColumn('search', draggedId, targetId)
+              }
+              onInsertColumnAfter={(afterId, columnId) =>
+                tablePrefs.insertColumnAfter('search', afterId, columnId)
+              }
+              onColumnWidthChange={(id, width) =>
+                tablePrefs.setColumnWidth('search', id, width)
+              }
+              onColumnWidthFlush={(id, width) =>
+                tablePrefs.flushColumnWidth('search', id, width)
+              }
               scrollRestorationKey={`${topSplit}:${rowSplit}`}
               onAddToPool={handleAddToPool}
               onAddToTracklist={handleAddToTracklist}
@@ -339,7 +318,7 @@ export function App() {
             aria-label="Matches"
             hidden={topSplit === 'matches-collapsed'}
           >
-            {transitionChain.length > 0 && selectedTrack && (
+            {transitionChain.length > 0 && matchSource && (
               <div className="transition-chain">
                 <button
                   className="chain-back-btn"
@@ -363,15 +342,32 @@ export function App() {
                     <span className="chain-arrow">→</span>
                   </span>
                 ))}
-                <span className="chain-current">{selectedTrack.title}</span>
+                <span className="chain-current">{matchSource.title}</span>
               </div>
             )}
             {!detailMatch && (
               <MatchesPanel
-                selectedTrack={selectedTrack}
+                matchSource={matchSource}
                 matches={matches}
                 loading={matchesLoading}
                 matchesError={matchesError}
+                tableConfig={matchesConfig}
+                onClearMatchSource={handleClearMatches}
+                onToggleColumnVisibility={(id) =>
+                  tablePrefs.toggleVisibility('matches', id)
+                }
+                onReorderColumn={(draggedId, targetId) =>
+                  tablePrefs.reorderColumn('matches', draggedId, targetId)
+                }
+                onInsertColumnAfter={(afterId, columnId) =>
+                  tablePrefs.insertColumnAfter('matches', afterId, columnId)
+                }
+                onColumnWidthChange={(id, width) =>
+                  tablePrefs.setColumnWidth('matches', id, width)
+                }
+                onColumnWidthFlush={(id, width) =>
+                  tablePrefs.flushColumnWidth('matches', id, width)
+                }
                 onViewDetail={setDetailMatch}
                 onUseAsSource={handleUseAsSource}
                 onAddToPool={handleAddToPool}
@@ -380,7 +376,7 @@ export function App() {
             )}
             {detailMatch && (
               <MatchDetail
-                sourceTrack={selectedTrack}
+                sourceTrack={matchSource}
                 match={detailMatch}
                 onBack={() => setDetailMatch(null)}
                 traitMap={traitMap}
@@ -420,6 +416,36 @@ export function App() {
             loading={setBuilder.loading}
             error={setBuilder.error}
             setPicker={setPicker}
+            tracklistConfig={tablePrefs.configs.tracklist}
+            poolConfig={tablePrefs.configs.pool}
+            onTracklistToggleColumn={(id) =>
+              tablePrefs.toggleVisibility('tracklist', id)
+            }
+            onTracklistReorderColumn={(draggedId, targetId) =>
+              tablePrefs.reorderColumn('tracklist', draggedId, targetId)
+            }
+            onTracklistInsertColumnAfter={(afterId, columnId) =>
+              tablePrefs.insertColumnAfter('tracklist', afterId, columnId)
+            }
+            onTracklistColumnWidthChange={(id, width) =>
+              tablePrefs.setColumnWidth('tracklist', id, width)
+            }
+            onTracklistColumnWidthFlush={(id, width) =>
+              tablePrefs.flushColumnWidth('tracklist', id, width)
+            }
+            onPoolToggleColumn={(id) => tablePrefs.toggleVisibility('pool', id)}
+            onPoolReorderColumn={(draggedId, targetId) =>
+              tablePrefs.reorderColumn('pool', draggedId, targetId)
+            }
+            onPoolInsertColumnAfter={(afterId, columnId) =>
+              tablePrefs.insertColumnAfter('pool', afterId, columnId)
+            }
+            onPoolColumnWidthChange={(id, width) =>
+              tablePrefs.setColumnWidth('pool', id, width)
+            }
+            onPoolColumnWidthFlush={(id, width) =>
+              tablePrefs.flushColumnWidth('pool', id, width)
+            }
             removeFromPool={setBuilder.removeFromPool}
             movePoolToTracklist={setBuilder.movePoolToTracklist}
             reorderPool={setBuilder.reorderPool}
@@ -502,6 +528,7 @@ export function App() {
               resetWeights={resetWeights}
               isSumValid={isSumValid}
               rawSum={rawSum}
+              tablePrefs={tablePrefs}
             />
           </div>
         )}

@@ -10,7 +10,7 @@ interface Props {
   allTracks: Track[]
   selectedTrack: Track | SearchSuggestion | null
   selectTrack: (track: Track | SearchSuggestion) => void
-  clearSelectedTrack: () => void
+  clearBrowseSelection: () => void
   onSearchTextChange?: (text: string) => void
   searchText?: string
   onTrackDrop?: (trackId: number) => void
@@ -20,7 +20,7 @@ export function SearchPanel({
   allTracks,
   selectedTrack,
   selectTrack,
-  clearSelectedTrack,
+  clearBrowseSelection,
   onSearchTextChange,
   searchText,
   onTrackDrop,
@@ -67,7 +67,7 @@ export function SearchPanel({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newQuery = e.target.value
       setQuery(newQuery)
-      clearSelectedTrack()
+      clearBrowseSelection()
       onSearchTextChange?.(newQuery)
       setActiveIdx(-1)
 
@@ -79,7 +79,7 @@ export function SearchPanel({
       search(newQuery)
       setOpen(true)
     },
-    [clearSelectedTrack, onSearchTextChange, search, clear],
+    [clearBrowseSelection, onSearchTextChange, search, clear],
   )
 
   useDismissOnOutsideClick(containerRef, open, () => setOpen(false))
@@ -131,7 +131,7 @@ export function SearchPanel({
               setQuery('')
               clear()
               setOpen(false)
-              clearSelectedTrack()
+              clearBrowseSelection()
               onSearchTextChange?.('')
             }}
             tabIndex={-1}

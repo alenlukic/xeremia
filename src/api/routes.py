@@ -33,6 +33,10 @@ from src.api.schemas import (
     SubgroupMemberRequest,
     SubgroupRenameRequest,
     SubgroupReorderRequest,
+    TableId,
+    TablePreferenceConfig,
+    TablePreferenceResponse,
+    TablePreferencesListResponse,
     TracklistAddRequest,
     TracklistNoteUpdateRequest,
     TracklistReorderRequest,
@@ -1330,5 +1334,106 @@ def api_explorer_edge_scores(set_id: int, body: ExplorerEdgeScoreRequest):
         session.rollback()
         logger.exception("Explorer edge score computation failed")
         raise HTTPException(status_code=500, detail="Edge score computation failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Admin / table preferences
+# ---------------------------------------------------------------------------
+
+_VALID_TABLE_IDS = {item.value for item in TableId}
+
+
+def _serialize_table_preference(row) -> dict:
+    updated = row.updated_at.isoformat() if row.updated_at else None
+    return {
+        "table_id": row.table_id,
+        "column_order": row.column_order,
+        "column_visibility": row.column_visibility,
+        "column_widths": row.column_widths,
+        "updated_at": updated,
+    }
+
+
+@router.get(
+    "/admin/table-preferences",
+    response_model=TablePreferencesListResponse,
+)
+def api_get_table_preferences():
+    from sqlalchemy.exc import ProgrammingError
+
+    from src.models.table_preference import TablePreference
+
+    session = _get_session()
+    try:
+        rows = session.query(TablePreference).all()
+        return {
+            "preferences": [_serialize_table_preference(row) for row in rows],
+        }
+    except ProgrammingError:
+        session.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "table_preference table is missing. Run "
+                "python -m src.scripts.migrate_table_preferences before using "
+                "table preference endpoints."
+            ),
+        )
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to load table preferences")
+        raise HTTPException(status_code=500, detail="Table preference load failed")
+    finally:
+        session.close()
+
+
+@router.put(
+    "/admin/table-preferences/{table_id}",
+    response_model=TablePreferenceResponse,
+)
+def api_update_table_preferences(table_id: str, body: TablePreferenceConfig):
+    from sqlalchemy.exc import ProgrammingError
+
+    from src.models.table_preference import TablePreference
+
+    if table_id not in _VALID_TABLE_IDS:
+        raise HTTPException(status_code=400, detail="Unknown table_id")
+
+    session = _get_session()
+    try:
+        row = session.query(TablePreference).filter_by(table_id=table_id).first()
+        payload = {
+            "column_order": body.column_order,
+            "column_visibility": body.column_visibility,
+            "column_widths": body.column_widths,
+        }
+        if row is None:
+            row = TablePreference(table_id=table_id, **payload)
+            session.add(row)
+        else:
+            row.column_order = payload["column_order"]
+            row.column_visibility = payload["column_visibility"]
+            row.column_widths = payload["column_widths"]
+        session.commit()
+        session.refresh(row)
+        return _serialize_table_preference(row)
+    except ProgrammingError:
+        session.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "table_preference table is missing. Run "
+                "python -m src.scripts.migrate_table_preferences before using "
+                "table preference endpoints."
+            ),
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to update table preferences for %s", table_id)
+        raise HTTPException(status_code=500, detail="Table preference update failed")
     finally:
         session.close()

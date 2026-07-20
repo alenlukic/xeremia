@@ -9,6 +9,10 @@ import type {
   SetSummary,
   HydratedSet,
   PoolSubgroup,
+  TableId,
+  TablePreferenceConfig,
+  TablePreferenceResponse,
+  TablePreferencesListResponse,
 } from '../types'
 
 export async function fetchTracks(params: {
@@ -521,6 +525,32 @@ export async function explorerEdgeScores(
   })
   if (!res.ok) {
     throw new Error(`Explorer edge scores failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function fetchTablePreferences(): Promise<TablePreferencesListResponse> {
+  const res = await fetch('/api/admin/table-preferences')
+  if (!res.ok) {
+    throw new Error(`Failed to fetch table preferences: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function updateTablePreferences(
+  tableId: TableId,
+  config: TablePreferenceConfig,
+): Promise<TablePreferenceResponse> {
+  const res = await fetch(`/api/admin/table-preferences/${tableId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  })
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(
+      detail || `Failed to update table preferences: ${res.status}`,
+    )
   }
   return res.json()
 }

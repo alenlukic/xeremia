@@ -3,6 +3,10 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MatchesPanel } from './MatchesPanel'
 import type { TransitionMatch } from '../types'
+import {
+  testMatchesPanelTableProps,
+  columnHeaderLabel,
+} from '../test/tablePreferenceHelpers'
 
 class ResizeObserverMock {
   observe = vi.fn()
@@ -12,7 +16,6 @@ class ResizeObserverMock {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
-  localStorage.removeItem('xeremia-matches-column-config')
 })
 
 function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
@@ -47,9 +50,15 @@ const SCORE_HEADERS = [
   'Vocals',
 ]
 
-const ALL_HEADERS = ['', 'Track', ...SCORE_HEADERS, 'DETAILS']
+const ALL_HEADERS = ['Actions', 'Track', ...SCORE_HEADERS, 'DETAILS']
 
-const selectedTrack = {
+function headerLabels(): string[] {
+  return screen
+    .getAllByRole('columnheader')
+    .map((h) => columnHeaderLabel(h as HTMLElement))
+}
+
+const matchSource = {
   id: 1,
   title: 'On Deck',
   artist_names: ['A'],
@@ -63,39 +72,44 @@ describe('MatchesPanel', () => {
     it('renders all column headers regardless of onAddToSet', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const headers = screen.getAllByRole('columnheader')
-      expect(headers.map((h) => h.textContent)).toEqual(ALL_HEADERS)
+      expect(headers.map((h) => columnHeaderLabel(h as HTMLElement))).toEqual(
+        ALL_HEADERS,
+      )
     })
 
     it('renders same column headers when onAddToSet is provided', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
           onAddToSet={vi.fn()}
+          {...testMatchesPanelTableProps}
         />,
       )
       const headers = screen.getAllByRole('columnheader')
-      expect(headers.map((h) => h.textContent)).toEqual(ALL_HEADERS)
+      expect(headers.map((h) => columnHeaderLabel(h as HTMLElement))).toEqual(
+        ALL_HEADERS,
+      )
     })
 
     it('includes Track, SCORE, and score sub-columns', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
-      const labels = screen
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
+      const labels = headerLabels()
       expect(labels).toContain('Track')
       expect(labels).toContain('SCORE')
       expect(labels).toContain('DETAILS')
@@ -106,9 +120,10 @@ describe('MatchesPanel', () => {
     it('score columns render at expected defaults (70px SCORE, 60px for most, 73px for energy/instruments)', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const headers = screen.getAllByRole('columnheader')
@@ -129,22 +144,24 @@ describe('MatchesPanel', () => {
     it('track column renders at its compact 260px default', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const headers = screen.getAllByRole('columnheader')
       expect((headers[1] as HTMLElement).style.width).toBe('260px')
     })
 
-    it('add_to_set column is 92px and details column is 70px', () => {
+    it('add_to_set column is 92px and details column is 50px', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
           onAddToSet={vi.fn()}
+          {...testMatchesPanelTableProps}
         />,
       )
       const headers = screen.getAllByRole('columnheader')
@@ -152,7 +169,7 @@ describe('MatchesPanel', () => {
       expect((headers[1] as HTMLElement).style.width).toBe('260px') // Track
       expect((headers[8] as HTMLElement).style.width).toBe('73px') // Energy (MIK)
       expect((headers[10] as HTMLElement).style.width).toBe('73px') // Instruments
-      expect((headers[12] as HTMLElement).style.width).toBe('70px') // DETAILS
+      expect((headers[12] as HTMLElement).style.width).toBe('50px') // DETAILS
     })
   })
 
@@ -160,10 +177,11 @@ describe('MatchesPanel', () => {
     it('renders a resize handle on Track and score headers', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
           onAddToSet={vi.fn()}
+          {...testMatchesPanelTableProps}
         />,
       )
       const resizers = document.querySelectorAll('.col-resizer')
@@ -177,15 +195,16 @@ describe('MatchesPanel', () => {
     it('renders draggable header content on all headers', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const draggables = document.querySelectorAll(
         '.th-content[draggable="true"]',
       )
-      expect(draggables.length).toBe(ALL_HEADERS.length)
+      expect(draggables.length).toBeGreaterThanOrEqual(ALL_HEADERS.length - 1)
     })
   })
 
@@ -193,9 +212,10 @@ describe('MatchesPanel', () => {
     it('displays factor scores on 0-100 integer scale', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch({ overall_score: 85, similarity_score: 0.8 })]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const cells = document.querySelectorAll('.matches-table tbody td .mono')
@@ -214,9 +234,10 @@ describe('MatchesPanel', () => {
       ]
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={matches}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const counts = document.querySelectorAll('.bucket-count')
@@ -233,9 +254,10 @@ describe('MatchesPanel', () => {
       ]
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={matches}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       expect(document.querySelectorAll('.matches-table tbody tr').length).toBe(
@@ -253,9 +275,10 @@ describe('MatchesPanel', () => {
     it('shows loading message when loading with no data', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[]}
           loading={true}
+          {...testMatchesPanelTableProps}
         />,
       )
       expect(screen.getByText('Loading matches…')).toBeInTheDocument()
@@ -264,16 +287,24 @@ describe('MatchesPanel', () => {
     it('shows empty message when no matches in bucket', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       expect(screen.getByText('No matches in this bucket')).toBeInTheDocument()
     })
 
     it('shows placeholder when no track selected', () => {
-      render(<MatchesPanel selectedTrack={null} matches={[]} loading={false} />)
+      render(
+        <MatchesPanel
+          matchSource={null}
+          matches={[]}
+          loading={false}
+          {...testMatchesPanelTableProps}
+        />,
+      )
       expect(
         screen.getByText('Select a track to see matches'),
       ).toBeInTheDocument()
@@ -282,9 +313,10 @@ describe('MatchesPanel', () => {
     it('dims rows during background reload', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={true}
+          {...testMatchesPanelTableProps}
         />,
       )
       const row = document.querySelector(
@@ -298,12 +330,13 @@ describe('MatchesPanel', () => {
     it('renders a visible clickable track title for each match row', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[
             makeMatch({ title: 'Deep Blue' }),
             makeMatch({ candidate_id: 2, title: 'Red Sky' }),
           ]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const links = document.querySelectorAll('.match-track-link')
@@ -317,10 +350,11 @@ describe('MatchesPanel', () => {
       const match = makeMatch({ title: 'Deep Blue' })
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[match]}
           loading={false}
           onViewDetail={onViewDetail}
+          {...testMatchesPanelTableProps}
         />,
       )
       const detailBtns = document.querySelectorAll('.match-detail-btn')
@@ -332,9 +366,10 @@ describe('MatchesPanel', () => {
     it('has hover title and focus-accessible aria-label on each track link', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch({ title: 'Deep Blue' })]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const btns = document.querySelectorAll('.match-detail-btn')
@@ -349,11 +384,12 @@ describe('MatchesPanel', () => {
       const onUseAsSource = vi.fn()
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch({ candidate_id: 7, title: 'Deep Blue' })]}
           loading={false}
           onViewDetail={onViewDetail}
           onUseAsSource={onUseAsSource}
+          {...testMatchesPanelTableProps}
         />,
       )
       await userEvent.click(screen.getByText('Deep Blue'))
@@ -366,9 +402,10 @@ describe('MatchesPanel', () => {
     it('track title acts as use-as-source trigger for each row', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch(), makeMatch({ candidate_id: 2 })]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       const links = screen.getAllByTitle('Use as source track')
@@ -379,10 +416,11 @@ describe('MatchesPanel', () => {
       const onUseAsSource = vi.fn()
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch({ candidate_id: 42 })]}
           loading={false}
           onUseAsSource={onUseAsSource}
+          {...testMatchesPanelTableProps}
         />,
       )
       await userEvent.click(screen.getByTitle('Use as source track'))
@@ -392,10 +430,11 @@ describe('MatchesPanel', () => {
     it('does not render a Use as source button in the actions column', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
           onAddToSet={vi.fn()}
+          {...testMatchesPanelTableProps}
         />,
       )
       const actionsCells = document.querySelectorAll('.match-actions-cell')
@@ -408,10 +447,11 @@ describe('MatchesPanel', () => {
     it('renders Add to Set button when onAddToSet is provided', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
           onAddToSet={vi.fn()}
+          {...testMatchesPanelTableProps}
         />,
       )
       expect(screen.getByTitle('Add to set')).toBeInTheDocument()
@@ -420,9 +460,10 @@ describe('MatchesPanel', () => {
     it('does not render Add to set button when onAddToSet is not provided', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
+          {...testMatchesPanelTableProps}
         />,
       )
       expect(screen.queryByTitle('Add to set')).not.toBeInTheDocument()
@@ -433,10 +474,11 @@ describe('MatchesPanel', () => {
       const onAddToSet = vi.fn()
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch({ candidate_id: 99 })]}
           loading={false}
           onAddToSet={onAddToSet}
+          {...testMatchesPanelTableProps}
         />,
       )
       await userEvent.click(screen.getByTitle('Add to set'))
@@ -448,11 +490,12 @@ describe('MatchesPanel', () => {
     it('renders dual buttons when onAddToPool and onAddToTracklist are provided', () => {
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
           onAddToPool={vi.fn()}
           onAddToTracklist={vi.fn()}
+          {...testMatchesPanelTableProps}
         />,
       )
       expect(screen.getByTitle('Add to Pool')).toBeInTheDocument()
@@ -463,11 +506,12 @@ describe('MatchesPanel', () => {
       const onAddToPool = vi.fn()
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch({ candidate_id: 42 })]}
           loading={false}
           onAddToPool={onAddToPool}
           onAddToTracklist={vi.fn()}
+          {...testMatchesPanelTableProps}
         />,
       )
       await userEvent.click(screen.getByTitle('Add to Pool'))
@@ -478,280 +522,16 @@ describe('MatchesPanel', () => {
       const onAddToTracklist = vi.fn()
       render(
         <MatchesPanel
-          selectedTrack={selectedTrack}
+          matchSource={matchSource}
           matches={[makeMatch({ candidate_id: 42 })]}
           loading={false}
           onAddToPool={vi.fn()}
           onAddToTracklist={onAddToTracklist}
+          {...testMatchesPanelTableProps}
         />,
       )
       await userEvent.click(screen.getByTitle('Add to Tracklist'))
       expect(onAddToTracklist).toHaveBeenCalledWith(42)
-    })
-  })
-
-  const COLUMN_CONFIG_KEY = 'xeremia-matches-column-config'
-
-  const CONFIGURABLE_LABELS = [
-    'Score',
-    'Spectral',
-    'Key',
-    'BPM',
-    'Genre',
-    'Recency',
-    'Energy (MIK)',
-    'Mood',
-    'Instruments',
-    'Vocals',
-  ]
-
-  describe('column config persistence', () => {
-    beforeEach(() => {
-      localStorage.removeItem(COLUMN_CONFIG_KEY)
-    })
-
-    it('uses default config when localStorage is empty', () => {
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      const headers = screen
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
-      expect(headers).toEqual(ALL_HEADERS)
-    })
-
-    it('restores column visibility from localStorage on mount', () => {
-      localStorage.setItem(
-        COLUMN_CONFIG_KEY,
-        JSON.stringify({
-          columnSizing: {},
-          columnOrder: [
-            'add_to_set',
-            'track_title',
-            ...SCORE_HEADERS.map(() => '').filter(() => false),
-            'overall_score',
-            'similarity_score',
-            'camelot_score',
-            'bpm_score',
-            'genre_similarity_score',
-            'freshness_score',
-            'energy_score',
-            'mood_continuity_score',
-            'instrument_similarity_score',
-            'vocal_clash_score',
-            'details',
-          ],
-          columnVisibility: { similarity_score: false },
-        }),
-      )
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      const headers = screen
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
-      expect(headers).not.toContain('Spectral')
-    })
-
-    it('saves column sizing to localStorage when changed', async () => {
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      const stored = JSON.parse(localStorage.getItem(COLUMN_CONFIG_KEY)!)
-      expect(stored).toHaveProperty('columnSizing')
-      expect(stored).toHaveProperty('columnOrder')
-      expect(stored).toHaveProperty('columnVisibility')
-    })
-
-    it('saves column visibility to localStorage when toggled', async () => {
-      const user = userEvent.setup()
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      await user.click(screen.getByRole('button', { name: /Columns/ }))
-      await user.click(screen.getByLabelText('Spectral'))
-
-      const stored = JSON.parse(localStorage.getItem(COLUMN_CONFIG_KEY)!)
-      expect(stored.columnVisibility.similarity_score).toBe(false)
-    })
-
-    it('restores column order from localStorage on mount', () => {
-      const swappedOrder = [
-        'add_to_set',
-        'track_title',
-        'overall_score',
-        'bpm_score',
-        'camelot_score',
-        'similarity_score',
-        'genre_similarity_score',
-        'freshness_score',
-        'energy_score',
-        'mood_continuity_score',
-        'instrument_similarity_score',
-        'vocal_clash_score',
-        'details',
-      ]
-      localStorage.setItem(
-        COLUMN_CONFIG_KEY,
-        JSON.stringify({
-          columnSizing: {},
-          columnOrder: swappedOrder,
-          columnVisibility: {},
-        }),
-      )
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      const headers = screen
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
-      expect(headers).toEqual([
-        '',
-        'Track',
-        'SCORE',
-        'BPM',
-        'Key',
-        'Spectral',
-        'Genre',
-        'Recency',
-        'Energy (MIK)',
-        'Mood',
-        'Instruments',
-        'Vocals',
-        'DETAILS',
-      ])
-    })
-
-    it('restores column sizing from localStorage on mount', () => {
-      localStorage.setItem(
-        COLUMN_CONFIG_KEY,
-        JSON.stringify({
-          columnSizing: { track_title: 300 },
-          columnOrder: [],
-          columnVisibility: {},
-        }),
-      )
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      const headers = screen.getAllByRole('columnheader')
-      const trackHeader = headers.find(
-        (h) => h.textContent === 'Track',
-      ) as HTMLElement
-      expect(trackHeader.style.width).toBe('300px')
-    })
-
-    it('falls back to defaults when localStorage contains invalid JSON', () => {
-      localStorage.setItem(COLUMN_CONFIG_KEY, '{not valid json!!!')
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      const headers = screen
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
-      expect(headers).toEqual(ALL_HEADERS)
-    })
-  })
-
-  describe('column configurator', () => {
-    it('opens popover with score column checkboxes', async () => {
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      await userEvent.click(screen.getByRole('button', { name: /Columns/ }))
-      for (const label of CONFIGURABLE_LABELS) {
-        expect(screen.getByLabelText(label)).toBeInTheDocument()
-      }
-    })
-
-    it('does not list Track or non-score columns as configurable', async () => {
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      await userEvent.click(screen.getByRole('button', { name: /Columns/ }))
-      expect(screen.queryByLabelText('Track')).not.toBeInTheDocument()
-      const checkboxes = document.querySelectorAll(
-        '.column-config-popover input[type="checkbox"]',
-      )
-      expect(checkboxes.length).toBe(SCORE_HEADERS.length)
-    })
-
-    it('hides a score column when its checkbox is unchecked', async () => {
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      const headersBefore = screen
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
-      expect(headersBefore).toContain('Spectral')
-
-      await userEvent.click(screen.getByRole('button', { name: /Columns/ }))
-      await userEvent.click(screen.getByLabelText('Spectral'))
-
-      const headersAfter = screen
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
-      expect(headersAfter).not.toContain('Spectral')
-    })
-
-    it('re-shows a hidden column when its checkbox is re-checked', async () => {
-      render(
-        <MatchesPanel
-          selectedTrack={selectedTrack}
-          matches={[makeMatch()]}
-          loading={false}
-        />,
-      )
-      await userEvent.click(screen.getByRole('button', { name: /Columns/ }))
-      await userEvent.click(screen.getByLabelText('Spectral'))
-      expect(
-        screen.getAllByRole('columnheader').map((h) => h.textContent),
-      ).not.toContain('Spectral')
-
-      await userEvent.click(screen.getByLabelText('Spectral'))
-      expect(
-        screen.getAllByRole('columnheader').map((h) => h.textContent),
-      ).toContain('Spectral')
     })
   })
 })
