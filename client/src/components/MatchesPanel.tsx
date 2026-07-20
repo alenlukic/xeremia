@@ -1,7 +1,6 @@
 import {
   memo,
   useState,
-  useEffect,
   useMemo,
   useRef,
   useLayoutEffect,
@@ -14,13 +13,22 @@ import {
   flexRender,
   createColumnHelper,
   type ColumnSizingState,
-  type ColumnOrderState,
   type SortingState,
   type Updater,
 } from '@tanstack/react-table'
 import type { Track, SearchSuggestion, TransitionMatch } from '../types'
 import { formatScore, formatOverallScore, TRACK_DRAG_MIME } from '../utils'
 import { PlayButton } from './PlayButton'
+import {
+  TableColumnControls,
+  TableColumnEmptyRecovery,
+} from './TableColumnControls'
+import {
+  TABLE_REGISTRIES,
+  inactiveColumns,
+  visibleColumnIds,
+  type NormalizedTableConfig,
+} from '../tablePreferences'
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key'
 
@@ -48,104 +56,6 @@ const TRACK_SIZE = 260
 
 const SCORE_COLUMN_IDS = Object.keys(COL_SIZES)
 const TOTAL_BASE = Object.values(COL_SIZES).reduce((a, b) => a + b, 0)
-
-const CONFIGURABLE_MATCH_COLUMNS: { id: string; label: string }[] = [
-  { id: 'overall_score', label: 'Score' },
-  { id: 'similarity_score', label: 'Spectral' },
-  { id: 'camelot_score', label: 'Key' },
-  { id: 'bpm_score', label: 'BPM' },
-  { id: 'genre_similarity_score', label: 'Genre' },
-  { id: 'freshness_score', label: 'Recency' },
-  { id: 'energy_score', label: 'Energy (MIK)' },
-  { id: 'mood_continuity_score', label: 'Mood' },
-  { id: 'instrument_similarity_score', label: 'Instruments' },
-  { id: 'vocal_clash_score', label: 'Vocals' },
-]
-
-const COLUMN_CONFIG_KEY = 'xeremia-matches-column-config'
-const DEFAULT_COLUMN_ORDER: ColumnOrderState = [
-  'add_to_set',
-  'track_title',
-  ...SCORE_COLUMN_IDS,
-  'details',
-]
-const CONFIGURABLE_IDS = new Set(CONFIGURABLE_MATCH_COLUMNS.map((c) => c.id))
-const ALL_COLUMN_IDS = new Set(DEFAULT_COLUMN_ORDER)
-
-interface ColumnConfig {
-  columnSizing: ColumnSizingState
-  columnOrder: ColumnOrderState
-  columnVisibility: Record<string, boolean>
-}
-
-const DEFAULT_CONFIG: ColumnConfig = {
-  columnSizing: {},
-  columnOrder: [...DEFAULT_COLUMN_ORDER],
-  columnVisibility: {},
-}
-
-function loadColumnConfig(): ColumnConfig {
-  try {
-    const raw = localStorage.getItem(COLUMN_CONFIG_KEY)
-    if (!raw) {
-      return DEFAULT_CONFIG
-    }
-    const parsed: unknown = JSON.parse(raw)
-    if (
-      typeof parsed !== 'object' ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      return DEFAULT_CONFIG
-    }
-    const obj = parsed as Record<string, unknown>
-
-    const sizing: ColumnSizingState = {}
-    if (
-      typeof obj.columnSizing === 'object' &&
-      obj.columnSizing !== null &&
-      !Array.isArray(obj.columnSizing)
-    ) {
-      const raw = obj.columnSizing as Record<string, unknown>
-      for (const [k, v] of Object.entries(raw)) {
-        if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
-          sizing[k] = v
-        }
-      }
-    }
-
-    let order: ColumnOrderState = [...DEFAULT_COLUMN_ORDER]
-    if (Array.isArray(obj.columnOrder) && obj.columnOrder.length > 0) {
-      const saved = (obj.columnOrder as unknown[]).filter(
-        (x): x is string => typeof x === 'string' && ALL_COLUMN_IDS.has(x),
-      )
-      const missing = DEFAULT_COLUMN_ORDER.filter((id) => !saved.includes(id))
-      order = [...saved, ...missing]
-    }
-
-    const visibility: Record<string, boolean> = {}
-    if (
-      typeof obj.columnVisibility === 'object' &&
-      obj.columnVisibility !== null &&
-      !Array.isArray(obj.columnVisibility)
-    ) {
-      const raw = obj.columnVisibility as Record<string, unknown>
-      for (const [k, v] of Object.entries(raw)) {
-        if (CONFIGURABLE_IDS.has(k) && typeof v === 'boolean') {
-          visibility[k] = v
-        }
-      }
-    }
-
-    return {
-      columnSizing: sizing,
-      columnOrder: order,
-      columnVisibility: visibility,
-    }
-  } catch {
-    return DEFAULT_CONFIG
-  }
-}
 
 const col = createColumnHelper<TransitionMatch>()
 
@@ -233,10 +143,17 @@ const scoreColumns = [
 ]
 
 interface Props {
-  selectedTrack: Track | SearchSuggestion | null
+  matchSource: Track | SearchSuggestion | null
   matches: TransitionMatch[]
   loading: boolean
   matchesError?: string | null
+  tableConfig: NormalizedTableConfig
+  onClearMatchSource: () => void
+  onToggleColumnVisibility: (columnId: string) => void
+  onReorderColumn: (draggedId: string, targetId: string) => void
+  onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
+  onColumnWidthChange: (columnId: string, width: number) => void
+  onColumnWidthFlush: (columnId: string, width: number) => void
   onViewDetail?: (match: TransitionMatch) => void
   onUseAsSource?: (candidateId: number) => void
   onAddToSet?: (candidateId: number) => void
@@ -245,10 +162,17 @@ interface Props {
 }
 
 export const MatchesPanel = memo(function MatchesPanel({
-  selectedTrack,
+  matchSource,
   matches,
   loading,
   matchesError,
+  tableConfig,
+  onClearMatchSource,
+  onToggleColumnVisibility,
+  onReorderColumn,
+  onInsertColumnAfter,
+  onColumnWidthChange,
+  onColumnWidthFlush,
   onViewDetail,
   onUseAsSource,
   onAddToSet,
@@ -261,60 +185,26 @@ export const MatchesPanel = memo(function MatchesPanel({
   const topScrollRef = useRef<HTMLDivElement>(null)
 
   const [containerWidth, setContainerWidth] = useState(0)
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(
-    () => loadColumnConfig().columnSizing,
-  )
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(
-    () => loadColumnConfig().columnOrder,
-  )
-  const [columnVisibility, setColumnVisibility] = useState<
-    Record<string, boolean>
-  >(() => loadColumnConfig().columnVisibility)
+  const columnSizing = tableConfig.columnWidths
+  const columnOrder = tableConfig.columnOrder
+  const columnVisibility = tableConfig.columnVisibility
   const [sorting, setSorting] = useState<SortingState>([])
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
-  const [colConfigOpen, setColConfigOpen] = useState(false)
-  const colConfigRef = useRef<HTMLDivElement>(null)
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null)
-  const hasTrack = selectedTrack != null
-
-  useEffect(() => {
-    if (!colConfigOpen) {
-      return
-    }
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        colConfigRef.current &&
-        !colConfigRef.current.contains(e.target as Node)
-      ) {
-        setColConfigOpen(false)
-      }
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setColConfigOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [colConfigOpen])
-
-  useEffect(() => {
-    localStorage.setItem(
-      COLUMN_CONFIG_KEY,
-      JSON.stringify({ columnSizing, columnOrder, columnVisibility }),
-    )
-  }, [columnSizing, columnOrder, columnVisibility])
+  const hasTrack = matchSource != null
+  const hiddenInactive = inactiveColumns('matches', tableConfig)
+  const visibleIds = visibleColumnIds(tableConfig)
+  const registryById = useMemo(
+    () => new Map(TABLE_REGISTRIES.matches.map((entry) => [entry.id, entry])),
+    [],
+  )
 
   const allColumns = useMemo(() => {
     const cols = [
       col.display({
         id: 'add_to_set',
-        header: '',
+        header: 'Actions',
         size: 92,
         minSize: 60,
         enableSorting: false,
@@ -487,12 +377,15 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const handleColumnSizingChange = useCallback(
     (updater: Updater<ColumnSizingState>) => {
-      setColumnSizing((prev) => {
-        const base = Object.keys(prev).length > 0 ? prev : responsiveSizing
-        return typeof updater === 'function' ? updater(base) : updater
-      })
+      const base = columnSizing
+      const next = typeof updater === 'function' ? updater(base) : updater
+      for (const [id, width] of Object.entries(next)) {
+        if (base[id] !== width) {
+          onColumnWidthChange(id, width)
+        }
+      }
     },
-    [responsiveSizing],
+    [columnSizing, onColumnWidthChange],
   )
 
   // @tanstack/react-table is not yet annotated for the React Compiler, so the
@@ -509,7 +402,6 @@ export const MatchesPanel = memo(function MatchesPanel({
     },
     columnResizeMode: 'onChange',
     onColumnSizingChange: handleColumnSizingChange,
-    onColumnOrderChange: setColumnOrder,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -558,32 +450,25 @@ export const MatchesPanel = memo(function MatchesPanel({
     e.dataTransfer.dropEffect = 'move'
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
-    e.preventDefault()
-    const draggedId = e.dataTransfer.getData('text/plain')
-    if (!draggedId || draggedId === targetId) {
-      setDraggedColumn(null)
-      return
-    }
-    setColumnOrder((prev) => {
-      const next = [...prev]
-      const fromIdx = next.indexOf(draggedId)
-      const toIdx = next.indexOf(targetId)
-      if (fromIdx === -1 || toIdx === -1) {
-        return prev
+  const handleDrop = useCallback(
+    (e: React.DragEvent, targetId: string) => {
+      e.preventDefault()
+      const draggedId = e.dataTransfer.getData('text/plain')
+      if (!draggedId || draggedId === targetId) {
+        setDraggedColumn(null)
+        return
       }
-      next.splice(fromIdx, 1)
-      next.splice(toIdx, 0, draggedId)
-      return next
-    })
-    setDraggedColumn(null)
-  }, [])
+      onReorderColumn(draggedId, targetId)
+      setDraggedColumn(null)
+    },
+    [onReorderColumn],
+  )
 
   const handleDragEnd = useCallback(() => {
     setDraggedColumn(null)
   }, [])
 
-  if (!selectedTrack) {
+  if (!matchSource) {
     return (
       <div className="matches-panel">
         <p className="matches-empty">Select a track to see matches</p>
@@ -591,50 +476,65 @@ export const MatchesPanel = memo(function MatchesPanel({
     )
   }
 
+  if (visibleIds.length === 0) {
+    return (
+      <div className="matches-panel">
+        <div className="matches-header-compact">
+          <div className="bucket-tabs">
+            {BUCKET_TABS.map((bt) => (
+              <button
+                key={bt.key}
+                className={`bucket-tab${bucketTab === bt.key ? ' active' : ''}`}
+                onClick={() => setBucketTab(bt.key)}
+              >
+                {bt.label}
+                <span className="bucket-count">{bucketCounts[bt.key]}</span>
+              </button>
+            ))}
+            <span className="matches-source-title">{matchSource.title}</span>
+            <button
+              type="button"
+              className="matches-clear-btn"
+              aria-label="Clear matches"
+              title="Clear matches"
+              onClick={onClearMatchSource}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <TableColumnEmptyRecovery
+          inactiveColumns={hiddenInactive}
+          onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="matches-panel">
-      <h2 className="panel-title">
-        Matches for{' '}
-        <span className="matches-track-name">{selectedTrack.title}</span>
-      </h2>
-      <div className="bucket-tabs">
-        {BUCKET_TABS.map((bt) => (
+      <div className="matches-header-compact">
+        <div className="bucket-tabs">
+          {BUCKET_TABS.map((bt) => (
+            <button
+              key={bt.key}
+              className={`bucket-tab${bucketTab === bt.key ? ' active' : ''}`}
+              onClick={() => setBucketTab(bt.key)}
+            >
+              {bt.label}
+              <span className="bucket-count">{bucketCounts[bt.key]}</span>
+            </button>
+          ))}
+          <span className="matches-source-title">{matchSource.title}</span>
           <button
-            key={bt.key}
-            className={`bucket-tab${bucketTab === bt.key ? ' active' : ''}`}
-            onClick={() => setBucketTab(bt.key)}
+            type="button"
+            className="matches-clear-btn"
+            aria-label="Clear matches"
+            title="Clear matches"
+            onClick={onClearMatchSource}
           >
-            {bt.label}
-            <span className="bucket-count">{bucketCounts[bt.key]}</span>
+            ×
           </button>
-        ))}
-        <div className="column-config-group" ref={colConfigRef}>
-          <button
-            className="column-config-btn"
-            onClick={() => setColConfigOpen(!colConfigOpen)}
-          >
-            Columns
-            <span className="caret">{colConfigOpen ? '▲' : '▼'}</span>
-          </button>
-          {colConfigOpen && (
-            <div className="column-config-popover">
-              {CONFIGURABLE_MATCH_COLUMNS.map(({ id, label }) => (
-                <label key={id} className="column-config-item">
-                  <input
-                    type="checkbox"
-                    checked={columnVisibility[id] !== false}
-                    onChange={() =>
-                      setColumnVisibility((prev) => ({
-                        ...prev,
-                        [id]: prev[id] !== false ? false : true,
-                      }))
-                    }
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          )}
         </div>
       </div>
       <div className="track-table-outer" ref={outerRef}>
@@ -693,9 +593,30 @@ export const MatchesPanel = memo(function MatchesPanel({
                               : undefined
                           }
                         >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
+                          {header.column.id === 'details' ? (
+                            flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )
+                          ) : (
+                            <TableColumnControls
+                              label={
+                                registryById.get(header.column.id)?.label ??
+                                String(header.column.columnDef.header ?? '')
+                              }
+                              inactiveColumns={hiddenInactive}
+                              onRemove={() =>
+                                onToggleColumnVisibility(header.column.id)
+                              }
+                              onInsertAfter={(columnId) =>
+                                onInsertColumnAfter(header.column.id, columnId)
+                              }
+                            >
+                              {flexRender(
+                                header.column.columnDef.header,
+                                header.getContext(),
+                              )}
+                            </TableColumnControls>
                           )}
                           {sorted && (
                             <span className="sort-indicator">
@@ -708,6 +629,14 @@ export const MatchesPanel = memo(function MatchesPanel({
                             className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
                             onMouseDown={header.getResizeHandler()}
                             onTouchStart={header.getResizeHandler()}
+                            onMouseUp={() => {
+                              if (header.column.getIsResizing()) {
+                                onColumnWidthFlush(
+                                  header.column.id,
+                                  header.getSize(),
+                                )
+                              }
+                            }}
                           />
                         )}
                       </th>

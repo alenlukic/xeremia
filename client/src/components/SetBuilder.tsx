@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PoolSubgroup, HydratedSet, Track } from '../types'
+import type { NormalizedTableConfig } from '../tablePreferences'
 import { exportSetM3u8 } from '../api/http'
 import { QuadrantDivider, QuadrantExpandBar } from './QuadrantControls'
 import { SetPoolTable } from './SetPoolTable'
@@ -18,6 +19,21 @@ interface Props {
   error: string | null
   /** Set selection/creation controls, hosted in the tracklist header. */
   setPicker?: ReactNode
+  tracklistConfig: NormalizedTableConfig
+  poolConfig: NormalizedTableConfig
+  onTracklistToggleColumn: (columnId: string) => void
+  onTracklistReorderColumn: (draggedId: string, targetId: string) => void
+  onTracklistInsertColumnAfter: (
+    afterColumnId: string,
+    columnId: string,
+  ) => void
+  onTracklistColumnWidthChange: (columnId: string, width: number) => void
+  onTracklistColumnWidthFlush: (columnId: string, width: number) => void
+  onPoolToggleColumn: (columnId: string) => void
+  onPoolReorderColumn: (draggedId: string, targetId: string) => void
+  onPoolInsertColumnAfter: (afterColumnId: string, columnId: string) => void
+  onPoolColumnWidthChange: (columnId: string, width: number) => void
+  onPoolColumnWidthFlush: (columnId: string, width: number) => void
   removeFromPool: (trackId: number) => void
   movePoolToTracklist: (trackId: number) => void
   reorderPool: (trackId: number, newPosition: number) => void
@@ -69,6 +85,18 @@ export function SetBuilder({
   loading,
   error,
   setPicker,
+  tracklistConfig,
+  poolConfig,
+  onTracklistToggleColumn,
+  onTracklistReorderColumn,
+  onTracklistInsertColumnAfter,
+  onTracklistColumnWidthChange,
+  onTracklistColumnWidthFlush,
+  onPoolToggleColumn,
+  onPoolReorderColumn,
+  onPoolInsertColumnAfter,
+  onPoolColumnWidthChange,
+  onPoolColumnWidthFlush,
   removeFromPool,
   movePoolToTracklist,
   reorderPool,
@@ -180,6 +208,12 @@ export function SetBuilder({
               allTracks={allTracks}
               tracklist={activeSet.tracklist}
               headerControls={setPicker}
+              tableConfig={tracklistConfig}
+              onToggleColumn={onTracklistToggleColumn}
+              onReorderColumn={onTracklistReorderColumn}
+              onInsertColumnAfter={onTracklistInsertColumnAfter}
+              onColumnWidthChange={onTracklistColumnWidthChange}
+              onColumnWidthFlush={onTracklistColumnWidthFlush}
               onOpenExplorer={openExplorer}
               onRemove={removeFromTracklist}
               onMoveToPool={moveTracklistToPool}
@@ -215,6 +249,12 @@ export function SetBuilder({
                 pool={activeSet.pool}
                 subgroups={activeSet.pool_subgroups ?? []}
                 subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
+                tableConfig={poolConfig}
+                onToggleColumn={onPoolToggleColumn}
+                onReorderColumn={onPoolReorderColumn}
+                onInsertColumnAfter={onPoolInsertColumnAfter}
+                onColumnWidthChange={onPoolColumnWidthChange}
+                onColumnWidthFlush={onPoolColumnWidthFlush}
                 onRemove={removeFromPool}
                 onMoveToTracklist={movePoolToTracklist}
                 onReorder={reorderPool}

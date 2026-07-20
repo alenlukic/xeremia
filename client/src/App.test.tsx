@@ -94,6 +94,13 @@ vi.mock('./api/http', () => ({
   explorerSwap: vi.fn().mockResolvedValue(undefined),
   explorerNodeToTracklist: vi.fn().mockResolvedValue(undefined),
   explorerEdgeScores: vi.fn().mockResolvedValue({ scores: [] }),
+  fetchTablePreferences: vi.fn().mockResolvedValue({ preferences: [] }),
+  updateTablePreferences: vi.fn().mockResolvedValue({
+    table_id: 'search',
+    column_order: ['title'],
+    column_visibility: { title: true },
+    column_widths: { title: 220 },
+  }),
   updateSet: vi.fn().mockResolvedValue({}),
 }))
 
@@ -790,7 +797,9 @@ async function selectTrackViaBrowse(trackTitle: string) {
   })
 
   await waitFor(() => {
-    expect(screen.getByText(`Matches for`)).toBeInTheDocument()
+    expect(
+      screen.getByText(trackTitle, { selector: '.matches-source-title' }),
+    ).toBeInTheDocument()
   })
 }
 
@@ -897,109 +906,6 @@ describe('Transition chaining', () => {
       expect(document.querySelectorAll('.chain-entry').length).toBe(0)
       expect(document.querySelector('.chain-back-btn')).not.toBeInTheDocument()
     })
-  })
-})
-
-describe('Browse column visibility sessionStorage round-trip', () => {
-  const COL_VIS_KEY = 'xeremia-browse-col-visibility'
-
-  beforeEach(() => {
-    sessionStorage.removeItem(COL_VIS_KEY)
-  })
-
-  it('restores hidden column from sessionStorage, persists toggle, and survives remount', async () => {
-    const user = userEvent.setup()
-
-    sessionStorage.setItem(COL_VIS_KEY, JSON.stringify({ bpm: false }))
-
-    const { unmount } = render(<App />)
-
-    const headers = () =>
-      screen.getAllByRole('columnheader').map((h) => h.textContent)
-    expect(headers()).not.toContain('BPM')
-    expect(headers()).toContain('Title')
-
-    await user.click(screen.getByRole('button', { name: /Columns/ }))
-    const bpmCheckbox = screen.getByLabelText('BPM') as HTMLInputElement
-    expect(bpmCheckbox.checked).toBe(false)
-
-    await user.click(bpmCheckbox)
-
-    await waitFor(() => {
-      const stored = JSON.parse(sessionStorage.getItem(COL_VIS_KEY)!)
-      expect(stored.bpm).toBe(true)
-    })
-
-    expect(headers()).toContain('BPM')
-
-    unmount()
-
-    render(<App />)
-
-    expect(headers()).toContain('BPM')
-
-    await user.click(screen.getByRole('button', { name: /Columns/ }))
-    const restoredCheckbox = screen.getByLabelText('BPM') as HTMLInputElement
-    expect(restoredCheckbox.checked).toBe(true)
-  })
-
-  it('starts with default columns visible (Key and Energy hidden) when localStorage has no saved state', async () => {
-    render(<App />)
-
-    const headers = screen
-      .getAllByRole('columnheader')
-      .map((h) => h.textContent)
-    expect(headers).toContain('BPM')
-    expect(headers).toContain('Camelot')
-    expect(headers).not.toContain('Key')
-    expect(headers).not.toContain('Energy')
-  })
-})
-
-describe('Browse column visibility – invalid sessionStorage values', () => {
-  const COL_VIS_KEY = 'xeremia-browse-col-visibility'
-
-  beforeEach(() => {
-    sessionStorage.removeItem(COL_VIS_KEY)
-  })
-
-  it.each([
-    ['number', '42'],
-    ['boolean', 'true'],
-    ['array', '[1]'],
-    ['string', '"hello"'],
-    ['null', 'null'],
-  ])(
-    'falls back to default column visibility (Key and Energy hidden) when stored value is a %s',
-    async (_label, stored) => {
-      sessionStorage.setItem(COL_VIS_KEY, stored)
-
-      render(<App />)
-
-      const headers = screen
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent)
-      expect(headers).toContain('BPM')
-      expect(headers).toContain('Camelot')
-      expect(headers).not.toContain('Key')
-      expect(headers).not.toContain('Energy')
-    },
-  )
-
-  it('restores valid object visibility maps correctly', async () => {
-    sessionStorage.setItem(
-      COL_VIS_KEY,
-      JSON.stringify({ bpm: false, energy: false }),
-    )
-
-    render(<App />)
-
-    const headers = screen
-      .getAllByRole('columnheader')
-      .map((h) => h.textContent)
-    expect(headers).not.toContain('BPM')
-    expect(headers).not.toContain('Energy')
-    expect(headers).toContain('Camelot')
   })
 })
 

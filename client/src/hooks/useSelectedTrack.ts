@@ -2,25 +2,23 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import type { Track, SearchSuggestion, TransitionMatch } from '../types'
 import { fetchMatches } from '../api/http'
 
-interface SelectedTrackState {
-  selectedTrack: Track | SearchSuggestion | null
+interface MatchSourceState {
+  matchSource: Track | SearchSuggestion | null
   matches: TransitionMatch[]
   matchesLoading: boolean
   matchesError: string | null
-  selectTrack: (track: Track | SearchSuggestion) => void
-  clearSelectedTrack: () => void
+  selectMatchSource: (track: Track | SearchSuggestion) => void
+  clearMatchSource: () => void
   refetchMatches: () => void
 }
 
 /**
- * Global selected-track state with session-scoped match caching.
- * Both autocomplete and browse selections converge on `selectTrack`.
- * Match results are cached per track ID for the session.
+ * Retained match-source state with session-scoped match caching.
+ * Search browse focus is owned separately in App; this hook only tracks
+ * the active source used for Matches fetching and rendering.
  */
-export function useSelectedTrack(
-  onTrackAction?: () => void,
-): SelectedTrackState {
-  const [selectedTrack, setSelectedTrack] = useState<
+export function useSelectedTrack(onTrackAction?: () => void): MatchSourceState {
+  const [matchSource, setMatchSource] = useState<
     Track | SearchSuggestion | null
   >(null)
   const [matches, setMatches] = useState<TransitionMatch[]>([])
@@ -28,7 +26,7 @@ export function useSelectedTrack(
   const [matchesError, setMatchesError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const matchCacheRef = useRef<Map<number, TransitionMatch[]>>(new Map())
-  const selectedTrackRef = useRef<Track | SearchSuggestion | null>(null)
+  const matchSourceRef = useRef<Track | SearchSuggestion | null>(null)
   const onTrackActionRef = useRef(onTrackAction)
   useEffect(() => {
     onTrackActionRef.current = onTrackAction
@@ -64,11 +62,11 @@ export function useSelectedTrack(
       })
   }, [])
 
-  const selectTrack = useCallback(
+  const selectMatchSource = useCallback(
     (track: Track | SearchSuggestion) => {
       abortRef.current?.abort()
-      setSelectedTrack(track)
-      selectedTrackRef.current = track
+      setMatchSource(track)
+      matchSourceRef.current = track
 
       const cached = matchCacheRef.current.get(track.id)
       if (cached) {
@@ -85,20 +83,20 @@ export function useSelectedTrack(
     [loadMatches],
   )
 
-  const clearSelectedTrack = useCallback(() => {
-    if (selectedTrackRef.current === null) {
+  const clearMatchSource = useCallback(() => {
+    if (matchSourceRef.current === null) {
       return
     }
     abortRef.current?.abort()
-    setSelectedTrack(null)
-    selectedTrackRef.current = null
+    setMatchSource(null)
+    matchSourceRef.current = null
     setMatches([])
     setMatchesError(null)
     setMatchesLoading(false)
   }, [])
 
   const refetchMatches = useCallback(() => {
-    const track = selectedTrackRef.current
+    const track = matchSourceRef.current
     if (!track) {
       return
     }
@@ -107,12 +105,12 @@ export function useSelectedTrack(
   }, [loadMatches])
 
   return {
-    selectedTrack,
+    matchSource,
     matches,
     matchesLoading,
     matchesError,
-    selectTrack,
-    clearSelectedTrack,
+    selectMatchSource,
+    clearMatchSource,
     refetchMatches,
   }
 }

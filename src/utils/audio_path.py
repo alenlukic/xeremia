@@ -63,19 +63,17 @@ def resolve_audio_path(
 ) -> str | None:
     """Return the existing path for ``file_name``, or ``None`` if unresolved.
 
-    Resolution attempts the direct path first, then scans the requested file's
-    parent directory. Fallback matching covers Unicode NFC/NFD differences,
-    unique case-insensitive matches, ``*``/``?`` to ``_`` substitutions, and
-    unique legacy placeholder matches. Ambiguous matches are rejected.
+    Resolution scans the requested file's parent directory and returns the
+    on-disk directory-entry spelling when a unique match is found. Fallback
+    matching covers Unicode NFC/NFD differences, unique case-insensitive matches,
+    ``*``/``?`` to ``_`` substitutions, and unique legacy placeholder matches.
+    Ambiguous matches are rejected. A direct ``isfile`` check is used only when
+    index matching does not find an entry.
     """
     if not file_name:
         return None
 
     root = os.fspath(music_dir)
-    direct_path = join(root, file_name)
-    if isfile(direct_path):
-        return direct_path
-
     relative_directory = dirname(file_name)
     requested_name = os.path.basename(file_name)
     if not requested_name:
@@ -83,13 +81,23 @@ def resolve_audio_path(
 
     search_directory = join(root, relative_directory)
     if index is not None:
-        match = _match_index(index, requested_name)
-        return join(search_directory, match) if match is not None else None
+        directory_index = index
+    else:
+        cache_key = os.path.abspath(search_directory)
+        directory_index = _get_audio_index(cache_key)
 
-    cache_key = os.path.abspath(search_directory)
-    directory_index = _get_audio_index(cache_key)
     match = _match_index(directory_index, requested_name)
-    return join(search_directory, match) if match is not None else None
+    if match is not None:
+        return join(search_directory, match)
+
+    direct_path = join(root, file_name)
+    if isfile(direct_path):
+        entry_name = _directory_entry_name(search_directory, requested_name)
+        if entry_name is not None:
+            return join(search_directory, entry_name)
+        return direct_path
+
+    return None
 
 
 def _get_audio_index(directory: str) -> AudioNameIndex:
@@ -98,6 +106,21 @@ def _get_audio_index(directory: str) -> AudioNameIndex:
         index = build_audio_index(directory)
         _INDEX_CACHE[directory] = index
     return index
+
+
+def _directory_entry_name(directory: str, requested_name: str) -> str | None:
+    """Return the on-disk file name when it differs from ``requested_name``."""
+    requested_keys = set(_lookup_keys(requested_name))
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if not entry.is_file():
+                    continue
+                if requested_keys.intersection(_lookup_keys(entry.name)):
+                    return entry.name
+    except OSError:
+        return None
+    return None
 
 
 def _lookup_keys(name: str) -> tuple[str, ...]:

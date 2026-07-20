@@ -3357,3 +3357,140 @@ body,
   color: var(--accent);
   margin-right: 1px;
 }
+
+.matches-header-compact .bucket-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.matches-source-title {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.matches-clear-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.admin-tab {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.admin-tab.active {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.admin-preferences {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-pref-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-pref-columns {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.admin-pref-column {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.set-pool-header--inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.table-col-controls {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.table-col-remove,
+.table-col-insert-btn,
+.table-col-recovery-btn {
+  opacity: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.table-col-controls:hover .table-col-remove,
+.table-col-controls:focus-within .table-col-remove,
+.table-col-insert-zone:hover .table-col-insert-btn,
+.table-col-insert-zone:focus-within .table-col-insert-btn {
+  opacity: 1;
+}
+
+.table-col-insert-zone {
+  position: absolute;
+  right: -6px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+}
+
+.table-col-insert-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 120px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.table-col-insert-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.table-empty-columns {
+  padding: 12px;
+}

@@ -3,6 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { SetTracklist } from './SetTracklist'
 import { TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import type { TracklistEntry } from '../types'
+import {
+  testTracklistTableProps,
+  columnHeaderLabel,
+} from '../test/tablePreferenceHelpers'
 
 vi.mock('../api/http', () => ({
   searchTracks: vi.fn().mockResolvedValue([]),
@@ -48,6 +52,7 @@ function renderTracklist(
       onAddTrack={noop}
       onDropFromPool={noop}
       onExportM3u8={noop}
+      {...testTracklistTableProps}
       {...extra}
     />,
   )
@@ -78,8 +83,9 @@ describe('SetTracklist', () => {
 
   it('renders dedicated Key and BPM column headers', () => {
     renderTracklist([makeEntry({ id: 1, track_id: 10 })])
-    const headers = screen.getAllByRole('columnheader')
-    const headerTexts = headers.map((h) => h.textContent)
+    const headerTexts = screen
+      .getAllByRole('columnheader')
+      .map((h) => columnHeaderLabel(h as HTMLElement))
     expect(headerTexts).toContain('Key')
     expect(headerTexts).toContain('BPM')
   })
@@ -152,26 +158,24 @@ describe('SetTracklist column resizing', () => {
 
   it('renders resize handles on resizable column headers', () => {
     const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })])
-    const titleTh = screen.getByRole('columnheader', { name: 'Title' })
+    const titleTh = screen.getByRole('columnheader', { name: /title/i })
     expect(titleTh.querySelector('.col-resizer')).toBeTruthy()
     expect(container.querySelectorAll('.col-resizer')).toHaveLength(5)
   })
 
-  it('drag on a resize handle sets the column width and persists it', () => {
-    const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })])
-    const noteTh = screen.getByRole('columnheader', { name: 'Note' })
+  it('drag on a resize handle flushes the column width via callback', () => {
+    const onColumnWidthFlush = vi.fn()
+    renderTracklist([makeEntry({ id: 1, track_id: 10 })], {
+      onColumnWidthFlush,
+    })
+    const noteTh = screen.getByRole('columnheader', { name: /note/i })
     const handle = noteTh.querySelector('.col-resizer')!
 
-    // jsdom reports zero widths, so the drag lands at MIN_COL_WIDTH (40px).
     fireEvent.mouseDown(handle, { clientX: 300 })
     fireEvent.mouseMove(document, { clientX: 240 })
     fireEvent.mouseUp(document)
 
-    const noteCol = container.querySelector<HTMLElement>('col.set-ws-col-note')!
-    expect(noteCol.style.width).toBe('40px')
-    expect(
-      JSON.parse(localStorage.getItem('xeremia-set-tracklist-col-widths')!),
-    ).toEqual({ note: 40 })
+    expect(onColumnWidthFlush).toHaveBeenCalledWith('note', 40)
   })
 })
 

@@ -1,18 +1,51 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
-import type { TracklistEntry, SearchSuggestion, Track } from '../types'
+import type { TracklistEntry, Track } from '../types'
 import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import { displayTitle } from '../utils/trackTitle'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
-import { useTrackSearch } from '../hooks/useTrackSearch'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
-import { useResizableColumns } from '../hooks/useResizableColumns'
+import {
+  TABLE_REGISTRIES,
+  inactiveColumns,
+  visibleColumnIds,
+  type NormalizedTableConfig,
+} from '../tablePreferences'
+import {
+  TableColumnControls,
+  TableColumnEmptyRecovery,
+} from './TableColumnControls'
 import { PlayButton } from './PlayButton'
+
+const TRACKLIST_COL_CLASS: Record<string, string> = {
+  play: 'set-ws-col-play',
+  num: 'set-ws-col-num',
+  title: 'set-ws-col-title',
+  key: 'set-ws-col-key',
+  bpm: 'set-ws-col-bpm',
+  note: 'set-ws-col-note',
+  actions: 'set-ws-col-actions-tracklist',
+}
+
+const TRACKLIST_HEADER_LABEL: Record<string, string> = {
+  num: '#',
+  title: 'Title',
+  key: 'Key',
+  bpm: 'BPM',
+  note: 'Note',
+  actions: 'Actions',
+}
 
 interface Props {
   allTracks: Track[]
   tracklist: TracklistEntry[]
+  tableConfig: NormalizedTableConfig
+  onToggleColumn: (columnId: string) => void
+  onReorderColumn: (draggedId: string, targetId: string) => void
+  onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
+  onColumnWidthChange: (columnId: string, width: number) => void
+  onColumnWidthFlush: (columnId: string, width: number) => void
   /** Extra controls (e.g. the set picker) rendered in the header row. */
   headerControls?: ReactNode
   /** When provided, the header menu offers switching to the Explorer view. */
@@ -79,6 +112,12 @@ function NoteInput({
 export function SetTracklist({
   allTracks,
   tracklist,
+  tableConfig,
+  onToggleColumn,
+  onReorderColumn,
+  onInsertColumnAfter,
+  onColumnWidthChange,
+  onColumnWidthFlush,
   headerControls,
   onOpenExplorer,
   onRemove,
@@ -89,17 +128,55 @@ export function SetTracklist({
   onDropFromPool,
   onExportM3u8,
 }: Props) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showSearch, setShowSearch] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
-  const { suggestions, search, clear } = useTrackSearch(allTracks)
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
 
   useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
-  const { widths: colWidths, beginResize } = useResizableColumns(
-    'xeremia-set-tracklist-col-widths',
+  const colWidths = tableConfig.columnWidths
+  const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
+  const hiddenInactive = useMemo(
+    () => inactiveColumns('tracklist', tableConfig),
+    [tableConfig],
+  )
+  const registryById = useMemo(
+    () => new Map(TABLE_REGISTRIES.tracklist.map((entry) => [entry.id, entry])),
+    [],
+  )
+
+  const beginResize = useCallback(
+    (colId: string, e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const th = (e.target as HTMLElement).closest('th')
+      if (!th) {
+        return
+      }
+      const startWidth = th.getBoundingClientRect().width
+      const startX = e.clientX
+
+      let latestWidth = startWidth
+      function handleMove(ev: MouseEvent) {
+        latestWidth = Math.max(40, Math.round(startWidth + ev.clientX - startX))
+        onColumnWidthChange(colId, latestWidth)
+      }
+
+      function handleUp() {
+        document.removeEventListener('mousemove', handleMove)
+        document.removeEventListener('mouseup', handleUp)
+        document.body.style.removeProperty('cursor')
+        document.body.style.removeProperty('user-select')
+        onColumnWidthFlush(colId, latestWidth)
+      }
+
+      document.addEventListener('mousemove', handleMove)
+      document.addEventListener('mouseup', handleUp)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    },
+    [onColumnWidthChange, onColumnWidthFlush],
   )
 
   const handleExternalDrop = useCallback(
@@ -129,29 +206,159 @@ export function SetTracklist({
     />
   )
 
-  const handleSearch = useCallback(
-    (q: string) => {
-      setSearchQuery(q)
-      if (!q.trim()) {
-        clear()
-        setShowSearch(false)
-        return
-      }
-      search(q)
-      setShowSearch(true)
+  const handleColumnDragStart = useCallback(
+    (e: React.DragEvent, columnId: string) => {
+      setDraggedColumn(columnId)
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', columnId)
     },
-    [search, clear],
+    [],
   )
 
-  const handleSearchSelect = useCallback(
-    (s: SearchSuggestion) => {
-      onAddTrack(s.id, s.title)
-      setSearchQuery('')
-      clear()
-      setShowSearch(false)
+  const handleColumnDragOver = useCallback((e: React.DragEvent) => {
+    const types = e.dataTransfer?.types ?? []
+    if (
+      types.includes(TRACK_DRAG_MIME) ||
+      types.includes(TRACKLIST_ROW_MIME) ||
+      types.includes(POOL_ROW_MIME)
+    ) {
+      return
+    }
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const handleColumnDrop = useCallback(
+    (e: React.DragEvent, targetId: string) => {
+      e.preventDefault()
+      const draggedId = e.dataTransfer.getData('text/plain')
+      if (!draggedId || draggedId === targetId) {
+        setDraggedColumn(null)
+        return
+      }
+      onReorderColumn(draggedId, targetId)
+      setDraggedColumn(null)
     },
-    [onAddTrack, clear],
+    [onReorderColumn],
   )
+
+  const handleColumnDragEnd = useCallback(() => {
+    setDraggedColumn(null)
+  }, [])
+
+  const renderHeaderCell = (colId: string) => {
+    const label = TRACKLIST_HEADER_LABEL[colId] ?? colId
+    const registry = registryById.get(colId)
+    const resizable = registry?.resizable !== false
+    const thClass =
+      colId === 'actions' ? 'set-ws-th set-ws-th-actions' : 'set-ws-th'
+
+    if (colId === 'play') {
+      return <th key={colId} className={thClass} />
+    }
+
+    return (
+      <th
+        key={colId}
+        className={`${thClass}${draggedColumn === colId ? ' th-dragging' : ''}`}
+        onDragOver={handleColumnDragOver}
+        onDrop={(e) => handleColumnDrop(e, colId)}
+      >
+        <div
+          className="th-content"
+          draggable
+          onDragStart={(e) => handleColumnDragStart(e, colId)}
+          onDragEnd={handleColumnDragEnd}
+        >
+          <TableColumnControls
+            label={registry?.label ?? label}
+            inactiveColumns={hiddenInactive}
+            onRemove={() => onToggleColumn(colId)}
+            onInsertAfter={(columnId) => onInsertColumnAfter(colId, columnId)}
+          >
+            {label}
+          </TableColumnControls>
+        </div>
+        {resizable ? resizer(colId) : null}
+      </th>
+    )
+  }
+
+  const renderBodyCell = (
+    colId: string,
+    entry: TracklistEntry,
+    rowIndex: number,
+  ) => {
+    switch (colId) {
+      case 'play':
+        return (
+          <td key={colId} className="set-ws-cell-play">
+            <PlayButton
+              trackId={entry.track_id}
+              title={entry.track?.title ?? ''}
+            />
+          </td>
+        )
+      case 'num':
+        return (
+          <td key={colId} className="mono set-ws-cell-num">
+            {rowIndex + 1}
+          </td>
+        )
+      case 'title':
+        return (
+          <td key={colId} className="set-ws-cell-title">
+            {displayTitle(entry.track, entry.track_id)}
+          </td>
+        )
+      case 'key':
+        return (
+          <td key={colId} className="mono set-ws-cell-key">
+            {entry.track?.camelot_code ?? '—'}
+          </td>
+        )
+      case 'bpm':
+        return (
+          <td key={colId} className="mono set-ws-cell-bpm">
+            {entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}
+          </td>
+        )
+      case 'note':
+        return (
+          <td key={colId} className="set-ws-cell-note">
+            <NoteInput
+              key={`note-${entry.track_id}`}
+              trackId={entry.track_id}
+              initialNote={entry.note ?? ''}
+              onSave={onUpdateNote}
+            />
+          </td>
+        )
+      case 'actions':
+        return (
+          <td key={colId} className="set-ws-cell-actions">
+            <div className="set-ws-actions-group">
+              <button
+                className="set-action-btn"
+                onClick={() => onMoveToPool(entry.track_id)}
+                title="Move to pool"
+              >
+                To Pool
+              </button>
+              <button
+                className="set-action-btn set-action-btn--danger"
+                onClick={() => onRemove(entry.track_id)}
+                title="Delete from tracklist"
+              >
+                ×
+              </button>
+            </div>
+          </td>
+        )
+      default:
+        return null
+    }
+  }
 
   return (
     <div
@@ -202,59 +409,29 @@ export function SetTracklist({
           )}
         </div>
         {headerControls}
-        <div className="set-tracklist-search-wrapper">
-          <input
-            className="set-tracklist-search"
-            placeholder="Search to add…"
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-          {showSearch && suggestions.length > 0 && (
-            <ul className="set-tracklist-search-dropdown">
-              {suggestions.map((s) => (
-                <li
-                  key={s.id}
-                  className="set-tracklist-search-item"
-                  onMouseDown={() => handleSearchSelect(s)}
-                >
-                  <span>{s.title}</span>
-                  <span className="text-muted">
-                    {s.camelot_code && (
-                      <span className="mono"> {s.camelot_code}</span>
-                    )}
-                    {s.bpm != null && <span className="mono"> · {s.bpm}</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       </div>
       {tracklist.length === 0 ? (
         <p className="set-empty-tracks">
-          Tracklist is empty. Move tracks from the pool or search above.
+          Tracklist is empty. Drag tracks from the Search table above.
         </p>
+      ) : visibleIds.length === 0 ? (
+        <TableColumnEmptyRecovery
+          inactiveColumns={hiddenInactive}
+          onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
+        />
       ) : (
         <table className="set-tracklist-table">
           <colgroup>
-            <col className="set-ws-col-play" />
-            <col className="set-ws-col-num" style={colStyle('num')} />
-            <col className="set-ws-col-title" style={colStyle('title')} />
-            <col className="set-ws-col-key" style={colStyle('key')} />
-            <col className="set-ws-col-bpm" style={colStyle('bpm')} />
-            <col className="set-ws-col-note" style={colStyle('note')} />
-            <col className="set-ws-col-actions-tracklist" />
+            {visibleIds.map((colId) => (
+              <col
+                key={colId}
+                className={TRACKLIST_COL_CLASS[colId]}
+                style={colStyle(colId)}
+              />
+            ))}
           </colgroup>
           <thead>
-            <tr>
-              <th className="set-ws-th"></th>
-              <th className="set-ws-th">#{resizer('num')}</th>
-              <th className="set-ws-th">Title{resizer('title')}</th>
-              <th className="set-ws-th">Key{resizer('key')}</th>
-              <th className="set-ws-th">BPM{resizer('bpm')}</th>
-              <th className="set-ws-th">Note{resizer('note')}</th>
-              <th className="set-ws-th set-ws-th-actions">Actions</th>
-            </tr>
+            <tr>{visibleIds.map((colId) => renderHeaderCell(colId))}</tr>
           </thead>
           <tbody>
             {tracklist.map((entry, i) => (
@@ -303,48 +480,7 @@ export function SetTracklist({
                   setDropIndex(null)
                 }}
               >
-                <td className="set-ws-cell-play">
-                  <PlayButton
-                    trackId={entry.track_id}
-                    title={entry.track?.title ?? ''}
-                  />
-                </td>
-                <td className="mono set-ws-cell-num">{i + 1}</td>
-                <td className="set-ws-cell-title">
-                  {displayTitle(entry.track, entry.track_id)}
-                </td>
-                <td className="mono set-ws-cell-key">
-                  {entry.track?.camelot_code ?? '—'}
-                </td>
-                <td className="mono set-ws-cell-bpm">
-                  {entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}
-                </td>
-                <td className="set-ws-cell-note">
-                  <NoteInput
-                    key={`note-${entry.track_id}`}
-                    trackId={entry.track_id}
-                    initialNote={entry.note ?? ''}
-                    onSave={onUpdateNote}
-                  />
-                </td>
-                <td className="set-ws-cell-actions">
-                  <div className="set-ws-actions-group">
-                    <button
-                      className="set-action-btn"
-                      onClick={() => onMoveToPool(entry.track_id)}
-                      title="Move to pool"
-                    >
-                      To Pool
-                    </button>
-                    <button
-                      className="set-action-btn set-action-btn--danger"
-                      onClick={() => onRemove(entry.track_id)}
-                      title="Delete from tracklist"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </td>
+                {visibleIds.map((colId) => renderBodyCell(colId, entry, i))}
               </tr>
             ))}
           </tbody>

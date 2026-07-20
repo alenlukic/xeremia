@@ -3,6 +3,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SetBuilder } from './SetBuilder'
 import type { PoolSubgroup, SetSummary, HydratedSet, Track } from '../types'
+import { testSetBuilderTableProps } from '../test/tablePreferenceHelpers'
 
 vi.mock('../api/http', () => ({
   fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
@@ -85,6 +86,7 @@ function defaultProps() {
     ) => Promise<unknown>,
     fetchEdgeScores: async () => ({ scores: [] as (number | null)[] }),
     clearError: noop,
+    ...testSetBuilderTableProps,
   }
 }
 

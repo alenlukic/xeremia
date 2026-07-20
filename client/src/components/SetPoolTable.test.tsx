@@ -9,6 +9,10 @@ import {
 import { SetPoolTable } from './SetPoolTable'
 import { TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types'
+import {
+  testPoolTableProps,
+  columnHeaderLabel,
+} from '../test/tablePreferenceHelpers'
 
 vi.mock('../api/http', () => ({
   searchTracks: vi.fn().mockResolvedValue([]),
@@ -63,6 +67,7 @@ function renderPool(
       onAddSubgroupMember={asyncTrue}
       onRemoveSubgroupMember={asyncTrue}
       onDropFromTracklist={noop}
+      {...testPoolTableProps}
       {...extra}
     />,
   )
@@ -157,7 +162,7 @@ describe('SetPoolTable multi-sort', () => {
 
   it('single click sorts by one column ascending then toggles descending', () => {
     const { container } = renderPool(makeEntries())
-    const titleHeader = screen.getByText(/^Title/, { selector: 'th' })
+    const titleHeader = screen.getByRole('columnheader', { name: /title/i })
     fireEvent.click(titleHeader)
     expect(rowTitles(container)).toEqual(['Alpha', 'Bravo'])
     fireEvent.click(titleHeader)
@@ -166,9 +171,9 @@ describe('SetPoolTable multi-sort', () => {
 
   it('shift-click adds a second sort column with precedence indicators', () => {
     const { container } = renderPool(makeEntries())
-    const titleHeader = screen.getByText(/^Title/, { selector: 'th' })
+    const titleHeader = screen.getByRole('columnheader', { name: /title/i })
     fireEvent.click(titleHeader)
-    const bpmHeader = screen.getByText(/^BPM/, { selector: 'th' })
+    const bpmHeader = screen.getByRole('columnheader', { name: /^bpm/i })
     fireEvent.click(bpmHeader, { shiftKey: true })
     const precedence = container.querySelectorAll('.sort-precedence')
     expect(precedence.length).toBe(2)
@@ -176,9 +181,9 @@ describe('SetPoolTable multi-sort', () => {
 
   it('click without shift replaces multi-sort with single column', () => {
     const { container } = renderPool(makeEntries())
-    const titleHeader = screen.getByText(/^Title/, { selector: 'th' })
+    const titleHeader = screen.getByRole('columnheader', { name: /title/i })
     fireEvent.click(titleHeader)
-    const bpmHeader = screen.getByText(/^BPM/, { selector: 'th' })
+    const bpmHeader = screen.getByRole('columnheader', { name: /^bpm/i })
     fireEvent.click(bpmHeader, { shiftKey: true })
     fireEvent.click(bpmHeader)
     expect(container.querySelectorAll('.sort-precedence').length).toBe(0)
@@ -256,7 +261,7 @@ describe('SetPoolTable per-group sorting', () => {
     const { container } = renderPool(makeEntries(), subgroups, memberships)
     const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
     fireEvent.click(tabs[2]) // Warmup
-    fireEvent.click(screen.getByText(/^Title/, { selector: 'th' }))
+    fireEvent.click(screen.getByRole('columnheader', { name: /title/i }))
     expect(rowTitles(container)).toEqual(['Mike', 'Zulu'])
 
     fireEvent.click(tabs[0]) // All
@@ -272,7 +277,11 @@ describe('SetPoolTable per-group sorting', () => {
     // Each section gets its own tier bar; the global one is hidden.
     expect(container.querySelectorAll('.sort-tier-bar').length).toBe(2)
 
-    fireEvent.click(within(sections[0] as HTMLElement).getByText(/^Title/))
+    fireEvent.click(
+      within(sections[0] as HTMLElement).getByRole('columnheader', {
+        name: /title/i,
+      }),
+    )
     expect(rowTitles(sections[0])).toEqual(['Mike', 'Zulu'])
     expect(rowTitles(sections[1])).toEqual(['Mike', 'Alpha'])
   })
@@ -283,7 +292,11 @@ describe('SetPoolTable per-group sorting', () => {
     fireEvent.click(tabs[1]) // Groups
 
     const sections = container.querySelectorAll('.subgroup-section')
-    fireEvent.click(within(sections[0] as HTMLElement).getByText(/^Title/))
+    fireEvent.click(
+      within(sections[0] as HTMLElement).getByRole('columnheader', {
+        name: /title/i,
+      }),
+    )
 
     fireEvent.click(tabs[2]) // Warmup tab shares the section's sort scope
     expect(rowTitles(container)).toEqual(['Mike', 'Zulu'])
@@ -328,7 +341,7 @@ describe('SetPoolTable drag-and-drop row reordering', () => {
   it('does not reorder when sorted by a column other than #', () => {
     const onReorder = vi.fn()
     const { container } = renderPool(makeEntries(), [], [], { onReorder })
-    fireEvent.click(screen.getByText(/^Title/, { selector: 'th' }))
+    fireEvent.click(screen.getByRole('columnheader', { name: /title/i }))
     const rows = container.querySelectorAll('tbody tr')
     fireEvent.dragStart(rows[0], dragData())
     fireEvent.dragOver(rows[2], dragData())
@@ -553,7 +566,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     const withGroups = renderPool(makeEntries(), subgroups)
     expect(
       Array.from(withGroups.container.querySelectorAll('th.set-ws-th')).find(
-        (th) => th.textContent === 'Groups',
+        (th) => columnHeaderLabel(th as HTMLElement) === 'Groups',
       ),
     ).toBeTruthy()
     withGroups.unmount()
@@ -561,7 +574,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     const withoutGroups = renderPool(makeEntries(), [])
     expect(
       Array.from(withoutGroups.container.querySelectorAll('th.set-ws-th')).find(
-        (th) => th.textContent === 'Groups',
+        (th) => columnHeaderLabel(th as HTMLElement) === 'Groups',
       ),
     ).toBeUndefined()
   })

@@ -1,11 +1,17 @@
+import { useState } from 'react'
 import type {
   CacheStats,
   KeyDistEntry,
   BpmDistEntry,
   CacheEntry,
   CacheExit,
+  TableId,
 } from '../types'
 import { WeightControls } from './WeightControls'
+import type { TablePreferencesState } from '../hooks/useTablePreferences'
+import { TABLE_IDS, TABLE_REGISTRIES } from '../tablePreferences'
+
+type AdminTab = 'overview' | 'preferences'
 
 interface Props {
   stats: CacheStats | null
@@ -22,6 +28,7 @@ interface Props {
   resetWeights: () => void
   isSumValid: boolean
   rawSum: number
+  tablePrefs: TablePreferencesState
 }
 
 function ringColor(ratio: number): string {
@@ -258,6 +265,105 @@ function CacheStatsSection({
   )
 }
 
+const TABLE_LABELS: Record<TableId, string> = {
+  search: 'Search',
+  matches: 'Matches',
+  tracklist: 'Tracklist',
+  pool: 'Pool',
+}
+
+function PreferencesSection({
+  tablePrefs,
+}: {
+  tablePrefs: TablePreferencesState
+}) {
+  if (tablePrefs.loading) {
+    return <p className="table-status">Loading table preferences…</p>
+  }
+
+  return (
+    <div className="admin-preferences">
+      {tablePrefs.error && (
+        <p className="table-status admin-error">{tablePrefs.error}</p>
+      )}
+      {TABLE_IDS.map((tableId) => {
+        const config = tablePrefs.configs[tableId]
+        const registry = TABLE_REGISTRIES[tableId]
+        const saveError = tablePrefs.saveErrors[tableId]
+        const isSaving = tablePrefs.saving[tableId]
+        return (
+          <section key={tableId} className="admin-pref-section">
+            <div className="admin-pref-section-header">
+              <h3 className="admin-card-title">{TABLE_LABELS[tableId]}</h3>
+              {isSaving && <span className="admin-pref-status">Saving…</span>}
+              {!isSaving && saveError && (
+                <button
+                  type="button"
+                  className="admin-pref-retry"
+                  onClick={() => tablePrefs.retrySave(tableId)}
+                >
+                  Retry save
+                </button>
+              )}
+            </div>
+            {saveError && (
+              <p className="table-status admin-error">{saveError}</p>
+            )}
+            <ul className="admin-pref-columns">
+              {config.columnOrder.map((columnId, index) => {
+                const entry = registry.find((col) => col.id === columnId)
+                if (!entry) {
+                  return null
+                }
+                const width = config.columnWidths[columnId]
+                return (
+                  <li key={columnId} className="admin-pref-column">
+                    <label className="admin-pref-toggle">
+                      <input
+                        type="checkbox"
+                        checked={config.columnVisibility[columnId] !== false}
+                        onChange={() =>
+                          tablePrefs.toggleVisibility(tableId, columnId)
+                        }
+                      />
+                      <span>{entry.label}</span>
+                    </label>
+                    <div className="admin-pref-order">
+                      <button
+                        type="button"
+                        aria-label={`Move ${entry.label} up`}
+                        disabled={index === 0}
+                        onClick={() =>
+                          tablePrefs.moveColumn(tableId, columnId, -1)
+                        }
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Move ${entry.label} down`}
+                        disabled={index === config.columnOrder.length - 1}
+                        onClick={() =>
+                          tablePrefs.moveColumn(tableId, columnId, 1)
+                        }
+                      >
+                        ↓
+                      </button>
+                    </div>
+                    {width != null && (
+                      <span className="admin-pref-width mono">{width}px</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
 export function AdminDashboard({
   stats,
   loading,
@@ -273,43 +379,72 @@ export function AdminDashboard({
   resetWeights,
   isSumValid,
   rawSum,
+  tablePrefs,
 }: Props) {
+  const [tab, setTab] = useState<AdminTab>('overview')
+
   return (
     <div className="admin-dashboard">
-      <div className="admin-card admin-weights-card">
-        <h3 className="admin-card-title">Transition Weights</h3>
-        <div className="admin-weights-body">
-          {weightsLoading ? (
-            <p className="table-status">Loading weights…</p>
-          ) : (
-            <WeightControls
-              weights={weights}
-              setWeight={setWeight}
-              saving={weightsSaving}
-              saveSuccess={weightsSaveSuccess}
-              saveError={weightsError}
-              warningMessage={weightsWarning}
-            />
-          )}
-          <div className="admin-weights-actions">
-            <button
-              className="weight-normalize-btn weight-normalize-btn--secondary"
-              onClick={resetWeights}
-            >
-              Reset Weights
-            </button>
-            <button
-              className={`weight-normalize-btn${isSumValid ? ' inactive' : ''}`}
-              disabled={isSumValid}
-              onClick={normalizeWeights}
-            >
-              Normalize Weights
-              {!isSumValid && ` (${Number(rawSum.toFixed(1))})`}
-            </button>
-          </div>
-        </div>
+      <div className="admin-tabs" role="tablist" aria-label="Admin sections">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'overview'}
+          className={`admin-tab${tab === 'overview' ? ' active' : ''}`}
+          onClick={() => setTab('overview')}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'preferences'}
+          className={`admin-tab${tab === 'preferences' ? ' active' : ''}`}
+          onClick={() => setTab('preferences')}
+        >
+          Preferences
+        </button>
       </div>
-      <CacheStatsSection stats={stats} loading={loading} error={error} />
+      {tab === 'overview' ? (
+        <>
+          <div className="admin-card admin-weights-card">
+            <h3 className="admin-card-title">Transition Weights</h3>
+            <div className="admin-weights-body">
+              {weightsLoading ? (
+                <p className="table-status">Loading weights…</p>
+              ) : (
+                <WeightControls
+                  weights={weights}
+                  setWeight={setWeight}
+                  saving={weightsSaving}
+                  saveSuccess={weightsSaveSuccess}
+                  saveError={weightsError}
+                  warningMessage={weightsWarning}
+                />
+              )}
+              <div className="admin-weights-actions">
+                <button
+                  className="weight-normalize-btn weight-normalize-btn--secondary"
+                  onClick={resetWeights}
+                >
+                  Reset Weights
+                </button>
+                <button
+                  className={`weight-normalize-btn${isSumValid ? ' inactive' : ''}`}
+                  disabled={isSumValid}
+                  onClick={normalizeWeights}
+                >
+                  Normalize Weights
+                  {!isSumValid && ` (${Number(rawSum.toFixed(1))})`}
+                </button>
+              </div>
+            </div>
+          </div>
+          <CacheStatsSection stats={stats} loading={loading} error={error} />
+        </>
+      ) : (
+        <PreferencesSection tablePrefs={tablePrefs} />
+      )}
     </div>
   )
 }

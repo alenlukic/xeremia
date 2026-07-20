@@ -10,18 +10,58 @@ import type {
   PoolEntry,
   PoolSubgroup,
   PoolSubgroupMembership,
-  SearchSuggestion,
   Track,
 } from '../types'
 import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import { displayTitle } from '../utils/trackTitle'
-import { useResizableColumns } from '../hooks/useResizableColumns'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
-import { useTrackSearch } from '../hooks/useTrackSearch'
 import { PlayButton } from './PlayButton'
 import { SortTierBar } from './SortTierBar'
 import type { SortDescriptor, SortColumn } from './SortTierBar'
+import {
+  TABLE_REGISTRIES,
+  inactiveColumns,
+  visibleColumnIds,
+  type NormalizedTableConfig,
+} from '../tablePreferences'
+import {
+  TableColumnControls,
+  TableColumnEmptyRecovery,
+} from './TableColumnControls'
+
+const POOL_COL_CLASS: Record<string, string> = {
+  play: 'set-ws-col-play',
+  num: 'set-ws-col-num',
+  title: 'set-ws-col-title',
+  key: 'set-ws-col-key',
+  bpm: 'set-ws-col-bpm',
+  subgroups: 'set-ws-col-subgroups',
+  actions: 'set-ws-col-actions-pool',
+}
+
+const POOL_HEADER_LABEL: Record<string, string> = {
+  num: '#',
+  title: 'Title',
+  key: 'Key',
+  bpm: 'BPM',
+  subgroups: 'Groups',
+  actions: 'Actions',
+}
+
+const POOL_SORT_ID: Record<string, string> = {
+  num: 'insertion_order',
+  title: 'title',
+  key: 'camelot_code',
+  bpm: 'bpm',
+}
+
+function effectivePoolColumns(
+  visibleIds: string[],
+  hasSubgroups: boolean,
+): string[] {
+  return visibleIds.filter((id) => id !== 'subgroups' || hasSubgroups)
+}
 
 type PoolTab = 'all' | 'groups' | number
 
@@ -78,6 +118,12 @@ interface Props {
   pool: PoolEntry[]
   subgroups: PoolSubgroup[]
   subgroupMemberships: PoolSubgroupMembership[]
+  tableConfig: NormalizedTableConfig
+  onToggleColumn: (columnId: string) => void
+  onReorderColumn: (draggedId: string, targetId: string) => void
+  onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
+  onColumnWidthChange: (columnId: string, width: number) => void
+  onColumnWidthFlush: (columnId: string, width: number) => void
   onRemove: (trackId: number) => void
   onMoveToTracklist: (trackId: number) => void
   onReorder: (trackId: number, newPosition: number) => void
@@ -186,6 +232,7 @@ function SubgroupChips({
 
 function PoolRow({
   entry,
+  visibleColumnIds: columnIds,
   onRemove,
   onMoveToTracklist,
   subgroups,
@@ -195,6 +242,7 @@ function PoolRow({
   reorder,
 }: {
   entry: PoolEntry
+  visibleColumnIds: string[]
   onRemove: (trackId: number) => void
   onMoveToTracklist: (trackId: number) => void
   subgroups: PoolSubgroup[]
@@ -204,6 +252,79 @@ function PoolRow({
   reorder?: RowReorderProps
 }) {
   const title = displayTitle(entry.track, entry.track_id)
+
+  const renderCell = (colId: string) => {
+    switch (colId) {
+      case 'play':
+        return (
+          <td key={colId} className="set-ws-cell-play">
+            <PlayButton
+              trackId={entry.track_id}
+              title={entry.track?.title ?? ''}
+            />
+          </td>
+        )
+      case 'num':
+        return (
+          <td key={colId} className="mono set-ws-cell-num">
+            {entry.insertion_order + 1}
+          </td>
+        )
+      case 'title':
+        return (
+          <td key={colId} className="set-ws-cell-title">
+            {title}
+          </td>
+        )
+      case 'key':
+        return (
+          <td key={colId} className="mono set-ws-cell-key">
+            {entry.track?.camelot_code ?? '—'}
+          </td>
+        )
+      case 'bpm':
+        return (
+          <td key={colId} className="mono set-ws-cell-bpm">
+            {entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}
+          </td>
+        )
+      case 'subgroups':
+        return (
+          <td key={colId} className="set-ws-cell-subgroups">
+            <SubgroupChips
+              entry={entry}
+              subgroups={subgroups}
+              memberSubgroupIds={memberSubgroupIds}
+              onAddSubgroupMember={onAddSubgroupMember}
+              onRemoveSubgroupMember={onRemoveSubgroupMember}
+            />
+          </td>
+        )
+      case 'actions':
+        return (
+          <td key={colId} className="set-ws-cell-actions">
+            <div className="set-ws-actions-group">
+              <button
+                className="set-action-btn"
+                onClick={() => onMoveToTracklist(entry.track_id)}
+                title="Move to tracklist"
+              >
+                To Tracklist
+              </button>
+              <button
+                className="set-action-btn set-action-btn--danger"
+                onClick={() => onRemove(entry.track_id)}
+                title="Remove from pool"
+              >
+                ×
+              </button>
+            </div>
+          </td>
+        )
+      default:
+        return null
+    }
+  }
 
   return (
     <tr
@@ -231,62 +352,41 @@ function PoolRow({
       onDrop={reorder ? (e) => reorder.onDrop(reorder.index, e) : undefined}
       onDragEnd={reorder ? () => reorder.onDragEnd() : undefined}
     >
-      <td className="set-ws-cell-play">
-        <PlayButton trackId={entry.track_id} title={entry.track?.title ?? ''} />
-      </td>
-      <td className="mono set-ws-cell-num">{entry.insertion_order + 1}</td>
-      <td className="set-ws-cell-title">{title}</td>
-      <td className="mono set-ws-cell-key">
-        {entry.track?.camelot_code ?? '—'}
-      </td>
-      <td className="mono set-ws-cell-bpm">
-        {entry.track?.bpm != null ? Math.round(entry.track.bpm) : '—'}
-      </td>
-      {subgroups.length > 0 && (
-        <td className="set-ws-cell-subgroups">
-          <SubgroupChips
-            entry={entry}
-            subgroups={subgroups}
-            memberSubgroupIds={memberSubgroupIds}
-            onAddSubgroupMember={onAddSubgroupMember}
-            onRemoveSubgroupMember={onRemoveSubgroupMember}
-          />
-        </td>
-      )}
-      <td className="set-ws-cell-actions">
-        <div className="set-ws-actions-group">
-          <button
-            className="set-action-btn"
-            onClick={() => onMoveToTracklist(entry.track_id)}
-            title="Move to tracklist"
-          >
-            To Tracklist
-          </button>
-          <button
-            className="set-action-btn set-action-btn--danger"
-            onClick={() => onRemove(entry.track_id)}
-            title="Remove from pool"
-          >
-            ×
-          </button>
-        </div>
-      </td>
+      {columnIds.map((colId) => renderCell(colId))}
     </tr>
   )
 }
 
 function PoolTableHead({
-  subgroups,
+  visibleColumnIds: columnIds,
   sorting,
   onHeaderSort,
   colWidths,
   beginResize,
+  hiddenInactive,
+  registryById,
+  draggedColumn,
+  onToggleColumn,
+  onInsertColumnAfter,
+  onColumnDragStart,
+  onColumnDragOver,
+  onColumnDrop,
+  onColumnDragEnd,
 }: {
-  subgroups: PoolSubgroup[]
+  visibleColumnIds: string[]
   sorting?: SortDescriptor[]
   onHeaderSort?: (col: string, e: React.MouseEvent) => void
   colWidths?: Record<string, number>
   beginResize?: (colId: string, e: React.MouseEvent) => void
+  hiddenInactive: import('../tablePreferences').ColumnRegistryEntry[]
+  registryById: Map<string, import('../tablePreferences').ColumnRegistryEntry>
+  draggedColumn: string | null
+  onToggleColumn: (columnId: string) => void
+  onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
+  onColumnDragStart: (e: React.DragEvent, columnId: string) => void
+  onColumnDragOver: (e: React.DragEvent) => void
+  onColumnDrop: (e: React.DragEvent, targetId: string) => void
+  onColumnDragEnd: () => void
 }) {
   const colStyle = (id: string) =>
     colWidths?.[id] != null ? { width: colWidths[id] } : undefined
@@ -319,51 +419,79 @@ function PoolTableHead({
     return <span className="sort-indicator">{arrow}</span>
   }
 
-  const sortableProps = (col: string) =>
-    onHeaderSort
-      ? {
-          className: 'set-ws-th set-ws-th-sortable',
-          onClick: (e: React.MouseEvent) => onHeaderSort(col, e),
+  const renderHeaderCell = (colId: string) => {
+    const label = POOL_HEADER_LABEL[colId] ?? colId
+    const registry = registryById.get(colId)
+    const resizable = registry?.resizable !== false
+    const sortCol = POOL_SORT_ID[colId]
+    const sortable = sortCol != null && onHeaderSort != null
+    const thClass =
+      colId === 'actions'
+        ? 'set-ws-th set-ws-th-actions'
+        : sortable
+          ? 'set-ws-th set-ws-th-sortable'
+          : 'set-ws-th'
+
+    if (colId === 'play') {
+      return <th key={colId} className={thClass} />
+    }
+
+    return (
+      <th
+        key={colId}
+        className={`${thClass}${draggedColumn === colId ? ' th-dragging' : ''}`}
+        onDragOver={onColumnDragOver}
+        onDrop={(e) => onColumnDrop(e, colId)}
+        onClick={
+          sortable
+            ? (e: React.MouseEvent) => {
+                const target = e.target as HTMLElement
+                if (
+                  target.closest('.table-col-remove') ||
+                  target.closest('.table-col-insert-btn') ||
+                  target.closest('.table-col-insert-menu')
+                ) {
+                  return
+                }
+                onHeaderSort(sortCol, e)
+              }
+            : undefined
         }
-      : { className: 'set-ws-th' }
+      >
+        <div
+          className={`th-content${sortable ? ' th-sortable' : ''}`}
+          draggable
+          onDragStart={(e) => onColumnDragStart(e, colId)}
+          onDragEnd={onColumnDragEnd}
+        >
+          <TableColumnControls
+            label={registry?.label ?? label}
+            inactiveColumns={hiddenInactive}
+            onRemove={() => onToggleColumn(colId)}
+            onInsertAfter={(columnId) => onInsertColumnAfter(colId, columnId)}
+          >
+            {label}
+            {sortCol ? sortIndicator(sortCol) : null}
+          </TableColumnControls>
+        </div>
+        {resizable ? resizer(colId) : null}
+      </th>
+    )
+  }
 
   return (
     <>
       <colgroup>
-        <col className="set-ws-col-play" />
-        <col className="set-ws-col-num" style={colStyle('num')} />
-        <col className="set-ws-col-title" style={colStyle('title')} />
-        <col className="set-ws-col-key" style={colStyle('key')} />
-        <col className="set-ws-col-bpm" style={colStyle('bpm')} />
-        {subgroups.length > 0 && (
-          <col className="set-ws-col-subgroups" style={colStyle('subgroups')} />
-        )}
-        <col className="set-ws-col-actions-pool" />
+        {columnIds.map((colId) => (
+          <col
+            key={colId}
+            className={POOL_COL_CLASS[colId]}
+            style={colStyle(colId)}
+          />
+        ))}
       </colgroup>
       <thead>
-        <tr>
-          <th className="set-ws-th"></th>
-          <th {...sortableProps('insertion_order')}>
-            #{sortIndicator('insertion_order')}
-            {resizer('num')}
-          </th>
-          <th {...sortableProps('title')}>
-            Title{sortIndicator('title')}
-            {resizer('title')}
-          </th>
-          <th {...sortableProps('camelot_code')}>
-            Key{sortIndicator('camelot_code')}
-            {resizer('key')}
-          </th>
-          <th {...sortableProps('bpm')}>
-            BPM{sortIndicator('bpm')}
-            {resizer('bpm')}
-          </th>
-          {subgroups.length > 0 && (
-            <th className="set-ws-th">Groups{resizer('subgroups')}</th>
-          )}
-          <th className="set-ws-th set-ws-th-actions">Actions</th>
-        </tr>
+        <tr>{columnIds.map((colId) => renderHeaderCell(colId))}</tr>
       </thead>
     </>
   )
@@ -611,8 +739,8 @@ function SubgroupSection({
   onMoveToTracklist,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
-  colWidths,
-  beginResize,
+  visibleColumnIds: columnIds,
+  poolHeadProps,
 }: {
   subgroup: PoolSubgroup
   entries: PoolEntry[]
@@ -625,8 +753,11 @@ function SubgroupSection({
   onMoveToTracklist: (trackId: number) => void
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
-  colWidths?: Record<string, number>
-  beginResize?: (colId: string, e: React.MouseEvent) => void
+  visibleColumnIds: string[]
+  poolHeadProps: Omit<
+    React.ComponentProps<typeof PoolTableHead>,
+    'sorting' | 'onHeaderSort'
+  >
 }) {
   const {
     attributes,
@@ -695,19 +826,18 @@ function SubgroupSection({
           />
           <table className="set-pool-table">
             <PoolTableHead
-              subgroups={subgroups}
+              {...poolHeadProps}
               sorting={sorting}
               onHeaderSort={(col, e) =>
                 onSortingChange(nextHeaderSorting(sorting, col, e.shiftKey))
               }
-              colWidths={colWidths}
-              beginResize={beginResize}
             />
             <tbody>
               {sorted.map((entry) => (
                 <PoolRow
                   key={entry.id}
                   entry={entry}
+                  visibleColumnIds={columnIds}
                   onRemove={onRemove}
                   onMoveToTracklist={onMoveToTracklist}
                   subgroups={subgroups}
@@ -731,6 +861,12 @@ export function SetPoolTable({
   pool,
   subgroups,
   subgroupMemberships,
+  tableConfig,
+  onToggleColumn,
+  onReorderColumn,
+  onInsertColumnAfter,
+  onColumnWidthChange,
+  onColumnWidthFlush,
   onRemove,
   onMoveToTracklist,
   onReorder,
@@ -743,11 +879,125 @@ export function SetPoolTable({
   onRemoveSubgroupMember,
   onDropFromTracklist,
 }: Props) {
-  const { widths: poolColWidths, beginResize: beginPoolColResize } =
-    useResizableColumns('xeremia-set-pool-col-widths')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showSearch, setShowSearch] = useState(false)
-  const { suggestions, search, clear } = useTrackSearch(allTracks)
+  const poolColWidths = tableConfig.columnWidths
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
+  const hiddenInactive = useMemo(
+    () => inactiveColumns('pool', tableConfig),
+    [tableConfig],
+  )
+  const registryById = useMemo(
+    () => new Map(TABLE_REGISTRIES.pool.map((entry) => [entry.id, entry])),
+    [],
+  )
+  const displayColumns = useMemo(
+    () => effectivePoolColumns(visibleIds, subgroups.length > 0),
+    [visibleIds, subgroups.length],
+  )
+
+  const handleColumnDragStart = useCallback(
+    (e: React.DragEvent, columnId: string) => {
+      setDraggedColumn(columnId)
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', columnId)
+    },
+    [],
+  )
+
+  const handleColumnDragOver = useCallback((e: React.DragEvent) => {
+    const types = e.dataTransfer?.types ?? []
+    if (
+      types.includes(TRACK_DRAG_MIME) ||
+      types.includes(TRACKLIST_ROW_MIME) ||
+      types.includes(POOL_ROW_MIME)
+    ) {
+      return
+    }
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const handleColumnDrop = useCallback(
+    (e: React.DragEvent, targetId: string) => {
+      e.preventDefault()
+      const draggedId = e.dataTransfer.getData('text/plain')
+      if (!draggedId || draggedId === targetId) {
+        setDraggedColumn(null)
+        return
+      }
+      onReorderColumn(draggedId, targetId)
+      setDraggedColumn(null)
+    },
+    [onReorderColumn],
+  )
+
+  const handleColumnDragEnd = useCallback(() => {
+    setDraggedColumn(null)
+  }, [])
+
+  const beginPoolColResize = useCallback(
+    (colId: string, e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const th = (e.target as HTMLElement).closest('th')
+      if (!th) {
+        return
+      }
+      const startWidth = th.getBoundingClientRect().width
+      const startX = e.clientX
+      let latestWidth = startWidth
+
+      function handleMove(ev: MouseEvent) {
+        latestWidth = Math.max(40, Math.round(startWidth + ev.clientX - startX))
+        onColumnWidthChange(colId, latestWidth)
+      }
+
+      function handleUp() {
+        document.removeEventListener('mousemove', handleMove)
+        document.removeEventListener('mouseup', handleUp)
+        document.body.style.removeProperty('cursor')
+        document.body.style.removeProperty('user-select')
+        onColumnWidthFlush(colId, latestWidth)
+      }
+
+      document.addEventListener('mousemove', handleMove)
+      document.addEventListener('mouseup', handleUp)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    },
+    [onColumnWidthChange, onColumnWidthFlush],
+  )
+
+  const poolHeadBaseProps = useMemo(
+    () => ({
+      visibleColumnIds: displayColumns,
+      colWidths: poolColWidths,
+      beginResize: beginPoolColResize,
+      hiddenInactive,
+      registryById,
+      draggedColumn,
+      onToggleColumn,
+      onInsertColumnAfter,
+      onColumnDragStart: handleColumnDragStart,
+      onColumnDragOver: handleColumnDragOver,
+      onColumnDrop: handleColumnDrop,
+      onColumnDragEnd: handleColumnDragEnd,
+    }),
+    [
+      displayColumns,
+      poolColWidths,
+      hiddenInactive,
+      registryById,
+      draggedColumn,
+      onToggleColumn,
+      onInsertColumnAfter,
+      handleColumnDragStart,
+      handleColumnDragOver,
+      handleColumnDrop,
+      handleColumnDragEnd,
+      beginPoolColResize,
+    ],
+  )
   // Sort tiers are scoped per view: the All tab has its own, and each
   // subgroup's tab and Groups-view section share one. Keyed by 'all' or the
   // subgroup id; unset scopes fall back to the persisted pool order.
@@ -809,36 +1059,6 @@ export function SetPoolTable({
     }
     return map
   }, [memberEntriesBySubgroup])
-
-  const handleSearch = useCallback(
-    (q: string) => {
-      setSearchQuery(q)
-      if (!q.trim()) {
-        clear()
-        setShowSearch(false)
-        return
-      }
-      search(q)
-      setShowSearch(true)
-    },
-    [search, clear],
-  )
-
-  const handleSearchSelect = useCallback(
-    (s: SearchSuggestion) => {
-      if (typeof activeTab === 'number') {
-        pendingSubgroupAssign.current = {
-          trackId: s.id,
-          subgroupId: activeTab,
-        }
-      }
-      onAddTrack(s.id, s.title)
-      setSearchQuery('')
-      clear()
-      setShowSearch(false)
-    },
-    [onAddTrack, activeTab, clear],
-  )
 
   // The Groups view has no single sort scope of its own — each section
   // manages its subgroup's scope directly.
@@ -998,50 +1218,19 @@ export function SetPoolTable({
       className={`set-pool${dropActive ? ' set-drop-active' : ''}`}
       {...dropHandlers}
     >
-      <div className="set-pool-header">
+      <div className="set-pool-header set-pool-header--inline">
         <h3 className="set-section-title">Pool ({pool.length})</h3>
-        <div className="set-pool-search-wrapper">
-          <input
-            className="set-pool-search"
-            placeholder={
-              typeof activeTab === 'number'
-                ? `Search to add to ${subgroups.find((sg) => sg.id === activeTab)?.name ?? 'group'}…`
-                : 'Search to add…'
-            }
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-          {showSearch && suggestions.length > 0 && (
-            <ul className="set-pool-search-dropdown">
-              {suggestions.map((s) => (
-                <li
-                  key={s.id}
-                  className="set-pool-search-item"
-                  onMouseDown={() => handleSearchSelect(s)}
-                >
-                  <span>{s.title}</span>
-                  <span className="text-muted">
-                    {s.camelot_code && (
-                      <span className="mono"> {s.camelot_code}</span>
-                    )}
-                    {s.bpm != null && <span className="mono"> · {s.bpm}</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <PoolTabBar
+          subgroups={subgroups}
+          memberCounts={memberCounts}
+          onCreateSubgroup={onCreateSubgroup}
+          onRenameSubgroup={onRenameSubgroup}
+          onDeleteSubgroup={onDeleteSubgroup}
+          onReorderSubgroups={onReorderSubgroups}
+          activeTab={activeTab}
+          onTabChange={setSelectedTab}
+        />
       </div>
-      <PoolTabBar
-        subgroups={subgroups}
-        memberCounts={memberCounts}
-        onCreateSubgroup={onCreateSubgroup}
-        onRenameSubgroup={onRenameSubgroup}
-        onDeleteSubgroup={onDeleteSubgroup}
-        onReorderSubgroups={onReorderSubgroups}
-        activeTab={activeTab}
-        onTabChange={setSelectedTab}
-      />
       {activeSortScope !== null && (
         <SortTierBar
           sorting={activeSorting}
@@ -1084,8 +1273,8 @@ export function SetPoolTable({
                     onMoveToTracklist={onMoveToTracklist}
                     onAddSubgroupMember={onAddSubgroupMember}
                     onRemoveSubgroupMember={onRemoveSubgroupMember}
-                    colWidths={poolColWidths}
-                    beginResize={beginPoolColResize}
+                    visibleColumnIds={displayColumns}
+                    poolHeadProps={poolHeadBaseProps}
                   />
                 )
               })}
@@ -1094,27 +1283,31 @@ export function SetPoolTable({
         )
       ) : pool.length === 0 ? (
         <p className="set-empty-tracks">
-          Pool is empty. Search above or add tracks from other tabs.
+          Pool is empty. Drag tracks from the Search table above.
         </p>
       ) : sorted.length === 0 && typeof activeTab === 'number' ? (
         <p className="set-empty-tracks">
           No tracks in this group yet. Search above to add one, or use the chips
           in the All tab.
         </p>
+      ) : displayColumns.length === 0 ? (
+        <TableColumnEmptyRecovery
+          inactiveColumns={hiddenInactive}
+          onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
+        />
       ) : (
         <table className="set-pool-table">
           <PoolTableHead
-            subgroups={subgroups}
+            {...poolHeadBaseProps}
             sorting={activeSorting}
             onHeaderSort={handleHeaderSort}
-            colWidths={poolColWidths}
-            beginResize={beginPoolColResize}
           />
           <tbody>
             {sorted.map((entry, i) => (
               <PoolRow
                 key={entry.id}
                 entry={entry}
+                visibleColumnIds={displayColumns}
                 onRemove={onRemove}
                 onMoveToTracklist={onMoveToTracklist}
                 subgroups={subgroups}
