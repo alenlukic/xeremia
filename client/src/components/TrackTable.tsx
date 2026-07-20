@@ -20,13 +20,22 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Track, SearchSuggestion } from '../types'
-import { formatFloat, formatBpm, displayGenre, TRACK_DRAG_MIME } from '../utils'
+import {
+  formatFloat,
+  formatBpm,
+  displayGenre,
+  dateAddedTimestamp,
+  formatDateAdded,
+  TRACK_DRAG_MIME,
+} from '../utils'
 import { PlayButton } from './PlayButton'
 
 const col = createColumnHelper<Track>()
 
-const FIXED_PX = 90
-const DATE_ADDED_PX = 110
+// Sized for the half-width browser quadrant, matching the compact
+// tracklist/pool tables it now sits beside.
+const FIXED_PX = 62
+const DATE_ADDED_PX = 80
 const FIXED_IDS = ['camelot_code', 'key', 'bpm', 'energy', 'date_added']
 const FIXED_WIDTHS: Record<string, number> = {
   camelot_code: FIXED_PX,
@@ -36,9 +45,9 @@ const FIXED_WIDTHS: Record<string, number> = {
   date_added: DATE_ADDED_PX,
 }
 const PLAY_COL_PX = 32
-const ACTION_COL_PX = 74
+const ACTION_COL_PX = 92
 const ALWAYS_VISIBLE_FIXED_PX = PLAY_COL_PX + ACTION_COL_PX
-const FLEX_MINS = [280, 100, 100]
+const FLEX_MINS = [220, 90, 90]
 const TOTAL_FLEX = FLEX_MINS.reduce((a, b) => a + b, 0)
 
 /**
@@ -66,24 +75,12 @@ function computeColWidths(
 }
 
 /** Fixed row height (px) assumed by the virtualizer; matches td padding+line. */
-const ROW_HEIGHT = 55
+const ROW_HEIGHT = 33
 
 const COLUMN_IDS = [...FIXED_IDS, 'title', 'label', 'genre']
 
-/**
- * `date_added` is stored as Python's `ctime()` output (e.g. "Wed Apr 15
- * 15:59:11 2026"), which sorts wrong lexicographically. Parse to a timestamp
- * for comparison instead; unparseable or missing values sort after real
- * dates regardless of direction, so `desc` still surfaces relevant dates.
- */
-function dateAddedTimestamp(value: string | null): number | null {
-  if (!value) {
-    return null
-  }
-  const time = new Date(value).getTime()
-  return Number.isNaN(time) ? null : time
-}
-
+// Missing/unparseable dates sort after real dates regardless of direction,
+// so `desc` still surfaces relevant dates.
 const sortDateAdded: SortingFn<Track> = (rowA, rowB) => {
   const a = dateAddedTimestamp(rowA.original.date_added)
   const b = dateAddedTimestamp(rowB.original.date_added)
@@ -97,18 +94,6 @@ const sortDateAdded: SortingFn<Track> = (rowA, rowB) => {
     return -1
   }
   return a - b
-}
-
-function formatDateAdded(value: string | null): string {
-  const time = dateAddedTimestamp(value)
-  if (time === null) {
-    return '—'
-  }
-  return new Date(time).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
 }
 
 const dataColumns = [
@@ -397,7 +382,10 @@ export const TrackTable = memo(function TrackTable({
   const handleWrapperScroll = useCallback(() => {
     const wrapper = wrapperRef.current
     if (wrapper && !selectedTrack) {
-      const maxScrollTop = Math.max(0, wrapper.scrollHeight - wrapper.clientHeight)
+      const maxScrollTop = Math.max(
+        0,
+        wrapper.scrollHeight - wrapper.clientHeight,
+      )
       const wasClamped =
         wrapper.scrollTop < savedScrollTop.current &&
         wrapper.scrollTop >= maxScrollTop &&

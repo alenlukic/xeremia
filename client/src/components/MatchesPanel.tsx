@@ -43,7 +43,8 @@ const COL_SIZES: Record<string, number> = {
   vocal_clash_score: 60,
 }
 
-const TRACK_SIZE = 484
+// Sized for the half-width matches quadrant beside the track browser.
+const TRACK_SIZE = 260
 
 const SCORE_COLUMN_IDS = Object.keys(COL_SIZES)
 const TOTAL_BASE = Object.values(COL_SIZES).reduce((a, b) => a + b, 0)
@@ -314,7 +315,7 @@ export const MatchesPanel = memo(function MatchesPanel({
       col.display({
         id: 'add_to_set',
         header: '',
-        size: 74,
+        size: 92,
         minSize: 60,
         enableSorting: false,
         cell: ({ row }) =>
@@ -468,7 +469,7 @@ export const MatchesPanel = memo(function MatchesPanel({
     if (containerWidth <= 0) {
       return {}
     }
-    const scoreSpace = Math.max(TOTAL_BASE, containerWidth - (TRACK_SIZE + 120))
+    const scoreSpace = Math.max(TOTAL_BASE, containerWidth - (TRACK_SIZE + 160))
     const scale = Math.max(1, scoreSpace / TOTAL_BASE)
     const sizing: ColumnSizingState = {}
     SCORE_COLUMN_IDS.forEach((id) => {

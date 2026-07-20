@@ -4,6 +4,8 @@ import {
   formatBpm,
   formatScore,
   formatOverallScore,
+  formatDateAdded,
+  dateAddedTimestamp,
   displayGenre,
   dragSensitivity,
   DRAG_SENSITIVITY_BASE,
@@ -33,6 +35,34 @@ describe('formatFloat', () => {
 
   it('handles zero', () => {
     expect(formatFloat(0)).toBe('0')
+  })
+})
+
+describe('dateAddedTimestamp', () => {
+  it('parses Python ctime output to a timestamp', () => {
+    const ts = dateAddedTimestamp('Wed Apr 15 15:59:11 2026')
+    expect(ts).not.toBeNull()
+    expect(new Date(ts!).getFullYear()).toBe(2026)
+  })
+
+  it('returns null for null and unparseable values', () => {
+    expect(dateAddedTimestamp(null)).toBeNull()
+    expect(dateAddedTimestamp('not a date')).toBeNull()
+  })
+})
+
+describe('formatDateAdded', () => {
+  it('renders ctime dates as YY-MM-DD', () => {
+    expect(formatDateAdded('Wed Apr 15 15:59:11 2026')).toBe('26-04-15')
+  })
+
+  it('zero-pads month and day', () => {
+    expect(formatDateAdded('Mon Jan 5 08:00:00 2026')).toBe('26-01-05')
+  })
+
+  it('returns em-dash for null or unparseable values', () => {
+    expect(formatDateAdded(null)).toBe('—')
+    expect(formatDateAdded('garbage')).toBe('—')
   })
 })
 

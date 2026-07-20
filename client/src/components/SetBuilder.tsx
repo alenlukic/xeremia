@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { PoolSubgroup, HydratedSet, Track } from '../types'
 import { exportSetM3u8 } from '../api/http'
-import { CollapseButton } from './CollapseButton'
-import { HoverRail } from './HoverRail'
+import { QuadrantDivider, QuadrantExpandBar } from './QuadrantControls'
 import { SetPoolTable } from './SetPoolTable'
 import { SetTracklist } from './SetTracklist'
 import { SetExplorerCanvas } from './SetExplorerCanvas'
@@ -16,6 +16,8 @@ interface Props {
   activeSet: HydratedSet | null
   loading: boolean
   error: string | null
+  /** Set selection/creation controls, hosted in the tracklist header. */
+  setPicker?: ReactNode
   removeFromPool: (trackId: number) => void
   movePoolToTracklist: (trackId: number) => void
   reorderPool: (trackId: number, newPosition: number) => void
@@ -66,6 +68,7 @@ export function SetBuilder({
   activeSet,
   loading,
   error,
+  setPicker,
   removeFromPool,
   movePoolToTracklist,
   reorderPool,
@@ -127,6 +130,9 @@ export function SetBuilder({
     [addToTracklist],
   )
 
+  const openExplorer = useCallback(() => setSubTab('explorer'), [])
+  const closeExplorer = useCallback(() => setSubTab('tracks'), [])
+
   const tracklistTrackIds = useMemo(() => {
     if (!activeSet) {
       return new Set<number>()
@@ -151,136 +157,97 @@ export function SetBuilder({
 
       {!activeSet && loading && <p className="table-status">Loading set…</p>}
 
-      {activeSet && (
-        <>
-          <HoverRail orientation="vertical" className="set-side-rail">
-            <button
-              className={`set-side-tab${subTab === 'tracks' ? ' active' : ''}`}
-              onClick={() => setSubTab('tracks')}
-            >
-              Tracks
-            </button>
-            <button
-              className={`set-side-tab${subTab === 'explorer' ? ' active' : ''}`}
-              onClick={() => setSubTab('explorer')}
-            >
-              Explorer
-            </button>
-          </HoverRail>
+      {!activeSet && !loading && (
+        <div className="set-empty-state">
+          <p className="set-empty-tracks">
+            No active set — create or select one to start building.
+          </p>
+          {setPicker}
+        </div>
+      )}
 
-          {subTab === 'tracks' && (
-            <div className="set-workspace-split">
-              {split === 'tracklist-collapsed' ? (
-                <button
-                  className="set-pool-expand-tab set-tracklist-expand-tab"
-                  onClick={() => setSplit('both')}
-                  aria-label="Expand tracklist"
-                  title="Expand tracklist"
-                >
-                  <span className="set-pool-expand-chevron" aria-hidden="true">
-                    ›
-                  </span>
-                  <span className="set-pool-expand-label">
-                    Tracklist ({activeSet.tracklist.length})
-                  </span>
-                </button>
-              ) : (
-                <SetTracklist
-                  allTracks={allTracks}
-                  tracklist={activeSet.tracklist}
-                  onRemove={removeFromTracklist}
-                  onMoveToPool={moveTracklistToPool}
-                  onReorder={reorderTracklist}
-                  onUpdateNote={updateTracklistNote}
-                  onAddTrack={handleTracklistAddTrack}
-                  onDropFromPool={movePoolToTracklist}
-                  onExportM3u8={handleExport}
-                />
-              )}
-              {split === 'both' && (
-                <CollapseButton
-                  orientation="vertical"
-                  size={22}
-                  direction="left"
-                  label="Collapse tracklist"
-                  className="set-tracklist-collapse-handle"
-                  onClick={() => setSplit('tracklist-collapsed')}
-                />
-              )}
-              <div
-                className={`set-pool-accordion${split !== 'pool-collapsed' ? ' expanded' : ''}${split === 'tracklist-collapsed' ? ' set-pool-accordion--full' : ''}`}
-              >
-                {split === 'both' && (
-                  <CollapseButton
-                    orientation="vertical"
-                    size={22}
-                    direction="right"
-                    label="Collapse pool"
-                    className="set-pool-collapse-handle"
-                    onClick={() => setSplit('pool-collapsed')}
-                  />
-                )}
-                {split === 'pool-collapsed' ? (
-                  <button
-                    className="set-pool-expand-tab"
-                    onClick={() => setSplit('both')}
-                    aria-label="Expand pool"
-                    title="Expand pool"
-                  >
-                    <span
-                      className="set-pool-expand-chevron"
-                      aria-hidden="true"
-                    >
-                      ‹
-                    </span>
-                    <span className="set-pool-expand-label">
-                      Pool ({activeSet.pool.length})
-                    </span>
-                  </button>
-                ) : (
-                  <div className="set-pool-accordion-content">
-                    <SetPoolTable
-                      allTracks={allTracks}
-                      pool={activeSet.pool}
-                      subgroups={activeSet.pool_subgroups ?? []}
-                      subgroupMemberships={
-                        activeSet.pool_subgroup_memberships ?? []
-                      }
-                      onRemove={removeFromPool}
-                      onMoveToTracklist={movePoolToTracklist}
-                      onReorder={reorderPool}
-                      onAddTrack={handlePoolAddTrack}
-                      onCreateSubgroup={createSubgroup}
-                      onRenameSubgroup={renameSubgroup}
-                      onDeleteSubgroup={deleteSubgroup}
-                      onReorderSubgroups={reorderSubgroups}
-                      onAddSubgroupMember={addSubgroupMember}
-                      onRemoveSubgroupMember={removeSubgroupMember}
-                      onDropFromTracklist={moveTracklistToPool}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {subTab === 'explorer' && (
-            <SetExplorerCanvas
+      {activeSet && subTab === 'tracks' && (
+        <div className="set-workspace-split">
+          {split === 'tracklist-collapsed' ? (
+            <QuadrantExpandBar
+              edge="left"
+              label={`Tracklist (${activeSet.tracklist.length})`}
+              ariaLabel="Expand tracklist"
+              onExpand={() => setSplit('both')}
+            />
+          ) : (
+            <SetTracklist
               allTracks={allTracks}
-              nodes={activeSet.explorer_nodes}
-              edges={activeSet.explorer_edges}
-              onAddNode={addExplorerNode}
-              onDeleteNode={deleteExplorerNode}
-              onAddEdge={addExplorerEdge}
-              onDeleteEdge={deleteExplorerEdge}
-              onSwap={swapExplorerNodes}
-              onNodeToTracklist={explorerNodeAddToTracklist}
-              onAddSibling={addSiblingNode}
-              tracklistTrackIds={tracklistTrackIds}
-              fetchEdgeScores={fetchEdgeScores}
+              tracklist={activeSet.tracklist}
+              headerControls={setPicker}
+              onOpenExplorer={openExplorer}
+              onRemove={removeFromTracklist}
+              onMoveToPool={moveTracklistToPool}
+              onReorder={reorderTracklist}
+              onUpdateNote={updateTracklistNote}
+              onAddTrack={handleTracklistAddTrack}
+              onDropFromPool={movePoolToTracklist}
+              onExportM3u8={handleExport}
             />
           )}
-        </>
+          {split === 'both' && (
+            <QuadrantDivider
+              orientation="vertical"
+              beforeLabel="Collapse tracklist"
+              afterLabel="Collapse pool"
+              onCollapseBefore={() => setSplit('tracklist-collapsed')}
+              onCollapseAfter={() => setSplit('pool-collapsed')}
+            />
+          )}
+          {split === 'pool-collapsed' ? (
+            <QuadrantExpandBar
+              edge="right"
+              label={`Pool (${activeSet.pool.length})`}
+              ariaLabel="Expand pool"
+              onExpand={() => setSplit('both')}
+            />
+          ) : (
+            <div
+              className={`set-pool-pane${split === 'tracklist-collapsed' ? ' set-pool-pane--full' : ''}`}
+            >
+              <SetPoolTable
+                allTracks={allTracks}
+                pool={activeSet.pool}
+                subgroups={activeSet.pool_subgroups ?? []}
+                subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
+                onRemove={removeFromPool}
+                onMoveToTracklist={movePoolToTracklist}
+                onReorder={reorderPool}
+                onAddTrack={handlePoolAddTrack}
+                onCreateSubgroup={createSubgroup}
+                onRenameSubgroup={renameSubgroup}
+                onDeleteSubgroup={deleteSubgroup}
+                onReorderSubgroups={reorderSubgroups}
+                onAddSubgroupMember={addSubgroupMember}
+                onRemoveSubgroupMember={removeSubgroupMember}
+                onDropFromTracklist={moveTracklistToPool}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeSet && subTab === 'explorer' && (
+        <SetExplorerCanvas
+          allTracks={allTracks}
+          nodes={activeSet.explorer_nodes}
+          edges={activeSet.explorer_edges}
+          onBack={closeExplorer}
+          onAddNode={addExplorerNode}
+          onDeleteNode={deleteExplorerNode}
+          onAddEdge={addExplorerEdge}
+          onDeleteEdge={deleteExplorerEdge}
+          onSwap={swapExplorerNodes}
+          onNodeToTracklist={explorerNodeAddToTracklist}
+          onAddSibling={addSiblingNode}
+          tracklistTrackIds={tracklistTrackIds}
+          fetchEdgeScores={fetchEdgeScores}
+        />
       )}
     </div>
   )

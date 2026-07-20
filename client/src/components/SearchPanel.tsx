@@ -12,9 +12,6 @@ interface Props {
   selectTrack: (track: Track | SearchSuggestion) => void
   clearSelectedTrack: () => void
   onSearchTextChange?: (text: string) => void
-  onAddToSet?: () => void
-  onAddToPool?: () => void
-  onAddToTracklist?: () => void
   searchText?: string
   onTrackDrop?: (trackId: number) => void
 }
@@ -25,9 +22,6 @@ export function SearchPanel({
   selectTrack,
   clearSelectedTrack,
   onSearchTextChange,
-  onAddToSet,
-  onAddToPool,
-  onAddToTracklist,
   searchText,
   onTrackDrop,
 }: Props) {
@@ -167,43 +161,6 @@ export function SearchPanel({
           </ul>
         )}
       </div>
-      {onAddToPool || onAddToTracklist ? (
-        <div className="set-dual-actions search-dual-actions">
-          {onAddToPool && (
-            <button
-              className="match-action-btn match-action-btn--small"
-              onClick={onAddToPool}
-              disabled={!selectedTrack}
-              title={selectedTrack ? 'Add to Pool' : 'Select a track first'}
-            >
-              + Pool
-            </button>
-          )}
-          {onAddToTracklist && (
-            <button
-              className="match-action-btn match-action-btn--small"
-              onClick={onAddToTracklist}
-              disabled={!selectedTrack}
-              title={
-                selectedTrack ? 'Add to Tracklist' : 'Select a track first'
-              }
-            >
-              + TL
-            </button>
-          )}
-        </div>
-      ) : (
-        <button
-          className="match-action-btn search-add-to-set-btn"
-          onClick={onAddToSet}
-          disabled={!selectedTrack}
-          title={
-            selectedTrack ? 'Add selected track to set' : 'Select a track first'
-          }
-        >
-          + Set
-        </button>
-      )}
     </div>
   )
 }

@@ -23,9 +23,9 @@
   --radius: 6px;
   --transition: 120ms ease;
   --content-gutter: 8px;
-  --nav-rail-height: 48px;
-  --nav-chevron-height: 16px;
-  --side-rail-width: 96px;
+  --divider-size: 14px;
+  --divider-bar: 5px;
+  --divider-bar-hover: 20px;
 }
 
 /* === Reset === */
@@ -58,27 +58,73 @@ body,
   color: var(--text-muted);
 }
 
-/* === Layout (V2 single-page) === */
+/* === Layout (2×2 quadrant grid) === */
 .app-shell-v2 {
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  /* Reserves the sliver the collapsed nav chevron hangs into, so its click
-     target never overlaps page content. */
-  padding-top: var(--nav-chevron-height);
 }
 
-/* === Search Rail (search + browse toggle + filters in one compact row) === */
-.search-rail {
+.quad-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.quad-row--top {
+  padding: 8px var(--content-gutter) 0;
+}
+
+/* The rows declare their own display, which would defeat the `hidden`
+   attribute used to collapse them without unmounting their state. */
+.quad-row[hidden] {
+  display: none;
+}
+
+.quadrant {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* Children clip/scroll themselves; the quadrant stays visible so search
+     dropdowns and filter popovers can overhang its edges. */
+  overflow: visible;
+}
+
+.quadrant[hidden] {
+  display: none;
+}
+
+.browse-quadrant {
+  flex: 1;
+}
+
+/* Mirrors the tracklist/pool split: both panes flex equally so the divider
+   (and the gear/chevrons at viewport centre) sits exactly mid-row. */
+.matches-quadrant {
+  flex: 1;
+}
+
+.matches-quadrant--full {
+  width: auto;
+  flex: 1;
+}
+
+/* === Browse controls (search + filters + columns, in-quadrant) === */
+.browse-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px var(--content-gutter);
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  /* Above the browse overlay (z-60) so rail dropdowns render over it. */
+  /* Above the table's sticky header so dropdowns render over it. */
   position: relative;
-  z-index: 70;
+  z-index: 10;
 }
 
 .search-bar-wrapper {
@@ -86,7 +132,7 @@ body,
   align-items: center;
   gap: 8px;
   flex: 1;
-  min-width: 240px;
+  min-width: 180px;
   overflow: visible;
 }
 
@@ -96,46 +142,20 @@ body,
   min-width: 0;
 }
 
-/* Compact variant of the browse FilterBar when it lives in the search rail. */
-.search-rail .filter-bar {
-  padding: 0;
-  border-bottom: none;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: nowrap;
-  flex: 0 0 auto;
-  /* Rail gap (12px) + 4px = 16px between "+ TL" and the filter controls. */
-  margin-left: 4px;
-}
-
-.search-rail .filter-label {
-  display: none;
-}
-
-/* Filter-bar gap (10px) + 6px = 16px between Clear Filters and Columns. */
-.search-rail .column-config-group {
-  margin-left: 6px;
-}
-
-.search-add-to-set-btn {
-  flex-shrink: 0;
-}
-
-.search-add-to-set-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
+.browse-controls .column-config-group {
+  margin-left: 0;
 }
 
 .search-input {
   width: 100%;
-  height: 34px;
-  padding: 6px 12px;
+  height: 26px;
+  padding: 4px 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   transition: border-color var(--transition);
 }
@@ -187,241 +207,187 @@ body,
   color: var(--text-muted);
 }
 
-/* === Chevron glyph (shared: hover-rail toggles, collapse buttons) === */
-/* Drawn from two borders rather than a text ⌄, whose ink sits ~0.31em below
-   the centre of its line box — visibly low on bars this thin. The rotated L
-   puts its ink 0.354·(side − stroke) off-centre along the pointing axis, so
-   each direction translates back by that amount to sit dead centre. */
-.hover-rail-chevron-glyph,
-.collapse-btn-chevron {
-  --chevron-side: 9px;
-  --chevron-stroke: 1.5px;
-  --chevron-offset: calc((var(--chevron-side) - var(--chevron-stroke)) * 0.354);
+/* === Chevron glyph (shared: quadrant dividers and expand bars) === */
+/* SVG polyline (base direction: down) rotated in 90° steps. A border-drawn
+   rotated square previously antialiased into a lopsided checkmark at
+   fractional pixel positions. */
+.quad-chevron {
   display: block;
-  box-sizing: border-box;
-  width: var(--chevron-side);
-  height: var(--chevron-side);
-  border-right: var(--chevron-stroke) solid currentColor;
-  border-bottom: var(--chevron-stroke) solid currentColor;
-  transform: translateY(calc(-1 * var(--chevron-offset))) rotate(45deg);
+  flex-shrink: 0;
 }
 
-/* === Hover Rail (shared collapsible bar: horizontal top nav, vertical side nav) === */
-.hover-rail-chevron {
+.quad-chevron--up {
+  transform: rotate(180deg);
+}
+
+.quad-chevron--left {
+  transform: rotate(90deg);
+}
+
+.quad-chevron--right {
+  transform: rotate(-90deg);
+}
+
+/* === Quadrant dividers (heavy borders with hover-reveal collapse) === */
+/* Each half of a divider is the heavy border of the quadrant it touches.
+   Hovering or focusing a half expands it drawer-style over its quadrant and
+   reveals the collapse chevron. */
+.quad-divider {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 40;
+}
+
+/* The horizontal divider crosses both rows' vertical dividers at the layout
+   centre. Its expanded bars/chevrons overhang into the rows, so it must paint
+   above the vertical dividers (equal z-index would let the later-DOM bottom
+   divider's bars cover the down chevron). */
+.quad-divider--horizontal {
+  z-index: 45;
+}
+
+.quad-divider--vertical {
+  width: var(--divider-size);
+  align-self: stretch;
+}
+
+.quad-divider--horizontal {
+  height: var(--divider-size);
+}
+
+.quad-bar {
+  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: inherit;
-  line-height: 1;
   padding: 0;
+  border: none;
+  background: var(--border);
+  color: var(--text);
   cursor: pointer;
-  z-index: 101;
+  transition:
+    width var(--transition),
+    height var(--transition),
+    background var(--transition);
 }
 
-.hover-rail-chevron-glyph {
-  --chevron-side: 7.5px;
-  transition: transform var(--transition);
+.quad-bar:hover,
+.quad-bar:focus-visible {
+  background: var(--surface-active);
+  outline: none;
+  z-index: 1;
 }
 
-.hover-rail-chevron--horizontal {
-  position: fixed;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 48px;
-  height: var(--nav-chevron-height);
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-  transition: top var(--transition);
-}
-
-.hover-rail-chevron--vertical {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
-  width: var(--nav-chevron-height);
-  height: 48px;
-  border-left: none;
-  border-radius: 0 8px 8px 0;
-  transition: left var(--transition);
-}
-
-.hover-rail-chevron--vertical .hover-rail-chevron-glyph {
-  transform: translateX(calc(-1 * var(--chevron-offset))) rotate(-45deg);
-}
-
-.hover-rail-chevron--horizontal.hover-rail-chevron--open
-  .hover-rail-chevron-glyph {
-  transform: translateY(var(--chevron-offset)) rotate(225deg);
-}
-
-.hover-rail-chevron--vertical.hover-rail-chevron--open
-  .hover-rail-chevron-glyph {
-  transform: translateX(var(--chevron-offset)) rotate(135deg);
-}
-
-/* Stays attached to the far edge of the rail once it unfurls, instead of
-   disappearing, so the affordance keeps mapping to the same control. */
-.hover-rail-chevron--horizontal.hover-rail-chevron--open {
-  top: var(--nav-rail-height);
-}
-
-.hover-rail-chevron--vertical.hover-rail-chevron--open {
-  left: var(--side-rail-width);
-}
-
-.hover-rail {
-  transition: transform var(--transition);
-}
-
-.hover-rail--horizontal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  transform: translateY(-100%);
-}
-
-.hover-rail--vertical {
-  position: absolute;
+.quad-divider--vertical .quad-bar {
   top: 0;
   bottom: 0;
+  width: var(--divider-bar);
+}
+
+.quad-divider--vertical .quad-bar--before {
+  right: calc(50% + 1px);
+}
+
+.quad-divider--vertical .quad-bar--after {
+  left: calc(50% + 1px);
+}
+
+.quad-divider--vertical .quad-bar:hover,
+.quad-divider--vertical .quad-bar:focus-visible {
+  width: var(--divider-bar-hover);
+}
+
+.quad-divider--horizontal .quad-bar {
   left: 0;
-  width: var(--side-rail-width);
-  z-index: 100;
-  transform: translateX(-100%);
+  right: 0;
+  height: var(--divider-bar);
 }
 
-.hover-rail--horizontal.hover-rail--visible {
-  transform: translateY(0);
+.quad-divider--horizontal .quad-bar--before {
+  bottom: calc(50% + 1px);
 }
 
-.hover-rail--vertical.hover-rail--visible {
-  transform: translateX(0);
+.quad-divider--horizontal .quad-bar--after {
+  top: calc(50% + 1px);
 }
 
-/* === Nav Rail (horizontal hover rail content) === */
-.nav-rail {
+.quad-divider--horizontal .quad-bar:hover,
+.quad-divider--horizontal .quad-bar:focus-visible {
+  height: var(--divider-bar-hover);
+}
+
+.quad-bar .quad-chevron {
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.quad-bar:hover .quad-chevron,
+.quad-bar:focus-visible .quad-chevron {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quad-bar,
+  .quad-bar .quad-chevron {
+    transition: none;
+  }
+}
+
+/* === Quadrant expand bars (stand-ins for collapsed quadrants) === */
+.quad-expand {
   display: flex;
   align-items: center;
-  height: var(--nav-rail-height);
+  justify-content: center;
+  gap: 8px;
   flex-shrink: 0;
-  padding: 0 var(--content-gutter);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.nav-rail .tab {
-  height: 100%;
-}
-
-.nav-rail-menu-wrapper {
-  margin-left: auto;
-  position: relative;
-}
-
-.nav-rail-menu-toggle {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 18px;
-  cursor: pointer;
-  padding: 6px 10px;
-  transition: color var(--transition);
-}
-
-.nav-rail-menu-toggle:hover {
-  color: var(--text);
-}
-
-.nav-rail-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 10;
-  min-width: 140px;
-  padding: 4px;
-}
-
-.nav-rail-menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 12px;
-  background: none;
-  border: none;
-  color: var(--text);
-  font-family: var(--font-body);
-  font-size: 14px;
-  cursor: pointer;
-  border-radius: var(--radius);
-  transition: background var(--transition);
-}
-
-.nav-rail-menu-item:hover {
-  background: var(--surface-hover);
-}
-
-.nav-rail-menu-item.active {
-  color: var(--accent);
-}
-
-.tab {
-  padding: 10px 24px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: all var(--transition);
-  text-align: left;
+  transition:
+    color var(--transition),
+    background var(--transition);
 }
 
-.tab:hover {
+.quad-expand:hover,
+.quad-expand:focus-visible {
   color: var(--text);
+  background: var(--surface-hover);
+  outline: none;
 }
 
-.tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
-/* === Viewport Regions (top 1/3 search+browse, bottom 2/3 active view) === */
-.top-region {
-  flex: 1;
-  min-height: 0;
-  display: flex;
+.quad-expand--left,
+.quad-expand--right {
+  width: 26px;
+  align-self: stretch;
   flex-direction: column;
-  position: relative;
+  padding: 12px 0;
 }
 
-/* Matches and Set share the reclaimed browser height. The Set sub-tab bar
-   (35px + 12px margin = 47px) moved into a hover rail, and a 70.5px basis at
-   1:2 grow gives the top region exactly (2/3) × 70.5 ≈ 47px more than the
-   plain split. */
-.top-region--reclaim {
-  flex: 1 1 70.5px;
+.quad-expand--left .quad-expand-label,
+.quad-expand--right .quad-expand-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  white-space: nowrap;
 }
 
-.browse-panel {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.quad-expand--top,
+.quad-expand--bottom {
+  height: 26px;
+  padding: 0 12px;
+}
+
+.quad-expand--top {
+  margin: 8px var(--content-gutter) 0;
+}
+
+.quad-expand--bottom {
+  margin: 0 var(--content-gutter) 8px;
 }
 
 /* === Playback Bar === */
@@ -495,125 +461,6 @@ body,
   color: var(--text);
 }
 
-.bottom-region {
-  flex: 2;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* The regions declare their own display, which would defeat the `hidden`
-   attribute used to collapse them without unmounting their state. */
-.top-region[hidden],
-.bottom-region[hidden] {
-  display: none;
-}
-
-/* === Collapse button (shared: region divider bars, workspace handles) === */
-/* Thickness (height for horizontal, width for vertical) comes from the
-   CollapseButton component's size prop as an inline style. */
-.collapse-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  background: var(--surface);
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  transition:
-    color var(--transition),
-    background var(--transition);
-}
-
-.collapse-btn:hover,
-.collapse-btn:focus-visible {
-  color: var(--text);
-  background: var(--surface-hover);
-  outline: none;
-}
-
-.collapse-btn-chevron--up {
-  transform: translateY(var(--chevron-offset)) rotate(225deg);
-}
-
-.collapse-btn-chevron--left {
-  transform: translateX(var(--chevron-offset)) rotate(135deg);
-}
-
-.collapse-btn-chevron--right {
-  transform: translateX(calc(-1 * var(--chevron-offset))) rotate(-45deg);
-}
-
-/* === Region collapse (browser vs. bottom panel) === */
-/* Two full-width bars stacked vertically — the up bar hugs the browser, the
-   down bar hugs the bottom panel — mirroring the side-by-side handles
-   between the tracklist and pool. */
-.region-divider {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  flex-shrink: 0;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-
-.region-divider .collapse-btn + .collapse-btn {
-  border-top: 1px solid var(--border);
-}
-
-.region-chevron--up {
-  transform: rotate(180deg);
-}
-
-.region-expand-tab {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 28px;
-  flex-shrink: 0;
-  background: var(--surface);
-  border: none;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  transition:
-    color var(--transition),
-    background var(--transition);
-}
-
-.region-expand-tab--bottom {
-  border-bottom: none;
-  border-top: 1px solid var(--border);
-}
-
-.region-expand-tab:hover,
-.region-expand-tab:focus-visible {
-  color: var(--text);
-  background: var(--surface-hover);
-  outline: none;
-}
-
-.region-expand-chevron {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.browse-panel .table-panel {
-  flex: 1;
-  min-height: 0;
-}
-
 /* === Drag-and-drop affordances === */
 .search-drop-active .search-input {
   border-color: var(--accent);
@@ -624,33 +471,23 @@ body,
   outline-offset: -2px;
 }
 
-/* === Table Panel (bordered content wrapper) === */
-.table-panel {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-  margin: 0 var(--content-gutter);
-  border: 1px solid var(--border);
-}
-
 /* === Bucket Sub-tabs === */
 .bucket-tabs {
   display: flex;
   gap: 0;
-  padding: 0 14px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .bucket-tab {
-  padding: 8px 16px;
+  padding: 5px 12px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   display: flex;
@@ -691,48 +528,180 @@ body,
 
 /* === Panel titles === */
 .panel-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
-  padding: 16px 14px 8px;
+  padding: 8px 10px 6px;
 }
 
-/* === Filter Bar === */
-.filter-bar {
-  display: flex;
-  gap: 20px;
-  align-items: flex-end;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+/* === Browse filters (Add filter menu, popovers, pills) === */
+.filter-add-group {
+  position: relative;
   flex-shrink: 0;
-  flex-wrap: wrap;
 }
 
-.filter-group {
+.filter-add-btn {
+  padding: 4px 10px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.filter-add-btn:hover,
+.filter-add-btn[aria-expanded='true'] {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* The Add filter button sits near the quadrant's right edge, so its menu
+   and popover anchor right to stay inside the quadrant (pill popovers,
+   opening from the left-aligned pills row, keep the default left anchor). */
+.filter-add-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  position: relative;
+  min-width: 120px;
+  padding: 4px 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 30;
 }
 
-.filter-label {
-  font-size: 11px;
+.filter-add-menu-item {
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.filter-add-menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.filter-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 30;
+}
+
+.filter-add-group .filter-popover {
+  left: auto;
+  right: 0;
+}
+
+.filter-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-popover-label {
+  width: 44px;
+  flex-shrink: 0;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
+}
+
+.camelot-grid-inline {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+/* Full-width flex line: wraps below the search/controls row. */
+.filter-pills {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-pill-group {
+  position: relative;
+  display: inline-flex;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 340px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.filter-pill-body {
+  padding: 2px 4px 2px 10px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-pill-body:hover {
+  color: var(--accent-bright);
+}
+
+.filter-pill-remove {
+  padding: 2px 8px 2px 4px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.filter-pill-remove:hover {
+  color: var(--accent-bright);
 }
 
 .filter-input {
-  width: 80px;
-  padding: 6px 10px;
+  width: 84px;
+  padding: 4px 8px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
   transition: border-color var(--transition);
 }
@@ -745,20 +714,8 @@ body,
   color: var(--text-muted);
 }
 
-.filter-range {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .range-sep {
   color: var(--text-muted);
-}
-
-.filter-input-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .clear-btn {
@@ -789,72 +746,9 @@ body,
   transform: translateY(-50%);
 }
 
-.clear-filters-btn {
-  padding: 6px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    color var(--transition),
-    border-color var(--transition);
-  align-self: flex-end;
-}
-
-.clear-filters-btn:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--text-muted);
-}
-
-.clear-filters-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.filter-camelot-toggle {
-  padding: 6px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: border-color var(--transition);
-}
-
-.filter-camelot-toggle:hover {
-  border-color: var(--accent);
-}
-
 .caret {
   font-size: 10px;
   color: var(--text-muted);
-}
-
-.camelot-grid {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 4px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px;
-  z-index: 10;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .camelot-chip {
@@ -881,19 +775,13 @@ body,
   color: var(--accent);
 }
 
-.camelot-chip.clear {
-  grid-column: span 6;
-  color: var(--text-muted);
-  font-family: var(--font-body);
-}
-
 /* === Tables (shared) === */
 .track-table-outer {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
-  margin-top: 8px;
 }
 
 .track-table-top-scrollbar {
@@ -927,13 +815,14 @@ body,
   z-index: 2;
 }
 
+/* Compact scale matching the tracklist/pool tables in the bottom quadrants. */
 .track-table th,
 .matches-table th {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 10px 14px;
+  padding: 4px 8px;
   text-align: left;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -996,11 +885,24 @@ body,
 
 .track-table td,
 .matches-table td {
-  padding: 8px 14px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border);
+  font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.track-table .mono,
+.matches-table .mono {
+  font-size: 12px;
+}
+
+/* Side-by-side add buttons keep browse/matches rows as short as pool rows. */
+.track-table .set-dual-actions,
+.matches-table .set-dual-actions {
+  flex-direction: row;
+  gap: 4px;
 }
 
 .track-table tbody tr {
@@ -1048,9 +950,9 @@ body,
 }
 
 .matches-empty {
-  padding: 24px 20px;
+  padding: 16px 12px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .matches-track-name {
@@ -1091,7 +993,7 @@ body,
   border: none;
   color: var(--accent);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   text-align: left;
@@ -1129,12 +1031,13 @@ body,
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 4px 10px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  font-size: 13px;
+  font-size: 12px;
   flex-wrap: wrap;
-  min-height: 36px;
+  min-height: 28px;
+  flex-shrink: 0;
 }
 
 .chain-back-btn {
@@ -1212,7 +1115,7 @@ body,
 
 /* === Match Detail === */
 .match-detail {
-  padding: 20px;
+  padding: 12px;
   overflow-y: auto;
   flex: 1;
 }
@@ -1763,6 +1666,100 @@ body,
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
+/* === Admin gear + overlay === */
+/* Sits bottom-centre as a semi-transparent overlay above the vertical
+   divider bars; solidifies on hover/focus. */
+.admin-gear {
+  position: fixed;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: rgba(20, 22, 30, 0.55);
+  border: 1px solid rgba(42, 46, 59, 0.7);
+  border-radius: 50%;
+  color: var(--text-muted);
+  opacity: 0.65;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    opacity var(--transition),
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.admin-gear:hover,
+.admin-gear:focus-visible {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--text-muted);
+  opacity: 1;
+  outline: none;
+}
+
+.admin-gear-glyph {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.admin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+  /* Keeps the last admin rows clear of the fixed gear button. */
+  padding-bottom: 48px;
+}
+
+.admin-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-overlay-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.admin-overlay-close {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  width: 26px;
+  height: 26px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.admin-overlay-close:hover,
+.admin-overlay-close:focus-visible {
+  color: var(--text);
+  border-color: var(--text-muted);
+  outline: none;
+}
+
 /* === Admin Dashboard === */
 .admin-dashboard {
   flex: 1;
@@ -1974,43 +1971,52 @@ body,
 /* === Set Builder === */
 .set-builder {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* Left edge reserves the vertical rail chevron's sliver (like the app
-     shell's top padding does for the nav chevron); the rail itself is
-     positioned against this container. */
-  position: relative;
-  padding: 8px var(--content-gutter) 8px var(--nav-chevron-height);
+  padding: 0 var(--content-gutter) 8px;
 }
 
-.nav-rail-set-controls {
+.set-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.set-picker-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  margin-left: 16px;
 }
 
 .set-select {
-  padding: 6px 10px;
+  padding: 3px 8px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
-  min-width: 160px;
+  min-width: 120px;
+  max-width: 200px;
 }
 
 .set-create-btn {
-  padding: 6px 12px;
+  padding: 3px 10px;
   background: none;
   border: 1px solid var(--accent);
   border-radius: var(--radius);
   color: var(--accent);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
   transition: all var(--transition);
@@ -2026,8 +2032,8 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-muted);
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2048,15 +2054,15 @@ body,
 }
 
 .set-name-input {
-  padding: 6px 10px;
+  padding: 3px 8px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
-  width: 180px;
+  width: 150px;
   transition: border-color var(--transition);
 }
 
@@ -2065,7 +2071,7 @@ body,
 }
 
 .set-create-confirm {
-  padding: 6px 12px;
+  padding: 3px 10px;
   background: var(--accent);
   border: none;
   border-radius: var(--radius);
@@ -2335,13 +2341,13 @@ body,
 }
 
 .column-config-btn {
-  padding: 6px 12px;
+  padding: 4px 10px;
   background: none;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-muted);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2385,50 +2391,6 @@ body,
 
 .column-config-item:hover {
   background: var(--surface-hover);
-}
-
-/* --- Browse add-to-set bar --- */
-.browse-add-to-set-bar {
-  display: flex;
-  align-items: center;
-  padding: 6px 14px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-/* === Set workspace side rail (Tracks/Explorer, vertical hover rail) === */
-.set-side-rail {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  padding: 12px 0;
-  gap: 2px;
-  background: var(--bg);
-  border-right: 1px solid var(--border);
-}
-
-.set-side-tab {
-  padding: 10px 14px;
-  background: none;
-  border: none;
-  border-left: 2px solid transparent;
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    color var(--transition),
-    border-color var(--transition);
-}
-
-.set-side-tab:hover {
-  color: var(--text);
-}
-
-.set-side-tab.active {
-  color: var(--accent);
-  border-left-color: var(--accent);
 }
 
 .set-workspace-split {
@@ -2689,22 +2651,13 @@ body,
   line-height: 1.4;
 }
 
-.search-dual-actions {
-  flex-direction: row;
-  gap: 8px;
-}
-
-.search-dual-actions .match-action-btn {
-  height: 34px;
-  font-size: 12px;
-  padding: 4px 12px;
-}
-
 /* --- Explorer --- */
+/* Fills the bottom quadrant; the viewport inside scrolls/pans itself. */
 .set-explorer {
   display: flex;
   flex-direction: column;
-  min-height: 400px;
+  flex: 1;
+  min-height: 0;
 }
 
 .set-explorer-controls {
@@ -2714,6 +2667,33 @@ body,
   margin-bottom: 8px;
 }
 
+.explorer-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.explorer-back-btn:hover,
+.explorer-back-btn:focus-visible {
+  color: var(--text);
+  border-color: var(--text-muted);
+  outline: none;
+}
+
 .set-explorer-swap-hint {
   color: var(--accent);
   font-size: 12px;
@@ -2721,12 +2701,11 @@ body,
 
 .set-explorer-viewport {
   flex: 1;
-  min-height: 400px;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: auto;
   position: relative;
-  min-height: 350px;
   cursor: grab;
   background: var(--bg);
 }
@@ -2939,104 +2918,31 @@ body,
   color: var(--text);
 }
 
-/* --- Pool accordion --- */
-.set-pool-accordion {
-  width: 36px;
-  flex-shrink: 0;
+/* --- Pool pane --- */
+/* 50% basis (not 0) on both panes: the tracklist carries its own padding and
+   border, which floor a zero flex-basis and would skew it 18px wider,
+   pushing the divider (and the centred gear/chevrons) off the midline. */
+.set-pool-pane {
+  flex: 1 1 50%;
   display: flex;
-  transition: width 200ms ease;
-  overflow: hidden;
-  border-left: 1px solid var(--border);
+  min-width: 0;
 }
 
-.set-pool-accordion.expanded {
-  width: 50%;
-  flex-shrink: 0;
-}
-
-/* With the tracklist collapsed to its slim tab, the pool unfurls over the
+/* With the tracklist collapsed to its expand bar, the pool unfurls over the
    whole remaining width. */
-.set-pool-accordion.set-pool-accordion--full {
+.set-pool-pane--full {
   width: auto;
   flex: 1;
-  min-width: 0;
 }
 
-.set-pool-expand-tab {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 100%;
-  background: var(--surface);
-  border: none;
-  cursor: pointer;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 12px 0;
-  transition:
-    color var(--transition),
-    background var(--transition);
-}
-
-.set-pool-expand-tab:hover,
-.set-pool-expand-tab:focus-visible {
-  color: var(--text);
-  background: var(--surface-hover);
-  outline: none;
-}
-
-.set-pool-expand-chevron {
-  writing-mode: horizontal-tb;
-  font-size: 16px;
-  display: block;
-  text-align: center;
-  margin-bottom: 6px;
-  line-height: 1;
-}
-
-.set-pool-expand-label {
-  white-space: nowrap;
-}
-
-/* Appearance and sizing come from the shared CollapseButton; these classes
-   only place the dividing border on the side facing the neighboring panel. */
-.set-pool-collapse-handle {
-  border-right: 1px solid var(--border);
-}
-
-/* Mirror of the pool collapse handle, attached to the tracklist's right
-   edge; collapsing it lets the pool take the full split width. */
-.set-tracklist-collapse-handle {
-  border-left: 1px solid var(--border);
-}
-
-.set-tracklist-expand-tab {
-  flex-shrink: 0;
-  border-right: 1px solid var(--border);
-}
-
-.set-pool-accordion-content {
+.set-pool-pane > .set-pool {
   flex: 1;
   min-width: 0;
-  overflow: auto;
 }
 
-/* Match the tracklist's full-height flush bottom edge: unlike .set-tracklist,
-   .set-pool sits inside an extra accordion wrapper and won't stretch to fill
-   it without an explicit height. */
-.set-pool {
-  height: 100%;
-}
-
-/* --- Tracklist fills remaining space --- */
+/* --- Tracklist fills remaining space (50% basis: see .set-pool-pane) --- */
 .set-workspace-split > .set-tracklist {
-  flex: 1;
+  flex: 1 1 50%;
   min-width: 0;
 }
 

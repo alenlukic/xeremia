@@ -147,17 +147,32 @@ async function openBrowseTab() {
   })
 }
 
-async function openAdminTab() {
-  await act(async () => {
-    screen.getByRole('button', { name: 'Menu' }).click()
-  })
+async function openAdminOverlay() {
   await act(async () => {
     screen.getByRole('button', { name: 'Admin' }).click()
   })
 }
 
+async function openKeyFilterPopover() {
+  await act(async () => {
+    screen.getByRole('button', { name: /Add filter/ }).click()
+  })
+  await act(async () => {
+    screen.getByRole('button', { name: 'Key' }).click()
+  })
+}
+
+async function openBpmFilterPopover() {
+  await act(async () => {
+    screen.getByRole('button', { name: /Add filter/ }).click()
+  })
+  await act(async () => {
+    screen.getByRole('button', { name: 'BPM' }).click()
+  })
+}
+
 describe('Reset Weights', () => {
-  it('renders a Reset Weights button in the Admin tab', async () => {
+  it('renders a Reset Weights button in the Admin overlay', async () => {
     const httpMod = await import('./api/http')
     vi.mocked(httpMod.fetchWeights).mockResolvedValue({
       raw_weights: { BPM: 50, CAMELOT: 50 },
@@ -171,7 +186,7 @@ describe('Reset Weights', () => {
     await act(async () => {
       render(<App />)
     })
-    await openAdminTab()
+    await openAdminOverlay()
 
     expect(
       screen.getByRole('button', { name: 'Reset Weights' }),
@@ -203,7 +218,7 @@ describe('Reset Weights', () => {
     await act(async () => {
       render(<App />)
     })
-    await openAdminTab()
+    await openAdminOverlay()
 
     await act(async () => {
       screen.getByRole('button', { name: 'Reset Weights' }).click()
@@ -242,7 +257,7 @@ describe('Reset Weights', () => {
       await act(async () => {
         render(<App />)
       })
-      await openAdminTab()
+      await openAdminOverlay()
 
       await act(async () => {
         screen.getByRole('button', { name: 'Reset Weights' }).click()
@@ -255,54 +270,74 @@ describe('Reset Weights', () => {
   })
 })
 
-describe('Region collapse', () => {
-  it('renders the divider with both collapse buttons when split', async () => {
+describe('Quadrant collapse', () => {
+  it('renders dividers with collapse buttons for both axes when split', async () => {
     await openBrowseTab()
     expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
-    expect(screen.getByLabelText('Collapse bottom panel')).toBeInTheDocument()
+    expect(screen.getByLabelText('Collapse matches')).toBeInTheDocument()
+    expect(screen.getByLabelText('Collapse top panels')).toBeInTheDocument()
+    expect(screen.getByLabelText('Collapse bottom panels')).toBeInTheDocument()
   })
 
-  it('collapsing the browser hides it behind an expand tab', async () => {
+  it('collapsing the browser hides it behind an expand bar', async () => {
     await openBrowseTab()
     await act(async () => {
       screen.getByLabelText('Collapse track browser').click()
     })
 
-    expect(document.querySelector('.top-region')).not.toBeVisible()
+    expect(document.querySelector('.browse-quadrant')).not.toBeVisible()
     expect(screen.getByLabelText('Expand track browser')).toBeInTheDocument()
 
     await act(async () => {
       screen.getByLabelText('Expand track browser').click()
     })
-    expect(document.querySelector('.top-region')).toBeVisible()
+    expect(document.querySelector('.browse-quadrant')).toBeVisible()
   })
 
-  it('collapsing the bottom panel hides it behind an expand tab', async () => {
+  it('collapsing the matches quadrant hides it behind an expand bar', async () => {
     await openBrowseTab()
     await act(async () => {
-      screen.getByLabelText('Collapse bottom panel').click()
+      screen.getByLabelText('Collapse matches').click()
     })
 
-    expect(document.querySelector('.bottom-region')).not.toBeVisible()
-    expect(screen.getByLabelText('Expand bottom panel')).toBeInTheDocument()
+    expect(document.querySelector('.matches-quadrant')).not.toBeVisible()
+    expect(screen.getByLabelText('Expand matches')).toBeInTheDocument()
 
     await act(async () => {
-      screen.getByLabelText('Expand bottom panel').click()
+      screen.getByLabelText('Expand matches').click()
     })
-    expect(document.querySelector('.bottom-region')).toBeVisible()
+    expect(document.querySelector('.matches-quadrant')).toBeVisible()
   })
 
-  it('selecting a bottom view from the nav re-expands a collapsed bottom panel', async () => {
+  it('collapsing the top row hides both top quadrants behind an expand bar', async () => {
     await openBrowseTab()
     await act(async () => {
-      screen.getByLabelText('Collapse bottom panel').click()
+      screen.getByLabelText('Collapse top panels').click()
     })
-    expect(document.querySelector('.bottom-region')).not.toBeVisible()
+
+    expect(document.querySelector('.browse-quadrant')).not.toBeVisible()
+    expect(document.querySelector('.matches-quadrant')).not.toBeVisible()
+    expect(screen.getByLabelText('Expand top panels')).toBeInTheDocument()
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Matches' }).click()
+      screen.getByLabelText('Expand top panels').click()
     })
-    expect(document.querySelector('.bottom-region')).toBeVisible()
+    expect(document.querySelector('.browse-quadrant')).toBeVisible()
+  })
+
+  it('collapsing the bottom row hides the set workspace behind an expand bar', async () => {
+    await openBrowseTab()
+    await act(async () => {
+      screen.getByLabelText('Collapse bottom panels').click()
+    })
+
+    expect(document.querySelector('.quad-row--bottom')).not.toBeVisible()
+    expect(screen.getByLabelText('Expand bottom panels')).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByLabelText('Expand bottom panels').click()
+    })
+    expect(document.querySelector('.quad-row--bottom')).toBeVisible()
   })
 })
 
@@ -315,9 +350,7 @@ describe('Browse table', () => {
   it('filters by camelot code across the entire collection', async () => {
     await openBrowseTab()
 
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click()
-    })
+    await openKeyFilterPopover()
     await act(async () => {
       screen.getByRole('button', { name: '01A' }).click()
     })
@@ -345,6 +378,7 @@ describe('Browse table', () => {
   it('sorts the full filtered collection, not just a page', async () => {
     await openBrowseTab()
 
+    await openBpmFilterPopover()
     const minInput = screen.getByPlaceholderText('Min')
     await userEvent.type(minInput, '125')
     fireEvent.blur(minInput)
@@ -368,16 +402,14 @@ describe('Browse table', () => {
   it('restores filters, sorting, and scroll after search selection is cleared', async () => {
     await openBrowseTab()
 
-    await userEvent.click(screen.getByRole('button', { name: /All keys/ }))
+    await openKeyFilterPopover()
     await userEvent.click(screen.getByRole('button', { name: '01A' }))
 
     const dateHeader = screen.getByText('Date Added')
     await userEvent.click(dateHeader)
     await userEvent.click(dateHeader)
 
-    const wrapper = document.querySelector<HTMLElement>(
-      '.track-table-wrapper',
-    )!
+    const wrapper = document.querySelector<HTMLElement>('.track-table-wrapper')!
     Object.defineProperties(wrapper, {
       scrollHeight: { configurable: true, value: 1_200 },
       clientHeight: { configurable: true, value: 200 },
@@ -404,17 +436,17 @@ describe('Browse table', () => {
 
     await waitFor(() => {
       expect(getRowCount()).toBe(300)
-      expect(document.querySelector('.track-table tbody tr')?.textContent).toContain(
-        'Track 300',
-      )
+      expect(
+        document.querySelector('.track-table tbody tr')?.textContent,
+      ).toContain('Track 300')
     })
-    expect(
-      document.querySelector('.filter-camelot-toggle')?.textContent,
-    ).toContain('01A')
+    expect(document.querySelector('.filter-pill-body')?.textContent).toContain(
+      '01A',
+    )
     expect(wrapper.scrollTop).toBe(440)
   })
 
-  it('restores scroll after bottom-view switches and browser collapse', async () => {
+  it('restores scroll after quadrant collapses and expands', async () => {
     vi.mocked(useCollectionCache).mockReturnValue({
       allTracks: makeTracks(10),
       traitMap: new Map(),
@@ -424,9 +456,7 @@ describe('Browse table', () => {
     })
     await openBrowseTab()
 
-    const wrapper = document.querySelector<HTMLElement>(
-      '.track-table-wrapper',
-    )!
+    const wrapper = document.querySelector<HTMLElement>('.track-table-wrapper')!
     const geometry = { scrollHeight: 1_200, clientHeight: 200 }
     Object.defineProperties(wrapper, {
       scrollHeight: {
@@ -441,13 +471,15 @@ describe('Browse table', () => {
     wrapper.scrollTop = 700
     fireEvent.scroll(wrapper)
 
+    // Collapsing matches gives the browser more room, so the browser's
+    // content clamps to a smaller scroll range in this simulation.
     geometry.clientHeight = 600
-    await userEvent.click(screen.getByRole('button', { name: 'Set' }))
+    await userEvent.click(screen.getByLabelText('Collapse matches'))
     wrapper.scrollTop = 600
     fireEvent.scroll(wrapper)
 
     geometry.clientHeight = 200
-    await userEvent.click(screen.getByRole('button', { name: 'Matches' }))
+    await userEvent.click(screen.getByLabelText('Expand matches'))
     expect(wrapper.scrollTop).toBe(700)
 
     geometry.scrollHeight = 0
@@ -576,6 +608,7 @@ describe('BPM exclusivity', () => {
   it('typing exact BPM clears active BPM range fields', async () => {
     await openBrowseTab()
 
+    await openBpmFilterPopover()
     const minInput = screen.getByPlaceholderText('Min')
     const maxInput = screen.getByPlaceholderText('Max')
 
@@ -603,6 +636,7 @@ describe('BPM exclusivity', () => {
   it('typing BPM range clears active exact BPM', async () => {
     await openBrowseTab()
 
+    await openBpmFilterPopover()
     const exactInput = screen.getByPlaceholderText('Exact')
     await userEvent.type(exactInput, '120')
     expect(exactInput).toHaveValue(120)
@@ -618,6 +652,7 @@ describe('BPM exclusivity', () => {
   it('clearing exact BPM does not affect range fields', async () => {
     await openBrowseTab()
 
+    await openBpmFilterPopover()
     const exactInput = screen.getByPlaceholderText('Exact')
     await userEvent.type(exactInput, '120')
     expect(exactInput).toHaveValue(120)
@@ -629,13 +664,11 @@ describe('BPM exclusivity', () => {
   })
 })
 
-describe('Camelot multi-select', () => {
-  it('dropdown stays open after toggling a code', async () => {
+describe('Key filter popover', () => {
+  it('stays open after toggling a code', async () => {
     await openBrowseTab()
 
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click()
-    })
+    await openKeyFilterPopover()
 
     expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument()
 
@@ -649,9 +682,7 @@ describe('Camelot multi-select', () => {
   it('allows selecting multiple codes in one session', async () => {
     await openBrowseTab()
 
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click()
-    })
+    await openKeyFilterPopover()
 
     await act(async () => {
       screen.getByRole('button', { name: '01A' }).click()
@@ -669,9 +700,7 @@ describe('Camelot multi-select', () => {
   it('closes on Escape key', async () => {
     await openBrowseTab()
 
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click()
-    })
+    await openKeyFilterPopover()
 
     expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument()
 
@@ -682,6 +711,54 @@ describe('Camelot multi-select', () => {
     expect(
       screen.queryByRole('button', { name: '03A' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('renders the active filter as a pill that can be removed', async () => {
+    await openBrowseTab()
+
+    await openKeyFilterPopover()
+    await act(async () => {
+      screen.getByRole('button', { name: '01A' }).click()
+    })
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    const pill = screen.getByRole('button', { name: /Key: 01A/ })
+    expect(pill).toBeInTheDocument()
+    await waitFor(() => {
+      expect(getRowCount()).toBe(300)
+    })
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Remove key filter' }).click()
+    })
+    expect(
+      screen.queryByRole('button', { name: /Key: 01A/ }),
+    ).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(getRowCount()).toBe(600)
+    })
+  })
+
+  it('reopens the popover for editing when the pill is clicked', async () => {
+    await openBrowseTab()
+
+    await openKeyFilterPopover()
+    await act(async () => {
+      screen.getByRole('button', { name: '01A' }).click()
+    })
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+    expect(
+      screen.queryByRole('button', { name: '03A' }),
+    ).not.toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: /Key: 01A/ }).click()
+    })
+    expect(screen.queryByRole('button', { name: '03A' })).toBeInTheDocument()
   })
 })
 
@@ -926,57 +1003,23 @@ describe('Browse column visibility – invalid sessionStorage values', () => {
   })
 })
 
-describe('Set tab', () => {
+describe('Set workspace', () => {
   beforeEach(() => {
     localStorage.clear()
   })
 
-  it('renders the Set tab button', async () => {
+  it('shows set picker controls in the empty set state', async () => {
     await act(async () => {
       render(<App />)
-    })
-    expect(screen.getByRole('button', { name: 'Set' })).toBeInTheDocument()
-  })
-
-  it('shows set picker controls when Set tab is clicked', async () => {
-    await act(async () => {
-      render(<App />)
-    })
-    await act(async () => {
-      screen.getByRole('button', { name: 'Set' }).click()
     })
     expect(screen.getByText('+ New')).toBeInTheDocument()
   })
 
-  it('uses the same reclaimed browser split in Matches and Set views', async () => {
+  it('does not offer the tracklist menu without an active set', async () => {
     await act(async () => {
       render(<App />)
     })
-    const topRegion = document.querySelector('.top-region')!
-    const matchesLayoutClass = topRegion.className
-    expect(topRegion.classList.contains('top-region--reclaim')).toBe(true)
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Set' }).click()
-    })
-    expect(topRegion.className).toBe(matchesLayoutClass)
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Matches' }).click()
-    })
-    expect(topRegion.className).toBe(matchesLayoutClass)
-  })
-
-  it('does not render the Tracks/Explorer rail outside the set view', async () => {
-    await act(async () => {
-      render(<App />)
-    })
-    expect(
-      screen.queryByRole('button', { name: 'Tracks' }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'Explorer' }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Tracklist menu')).not.toBeInTheDocument()
   })
 
   it('renders dual add-to-pool/tracklist buttons in matches panel', async () => {
@@ -1008,88 +1051,72 @@ describe('Set tab', () => {
   })
 })
 
-describe('Nav rail and Admin menu', () => {
-  it('shows the admin dashboard via the menu and deselects rail tabs', async () => {
+describe('Admin overlay', () => {
+  it('opens the admin dashboard from the gear button', async () => {
     await act(async () => {
       render(<App />)
     })
 
-    await openAdminTab()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
+    await openAdminOverlay()
+
+    expect(
+      screen.getByRole('dialog', { name: 'Admin dashboard' }),
+    ).toBeInTheDocument()
     await waitFor(() => {
       expect(
         screen.getByRole('button', { name: /reset weights/i }),
       ).toBeInTheDocument()
     })
-    expect(
-      screen.getByRole('button', { name: 'Matches' }).className,
-    ).not.toContain('active')
-    expect(screen.getByRole('button', { name: 'Set' }).className).not.toContain(
-      'active',
-    )
   })
 
-  it('closes the menu on outside click without changing the view', async () => {
+  it('closes via the close button', async () => {
     await act(async () => {
       render(<App />)
     })
+    await openAdminOverlay()
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Menu' }).click()
+      screen.getByRole('button', { name: 'Close admin' }).click()
     })
-    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument()
-
-    await act(async () => {
-      fireEvent.mouseDown(document.body)
-    })
-    expect(
-      screen.queryByRole('button', { name: 'Admin' }),
-    ).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Matches' }).className).toContain(
-      'active',
-    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('closes the menu on Escape', async () => {
+  it('closes on Escape', async () => {
     await act(async () => {
       render(<App />)
     })
+    await openAdminOverlay()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Menu' }).click()
+      fireEvent.keyDown(document, { key: 'Escape' })
     })
-    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument()
-
-    await act(async () => {
-      fireEvent.keyDown(document.body, { key: 'Escape' })
-    })
-    expect(
-      screen.queryByRole('button', { name: 'Admin' }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
 
-describe('Browse panel', () => {
-  it('is always visible in the top region alongside the bottom view', async () => {
+describe('Browse quadrant', () => {
+  it('is always visible alongside the matches quadrant and set workspace', async () => {
     await openBrowseTab()
 
-    expect(document.querySelector('.browse-panel')).toBeInTheDocument()
+    expect(document.querySelector('.browse-quadrant')).toBeInTheDocument()
     expect(getRowCount()).toBe(600)
     expect(
       screen.getByText('Select a track to see matches'),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /All keys/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Add filter/ }),
+    ).toBeInTheDocument()
   })
 
-  it('selecting a browse row loads matches without leaving the Set view', async () => {
+  it('selecting a browse row loads matches without disturbing the set workspace', async () => {
     const httpMod = await import('./api/http')
     vi.mocked(httpMod.fetchMatches).mockClear()
 
     await act(async () => {
       render(<App />)
-    })
-    await act(async () => {
-      screen.getByRole('button', { name: 'Set' }).click()
     })
     expect(screen.getByText('+ New')).toBeInTheDocument()
 
@@ -1141,9 +1168,6 @@ describe('Cross-region drag and drop', () => {
 
     await act(async () => {
       render(<App />)
-    })
-    await act(async () => {
-      screen.getByRole('button', { name: /^Set/ }).click()
     })
     await waitFor(() => {
       expect(document.querySelector('.set-tracklist')).toBeInTheDocument()
