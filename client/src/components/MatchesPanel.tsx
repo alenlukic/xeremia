@@ -593,31 +593,24 @@ export const MatchesPanel = memo(function MatchesPanel({
                               : undefined
                           }
                         >
-                          {header.column.id === 'details' ? (
-                            flexRender(
+                          <TableColumnControls
+                            label={
+                              registryById.get(header.column.id)?.label ??
+                              String(header.column.columnDef.header ?? '')
+                            }
+                            inactiveColumns={hiddenInactive}
+                            onRemove={() =>
+                              onToggleColumnVisibility(header.column.id)
+                            }
+                            onInsertAfter={(columnId) =>
+                              onInsertColumnAfter(header.column.id, columnId)
+                            }
+                          >
+                            {flexRender(
                               header.column.columnDef.header,
                               header.getContext(),
-                            )
-                          ) : (
-                            <TableColumnControls
-                              label={
-                                registryById.get(header.column.id)?.label ??
-                                String(header.column.columnDef.header ?? '')
-                              }
-                              inactiveColumns={hiddenInactive}
-                              onRemove={() =>
-                                onToggleColumnVisibility(header.column.id)
-                              }
-                              onInsertAfter={(columnId) =>
-                                onInsertColumnAfter(header.column.id, columnId)
-                              }
-                            >
-                              {flexRender(
-                                header.column.columnDef.header,
-                                header.getContext(),
-                              )}
-                            </TableColumnControls>
-                          )}
+                            )}
+                          </TableColumnControls>
                           {sorted && (
                             <span className="sort-indicator">
                               {sorted === 'asc' ? ' ▲' : ' ▼'}

@@ -3366,7 +3366,6 @@ body,
 }
 
 .matches-source-title {
-  margin-left: auto;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -3432,19 +3431,55 @@ body,
 .set-pool-header--inline {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.set-pool-header--inline .set-pool-title {
+  flex: 0 0 auto;
+}
+
+.set-pool-header-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.set-pool-header--inline .pool-tab-bar {
+  padding: 0;
+  border-bottom: none;
+  min-height: unset;
+  flex-wrap: nowrap;
+  width: max-content;
+  max-width: none;
+}
+
+.set-pool-header-sort {
+  flex: 0 1 auto;
+  margin-left: auto;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.set-pool-header-sort .sort-tier-bar {
+  flex-wrap: nowrap;
+  border-bottom: none;
+  padding: 0;
+  min-height: unset;
 }
 
 .table-col-controls {
-  position: relative;
+  position: static;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 100%;
 }
 
 .table-col-remove,
-.table-col-insert-btn,
 .table-col-recovery-btn {
   opacity: 0;
   border: none;
@@ -3453,20 +3488,55 @@ body,
   cursor: pointer;
 }
 
+.table-col-insert-btn {
+  opacity: 0;
+  border: 1px solid var(--border);
+  background: var(--border);
+  color: #fff;
+  cursor: pointer;
+  width: 22.5px;
+  height: 22.5px;
+  padding: 0;
+  border-radius: 11.25px;
+  font-size: 15px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity var(--transition),
+    color var(--transition),
+    background-color var(--transition),
+    border-color var(--transition);
+}
+
 .table-col-controls:hover .table-col-remove,
-.table-col-controls:focus-within .table-col-remove,
+.table-col-controls:focus-within .table-col-remove {
+  opacity: 1;
+}
+
 .table-col-insert-zone:hover .table-col-insert-btn,
 .table-col-insert-zone:focus-within .table-col-insert-btn {
   opacity: 1;
 }
 
+.table-col-insert-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .table-col-insert-zone {
   position: absolute;
-  right: -6px;
+  right: 0;
   top: 0;
   bottom: 0;
+  width: 22px;
+  transform: translateX(50%);
   display: flex;
   align-items: center;
+  justify-content: center;
+  z-index: 3;
 }
 
 .table-col-insert-menu {
@@ -3487,8 +3557,14 @@ body,
   text-align: left;
   border: none;
   background: transparent;
+  color: var(--text);
   padding: 6px 10px;
   cursor: pointer;
+}
+
+.table-col-insert-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .table-empty-columns {

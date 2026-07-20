@@ -1219,25 +1219,33 @@ export function SetPoolTable({
       {...dropHandlers}
     >
       <div className="set-pool-header set-pool-header--inline">
-        <h3 className="set-section-title">Pool ({pool.length})</h3>
-        <PoolTabBar
-          subgroups={subgroups}
-          memberCounts={memberCounts}
-          onCreateSubgroup={onCreateSubgroup}
-          onRenameSubgroup={onRenameSubgroup}
-          onDeleteSubgroup={onDeleteSubgroup}
-          onReorderSubgroups={onReorderSubgroups}
-          activeTab={activeTab}
-          onTabChange={setSelectedTab}
-        />
+        <h3 className="set-section-title set-pool-title">
+          Pool ({pool.length})
+        </h3>
+        <div className="set-pool-header-tabs">
+          <PoolTabBar
+            subgroups={subgroups}
+            memberCounts={memberCounts}
+            onCreateSubgroup={onCreateSubgroup}
+            onRenameSubgroup={onRenameSubgroup}
+            onDeleteSubgroup={onDeleteSubgroup}
+            onReorderSubgroups={onReorderSubgroups}
+            activeTab={activeTab}
+            onTabChange={setSelectedTab}
+          />
+        </div>
+        {activeSortScope !== null ? (
+          <div className="set-pool-header-sort">
+            <SortTierBar
+              sorting={activeSorting}
+              columns={POOL_SORT_COLUMNS}
+              onSortingChange={(next) =>
+                setSortingForScope(activeSortScope, next)
+              }
+            />
+          </div>
+        ) : null}
       </div>
-      {activeSortScope !== null && (
-        <SortTierBar
-          sorting={activeSorting}
-          columns={POOL_SORT_COLUMNS}
-          onSortingChange={(next) => setSortingForScope(activeSortScope, next)}
-        />
-      )}
       {activeTab === 'groups' ? (
         subgroups.length === 0 ? (
           <p className="set-empty-tracks">

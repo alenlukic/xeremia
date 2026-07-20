@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { ColumnRegistryEntry } from '../tablePreferences'
 
 interface Props {
@@ -7,6 +13,34 @@ interface Props {
   onRemove: () => void
   onInsertAfter: (columnId: string) => void
   children?: React.ReactNode
+}
+
+function useIsRightmostColumn(
+  wrapperRef: React.RefObject<HTMLDivElement | null>,
+) {
+  const [isRightmost, setIsRightmost] = useState(true)
+
+  useLayoutEffect(() => {
+    const el = wrapperRef.current
+    if (!el) {
+      return
+    }
+    const th = el.closest('th')
+    const row = th?.parentElement
+    if (!th || !row) {
+      queueMicrotask(() => setIsRightmost(true))
+      return
+    }
+    const update = () => {
+      setIsRightmost(row.lastElementChild === th)
+    }
+    queueMicrotask(update)
+    const observer = new MutationObserver(update)
+    observer.observe(row, { childList: true })
+    return () => observer.disconnect()
+  }, [wrapperRef])
+
+  return isRightmost
 }
 
 export function TableColumnControls({
@@ -18,9 +52,11 @@ export function TableColumnControls({
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const isRightmost = useIsRightmostColumn(wrapperRef)
+  const insertMenuOpen = menuOpen && isRightmost
 
   useEffect(() => {
-    if (!menuOpen) {
+    if (!insertMenuOpen) {
       return
     }
     function handleKeyDown(e: KeyboardEvent) {
@@ -42,7 +78,7 @@ export function TableColumnControls({
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('mousedown', handlePointerDown)
     }
-  }, [menuOpen])
+  }, [insertMenuOpen])
 
   const handleInsert = useCallback(
     (id: string) => {
@@ -66,38 +102,40 @@ export function TableColumnControls({
       >
         ×
       </button>
-      <div className="table-col-insert-zone">
-        <button
-          type="button"
-          className="table-col-insert-btn"
-          aria-label={`Add column after ${label}`}
-          aria-expanded={menuOpen}
-          onClick={(e) => {
-            e.stopPropagation()
-            setMenuOpen((prev) => !prev)
-          }}
-        >
-          +
-        </button>
-        {menuOpen && inactiveColumns.length > 0 && (
-          <div className="table-col-insert-menu" role="menu">
-            {inactiveColumns.map((col) => (
-              <button
-                key={col.id}
-                type="button"
-                role="menuitem"
-                className="table-col-insert-item"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleInsert(col.id)
-                }}
-              >
-                {col.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {isRightmost ? (
+        <div className="table-col-insert-zone">
+          <button
+            type="button"
+            className="table-col-insert-btn"
+            aria-label={`Add column after ${label}`}
+            aria-expanded={insertMenuOpen}
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen((prev) => !prev)
+            }}
+          >
+            +
+          </button>
+          {insertMenuOpen && inactiveColumns.length > 0 && (
+            <div className="table-col-insert-menu" role="menu">
+              {inactiveColumns.map((col) => (
+                <button
+                  key={col.id}
+                  type="button"
+                  role="menuitem"
+                  className="table-col-insert-item"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleInsert(col.id)
+                  }}
+                >
+                  {col.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }
