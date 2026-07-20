@@ -35,6 +35,109 @@ const baseProps = {
   setBpmMax: vi.fn(),
 }
 
+describe('FilterBar add-filter flow', () => {
+  it('opens a menu with Key and BPM options', async () => {
+    render(<FilterBar {...baseProps} />)
+    await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
+    expect(screen.getByRole('button', { name: 'Key' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'BPM' })).toBeInTheDocument()
+  })
+
+  it('selecting Key opens the camelot popover and toggles codes', async () => {
+    const setCamelotCodes = vi.fn()
+    render(<FilterBar {...baseProps} setCamelotCodes={setCamelotCodes} />)
+    await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Key' }))
+    await userEvent.click(screen.getByRole('button', { name: '01A' }))
+    expect(setCamelotCodes).toHaveBeenCalledWith(['01A'])
+  })
+
+  it('selecting BPM opens the popover with exact and range inputs', async () => {
+    render(<FilterBar {...baseProps} />)
+    await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'BPM' }))
+    expect(screen.getByPlaceholderText('Exact')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Min')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Max')).toBeInTheDocument()
+  })
+})
+
+describe('FilterBar pills', () => {
+  it('shows no pills row when no filters are active', () => {
+    render(<FilterBar {...baseProps} />)
+    expect(document.querySelector('.filter-pills')).not.toBeInTheDocument()
+  })
+
+  it('renders a key pill listing selected codes', () => {
+    render(<FilterBar {...baseProps} camelotCodes={['01A', '02B']} />)
+    expect(
+      screen.getByRole('button', { name: 'Key: 01A, 02B' }),
+    ).toBeInTheDocument()
+  })
+
+  it('renders BPM pill labels for exact, range, and open-ended filters', () => {
+    const { rerender } = render(<FilterBar {...baseProps} bpm={124} />)
+    expect(screen.getByRole('button', { name: 'BPM: 124' })).toBeInTheDocument()
+
+    rerender(<FilterBar {...baseProps} bpmMin={120} bpmMax={140} />)
+    expect(
+      screen.getByRole('button', { name: 'BPM: 120–140' }),
+    ).toBeInTheDocument()
+
+    rerender(<FilterBar {...baseProps} bpmMin={120} />)
+    expect(
+      screen.getByRole('button', { name: 'BPM: ≥ 120' }),
+    ).toBeInTheDocument()
+
+    rerender(<FilterBar {...baseProps} bpmMax={140} />)
+    expect(
+      screen.getByRole('button', { name: 'BPM: ≤ 140' }),
+    ).toBeInTheDocument()
+  })
+
+  it('removes the key filter via the pill remove button', async () => {
+    const setCamelotCodes = vi.fn()
+    render(
+      <FilterBar
+        {...baseProps}
+        camelotCodes={['01A']}
+        setCamelotCodes={setCamelotCodes}
+      />,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove key filter' }),
+    )
+    expect(setCamelotCodes).toHaveBeenCalledWith([])
+  })
+
+  it('clears exact and range values via the BPM pill remove button', async () => {
+    const setBpm = vi.fn()
+    const setBpmMin = vi.fn()
+    const setBpmMax = vi.fn()
+    render(
+      <FilterBar
+        {...baseProps}
+        bpm={124}
+        setBpm={setBpm}
+        setBpmMin={setBpmMin}
+        setBpmMax={setBpmMax}
+      />,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove BPM filter' }),
+    )
+    expect(setBpm).toHaveBeenCalledWith(undefined)
+    expect(setBpmMin).toHaveBeenCalledWith(undefined)
+    expect(setBpmMax).toHaveBeenCalledWith(undefined)
+  })
+
+  it('opens the popover for editing when a pill body is clicked', async () => {
+    render(<FilterBar {...baseProps} camelotCodes={['01A']} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Key: 01A' }))
+    expect(screen.getByRole('button', { name: '03A' })).toBeInTheDocument()
+  })
+})
+
 describe('FilterBar column configurator', () => {
   it('renders Columns button when configurableColumns is provided', () => {
     render(

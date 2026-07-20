@@ -67,6 +67,33 @@ export function formatOverallScore(value: number | null | undefined): string {
   return Math.round(value).toString()
 }
 
+/**
+ * `date_added` is stored as Python's `ctime()` output (e.g. "Wed Apr 15
+ * 15:59:11 2026"), which sorts wrong lexicographically. Parse to a timestamp
+ * for comparison instead; unparseable or missing values yield null so callers
+ * can sort them after real dates regardless of direction.
+ */
+export function dateAddedTimestamp(value: string | null): number | null {
+  if (!value) {
+    return null
+  }
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? null : time
+}
+
+/** Compact YY-MM-DD rendering for the browse table's Date Added column. */
+export function formatDateAdded(value: string | null): string {
+  const time = dateAddedTimestamp(value)
+  if (time === null) {
+    return '—'
+  }
+  const d = new Date(time)
+  const yy = String(d.getFullYear() % 100).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
 export function displayGenre(genre: string | null | undefined): string | null {
   if (genre == null) {
     return null

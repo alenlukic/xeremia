@@ -94,42 +94,34 @@ describe('SetBuilder', () => {
   })
 
   describe('empty state', () => {
-    it('renders nothing but does not crash when there is no active set', () => {
-      render(<SetBuilder {...defaultProps()} />)
-      expect(
-        screen.queryByRole('button', { name: 'Tracks' }),
-      ).not.toBeInTheDocument()
-      expect(
-        screen.queryByRole('button', { name: 'Explorer' }),
-      ).not.toBeInTheDocument()
+    it('shows the empty-set message and set picker when there is no active set', () => {
+      render(
+        <SetBuilder {...defaultProps()} setPicker={<div>picker here</div>} />,
+      )
+      expect(screen.getByText(/No active set/)).toBeInTheDocument()
+      expect(screen.getByText('picker here')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Tracklist menu')).not.toBeInTheDocument()
     })
   })
 
-  describe('sub-tab layout', () => {
-    it('renders Tracks and Explorer sub-tabs when a set is active', () => {
-      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
-      expect(screen.getByRole('button', { name: 'Tracks' })).toBeInTheDocument()
-      expect(
-        screen.getByRole('button', { name: 'Explorer' }),
-      ).toBeInTheDocument()
-    })
-
-    it('defaults to Tracks sub-tab showing tracklist and expanded pool', () => {
+  describe('workspace layout', () => {
+    it('shows tracklist and pool with quadrant dividers when a set is active', () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       expect(screen.getByText('Tracklist (0)')).toBeInTheDocument()
       expect(screen.getByText('Pool (0)')).toBeInTheDocument()
       expect(screen.getByLabelText('Collapse pool')).toBeInTheDocument()
     })
 
-    it('collapsed expand tab shows a directional chevron', async () => {
+    it('collapsed expand bar shows a directional chevron', async () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       await userEvent.click(screen.getByLabelText('Collapse pool'))
       const expandBtn = screen.getByLabelText('Expand pool')
       expect(expandBtn).toHaveAttribute('title', 'Expand pool')
-      expect(expandBtn.textContent).toContain('‹')
+      // Points back toward where the pool will reappear.
+      expect(expandBtn.querySelector('.quad-chevron--left')).not.toBeNull()
     })
 
-    it('expands pool accordion on click', async () => {
+    it('expands the pool again on click', async () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       await userEvent.click(screen.getByLabelText('Collapse pool'))
       await userEvent.click(screen.getByLabelText('Expand pool'))
@@ -137,24 +129,20 @@ describe('SetBuilder', () => {
       expect(screen.getByLabelText('Collapse pool')).toBeInTheDocument()
     })
 
-    it('collapse handle has title text and visible chevron', () => {
+    it('pool collapse bar has title text and a rightward chevron', () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       const collapseBtn = screen.getByLabelText('Collapse pool')
       expect(collapseBtn).toHaveAttribute('title', 'Collapse pool')
       // Points right: the tracklist sweeps rightward over the pool.
-      expect(
-        collapseBtn.querySelector('.collapse-btn-chevron--right'),
-      ).not.toBeNull()
+      expect(collapseBtn.querySelector('.quad-chevron--right')).not.toBeNull()
     })
 
-    it('renders a mirrored collapse handle for the tracklist', () => {
+    it('renders a mirrored collapse bar for the tracklist', () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       const collapseBtn = screen.getByLabelText('Collapse tracklist')
       expect(collapseBtn).toHaveAttribute('title', 'Collapse tracklist')
       // Points left: the pool sweeps leftward over the tracklist.
-      expect(
-        collapseBtn.querySelector('.collapse-btn-chevron--left'),
-      ).not.toBeNull()
+      expect(collapseBtn.querySelector('.quad-chevron--left')).not.toBeNull()
     })
 
     it('collapsing the tracklist unfurls the pool over its area', async () => {
@@ -163,12 +151,10 @@ describe('SetBuilder', () => {
 
       expect(document.querySelector('.set-tracklist')).not.toBeInTheDocument()
       expect(screen.getByText('Pool (0)')).toBeInTheDocument()
-      expect(
-        document.querySelector('.set-pool-accordion--full'),
-      ).toBeInTheDocument()
+      expect(document.querySelector('.set-pool-pane--full')).toBeInTheDocument()
 
       const expandBtn = screen.getByLabelText('Expand tracklist')
-      expect(expandBtn.textContent).toContain('›')
+      expect(expandBtn.querySelector('.quad-chevron--right')).not.toBeNull()
     })
 
     it('expanding the tracklist restores the split view', async () => {
@@ -181,7 +167,7 @@ describe('SetBuilder', () => {
       expect(screen.getByLabelText('Collapse pool')).toBeInTheDocument()
     })
 
-    it('collapse handles are hidden while either panel is collapsed', async () => {
+    it('the divider is hidden while either panel is collapsed', async () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       await userEvent.click(screen.getByLabelText('Collapse pool'))
       expect(
@@ -193,10 +179,27 @@ describe('SetBuilder', () => {
       expect(screen.queryByLabelText('Collapse pool')).not.toBeInTheDocument()
     })
 
-    it('switches to Explorer sub-tab', async () => {
+    it('opens the Explorer view via the tracklist menu and returns with the back arrow', async () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
+      await userEvent.click(screen.getByLabelText('Tracklist menu'))
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
       expect(screen.getByText(/Explorer is empty/)).toBeInTheDocument()
+
+      await userEvent.click(screen.getByLabelText('Back to tracklist and pool'))
+      expect(screen.getByText('Tracklist (0)')).toBeInTheDocument()
+      expect(screen.getByText('Pool (0)')).toBeInTheDocument()
+    })
+
+    it('renders the set picker in the tracklist header', () => {
+      render(
+        <SetBuilder
+          {...defaultProps()}
+          activeSet={makeHydratedSet()}
+          setPicker={<div>picker here</div>}
+        />,
+      )
+      const tracklist = document.querySelector<HTMLElement>('.set-tracklist')!
+      expect(within(tracklist).getByText('picker here')).toBeInTheDocument()
     })
   })
 
@@ -312,9 +315,16 @@ describe('SetBuilder', () => {
       expect(exportSetM3u8).toHaveBeenCalledWith([20], 'My Set')
     })
 
-    it('offers no tracklist menu when the tracklist is empty', () => {
+    it('offers no export item when the tracklist is empty', async () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
-      expect(screen.queryByLabelText('Tracklist menu')).not.toBeInTheDocument()
+      await userEvent.click(screen.getByLabelText('Tracklist menu'))
+      expect(
+        screen.queryByRole('button', { name: 'Export m3u8' }),
+      ).not.toBeInTheDocument()
+      // Explorer stays reachable from the menu even with an empty tracklist.
+      expect(
+        screen.getByRole('button', { name: 'Explorer' }),
+      ).toBeInTheDocument()
     })
   })
 
@@ -644,6 +654,7 @@ describe('SetBuilder', () => {
         explorer_edges: [],
       })
       render(<SetBuilder {...defaultProps()} activeSet={hydrated} />)
+      await userEvent.click(screen.getByLabelText('Tracklist menu'))
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
       const addBtns = screen.getAllByTestId('level-add-btn')
       expect(addBtns.length).toBeGreaterThan(0)
@@ -728,6 +739,7 @@ describe('SetBuilder', () => {
           deleteExplorerNode={deleteExplorerNode}
         />,
       )
+      await userEvent.click(screen.getByLabelText('Tracklist menu'))
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
 
       const deleteBtns = screen.getAllByLabelText('Delete node')

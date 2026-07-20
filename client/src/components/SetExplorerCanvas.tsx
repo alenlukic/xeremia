@@ -16,6 +16,8 @@ interface Props {
   allTracks: Track[]
   nodes: ExplorerNode[]
   edges: ExplorerEdge[]
+  /** Return to the tracklist/pool view. */
+  onBack?: () => void
   onAddNode: (trackId: number, parentNodeId?: string, level?: number) => void
   onDeleteNode: (
     nodeId: string,
@@ -496,6 +498,7 @@ export function SetExplorerCanvas({
   allTracks,
   nodes,
   edges,
+  onBack,
   onAddNode,
   onDeleteNode,
   onAddEdge,
@@ -1150,6 +1153,16 @@ export function SetExplorerCanvas({
   return (
     <div className="set-explorer">
       <div className="set-explorer-controls">
+        {onBack && (
+          <button
+            className="explorer-back-btn"
+            aria-label="Back to tracklist and pool"
+            title="Back to tracklist and pool"
+            onClick={onBack}
+          >
+            ←
+          </button>
+        )}
         <div className="set-explorer-search-wrapper">
           <input
             className="set-explorer-search"

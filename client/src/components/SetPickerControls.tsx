@@ -66,7 +66,7 @@ export function SetPickerControls({
   }
 
   return (
-    <div className="nav-rail-set-controls">
+    <div className="set-picker-controls">
       {sets.length > 0 && (
         <select
           className="set-select"
@@ -91,10 +91,7 @@ export function SetPickerControls({
           ))}
         </select>
       )}
-      <button
-        className="set-create-btn"
-        onClick={() => setShowNewInput(true)}
-      >
+      <button className="set-create-btn" onClick={() => setShowNewInput(true)}>
         + New
       </button>
       {activeSetId && (

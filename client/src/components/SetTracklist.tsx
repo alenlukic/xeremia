@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
+import type { ReactNode } from 'react'
 import type { TracklistEntry, SearchSuggestion, Track } from '../types'
 import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import { displayTitle } from '../utils/trackTitle'
@@ -12,6 +13,10 @@ import { PlayButton } from './PlayButton'
 interface Props {
   allTracks: Track[]
   tracklist: TracklistEntry[]
+  /** Extra controls (e.g. the set picker) rendered in the header row. */
+  headerControls?: ReactNode
+  /** When provided, the header menu offers switching to the Explorer view. */
+  onOpenExplorer?: () => void
   onRemove: (trackId: number) => void
   onMoveToPool: (trackId: number) => void
   onReorder: (trackId: number, newPosition: number) => void
@@ -74,6 +79,8 @@ function NoteInput({
 export function SetTracklist({
   allTracks,
   tracklist,
+  headerControls,
+  onOpenExplorer,
   onRemove,
   onMoveToPool,
   onReorder,
@@ -154,7 +161,7 @@ export function SetTracklist({
       <div className="set-tracklist-header">
         <div className="set-tracklist-title-group">
           <h3 className="set-section-title">Tracklist ({tracklist.length})</h3>
-          {tracklist.length > 0 && (
+          {(tracklist.length > 0 || onOpenExplorer) && (
             <div className="set-tracklist-menu-wrapper" ref={menuRef}>
               <button
                 className="set-tracklist-menu-toggle"
@@ -167,20 +174,34 @@ export function SetTracklist({
               </button>
               {menuOpen && (
                 <div className="set-tracklist-menu">
-                  <button
-                    className="set-tracklist-menu-item"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onExportM3u8()
-                    }}
-                  >
-                    Export m3u8
-                  </button>
+                  {onOpenExplorer && (
+                    <button
+                      className="set-tracklist-menu-item"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        onOpenExplorer()
+                      }}
+                    >
+                      Explorer
+                    </button>
+                  )}
+                  {tracklist.length > 0 && (
+                    <button
+                      className="set-tracklist-menu-item"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        onExportM3u8()
+                      }}
+                    >
+                      Export m3u8
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           )}
         </div>
+        {headerControls}
         <div className="set-tracklist-search-wrapper">
           <input
             className="set-tracklist-search"

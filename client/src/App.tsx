@@ -1,14 +1,16 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { SearchPanel } from './components/SearchPanel'
-import { CollapseButton } from './components/CollapseButton'
-import { NavRail } from './components/NavRail'
-import type { BottomView } from './components/NavRail'
+import {
+  QuadrantDivider,
+  QuadrantExpandBar,
+} from './components/QuadrantControls'
 import { FilterBar } from './components/FilterBar'
 import { TrackTable } from './components/TrackTable'
 import { MatchesPanel } from './components/MatchesPanel'
 import { MatchDetail } from './components/MatchDetail'
 import { AdminDashboard } from './components/AdminDashboard'
 import { SetBuilder } from './components/SetBuilder'
+import { SetPickerControls } from './components/SetPickerControls'
 import { PlaybackBar } from './components/PlaybackBar'
 import { useSelectedTrack } from './hooks/useSelectedTrack'
 import { useTrackFilters } from './hooks/useTrackFilters'
@@ -26,8 +28,6 @@ import type {
 
 const COL_VIS_STORAGE_KEY = 'xeremia-browse-col-visibility'
 
-const BOTTOM_VIEW_STORAGE_KEY = 'xeremia-bottom-view'
-
 const BROWSE_CONFIGURABLE_COLUMNS = [
   { id: 'camelot_code', label: 'Camelot' },
   { id: 'key', label: 'Key' },
@@ -42,19 +42,10 @@ function isPlainObject(v: unknown): v is Record<string, boolean> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-function loadBottomView(): BottomView {
-  try {
-    const raw = localStorage.getItem(BOTTOM_VIEW_STORAGE_KEY)
-    if (raw === 'matches' || raw === 'set' || raw === 'admin') {
-      return raw
-    }
-  } catch {
-    /* ignore storage access errors */
-  }
-  return 'matches'
-}
-
-type RegionSplit = 'split' | 'top-collapsed' | 'bottom-collapsed'
+/** Top row: track browser (left) vs. matches (right). */
+type TopSplit = 'split' | 'browser-collapsed' | 'matches-collapsed'
+/** Whole-row collapse: top (browser + matches) vs. bottom (set workspace). */
+type RowSplit = 'split' | 'top-collapsed' | 'bottom-collapsed'
 
 const DEFAULT_BROWSE_COLUMN_VISIBILITY: Record<string, boolean> = {
   key: false,
@@ -85,19 +76,24 @@ export function App() {
     traitsError,
   } = useCollectionCache()
 
-  const [bottomView, setBottomView] = useState<BottomView>(loadBottomView)
-  const [regionSplit, setRegionSplit] = useState<RegionSplit>('split')
+  const [topSplit, setTopSplit] = useState<TopSplit>('split')
+  const [rowSplit, setRowSplit] = useState<RowSplit>('split')
+  const [adminOpen, setAdminOpen] = useState(false)
 
   useEffect(() => {
-    localStorage.setItem(BOTTOM_VIEW_STORAGE_KEY, bottomView)
-  }, [bottomView])
+    if (!adminOpen) {
+      return
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setAdminOpen(false)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [adminOpen])
 
-  // Selecting a bottom view from the nav while that region is collapsed
-  // should reveal it again — the user is asking to see it.
-  const showBottomView = useCallback((view: BottomView) => {
-    setBottomView(view)
-    setRegionSplit((prev) => (prev === 'bottom-collapsed' ? 'split' : prev))
-  }, [])
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
   const [searchText, setSearchText] = useState('')
   const [transitionChain, setTransitionChain] = useState<
@@ -109,7 +105,7 @@ export function App() {
     loading: cacheLoading,
     error: cacheError,
     refresh: refreshCacheStats,
-  } = useCacheStats(bottomView === 'admin')
+  } = useCacheStats(adminOpen)
 
   const {
     selectedTrack,
@@ -247,181 +243,103 @@ export function App() {
     [allTracks, setBuilderAddToTracklist],
   )
 
-  const handleAddSelectedToPool = useCallback(() => {
-    if (!selectedTrack) {
-      return
-    }
-    const track = allTracks.find((t) => t.id === selectedTrack.id)
-    if (track) {
-      setBuilderAddToPool(track.id, track.title)
-    }
-  }, [selectedTrack, allTracks, setBuilderAddToPool])
-
-  const handleAddSelectedToTracklist = useCallback(() => {
-    if (!selectedTrack) {
-      return
-    }
-    const track = allTracks.find((t) => t.id === selectedTrack.id)
-    if (track) {
-      setBuilderAddToTracklist(track.id, track.title)
-    }
-  }, [selectedTrack, allTracks, setBuilderAddToTracklist])
-
-  const handleClearFilters = useCallback(() => {
-    setCamelotCodes([])
-    setBpmMin(undefined)
-    setBpmMax(undefined)
-    setSearchText('')
-  }, [setCamelotCodes, setBpmMin, setBpmMax])
-
-  const setTabLabel = useMemo(() => {
-    if (setBuilder.activeSet) {
-      const total =
-        setBuilder.activeSet.pool.length + setBuilder.activeSet.tracklist.length
-      return `Set (${total})`
-    }
-    return 'Set'
-  }, [setBuilder.activeSet])
+  const setPicker = (
+    <SetPickerControls
+      sets={setBuilder.sets}
+      activeSetId={setBuilder.activeSetId}
+      pendingAdd={setBuilder.pendingAdd}
+      createSet={setBuilder.createSet}
+      selectSet={setBuilder.selectSet}
+      deleteSet={setBuilder.deleteSet}
+      resolvePendingAdd={setBuilder.resolvePendingAdd}
+      clearPendingAdd={setBuilder.clearPendingAdd}
+    />
+  )
 
   return (
     <AudioPlayerProvider>
       <div className="app-shell-v2">
-        <NavRail
-          bottomView={bottomView}
-          onSelectMatches={() => {
-            showBottomView('matches')
-            setDetailMatch(null)
-          }}
-          onSelectSet={() => showBottomView('set')}
-          onSelectAdmin={() => showBottomView('admin')}
-          setLabel={setTabLabel}
-          sets={setBuilder.sets}
-          activeSetId={setBuilder.activeSetId}
-          pendingAdd={setBuilder.pendingAdd}
-          createSet={setBuilder.createSet}
-          selectSet={setBuilder.selectSet}
-          deleteSet={setBuilder.deleteSet}
-          resolvePendingAdd={setBuilder.resolvePendingAdd}
-          clearPendingAdd={setBuilder.clearPendingAdd}
-        />
-
-        {regionSplit === 'top-collapsed' && (
-          <button
-            className="region-expand-tab"
-            onClick={() => setRegionSplit('split')}
-            aria-label="Expand track browser"
-            title="Expand track browser"
-          >
-            <span className="region-expand-chevron" aria-hidden="true">
-              ⌄
-            </span>
-            Track Browser
-          </button>
+        {rowSplit === 'top-collapsed' && (
+          <QuadrantExpandBar
+            edge="top"
+            label="Track Browser · Matches"
+            ariaLabel="Expand top panels"
+            onExpand={() => setRowSplit('split')}
+          />
         )}
-        {/* Keep Matches on the same browser/bottom-panel split as Set, whose
-            removed sub-tab bar lets the browser reclaim that height. */}
         <div
-          className={`top-region${bottomView === 'set' || bottomView === 'matches' ? ' top-region--reclaim' : ''}`}
-          hidden={regionSplit === 'top-collapsed'}
+          className="quad-row quad-row--top"
+          hidden={rowSplit === 'top-collapsed'}
         >
-          <div className="search-rail">
-            <SearchPanel
-              allTracks={allTracks}
-              selectedTrack={selectedTrack}
-              selectTrack={handleSelectTrack}
-              clearSelectedTrack={clearSelectedTrack}
-              onSearchTextChange={setSearchText}
-              onAddToPool={handleAddSelectedToPool}
-              onAddToTracklist={handleAddSelectedToTracklist}
-              searchText={searchText}
-              onTrackDrop={handleUseAsSource}
+          {topSplit === 'browser-collapsed' && (
+            <QuadrantExpandBar
+              edge="left"
+              label="Track Browser"
+              ariaLabel="Expand track browser"
+              onExpand={() => setTopSplit('split')}
             />
-            <FilterBar
-              camelotCodes={filters.camelotCodes}
-              bpm={filters.bpm}
-              bpmMin={filters.bpmMin}
-              bpmMax={filters.bpmMax}
-              setCamelotCodes={setCamelotCodes}
-              setBpm={setBpm}
-              setBpmMin={setBpmMin}
-              setBpmMax={setBpmMax}
-              configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
-              columnVisibility={browseColumnVisibility}
-              onToggleColumn={toggleBrowseColumn}
-              onClearFilters={handleClearFilters}
-            />
-          </div>
-          <div
-            className="browse-panel"
-            role="region"
-            aria-label="Browse tracks"
+          )}
+          <section
+            className="quadrant browse-quadrant"
+            aria-label="Track browser"
+            hidden={topSplit === 'browser-collapsed'}
           >
-            <div className="table-panel">
-              {traitsError && (
-                <p className="table-status table-status--error">
-                  Failed to load track traits — {traitsError}
-                </p>
-              )}
-              <TrackTable
-                tracks={browseTracks}
-                loading={collectionLoading}
+            <div className="browse-controls">
+              <SearchPanel
+                allTracks={allTracks}
                 selectedTrack={selectedTrack}
                 selectTrack={handleSelectTrack}
-                error={tracksError}
+                clearSelectedTrack={clearSelectedTrack}
+                onSearchTextChange={setSearchText}
+                searchText={searchText}
+                onTrackDrop={handleUseAsSource}
+              />
+              <FilterBar
+                camelotCodes={filters.camelotCodes}
+                bpm={filters.bpm}
+                bpmMin={filters.bpmMin}
+                bpmMax={filters.bpmMax}
+                setCamelotCodes={setCamelotCodes}
+                setBpm={setBpm}
+                setBpmMin={setBpmMin}
+                setBpmMax={setBpmMax}
+                configurableColumns={BROWSE_CONFIGURABLE_COLUMNS}
                 columnVisibility={browseColumnVisibility}
-                scrollRestorationKey={`${bottomView}:${regionSplit}`}
-                onAddToPool={handleAddToPool}
-                onAddToTracklist={handleAddToTracklist}
+                onToggleColumn={toggleBrowseColumn}
               />
             </div>
-          </div>
-        </div>
-
-        {regionSplit === 'split' && (
-          <div className="region-divider">
-            <CollapseButton
-              orientation="horizontal"
-              size={22}
-              direction="up"
-              label="Collapse track browser"
-              onClick={() => setRegionSplit('top-collapsed')}
+            {traitsError && (
+              <p className="table-status table-status--error">
+                Failed to load track traits — {traitsError}
+              </p>
+            )}
+            <TrackTable
+              tracks={browseTracks}
+              loading={collectionLoading}
+              selectedTrack={selectedTrack}
+              selectTrack={handleSelectTrack}
+              error={tracksError}
+              columnVisibility={browseColumnVisibility}
+              scrollRestorationKey={`${topSplit}:${rowSplit}`}
+              onAddToPool={handleAddToPool}
+              onAddToTracklist={handleAddToTracklist}
             />
-            <CollapseButton
-              orientation="horizontal"
-              size={22}
-              direction="down"
-              label="Collapse bottom panel"
-              onClick={() => setRegionSplit('bottom-collapsed')}
+          </section>
+          {topSplit === 'split' && (
+            <QuadrantDivider
+              orientation="vertical"
+              beforeLabel="Collapse track browser"
+              afterLabel="Collapse matches"
+              onCollapseBefore={() => setTopSplit('browser-collapsed')}
+              onCollapseAfter={() => setTopSplit('matches-collapsed')}
             />
-          </div>
-        )}
-        {regionSplit === 'bottom-collapsed' && (
-          <button
-            className="region-expand-tab region-expand-tab--bottom"
-            onClick={() => setRegionSplit('split')}
-            aria-label="Expand bottom panel"
-            title="Expand bottom panel"
+          )}
+          <section
+            className={`quadrant matches-quadrant${topSplit === 'browser-collapsed' ? ' matches-quadrant--full' : ''}`}
+            aria-label="Matches"
+            hidden={topSplit === 'matches-collapsed'}
           >
-            <span
-              className="region-expand-chevron region-chevron--up"
-              aria-hidden="true"
-            >
-              ⌄
-            </span>
-            {bottomView === 'matches'
-              ? 'Matches'
-              : bottomView === 'set'
-                ? setTabLabel
-                : 'Admin'}
-          </button>
-        )}
-        <div
-          className="bottom-region"
-          hidden={regionSplit === 'bottom-collapsed'}
-        >
-          {bottomView === 'matches' &&
-            transitionChain.length > 0 &&
-            selectedTrack && (
+            {transitionChain.length > 0 && selectedTrack && (
               <div className="transition-chain">
                 <button
                   className="chain-back-btn"
@@ -448,8 +366,7 @@ export function App() {
                 <span className="chain-current">{selectedTrack.title}</span>
               </div>
             )}
-          {bottomView === 'matches' && !detailMatch && (
-            <div className="table-panel">
+            {!detailMatch && (
               <MatchesPanel
                 selectedTrack={selectedTrack}
                 matches={matches}
@@ -460,20 +377,116 @@ export function App() {
                 onAddToPool={handleAddToPool}
                 onAddToTracklist={handleAddToTracklist}
               />
-            </div>
-          )}
-          {bottomView === 'matches' && detailMatch && (
-            <MatchDetail
-              sourceTrack={selectedTrack}
-              match={detailMatch}
-              onBack={() => setDetailMatch(null)}
-              traitMap={traitMap}
-              onUseAsSource={handleUseAsSource}
-              onAddToPool={handleAddToPool}
-              onAddToTracklist={handleAddToTracklist}
+            )}
+            {detailMatch && (
+              <MatchDetail
+                sourceTrack={selectedTrack}
+                match={detailMatch}
+                onBack={() => setDetailMatch(null)}
+                traitMap={traitMap}
+                onUseAsSource={handleUseAsSource}
+                onAddToPool={handleAddToPool}
+                onAddToTracklist={handleAddToTracklist}
+              />
+            )}
+          </section>
+          {topSplit === 'matches-collapsed' && (
+            <QuadrantExpandBar
+              edge="right"
+              label="Matches"
+              ariaLabel="Expand matches"
+              onExpand={() => setTopSplit('split')}
             />
           )}
-          {bottomView === 'admin' && (
+        </div>
+
+        {rowSplit === 'split' && (
+          <QuadrantDivider
+            orientation="horizontal"
+            beforeLabel="Collapse top panels"
+            afterLabel="Collapse bottom panels"
+            onCollapseBefore={() => setRowSplit('top-collapsed')}
+            onCollapseAfter={() => setRowSplit('bottom-collapsed')}
+          />
+        )}
+
+        <div
+          className="quad-row quad-row--bottom"
+          hidden={rowSplit === 'bottom-collapsed'}
+        >
+          <SetBuilder
+            allTracks={allTracks}
+            activeSet={setBuilder.activeSet}
+            loading={setBuilder.loading}
+            error={setBuilder.error}
+            setPicker={setPicker}
+            removeFromPool={setBuilder.removeFromPool}
+            movePoolToTracklist={setBuilder.movePoolToTracklist}
+            reorderPool={setBuilder.reorderPool}
+            addToPool={setBuilder.addToPool}
+            createSubgroup={setBuilder.createSubgroup}
+            renameSubgroup={setBuilder.renameSubgroup}
+            deleteSubgroup={setBuilder.deleteSubgroup}
+            reorderSubgroups={setBuilder.reorderSubgroups}
+            addSubgroupMember={setBuilder.addSubgroupMember}
+            removeSubgroupMember={setBuilder.removeSubgroupMember}
+            removeFromTracklist={setBuilder.removeFromTracklist}
+            moveTracklistToPool={setBuilder.moveTracklistToPool}
+            reorderTracklist={setBuilder.reorderTracklist}
+            updateTracklistNote={setBuilder.updateTracklistNote}
+            addToTracklist={setBuilder.addToTracklist}
+            addExplorerNode={setBuilder.addExplorerNode}
+            deleteExplorerNode={setBuilder.deleteExplorerNode}
+            addExplorerEdge={setBuilder.addExplorerEdge}
+            deleteExplorerEdge={setBuilder.deleteExplorerEdge}
+            swapExplorerNodes={setBuilder.swapExplorerNodes}
+            explorerNodeAddToTracklist={setBuilder.explorerNodeAddToTracklist}
+            addSiblingNode={setBuilder.addSiblingNode}
+            fetchEdgeScores={setBuilder.fetchEdgeScores}
+            clearError={setBuilder.clearError}
+          />
+        </div>
+        {rowSplit === 'bottom-collapsed' && (
+          <QuadrantExpandBar
+            edge="bottom"
+            label="Tracklist · Pool"
+            ariaLabel="Expand bottom panels"
+            onExpand={() => setRowSplit('split')}
+          />
+        )}
+
+        <PlaybackBar />
+
+        <button
+          className="admin-gear"
+          aria-label="Admin"
+          title="Admin"
+          aria-haspopup="dialog"
+          aria-expanded={adminOpen}
+          onClick={() => setAdminOpen((prev) => !prev)}
+        >
+          <span className="admin-gear-glyph" aria-hidden="true">
+            {'\u2699\uFE0E'}
+          </span>
+        </button>
+        {adminOpen && (
+          <div
+            className="admin-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Admin dashboard"
+          >
+            <div className="admin-overlay-header">
+              <h2 className="admin-overlay-title">Admin</h2>
+              <button
+                className="admin-overlay-close"
+                aria-label="Close admin"
+                title="Close admin"
+                onClick={() => setAdminOpen(false)}
+              >
+                ×
+              </button>
+            </div>
             <AdminDashboard
               stats={cacheStats}
               loading={cacheLoading}
@@ -490,42 +503,8 @@ export function App() {
               isSumValid={isSumValid}
               rawSum={rawSum}
             />
-          )}
-          {bottomView === 'set' && (
-            <SetBuilder
-              allTracks={allTracks}
-              activeSet={setBuilder.activeSet}
-              loading={setBuilder.loading}
-              error={setBuilder.error}
-              removeFromPool={setBuilder.removeFromPool}
-              movePoolToTracklist={setBuilder.movePoolToTracklist}
-              reorderPool={setBuilder.reorderPool}
-              addToPool={setBuilder.addToPool}
-              createSubgroup={setBuilder.createSubgroup}
-              renameSubgroup={setBuilder.renameSubgroup}
-              deleteSubgroup={setBuilder.deleteSubgroup}
-              reorderSubgroups={setBuilder.reorderSubgroups}
-              addSubgroupMember={setBuilder.addSubgroupMember}
-              removeSubgroupMember={setBuilder.removeSubgroupMember}
-              removeFromTracklist={setBuilder.removeFromTracklist}
-              moveTracklistToPool={setBuilder.moveTracklistToPool}
-              reorderTracklist={setBuilder.reorderTracklist}
-              updateTracklistNote={setBuilder.updateTracklistNote}
-              addToTracklist={setBuilder.addToTracklist}
-              addExplorerNode={setBuilder.addExplorerNode}
-              deleteExplorerNode={setBuilder.deleteExplorerNode}
-              addExplorerEdge={setBuilder.addExplorerEdge}
-              deleteExplorerEdge={setBuilder.deleteExplorerEdge}
-              swapExplorerNodes={setBuilder.swapExplorerNodes}
-              explorerNodeAddToTracklist={setBuilder.explorerNodeAddToTracklist}
-              addSiblingNode={setBuilder.addSiblingNode}
-              fetchEdgeScores={setBuilder.fetchEdgeScores}
-              clearError={setBuilder.clearError}
-            />
-          )}
-          <PlaybackBar />
-        </div>
-        {regionSplit === 'bottom-collapsed' && <PlaybackBar />}
+          </div>
+        )}
       </div>
     </AudioPlayerProvider>
   )
