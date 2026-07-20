@@ -32,14 +32,12 @@ export function CollapseButton({
       aria-label={label}
       title={label}
     >
-      {/* One glyph rotated per direction, so paired buttons stay aligned
-          instead of drifting on differing codepoint font metrics. */}
+      {/* One CSS-drawn chevron rotated per direction, so paired buttons stay
+          aligned instead of drifting on font glyph metrics. */}
       <span
         className={`collapse-btn-chevron collapse-btn-chevron--${direction}`}
         aria-hidden="true"
-      >
-        ⌄
-      </span>
+      />
     </button>
   )
 }

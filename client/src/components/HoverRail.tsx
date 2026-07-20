@@ -27,7 +27,7 @@ export function HoverRail({ orientation, children, className }: Props) {
         aria-label={`${visible ? 'Close' : 'Open'} ${orientation} navigation`}
         aria-expanded={visible}
       >
-        <span className="hover-rail-chevron-glyph">⌄</span>
+        <span className="hover-rail-chevron-glyph" aria-hidden="true" />
       </button>
       <div
         className={[

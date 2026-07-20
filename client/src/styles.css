@@ -187,6 +187,25 @@ body,
   color: var(--text-muted);
 }
 
+/* === Chevron glyph (shared: hover-rail toggles, collapse buttons) === */
+/* Drawn from two borders rather than a text ⌄, whose ink sits ~0.31em below
+   the centre of its line box — visibly low on bars this thin. The rotated L
+   puts its ink 0.354·(side − stroke) off-centre along the pointing axis, so
+   each direction translates back by that amount to sit dead centre. */
+.hover-rail-chevron-glyph,
+.collapse-btn-chevron {
+  --chevron-side: 9px;
+  --chevron-stroke: 1.5px;
+  --chevron-offset: calc((var(--chevron-side) - var(--chevron-stroke)) * 0.354);
+  display: block;
+  box-sizing: border-box;
+  width: var(--chevron-side);
+  height: var(--chevron-side);
+  border-right: var(--chevron-stroke) solid currentColor;
+  border-bottom: var(--chevron-stroke) solid currentColor;
+  transform: translateY(calc(-1 * var(--chevron-offset))) rotate(45deg);
+}
+
 /* === Hover Rail (shared collapsible bar: horizontal top nav, vertical side nav) === */
 .hover-rail-chevron {
   display: flex;
@@ -204,8 +223,7 @@ body,
 }
 
 .hover-rail-chevron-glyph {
-  display: inline-block;
-  line-height: 1;
+  --chevron-side: 7.5px;
   transition: transform var(--transition);
 }
 
@@ -234,17 +252,17 @@ body,
 }
 
 .hover-rail-chevron--vertical .hover-rail-chevron-glyph {
-  transform: rotate(-90deg);
+  transform: translateX(calc(-1 * var(--chevron-offset))) rotate(-45deg);
 }
 
 .hover-rail-chevron--horizontal.hover-rail-chevron--open
   .hover-rail-chevron-glyph {
-  transform: rotate(180deg);
+  transform: translateY(var(--chevron-offset)) rotate(225deg);
 }
 
 .hover-rail-chevron--vertical.hover-rail-chevron--open
   .hover-rail-chevron-glyph {
-  transform: rotate(90deg);
+  transform: translateX(var(--chevron-offset)) rotate(135deg);
 }
 
 /* Stays attached to the far edge of the rail once it unfurls, instead of
@@ -519,21 +537,16 @@ body,
   outline: none;
 }
 
-.collapse-btn-chevron {
-  display: inline-block;
-  line-height: 1;
-}
-
 .collapse-btn-chevron--up {
-  transform: rotate(180deg);
+  transform: translateY(var(--chevron-offset)) rotate(225deg);
 }
 
 .collapse-btn-chevron--left {
-  transform: rotate(90deg);
+  transform: translateX(var(--chevron-offset)) rotate(135deg);
 }
 
 .collapse-btn-chevron--right {
-  transform: rotate(-90deg);
+  transform: translateX(calc(-1 * var(--chevron-offset))) rotate(-45deg);
 }
 
 /* === Region collapse (browser vs. bottom panel) === */
