@@ -110,7 +110,9 @@ function makeTracks(count: number): Track[] {
       genre: 'Electronic',
       label: 'Label',
       energy: 0.5,
-      date_added: null,
+      date_added: new Date(
+        Date.UTC(2026, 0, 1) + id * 86_400_000,
+      ).toISOString(),
     }
   })
 }
@@ -121,30 +123,8 @@ class ResizeObserverMock {
   disconnect = vi.fn()
 }
 
-let latestIntersectionCb: IntersectionObserverCallback | null = null
-
-class IntersectionObserverMock {
-  constructor(cb: IntersectionObserverCallback) {
-    latestIntersectionCb = cb
-  }
-  observe = vi.fn()
-  unobserve = vi.fn()
-  disconnect = vi.fn()
-}
-
-function triggerLoadMore() {
-  if (latestIntersectionCb) {
-    latestIntersectionCb(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver,
-    )
-  }
-}
-
 beforeEach(() => {
-  latestIntersectionCb = null
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
-  vi.stubGlobal('IntersectionObserver', IntersectionObserverMock)
   localStorage.clear()
   vi.mocked(useCollectionCache).mockReturnValue({
     allTracks: makeTracks(600),
@@ -275,29 +255,65 @@ describe('Reset Weights', () => {
   })
 })
 
-describe('Browse infinite scroll', () => {
-  it('initially renders the first 250 tracks', async () => {
+describe('Region collapse', () => {
+  it('renders the divider with both collapse buttons when split', async () => {
     await openBrowseTab()
-    expect(getRowCount()).toBe(250)
+    expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
+    expect(screen.getByLabelText('Collapse bottom panel')).toBeInTheDocument()
   })
 
-  it('loads next chunk when sentinel intersection fires', async () => {
+  it('collapsing the browser hides it behind an expand tab', async () => {
     await openBrowseTab()
-    expect(getRowCount()).toBe(250)
+    await act(async () => {
+      screen.getByLabelText('Collapse track browser').click()
+    })
+
+    expect(document.querySelector('.top-region')).not.toBeVisible()
+    expect(screen.getByLabelText('Expand track browser')).toBeInTheDocument()
 
     await act(async () => {
-      triggerLoadMore()
+      screen.getByLabelText('Expand track browser').click()
     })
-    expect(getRowCount()).toBe(500)
+    expect(document.querySelector('.top-region')).toBeVisible()
   })
 
-  it('resets to first chunk when key filter changes', async () => {
+  it('collapsing the bottom panel hides it behind an expand tab', async () => {
     await openBrowseTab()
+    await act(async () => {
+      screen.getByLabelText('Collapse bottom panel').click()
+    })
+
+    expect(document.querySelector('.bottom-region')).not.toBeVisible()
+    expect(screen.getByLabelText('Expand bottom panel')).toBeInTheDocument()
 
     await act(async () => {
-      triggerLoadMore()
+      screen.getByLabelText('Expand bottom panel').click()
     })
-    expect(getRowCount()).toBe(500)
+    expect(document.querySelector('.bottom-region')).toBeVisible()
+  })
+
+  it('selecting a bottom view from the nav re-expands a collapsed bottom panel', async () => {
+    await openBrowseTab()
+    await act(async () => {
+      screen.getByLabelText('Collapse bottom panel').click()
+    })
+    expect(document.querySelector('.bottom-region')).not.toBeVisible()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Matches' }).click()
+    })
+    expect(document.querySelector('.bottom-region')).toBeVisible()
+  })
+})
+
+describe('Browse table', () => {
+  it('renders the entire collection', async () => {
+    await openBrowseTab()
+    expect(getRowCount()).toBe(600)
+  })
+
+  it('filters by camelot code across the entire collection', async () => {
+    await openBrowseTab()
 
     await act(async () => {
       screen.getByRole('button', { name: /All keys/ }).click()
@@ -307,88 +323,143 @@ describe('Browse infinite scroll', () => {
     })
 
     await waitFor(() => {
-      expect(getRowCount()).toBe(250)
+      expect(getRowCount()).toBe(300)
     })
   })
 
-  it('resets to first chunk when BPM filter changes', async () => {
+  it('filters by search text across the entire collection', async () => {
     await openBrowseTab()
-
-    await act(async () => {
-      triggerLoadMore()
-    })
-    expect(getRowCount()).toBe(500)
-
-    const bpmInput = screen.getByPlaceholderText('Exact')
-    await userEvent.type(bpmInput, '120')
-
-    await waitFor(() => {
-      expect(getRowCount()).toBe(250)
-    })
-  })
-
-  it('resets to first chunk when search text changes', async () => {
-    await openBrowseTab()
-
-    await act(async () => {
-      triggerLoadMore()
-    })
-    expect(getRowCount()).toBe(500)
 
     const searchInput = screen.getByPlaceholderText('Search tracks…')
-    await userEvent.type(searchInput, 'track')
+    await userEvent.type(searchInput, 'Track 60')
 
     await waitFor(() => {
-      expect(getRowCount()).toBe(250)
+      // "Track 60" matches Track 60 and Track 600.
+      expect(getRowCount()).toBe(2)
     })
   })
 
-  it('restores loaded progress when returning to a previous filter key', async () => {
+  // Regression: sorting used to apply only to the currently loaded page of
+  // filtered results, so a date-sorted, BPM-filtered view surfaced a stale
+  // slice instead of the newest matching tracks in the whole collection.
+  it('sorts the full filtered collection, not just a page', async () => {
     await openBrowseTab()
 
-    await act(async () => {
-      triggerLoadMore()
-    })
-    expect(getRowCount()).toBe(500)
-
-    await act(async () => {
-      screen.getByRole('button', { name: /All keys/ }).click()
-    })
-    await act(async () => {
-      screen.getByRole('button', { name: '01A' }).click()
-    })
+    const minInput = screen.getByPlaceholderText('Min')
+    await userEvent.type(minInput, '125')
+    fireEvent.blur(minInput)
 
     await waitFor(() => {
-      expect(getRowCount()).toBe(250)
+      expect(getRowCount()).toBe(300)
     })
 
+    const dateHeader = screen.getByText('Date Added')
     await act(async () => {
-      screen.getByRole('button', { name: 'Clear' }).click()
+      fireEvent.click(dateHeader)
+    })
+    await act(async () => {
+      fireEvent.click(dateHeader)
     })
 
-    await waitFor(
-      () => {
-        expect(getRowCount()).toBe(500)
-      },
-      { timeout: 10000 },
+    const firstRow = document.querySelector('.track-table tbody tr')
+    expect(firstRow?.textContent).toContain('Track 600')
+  })
+
+  it('restores filters, sorting, and scroll after search selection is cleared', async () => {
+    await openBrowseTab()
+
+    await userEvent.click(screen.getByRole('button', { name: /All keys/ }))
+    await userEvent.click(screen.getByRole('button', { name: '01A' }))
+
+    const dateHeader = screen.getByText('Date Added')
+    await userEvent.click(dateHeader)
+    await userEvent.click(dateHeader)
+
+    const wrapper = document.querySelector<HTMLElement>(
+      '.track-table-wrapper',
+    )!
+    Object.defineProperties(wrapper, {
+      scrollHeight: { configurable: true, value: 1_200 },
+      clientHeight: { configurable: true, value: 200 },
+    })
+    wrapper.scrollTop = 440
+    fireEvent.scroll(wrapper)
+
+    const searchInput = screen.getByPlaceholderText('Search tracks…')
+    await userEvent.type(searchInput, 'Track 30')
+    const suggestionTitle = await screen.findByText('Track 30', {
+      selector: '.search-item-title',
+    })
+    fireEvent.mouseDown(suggestionTitle.closest('li')!)
+
+    await waitFor(() => {
+      expect(getRowCount()).toBe(1)
+    })
+    wrapper.scrollTop = 0
+    fireEvent.scroll(wrapper)
+
+    await userEvent.click(
+      document.querySelector<HTMLButtonElement>('.clear-btn--search')!,
     )
-  }, 15000)
 
-  it('shows sentinel when more pages are available', async () => {
-    await openBrowseTab()
-    expect(screen.getByText('Loading more tracks…')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(getRowCount()).toBe(300)
+      expect(document.querySelector('.track-table tbody tr')?.textContent).toContain(
+        'Track 300',
+      )
+    })
+    expect(
+      document.querySelector('.filter-camelot-toggle')?.textContent,
+    ).toContain('01A')
+    expect(wrapper.scrollTop).toBe(440)
   })
 
-  it('hides sentinel when all pages are loaded', async () => {
+  it('restores scroll after bottom-view switches and browser collapse', async () => {
+    vi.mocked(useCollectionCache).mockReturnValue({
+      allTracks: makeTracks(10),
+      traitMap: new Map(),
+      loading: false,
+      tracksError: null,
+      traitsError: null,
+    })
     await openBrowseTab()
-    await act(async () => {
-      triggerLoadMore()
+
+    const wrapper = document.querySelector<HTMLElement>(
+      '.track-table-wrapper',
+    )!
+    const geometry = { scrollHeight: 1_200, clientHeight: 200 }
+    Object.defineProperties(wrapper, {
+      scrollHeight: {
+        configurable: true,
+        get: () => geometry.scrollHeight,
+      },
+      clientHeight: {
+        configurable: true,
+        get: () => geometry.clientHeight,
+      },
     })
-    await act(async () => {
-      triggerLoadMore()
-    })
-    expect(getRowCount()).toBe(600)
-    expect(screen.queryByText('Loading more tracks…')).not.toBeInTheDocument()
+    wrapper.scrollTop = 700
+    fireEvent.scroll(wrapper)
+
+    geometry.clientHeight = 600
+    await userEvent.click(screen.getByRole('button', { name: 'Set' }))
+    wrapper.scrollTop = 600
+    fireEvent.scroll(wrapper)
+
+    geometry.clientHeight = 200
+    await userEvent.click(screen.getByRole('button', { name: 'Matches' }))
+    expect(wrapper.scrollTop).toBe(700)
+
+    geometry.scrollHeight = 0
+    geometry.clientHeight = 0
+    await userEvent.click(screen.getByLabelText('Collapse track browser'))
+    wrapper.scrollTop = 0
+    fireEvent.scroll(wrapper)
+
+    geometry.scrollHeight = 1_200
+    geometry.clientHeight = 200
+    await userEvent.click(screen.getByLabelText('Expand track browser'))
+    expect(wrapper.scrollTop).toBe(700)
   })
 })
 
@@ -877,6 +948,37 @@ describe('Set tab', () => {
     expect(screen.getByText('+ New')).toBeInTheDocument()
   })
 
+  it('uses the same reclaimed browser split in Matches and Set views', async () => {
+    await act(async () => {
+      render(<App />)
+    })
+    const topRegion = document.querySelector('.top-region')!
+    const matchesLayoutClass = topRegion.className
+    expect(topRegion.classList.contains('top-region--reclaim')).toBe(true)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Set' }).click()
+    })
+    expect(topRegion.className).toBe(matchesLayoutClass)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Matches' }).click()
+    })
+    expect(topRegion.className).toBe(matchesLayoutClass)
+  })
+
+  it('does not render the Tracks/Explorer rail outside the set view', async () => {
+    await act(async () => {
+      render(<App />)
+    })
+    expect(
+      screen.queryByRole('button', { name: 'Tracks' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Explorer' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('renders dual add-to-pool/tracklist buttons in matches panel', async () => {
     const httpMod = await import('./api/http')
     const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' })
@@ -972,7 +1074,7 @@ describe('Browse panel', () => {
     await openBrowseTab()
 
     expect(document.querySelector('.browse-panel')).toBeInTheDocument()
-    expect(getRowCount()).toBe(250)
+    expect(getRowCount()).toBe(600)
     expect(
       screen.getByText('Select a track to see matches'),
     ).toBeInTheDocument()

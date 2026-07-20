@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { SearchPanel } from './components/SearchPanel'
+import { CollapseButton } from './components/CollapseButton'
 import { NavRail } from './components/NavRail'
 import type { BottomView } from './components/NavRail'
 import { FilterBar } from './components/FilterBar'
@@ -22,8 +23,6 @@ import type {
   TransitionMatch,
   TransitionChainEntry,
 } from './types'
-
-const BROWSE_PAGE_SIZE = 250
 
 const COL_VIS_STORAGE_KEY = 'xeremia-browse-col-visibility'
 
@@ -55,6 +54,8 @@ function loadBottomView(): BottomView {
   return 'matches'
 }
 
+type RegionSplit = 'split' | 'top-collapsed' | 'bottom-collapsed'
+
 const DEFAULT_BROWSE_COLUMN_VISIBILITY: Record<string, boolean> = {
   key: false,
   energy: false,
@@ -85,14 +86,20 @@ export function App() {
   } = useCollectionCache()
 
   const [bottomView, setBottomView] = useState<BottomView>(loadBottomView)
+  const [regionSplit, setRegionSplit] = useState<RegionSplit>('split')
 
   useEffect(() => {
     localStorage.setItem(BOTTOM_VIEW_STORAGE_KEY, bottomView)
   }, [bottomView])
+
+  // Selecting a bottom view from the nav while that region is collapsed
+  // should reveal it again — the user is asking to see it.
+  const showBottomView = useCallback((view: BottomView) => {
+    setBottomView(view)
+    setRegionSplit((prev) => (prev === 'bottom-collapsed' ? 'split' : prev))
+  }, [])
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
   const [searchText, setSearchText] = useState('')
-  const [loadedPages, setLoadedPages] = useState(1)
-  const [pageCache, setPageCache] = useState<Record<string, number>>({})
   const [transitionChain, setTransitionChain] = useState<
     TransitionChainEntry[]
   >([])
@@ -117,7 +124,6 @@ export function App() {
   const {
     filters,
     filteredTracks,
-    filterCacheKey,
     setCamelotCodes,
     setBpm,
     setBpmMin,
@@ -164,46 +170,13 @@ export function App() {
     }))
   }, [])
 
-  const browsePages = useMemo(() => {
-    const pages: Track[][] = []
-    for (let i = 0; i < filteredTracks.length; i += BROWSE_PAGE_SIZE) {
-      pages.push(filteredTracks.slice(i, i + BROWSE_PAGE_SIZE))
-    }
-    return pages
-  }, [filteredTracks])
-
-  const totalPages = browsePages.length
-
-  const visibleTracks = useMemo(() => {
-    const cap = Math.min(loadedPages, totalPages)
-    return browsePages.slice(0, cap).flat()
-  }, [browsePages, loadedPages, totalPages])
-
   const browseTracks = useMemo(
     () =>
       selectedTrack
         ? allTracks.filter((t) => t.id === selectedTrack.id)
-        : visibleTracks,
-    [selectedTrack, allTracks, visibleTracks],
+        : filteredTracks,
+    [selectedTrack, allTracks, filteredTracks],
   )
-
-  const hasMorePages = loadedPages < totalPages
-
-  // Reset pagination when the filter key changes, restoring any cached page
-  // depth for that filter. Adjusting during render avoids the cascading render
-  // and react-hooks/set-state-in-effect warning; reading from `pageCache`
-  // (state) instead of a ref avoids the react-hooks/refs render-read warning.
-  const [prevFilterCacheKey, setPrevFilterCacheKey] = useState(filterCacheKey)
-  if (filterCacheKey !== prevFilterCacheKey) {
-    setPrevFilterCacheKey(filterCacheKey)
-    setLoadedPages(pageCache[filterCacheKey] ?? 1)
-  }
-
-  const handleLoadMore = useCallback(() => {
-    const next = Math.min(loadedPages + 1, totalPages)
-    setLoadedPages(next)
-    setPageCache((prev) => ({ ...prev, [filterCacheKey]: next }))
-  }, [totalPages, filterCacheKey, loadedPages])
 
   const handleSelectTrack = useCallback(
     (track: Track | SearchSuggestion) => {
@@ -316,11 +289,11 @@ export function App() {
         <NavRail
           bottomView={bottomView}
           onSelectMatches={() => {
-            setBottomView('matches')
+            showBottomView('matches')
             setDetailMatch(null)
           }}
-          onSelectSet={() => setBottomView('set')}
-          onSelectAdmin={() => setBottomView('admin')}
+          onSelectSet={() => showBottomView('set')}
+          onSelectAdmin={() => showBottomView('admin')}
           setLabel={setTabLabel}
           sets={setBuilder.sets}
           activeSetId={setBuilder.activeSetId}
@@ -332,7 +305,25 @@ export function App() {
           clearPendingAdd={setBuilder.clearPendingAdd}
         />
 
-        <div className="top-region">
+        {regionSplit === 'top-collapsed' && (
+          <button
+            className="region-expand-tab"
+            onClick={() => setRegionSplit('split')}
+            aria-label="Expand track browser"
+            title="Expand track browser"
+          >
+            <span className="region-expand-chevron" aria-hidden="true">
+              ⌄
+            </span>
+            Track Browser
+          </button>
+        )}
+        {/* Keep Matches on the same browser/bottom-panel split as Set, whose
+            removed sub-tab bar lets the browser reclaim that height. */}
+        <div
+          className={`top-region${bottomView === 'set' || bottomView === 'matches' ? ' top-region--reclaim' : ''}`}
+          hidden={regionSplit === 'top-collapsed'}
+        >
           <div className="search-rail">
             <SearchPanel
               allTracks={allTracks}
@@ -376,10 +367,9 @@ export function App() {
                 loading={collectionLoading}
                 selectedTrack={selectedTrack}
                 selectTrack={handleSelectTrack}
-                hasMore={!selectedTrack ? hasMorePages : undefined}
-                onLoadMore={!selectedTrack ? handleLoadMore : undefined}
                 error={tracksError}
                 columnVisibility={browseColumnVisibility}
+                scrollRestorationKey={`${bottomView}:${regionSplit}`}
                 onAddToPool={handleAddToPool}
                 onAddToTracklist={handleAddToTracklist}
               />
@@ -387,7 +377,48 @@ export function App() {
           </div>
         </div>
 
-        <div className="bottom-region">
+        {regionSplit === 'split' && (
+          <div className="region-divider">
+            <CollapseButton
+              orientation="horizontal"
+              size={22}
+              direction="up"
+              label="Collapse track browser"
+              onClick={() => setRegionSplit('top-collapsed')}
+            />
+            <CollapseButton
+              orientation="horizontal"
+              size={22}
+              direction="down"
+              label="Collapse bottom panel"
+              onClick={() => setRegionSplit('bottom-collapsed')}
+            />
+          </div>
+        )}
+        {regionSplit === 'bottom-collapsed' && (
+          <button
+            className="region-expand-tab region-expand-tab--bottom"
+            onClick={() => setRegionSplit('split')}
+            aria-label="Expand bottom panel"
+            title="Expand bottom panel"
+          >
+            <span
+              className="region-expand-chevron region-chevron--up"
+              aria-hidden="true"
+            >
+              ⌄
+            </span>
+            {bottomView === 'matches'
+              ? 'Matches'
+              : bottomView === 'set'
+                ? setTabLabel
+                : 'Admin'}
+          </button>
+        )}
+        <div
+          className="bottom-region"
+          hidden={regionSplit === 'bottom-collapsed'}
+        >
           {bottomView === 'matches' &&
             transitionChain.length > 0 &&
             selectedTrack && (
@@ -492,9 +523,10 @@ export function App() {
               clearError={setBuilder.clearError}
             />
           )}
+          <PlaybackBar />
         </div>
+        {regionSplit === 'bottom-collapsed' && <PlaybackBar />}
       </div>
-      <PlaybackBar />
     </AudioPlayerProvider>
   )
 }

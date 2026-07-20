@@ -1,11 +1,15 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { PoolSubgroup, HydratedSet, Track } from '../types'
 import { exportSetM3u8 } from '../api/http'
+import { CollapseButton } from './CollapseButton'
+import { HoverRail } from './HoverRail'
 import { SetPoolTable } from './SetPoolTable'
 import { SetTracklist } from './SetTracklist'
 import { SetExplorerCanvas } from './SetExplorerCanvas'
 
 type SubTab = 'tracks' | 'explorer'
+
+type WorkspaceSplit = 'both' | 'pool-collapsed' | 'tracklist-collapsed'
 
 interface Props {
   allTracks: Track[]
@@ -88,7 +92,7 @@ export function SetBuilder({
   clearError,
 }: Props) {
   const [subTab, setSubTab] = useState<SubTab>('tracks')
-  const [poolExpanded, setPoolExpanded] = useState(true)
+  const [split, setSplit] = useState<WorkspaceSplit>('both')
 
   const handleExport = useCallback(async () => {
     if (!activeSet || activeSet.tracklist.length === 0) {
@@ -149,54 +153,77 @@ export function SetBuilder({
 
       {activeSet && (
         <>
-          <div className="set-sub-tabs">
+          <HoverRail orientation="vertical" className="set-side-rail">
             <button
-              className={`set-sub-tab${subTab === 'tracks' ? ' active' : ''}`}
+              className={`set-side-tab${subTab === 'tracks' ? ' active' : ''}`}
               onClick={() => setSubTab('tracks')}
             >
               Tracks
             </button>
             <button
-              className={`set-sub-tab${subTab === 'explorer' ? ' active' : ''}`}
+              className={`set-side-tab${subTab === 'explorer' ? ' active' : ''}`}
               onClick={() => setSubTab('explorer')}
             >
               Explorer
             </button>
-            {activeSet.tracklist.length > 0 && (
-              <button className="set-export-btn" onClick={handleExport}>
-                Export m3u8
-              </button>
-            )}
-          </div>
+          </HoverRail>
 
           {subTab === 'tracks' && (
             <div className="set-workspace-split">
-              <SetTracklist
-                allTracks={allTracks}
-                tracklist={activeSet.tracklist}
-                onRemove={removeFromTracklist}
-                onMoveToPool={moveTracklistToPool}
-                onReorder={reorderTracklist}
-                onUpdateNote={updateTracklistNote}
-                onAddTrack={handleTracklistAddTrack}
-              />
+              {split === 'tracklist-collapsed' ? (
+                <button
+                  className="set-pool-expand-tab set-tracklist-expand-tab"
+                  onClick={() => setSplit('both')}
+                  aria-label="Expand tracklist"
+                  title="Expand tracklist"
+                >
+                  <span className="set-pool-expand-chevron" aria-hidden="true">
+                    ›
+                  </span>
+                  <span className="set-pool-expand-label">
+                    Tracklist ({activeSet.tracklist.length})
+                  </span>
+                </button>
+              ) : (
+                <SetTracklist
+                  allTracks={allTracks}
+                  tracklist={activeSet.tracklist}
+                  onRemove={removeFromTracklist}
+                  onMoveToPool={moveTracklistToPool}
+                  onReorder={reorderTracklist}
+                  onUpdateNote={updateTracklistNote}
+                  onAddTrack={handleTracklistAddTrack}
+                  onDropFromPool={movePoolToTracklist}
+                  onExportM3u8={handleExport}
+                />
+              )}
+              {split === 'both' && (
+                <CollapseButton
+                  orientation="vertical"
+                  size={22}
+                  direction="left"
+                  label="Collapse tracklist"
+                  className="set-tracklist-collapse-handle"
+                  onClick={() => setSplit('tracklist-collapsed')}
+                />
+              )}
               <div
-                className={`set-pool-accordion${poolExpanded ? ' expanded' : ''}`}
+                className={`set-pool-accordion${split !== 'pool-collapsed' ? ' expanded' : ''}${split === 'tracklist-collapsed' ? ' set-pool-accordion--full' : ''}`}
               >
-                {poolExpanded && (
-                  <button
+                {split === 'both' && (
+                  <CollapseButton
+                    orientation="vertical"
+                    size={22}
+                    direction="right"
+                    label="Collapse pool"
                     className="set-pool-collapse-handle"
-                    onClick={() => setPoolExpanded(false)}
-                    aria-label="Collapse pool"
-                    title="Collapse pool"
-                  >
-                    ‹
-                  </button>
+                    onClick={() => setSplit('pool-collapsed')}
+                  />
                 )}
-                {!poolExpanded ? (
+                {split === 'pool-collapsed' ? (
                   <button
                     className="set-pool-expand-tab"
-                    onClick={() => setPoolExpanded(true)}
+                    onClick={() => setSplit('both')}
                     aria-label="Expand pool"
                     title="Expand pool"
                   >
@@ -204,7 +231,7 @@ export function SetBuilder({
                       className="set-pool-expand-chevron"
                       aria-hidden="true"
                     >
-                      ›
+                      ‹
                     </span>
                     <span className="set-pool-expand-label">
                       Pool ({activeSet.pool.length})
@@ -229,6 +256,7 @@ export function SetBuilder({
                       onReorderSubgroups={reorderSubgroups}
                       onAddSubgroupMember={addSubgroupMember}
                       onRemoveSubgroupMember={removeSubgroupMember}
+                      onDropFromTracklist={moveTracklistToPool}
                     />
                   </div>
                 )}

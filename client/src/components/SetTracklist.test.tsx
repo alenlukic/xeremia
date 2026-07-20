@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { SetTracklist } from './SetTracklist'
+import { TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import type { TracklistEntry } from '../types'
 
 vi.mock('../api/http', () => ({
@@ -45,6 +46,8 @@ function renderTracklist(
       onReorder={noop}
       onUpdateNote={noop}
       onAddTrack={noop}
+      onDropFromPool={noop}
+      onExportM3u8={noop}
       {...extra}
     />,
   )
@@ -52,6 +55,16 @@ function renderTracklist(
 
 const dragData = () => ({
   dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
+})
+
+const crossDragData = (mime: string, trackId: number) => ({
+  dataTransfer: {
+    types: [mime],
+    getData: (m: string) => (m === mime ? String(trackId) : ''),
+    setData: noop,
+    effectAllowed: '',
+    dropEffect: '',
+  },
 })
 
 describe('SetTracklist', () => {
@@ -208,5 +221,76 @@ describe('SetTracklist drag-and-drop reordering', () => {
     fireEvent.dragEnd(rows[0], dragData())
     expect(rows[2].classList.contains('set-row-drop-target')).toBe(false)
     expect(rows[0].classList.contains('set-row-dragging')).toBe(false)
+  })
+})
+
+describe('SetTracklist cross-panel drag-and-drop', () => {
+  it('tags row drags with the tracklist row MIME type', () => {
+    const setData = vi.fn()
+    const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })])
+    const row = container.querySelector('tbody tr')!
+    fireEvent.dragStart(row, {
+      dataTransfer: { setData, effectAllowed: '', dropEffect: '' },
+    })
+    expect(setData).toHaveBeenCalledWith(TRACKLIST_ROW_MIME, '10')
+  })
+
+  it('moves a dropped pool row into the tracklist', () => {
+    const onDropFromPool = vi.fn()
+    const { container } = renderTracklist(
+      [makeEntry({ id: 1, track_id: 10 })],
+      {
+        onDropFromPool,
+      },
+    )
+    const panel = container.querySelector('.set-tracklist')!
+    fireEvent.drop(panel, crossDragData(POOL_ROW_MIME, 20))
+    expect(onDropFromPool).toHaveBeenCalledWith(20)
+  })
+
+  it('ignores drops of its own row MIME type', () => {
+    const onDropFromPool = vi.fn()
+    const onAddTrack = vi.fn()
+    const { container } = renderTracklist(
+      [makeEntry({ id: 1, track_id: 10 })],
+      {
+        onDropFromPool,
+        onAddTrack,
+      },
+    )
+    const panel = container.querySelector('.set-tracklist')!
+    fireEvent.drop(panel, crossDragData(TRACKLIST_ROW_MIME, 10))
+    expect(onDropFromPool).not.toHaveBeenCalled()
+    expect(onAddTrack).not.toHaveBeenCalled()
+  })
+})
+
+describe('SetTracklist export menu', () => {
+  it('calls onExportM3u8 from the 3-dot menu next to the heading', () => {
+    const onExportM3u8 = vi.fn()
+    renderTracklist([makeEntry({ id: 1, track_id: 10 })], { onExportM3u8 })
+
+    expect(screen.queryByText('Export m3u8')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Tracklist menu'))
+    fireEvent.click(screen.getByText('Export m3u8'))
+    expect(onExportM3u8).toHaveBeenCalledTimes(1)
+    // Menu closes after the action.
+    expect(screen.queryByText('Export m3u8')).toBeNull()
+  })
+
+  it('hides the menu toggle when the tracklist is empty', () => {
+    renderTracklist([])
+    expect(screen.queryByLabelText('Tracklist menu')).toBeNull()
+  })
+})
+
+describe('SetTracklist title display', () => {
+  it('shows the metadata prefix verbatim, matching the track browser', () => {
+    const entry = makeEntry({ id: 1, track_id: 10 })
+    entry.track = { ...entry.track!, title: '[08A - Am - 128.00] My Song' }
+    const { container } = renderTracklist([entry])
+    expect(container.querySelector('.set-ws-cell-title')?.textContent).toBe(
+      '[08A - Am - 128.00] My Song',
+    )
   })
 })

@@ -11,7 +11,6 @@ interface FilterState {
 interface TrackFiltersResult {
   filters: FilterState
   filteredTracks: Track[]
-  filterCacheKey: string
   setCamelotCodes: (codes: string[]) => void
   setBpm: (bpm: number | undefined) => void
   setBpmMin: (min: number | undefined) => void
@@ -72,16 +71,6 @@ export function useTrackFilters(
     })
   }, [allTracks, filters, normalizedSearch])
 
-  const filterCacheKey = useMemo(() => {
-    return JSON.stringify({
-      searchText: normalizedSearch,
-      camelotCodes: [...filters.camelotCodes].sort(),
-      bpm: filters.bpm ?? null,
-      bpmMin: filters.bpmMin ?? null,
-      bpmMax: filters.bpmMax ?? null,
-    })
-  }, [normalizedSearch, filters])
-
   const setCamelotCodes = useCallback((codes: string[]) => {
     setFilters((prev) => ({ ...prev, camelotCodes: codes }))
   }, [])
@@ -113,7 +102,6 @@ export function useTrackFilters(
   return {
     filters,
     filteredTracks,
-    filterCacheKey,
     setCamelotCodes,
     setBpm,
     setBpmMin,

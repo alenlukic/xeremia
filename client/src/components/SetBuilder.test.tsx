@@ -126,7 +126,7 @@ describe('SetBuilder', () => {
       await userEvent.click(screen.getByLabelText('Collapse pool'))
       const expandBtn = screen.getByLabelText('Expand pool')
       expect(expandBtn).toHaveAttribute('title', 'Expand pool')
-      expect(expandBtn.textContent).toContain('›')
+      expect(expandBtn.textContent).toContain('‹')
     })
 
     it('expands pool accordion on click', async () => {
@@ -141,7 +141,56 @@ describe('SetBuilder', () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       const collapseBtn = screen.getByLabelText('Collapse pool')
       expect(collapseBtn).toHaveAttribute('title', 'Collapse pool')
-      expect(collapseBtn.textContent).toContain('‹')
+      // Points right: the tracklist sweeps rightward over the pool.
+      expect(
+        collapseBtn.querySelector('.collapse-btn-chevron--right'),
+      ).not.toBeNull()
+    })
+
+    it('renders a mirrored collapse handle for the tracklist', () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
+      const collapseBtn = screen.getByLabelText('Collapse tracklist')
+      expect(collapseBtn).toHaveAttribute('title', 'Collapse tracklist')
+      // Points left: the pool sweeps leftward over the tracklist.
+      expect(
+        collapseBtn.querySelector('.collapse-btn-chevron--left'),
+      ).not.toBeNull()
+    })
+
+    it('collapsing the tracklist unfurls the pool over its area', async () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
+      await userEvent.click(screen.getByLabelText('Collapse tracklist'))
+
+      expect(document.querySelector('.set-tracklist')).not.toBeInTheDocument()
+      expect(screen.getByText('Pool (0)')).toBeInTheDocument()
+      expect(
+        document.querySelector('.set-pool-accordion--full'),
+      ).toBeInTheDocument()
+
+      const expandBtn = screen.getByLabelText('Expand tracklist')
+      expect(expandBtn.textContent).toContain('›')
+    })
+
+    it('expanding the tracklist restores the split view', async () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
+      await userEvent.click(screen.getByLabelText('Collapse tracklist'))
+      await userEvent.click(screen.getByLabelText('Expand tracklist'))
+
+      expect(screen.getByText('Tracklist (0)')).toBeInTheDocument()
+      expect(screen.getByLabelText('Collapse tracklist')).toBeInTheDocument()
+      expect(screen.getByLabelText('Collapse pool')).toBeInTheDocument()
+    })
+
+    it('collapse handles are hidden while either panel is collapsed', async () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
+      await userEvent.click(screen.getByLabelText('Collapse pool'))
+      expect(
+        screen.queryByLabelText('Collapse tracklist'),
+      ).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getByLabelText('Expand pool'))
+      await userEvent.click(screen.getByLabelText('Collapse tracklist'))
+      expect(screen.queryByLabelText('Collapse pool')).not.toBeInTheDocument()
     })
 
     it('switches to Explorer sub-tab', async () => {
@@ -220,6 +269,52 @@ describe('SetBuilder', () => {
       )
       await userEvent.click(screen.getByTitle('Move to pool'))
       expect(moveTracklistToPool).toHaveBeenCalledWith(20)
+    })
+  })
+
+  describe('export menu', () => {
+    function hydratedWithTracklist(): HydratedSet {
+      return makeHydratedSet({
+        tracklist: [
+          {
+            id: 1,
+            set_id: 1,
+            track_id: 20,
+            position: 0,
+            track: {
+              id: 20,
+              title: 'TL Track',
+              artist_names: [],
+              bpm: 130,
+              key: 'D',
+              camelot_code: '9B',
+              genre: null,
+              label: null,
+              energy: null,
+              date_added: null,
+            },
+          },
+        ],
+      })
+    }
+
+    it('exports the tracklist through the Tracklist 3-dot menu', async () => {
+      const { exportSetM3u8 } = await import('../api/http')
+      render(
+        <SetBuilder {...defaultProps()} activeSet={hydratedWithTracklist()} />,
+      )
+      expect(
+        screen.queryByRole('button', { name: 'Export m3u8' }),
+      ).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getByLabelText('Tracklist menu'))
+      await userEvent.click(screen.getByRole('button', { name: 'Export m3u8' }))
+      expect(exportSetM3u8).toHaveBeenCalledWith([20], 'My Set')
+    })
+
+    it('offers no tracklist menu when the tracklist is empty', () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
+      expect(screen.queryByLabelText('Tracklist menu')).not.toBeInTheDocument()
     })
   })
 

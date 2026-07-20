@@ -83,16 +83,14 @@ export function PlaybackBar() {
           aria-label="Volume"
         />
       </div>
-      {!playing && (
-        <button
-          className="playback-bar-close"
-          onClick={stop}
-          aria-label="Close playback bar"
-          title="Close"
-        >
-          ×
-        </button>
-      )}
+      <button
+        className="playback-bar-close"
+        onClick={stop}
+        aria-label="Close playback bar"
+        title="Close"
+      >
+        ×
+      </button>
     </div>
   )
 }

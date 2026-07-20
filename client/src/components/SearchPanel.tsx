@@ -1,8 +1,10 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import type { SearchSuggestion, Track } from '../types'
+import { TRACK_DRAG_MIME } from '../utils'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
+import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
 
 interface Props {
   allTracks: Track[]
@@ -34,7 +36,12 @@ export function SearchPanel({
   const [activeIdx, setActiveIdx] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
-  const { dropActive, dropHandlers } = useExternalTrackDrop(onTrackDrop)
+  const dropTargets = useMemo<TrackDropTarget[]>(
+    () =>
+      onTrackDrop ? [{ mime: TRACK_DRAG_MIME, onDropTrack: onTrackDrop }] : [],
+    [onTrackDrop],
+  )
+  const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
 
   // Mirror `selectedTrack` into the query input and clear local state when the
   // parent resets `searchText`. Adjusting during render (vs. in effects) avoids

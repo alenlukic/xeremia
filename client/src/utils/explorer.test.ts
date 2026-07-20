@@ -8,11 +8,11 @@ import {
 
 describe('colorForColumn', () => {
   it('returns first color (cyan/blue) for column 0', () => {
-    expect(colorForColumn(0)).toBe('#4fc3f7')
+    expect(colorForColumn(0)).toBe(EXPLORER_PALETTE.edgeCyan)
   })
 
   it('returns last color (purple) for column 4', () => {
-    expect(colorForColumn(4)).toBe('#ce93d8')
+    expect(colorForColumn(4)).toBe(EXPLORER_PALETTE.edgePurple)
   })
 
   it('returns distinct colors for columns 0-4', () => {
@@ -21,7 +21,7 @@ describe('colorForColumn', () => {
   })
 
   it('cycles back to first color at column 5', () => {
-    expect(colorForColumn(5)).toBe('#4fc3f7')
+    expect(colorForColumn(5)).toBe(EXPLORER_PALETTE.edgeCyan)
   })
 
   it('returns consistent color for same column index', () => {

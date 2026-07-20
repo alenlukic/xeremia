@@ -13,9 +13,11 @@ import type {
   SearchSuggestion,
   Track,
 } from '../types'
-import { cleanTitle } from '../utils/trackTitle'
+import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
+import { displayTitle } from '../utils/trackTitle'
 import { useResizableColumns } from '../hooks/useResizableColumns'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
+import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { PlayButton } from './PlayButton'
 import { SortTierBar } from './SortTierBar'
@@ -34,6 +36,31 @@ const POOL_SORT_COLUMNS: SortColumn[] = [
   { id: 'camelot_code', label: 'Key' },
   { id: 'bpm', label: 'BPM' },
 ]
+
+const DEFAULT_POOL_SORTING: SortDescriptor[] = [
+  { id: 'insertion_order', desc: false },
+]
+
+function nextHeaderSorting(
+  prev: SortDescriptor[],
+  col: string,
+  shiftKey: boolean,
+): SortDescriptor[] {
+  const existingIdx = prev.findIndex((s) => s.id === col)
+  if (shiftKey) {
+    const next = [...prev]
+    if (existingIdx >= 0) {
+      next[existingIdx] = { id: col, desc: !next[existingIdx].desc }
+    } else {
+      next.push({ id: col, desc: false })
+    }
+    return next
+  }
+  if (existingIdx >= 0 && prev.length === 1) {
+    return [{ id: col, desc: !prev[existingIdx].desc }]
+  }
+  return [{ id: col, desc: false }]
+}
 
 interface RowReorderProps {
   index: number
@@ -61,6 +88,7 @@ interface Props {
   onReorderSubgroups: (subgroupIds: number[]) => Promise<boolean>
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
+  onDropFromTracklist: (trackId: number) => void
 }
 
 function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
@@ -137,7 +165,7 @@ function SubgroupChips({
   )
 
   return (
-    <div className="subgroup-chips">
+    <div className="subgroup-chips subgroup-chips--stack">
       {subgroups.map((sg) => (
         <button
           key={sg.id}
@@ -175,7 +203,7 @@ function PoolRow({
   onRemoveSubgroupMember: SubgroupMemberAction
   reorder?: RowReorderProps
 }) {
-  const title = cleanTitle(entry.track, entry.track_id)
+  const title = displayTitle(entry.track, entry.track_id)
 
   return (
     <tr
@@ -188,8 +216,9 @@ function PoolRow({
       }
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', String(entry.track_id))
+        e.dataTransfer.setData(POOL_ROW_MIME, String(entry.track_id))
+        e.dataTransfer.effectAllowed = 'move'
         if (reorder) {
-          e.dataTransfer.effectAllowed = 'move'
           reorder.onDragStart(reorder.index)
         }
       }}
@@ -363,6 +392,8 @@ function PoolTabBar({
   const [newName, setNewName] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
+  const [tabDragIndex, setTabDragIndex] = useState<number | null>(null)
+  const [tabDropIndex, setTabDropIndex] = useState<number | null>(null)
 
   const handleCreate = useCallback(async () => {
     const trimmed = newName.trim()
@@ -389,28 +420,22 @@ function PoolTabBar({
     [editName, onRenameSubgroup],
   )
 
-  const handleMoveLeft = useCallback(
-    (idx: number) => {
-      if (idx <= 0) {
+  const handleTabDrop = useCallback(
+    (index: number, e: React.DragEvent) => {
+      if (tabDragIndex === null) {
         return
       }
-      const ids = subgroups.map((sg) => sg.id)
-      ;[ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]]
-      onReorderSubgroups(ids)
-    },
-    [subgroups, onReorderSubgroups],
-  )
-
-  const handleMoveRight = useCallback(
-    (idx: number) => {
-      if (idx >= subgroups.length - 1) {
-        return
+      e.preventDefault()
+      if (tabDragIndex !== index) {
+        const ids = subgroups.map((sg) => sg.id)
+        const [moved] = ids.splice(tabDragIndex, 1)
+        ids.splice(index, 0, moved)
+        onReorderSubgroups(ids)
       }
-      const ids = subgroups.map((sg) => sg.id)
-      ;[ids[idx], ids[idx + 1]] = [ids[idx + 1], ids[idx]]
-      onReorderSubgroups(ids)
+      setTabDragIndex(null)
+      setTabDropIndex(null)
     },
-    [subgroups, onReorderSubgroups],
+    [tabDragIndex, subgroups, onReorderSubgroups],
   )
 
   return (
@@ -432,7 +457,40 @@ function PoolTabBar({
         Groups
       </button>
       {subgroups.map((sg, idx) => (
-        <div key={sg.id} className="pool-tab-wrapper">
+        <div
+          key={sg.id}
+          className={
+            'pool-tab-wrapper' +
+            (tabDragIndex === idx ? ' pool-tab-wrapper--dragging' : '') +
+            (tabDropIndex === idx &&
+            tabDragIndex !== null &&
+            tabDragIndex !== idx
+              ? ' pool-tab-wrapper--drop-target'
+              : '')
+          }
+          draggable={editingId !== sg.id}
+          onDragStart={(e) => {
+            e.dataTransfer.setData('text/plain', sg.name)
+            e.dataTransfer.effectAllowed = 'move'
+            setTabDragIndex(idx)
+          }}
+          onDragOver={(e) => {
+            if (tabDragIndex === null) {
+              return
+            }
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+            setTabDropIndex(idx)
+          }}
+          onDragLeave={() => {
+            setTabDropIndex((prev) => (prev === idx ? null : prev))
+          }}
+          onDrop={(e) => handleTabDrop(idx, e)}
+          onDragEnd={() => {
+            setTabDragIndex(null)
+            setTabDropIndex(null)
+          }}
+        >
           {editingId === sg.id ? (
             <input
               className="subgroup-rename-input"
@@ -470,26 +528,6 @@ function PoolTabBar({
             </button>
           )}
           <div className="pool-tab-controls">
-            {idx > 0 && (
-              <button
-                className="subgroup-ctrl-btn"
-                onClick={() => handleMoveLeft(idx)}
-                title="Move left"
-                aria-label={`Move ${sg.name} left`}
-              >
-                ‹
-              </button>
-            )}
-            {idx < subgroups.length - 1 && (
-              <button
-                className="subgroup-ctrl-btn"
-                onClick={() => handleMoveRight(idx)}
-                title="Move right"
-                aria-label={`Move ${sg.name} right`}
-              >
-                ›
-              </button>
-            )}
             <button
               className="subgroup-ctrl-btn subgroup-ctrl-btn--danger"
               onClick={() => {
@@ -567,6 +605,7 @@ function SubgroupSection({
   subgroups,
   membershipByEntry,
   sorting,
+  onSortingChange,
   index,
   onRemove,
   onMoveToTracklist,
@@ -580,6 +619,7 @@ function SubgroupSection({
   subgroups: PoolSubgroup[]
   membershipByEntry: Map<number, Set<number>>
   sorting: SortDescriptor[]
+  onSortingChange: (next: SortDescriptor[]) => void
   index: number
   onRemove: (trackId: number) => void
   onMoveToTracklist: (trackId: number) => void
@@ -647,27 +687,40 @@ function SubgroupSection({
       {sorted.length === 0 ? (
         <p className="set-empty-tracks">No tracks in {subgroup.name}.</p>
       ) : (
-        <table className="set-pool-table">
-          <PoolTableHead
-            subgroups={subgroups}
-            colWidths={colWidths}
-            beginResize={beginResize}
+        <>
+          <SortTierBar
+            sorting={sorting}
+            columns={POOL_SORT_COLUMNS}
+            onSortingChange={onSortingChange}
           />
-          <tbody>
-            {sorted.map((entry) => (
-              <PoolRow
-                key={entry.id}
-                entry={entry}
-                onRemove={onRemove}
-                onMoveToTracklist={onMoveToTracklist}
-                subgroups={subgroups}
-                memberSubgroupIds={membershipByEntry.get(entry.id) ?? new Set()}
-                onAddSubgroupMember={onAddSubgroupMember}
-                onRemoveSubgroupMember={onRemoveSubgroupMember}
-              />
-            ))}
-          </tbody>
-        </table>
+          <table className="set-pool-table">
+            <PoolTableHead
+              subgroups={subgroups}
+              sorting={sorting}
+              onHeaderSort={(col, e) =>
+                onSortingChange(nextHeaderSorting(sorting, col, e.shiftKey))
+              }
+              colWidths={colWidths}
+              beginResize={beginResize}
+            />
+            <tbody>
+              {sorted.map((entry) => (
+                <PoolRow
+                  key={entry.id}
+                  entry={entry}
+                  onRemove={onRemove}
+                  onMoveToTracklist={onMoveToTracklist}
+                  subgroups={subgroups}
+                  memberSubgroupIds={
+                    membershipByEntry.get(entry.id) ?? new Set()
+                  }
+                  onAddSubgroupMember={onAddSubgroupMember}
+                  onRemoveSubgroupMember={onRemoveSubgroupMember}
+                />
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   )
@@ -688,15 +741,19 @@ export function SetPoolTable({
   onReorderSubgroups,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
+  onDropFromTracklist,
 }: Props) {
   const { widths: poolColWidths, beginResize: beginPoolColResize } =
     useResizableColumns('xeremia-set-pool-col-widths')
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
-  const [sorting, setSorting] = useState<SortDescriptor[]>([
-    { id: 'insertion_order', desc: false },
-  ])
+  // Sort tiers are scoped per view: the All tab has its own, and each
+  // subgroup's tab and Groups-view section share one. Keyed by 'all' or the
+  // subgroup id; unset scopes fall back to the persisted pool order.
+  const [sortingByScope, setSortingByScope] = useState<
+    Record<string, SortDescriptor[]>
+  >({})
   const [selectedTab, setSelectedTab] = useState<PoolTab>('all')
   const pendingSubgroupAssign = useRef<{
     trackId: number
@@ -783,24 +840,37 @@ export function SetPoolTable({
     [onAddTrack, activeTab, clear],
   )
 
-  const handleHeaderSort = useCallback((col: string, e: React.MouseEvent) => {
-    setSorting((prev) => {
-      const existingIdx = prev.findIndex((s) => s.id === col)
-      if (e.shiftKey) {
-        const next = [...prev]
-        if (existingIdx >= 0) {
-          next[existingIdx] = { id: col, desc: !next[existingIdx].desc }
-        } else {
-          next.push({ id: col, desc: false })
-        }
-        return next
+  // The Groups view has no single sort scope of its own — each section
+  // manages its subgroup's scope directly.
+  const activeSortScope = activeTab === 'groups' ? null : String(activeTab)
+  const activeSorting =
+    activeSortScope === null
+      ? DEFAULT_POOL_SORTING
+      : (sortingByScope[activeSortScope] ?? DEFAULT_POOL_SORTING)
+
+  const setSortingForScope = useCallback(
+    (scope: string, next: SortDescriptor[]) => {
+      setSortingByScope((prev) => ({ ...prev, [scope]: next }))
+    },
+    [],
+  )
+
+  const handleHeaderSort = useCallback(
+    (col: string, e: React.MouseEvent) => {
+      if (activeSortScope === null) {
+        return
       }
-      if (existingIdx >= 0 && prev.length === 1) {
-        return [{ id: col, desc: !prev[existingIdx].desc }]
-      }
-      return [{ id: col, desc: false }]
-    })
-  }, [])
+      setSortingByScope((prev) => ({
+        ...prev,
+        [activeSortScope]: nextHeaderSorting(
+          prev[activeSortScope] ?? DEFAULT_POOL_SORTING,
+          col,
+          e.shiftKey,
+        ),
+      }))
+    },
+    [activeSortScope],
+  )
 
   const handleSectionDragEnd = useCallback(
     (event: {
@@ -840,8 +910,8 @@ export function SetPoolTable({
   }, [pool, activeTab, memberEntriesBySubgroup])
 
   const sorted = useMemo(
-    () => sortEntries(filteredPool, sorting),
-    [filteredPool, sorting],
+    () => sortEntries(filteredPool, activeSorting),
+    [filteredPool, activeSorting],
   )
 
   // Row drag reordering only makes sense when rows follow the persisted pool
@@ -849,9 +919,9 @@ export function SetPoolTable({
   // order, so drops there map to the target row's position in the full pool.
   const rowReorderEnabled =
     activeTab !== 'groups' &&
-    sorting.length === 1 &&
-    sorting[0].id === 'insertion_order' &&
-    !sorting[0].desc
+    activeSorting.length === 1 &&
+    activeSorting[0].id === 'insertion_order' &&
+    !activeSorting[0].desc
   const poolByOrder = useMemo(
     () => [...pool].sort((a, b) => a.insertion_order - b.insertion_order),
     [pool],
@@ -866,7 +936,18 @@ export function SetPoolTable({
     },
     [allTracks, onAddTrack],
   )
-  const { dropActive, dropHandlers } = useExternalTrackDrop(handleExternalDrop)
+  const dropTargets = useMemo<TrackDropTarget[]>(
+    () => [
+      { mime: TRACK_DRAG_MIME, onDropTrack: handleExternalDrop },
+      {
+        mime: TRACKLIST_ROW_MIME,
+        onDropTrack: onDropFromTracklist,
+        dropEffect: 'move',
+      },
+    ],
+    [handleExternalDrop, onDropFromTracklist],
+  )
+  const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
 
   const handleRowDragStart = useCallback((index: number) => {
     setRowDragIndex(index)
@@ -961,11 +1042,13 @@ export function SetPoolTable({
         activeTab={activeTab}
         onTabChange={setSelectedTab}
       />
-      <SortTierBar
-        sorting={sorting}
-        columns={POOL_SORT_COLUMNS}
-        onSortingChange={setSorting}
-      />
+      {activeSortScope !== null && (
+        <SortTierBar
+          sorting={activeSorting}
+          columns={POOL_SORT_COLUMNS}
+          onSortingChange={(next) => setSortingForScope(activeSortScope, next)}
+        />
+      )}
       {activeTab === 'groups' ? (
         subgroups.length === 0 ? (
           <p className="set-empty-tracks">
@@ -990,7 +1073,12 @@ export function SetPoolTable({
                     entries={entries}
                     subgroups={subgroups}
                     membershipByEntry={membershipByEntry}
-                    sorting={sorting}
+                    sorting={
+                      sortingByScope[String(sg.id)] ?? DEFAULT_POOL_SORTING
+                    }
+                    onSortingChange={(next) =>
+                      setSortingForScope(String(sg.id), next)
+                    }
                     index={idx}
                     onRemove={onRemove}
                     onMoveToTracklist={onMoveToTracklist}
@@ -1017,7 +1105,7 @@ export function SetPoolTable({
         <table className="set-pool-table">
           <PoolTableHead
             subgroups={subgroups}
-            sorting={sorting}
+            sorting={activeSorting}
             onHeaderSort={handleHeaderSort}
             colWidths={poolColWidths}
             beginResize={beginPoolColResize}

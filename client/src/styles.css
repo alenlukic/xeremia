@@ -25,6 +25,7 @@
   --content-gutter: 8px;
   --nav-rail-height: 48px;
   --nav-chevron-height: 16px;
+  --side-rail-width: 96px;
 }
 
 /* === Reset === */
@@ -63,9 +64,8 @@ body,
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  /* Reserves the sliver the collapsed nav-trigger chevron hangs into, so it
-     never overlaps page content and the trigger area stays exactly that
-     size. */
+  /* Reserves the sliver the collapsed nav chevron hangs into, so its click
+     target never overlaps page content. */
   padding-top: var(--nav-chevron-height);
 }
 
@@ -187,46 +187,126 @@ body,
   color: var(--text-muted);
 }
 
-/* === Nav Rail (autohide, overlays top of viewport) === */
-/* Trigger area is exactly the chevron's footprint: the reserved app-shell
-   top margin, matched here so hover-to-reveal only fires in that sliver
-   rather than across a wider band of page content. */
-.nav-trigger-zone {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--nav-chevron-height);
-  z-index: 95;
+/* === Chevron glyph (shared: hover-rail toggles, collapse buttons) === */
+/* Drawn from two borders rather than a text ⌄, whose ink sits ~0.31em below
+   the centre of its line box — visibly low on bars this thin. The rotated L
+   puts its ink 0.354·(side − stroke) off-centre along the pointing axis, so
+   each direction translates back by that amount to sit dead centre. */
+.hover-rail-chevron-glyph,
+.collapse-btn-chevron {
+  --chevron-side: 9px;
+  --chevron-stroke: 1.5px;
+  --chevron-offset: calc((var(--chevron-side) - var(--chevron-stroke)) * 0.354);
+  display: block;
+  box-sizing: border-box;
+  width: var(--chevron-side);
+  height: var(--chevron-side);
+  border-right: var(--chevron-stroke) solid currentColor;
+  border-bottom: var(--chevron-stroke) solid currentColor;
+  transform: translateY(calc(-1 * var(--chevron-offset))) rotate(45deg);
 }
 
-.nav-trigger-chevron {
+/* === Hover Rail (shared collapsible bar: horizontal top nav, vertical side nav) === */
+.hover-rail-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  z-index: 101;
+}
+
+.hover-rail-chevron-glyph {
+  --chevron-side: 7.5px;
+  transition: transform var(--transition);
+}
+
+.hover-rail-chevron--horizontal {
   position: fixed;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
   width: 48px;
   height: var(--nav-chevron-height);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
   border-top: none;
   border-radius: 0 0 8px 8px;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1;
-  z-index: 101;
   transition: top var(--transition);
 }
 
-/* Stays attached to the bottom edge of the nav bar once it unfurls, instead
-   of disappearing, so the affordance keeps mapping to the same control. */
-.nav-trigger-chevron--open {
+.hover-rail-chevron--vertical {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: var(--nav-chevron-height);
+  height: 48px;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  transition: left var(--transition);
+}
+
+.hover-rail-chevron--vertical .hover-rail-chevron-glyph {
+  transform: translateX(calc(-1 * var(--chevron-offset))) rotate(-45deg);
+}
+
+.hover-rail-chevron--horizontal.hover-rail-chevron--open
+  .hover-rail-chevron-glyph {
+  transform: translateY(var(--chevron-offset)) rotate(225deg);
+}
+
+.hover-rail-chevron--vertical.hover-rail-chevron--open
+  .hover-rail-chevron-glyph {
+  transform: translateX(var(--chevron-offset)) rotate(135deg);
+}
+
+/* Stays attached to the far edge of the rail once it unfurls, instead of
+   disappearing, so the affordance keeps mapping to the same control. */
+.hover-rail-chevron--horizontal.hover-rail-chevron--open {
   top: var(--nav-rail-height);
 }
 
+.hover-rail-chevron--vertical.hover-rail-chevron--open {
+  left: var(--side-rail-width);
+}
+
+.hover-rail {
+  transition: transform var(--transition);
+}
+
+.hover-rail--horizontal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  transform: translateY(-100%);
+}
+
+.hover-rail--vertical {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--side-rail-width);
+  z-index: 100;
+  transform: translateX(-100%);
+}
+
+.hover-rail--horizontal.hover-rail--visible {
+  transform: translateY(0);
+}
+
+.hover-rail--vertical.hover-rail--visible {
+  transform: translateX(0);
+}
+
+/* === Nav Rail (horizontal hover rail content) === */
 .nav-rail {
   display: flex;
   align-items: center;
@@ -234,22 +314,7 @@ body,
   flex-shrink: 0;
   padding: 0 var(--content-gutter);
   border-bottom: 1px solid var(--border);
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
   background: var(--bg);
-  transform: translateY(-100%);
-  opacity: 0;
-  transition:
-    transform var(--transition),
-    opacity var(--transition);
-}
-
-.nav-rail.nav-rail--visible {
-  transform: translateY(0);
-  opacity: 1;
 }
 
 .nav-rail .tab {
@@ -343,6 +408,14 @@ body,
   position: relative;
 }
 
+/* Matches and Set share the reclaimed browser height. The Set sub-tab bar
+   (35px + 12px margin = 47px) moved into a hover rail, and a 70.5px basis at
+   1:2 grow gives the top region exactly (2/3) × 70.5 ≈ 47px more than the
+   plain split. */
+.top-region--reclaim {
+  flex: 1 1 70.5px;
+}
+
 .browse-panel {
   flex: 1;
   min-height: 0;
@@ -352,20 +425,17 @@ body,
 }
 
 /* === Playback Bar === */
+/* Sits in normal flow at the bottom of its region, so it takes its height
+   from that panel instead of overlaying its last rows. */
 .playback-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   height: 48px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 0 16px;
   background: var(--surface);
   border-top: 1px solid var(--border);
-  opacity: 0.7;
-  z-index: 200;
 }
 
 .playback-bar-play-btn {
@@ -431,6 +501,112 @@ body,
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* The regions declare their own display, which would defeat the `hidden`
+   attribute used to collapse them without unmounting their state. */
+.top-region[hidden],
+.bottom-region[hidden] {
+  display: none;
+}
+
+/* === Collapse button (shared: region divider bars, workspace handles) === */
+/* Thickness (height for horizontal, width for vertical) comes from the
+   CollapseButton component's size prop as an inline style. */
+.collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  background: var(--surface);
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition:
+    color var(--transition),
+    background var(--transition);
+}
+
+.collapse-btn:hover,
+.collapse-btn:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.collapse-btn-chevron--up {
+  transform: translateY(var(--chevron-offset)) rotate(225deg);
+}
+
+.collapse-btn-chevron--left {
+  transform: translateX(var(--chevron-offset)) rotate(135deg);
+}
+
+.collapse-btn-chevron--right {
+  transform: translateX(calc(-1 * var(--chevron-offset))) rotate(-45deg);
+}
+
+/* === Region collapse (browser vs. bottom panel) === */
+/* Two full-width bars stacked vertically — the up bar hugs the browser, the
+   down bar hugs the bottom panel — mirroring the side-by-side handles
+   between the tracklist and pool. */
+.region-divider {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.region-divider .collapse-btn + .collapse-btn {
+  border-top: 1px solid var(--border);
+}
+
+.region-chevron--up {
+  transform: rotate(180deg);
+}
+
+.region-expand-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 28px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    background var(--transition);
+}
+
+.region-expand-tab--bottom {
+  border-bottom: none;
+  border-top: 1px solid var(--border);
+}
+
+.region-expand-tab:hover,
+.region-expand-tab:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.region-expand-chevron {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .browse-panel .table-panel {
@@ -1795,21 +1971,17 @@ body,
   letter-spacing: 0.04em;
 }
 
-/* === Scroll Sentinel === */
-.scroll-sentinel {
-  padding: 16px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
 /* === Set Builder === */
 .set-builder {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 16px var(--content-gutter);
+  /* Left edge reserves the vertical rail chevron's sliver (like the app
+     shell's top padding does for the nav chevron); the rail itself is
+     positioned against this container. */
+  position: relative;
+  padding: 8px var(--content-gutter) 8px var(--nav-chevron-height);
 }
 
 .nav-rail-set-controls {
@@ -1908,23 +2080,62 @@ body,
   opacity: 0.85;
 }
 
-.set-export-btn {
-  padding: 6px 14px;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 12px;
-  cursor: pointer;
-  margin-left: auto;
-  white-space: nowrap;
-  transition: all var(--transition);
+.set-tracklist-title-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.set-export-btn:hover {
+.set-tracklist-menu-wrapper {
+  position: relative;
+}
+
+.set-tracklist-menu-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  transition: color var(--transition);
+}
+
+.set-tracklist-menu-toggle:hover {
   color: var(--text);
-  border-color: var(--text-muted);
+}
+
+.set-tracklist-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 60;
+  min-width: 140px;
+  padding: 4px;
+}
+
+.set-tracklist-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+
+.set-tracklist-menu-item:hover {
+  background: var(--surface-hover);
 }
 
 .set-columns {
@@ -2185,41 +2396,48 @@ body,
   flex-shrink: 0;
 }
 
-/* === Set workspace sub-tabs === */
-.set-sub-tabs {
+/* === Set workspace side rail (Tracks/Explorer, vertical hover rail) === */
+.set-side-rail {
   display: flex;
-  align-items: center;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px 0;
+  gap: 2px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
 }
 
-.set-sub-tab {
-  padding: 8px 18px;
+.set-side-tab {
+  padding: 10px 14px;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-left: 2px solid transparent;
   color: var(--text-muted);
-  cursor: pointer;
+  font-family: var(--font-body);
   font-size: 13px;
+  text-align: left;
+  cursor: pointer;
   transition:
     color var(--transition),
     border-color var(--transition);
 }
 
-.set-sub-tab:hover {
+.set-side-tab:hover {
   color: var(--text);
 }
 
-.set-sub-tab.active {
+.set-side-tab.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  border-left-color: var(--accent);
 }
 
 .set-workspace-split {
   display: flex;
   gap: 0;
-  min-height: 300px;
+  /* Must be shrinkable: a fixed floor here pushes the modals' bottom edge
+     behind the in-flow playback bar on short viewports (the builder clips
+     it), hiding their last rows. The inner tables scroll instead. */
+  min-height: 0;
   flex: 1;
   overflow: hidden;
 }
@@ -2229,7 +2447,7 @@ body,
 .set-tracklist {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px;
+  padding: 8px;
   overflow: auto;
 }
 
@@ -2736,6 +2954,14 @@ body,
   flex-shrink: 0;
 }
 
+/* With the tracklist collapsed to its slim tab, the pool unfurls over the
+   whole remaining width. */
+.set-pool-accordion.set-pool-accordion--full {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
 .set-pool-expand-tab {
   display: flex;
   align-items: center;
@@ -2778,29 +3004,21 @@ body,
   white-space: nowrap;
 }
 
+/* Appearance and sizing come from the shared CollapseButton; these classes
+   only place the dividing border on the side facing the neighboring panel. */
 .set-pool-collapse-handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  min-width: 28px;
-  flex-shrink: 0;
-  background: var(--surface);
-  border: none;
   border-right: 1px solid var(--border);
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 18px;
-  transition:
-    color var(--transition),
-    background var(--transition);
 }
 
-.set-pool-collapse-handle:hover,
-.set-pool-collapse-handle:focus-visible {
-  color: var(--text);
-  background: var(--surface-hover);
-  outline: none;
+/* Mirror of the pool collapse handle, attached to the tracklist's right
+   edge; collapsing it lets the pool take the full split width. */
+.set-tracklist-collapse-handle {
+  border-left: 1px solid var(--border);
+}
+
+.set-tracklist-expand-tab {
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
 }
 
 .set-pool-accordion-content {
@@ -2951,6 +3169,13 @@ body,
   transition: opacity 0.15s ease;
 }
 
+.pool-tab-wrapper--dragging {
+  opacity: 0.4;
+}
+.pool-tab-wrapper--drop-target {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 /* === Row drag reordering (tracklist + pool) === */
 
 .set-row-dragging {
@@ -3064,7 +3289,10 @@ body,
 .subgroup-chips {
   display: flex;
   gap: 3px;
-  flex-wrap: wrap;
+}
+.subgroup-chips--stack {
+  flex-direction: column;
+  align-items: flex-start;
 }
 .subgroup-chip {
   background: var(--surface);

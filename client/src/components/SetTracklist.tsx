@@ -1,8 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import type { TracklistEntry, SearchSuggestion, Track } from '../types'
-import { cleanTitle } from '../utils/trackTitle'
+import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
+import { displayTitle } from '../utils/trackTitle'
+import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
+import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
 import { useResizableColumns } from '../hooks/useResizableColumns'
 import { PlayButton } from './PlayButton'
 
@@ -14,6 +17,8 @@ interface Props {
   onReorder: (trackId: number, newPosition: number) => void
   onUpdateNote: (trackId: number, note: string) => void
   onAddTrack: (trackId: number, title?: string) => void
+  onDropFromPool: (trackId: number) => void
+  onExportM3u8: () => void
 }
 
 function NoteInput({
@@ -74,12 +79,18 @@ export function SetTracklist({
   onReorder,
   onUpdateNote,
   onAddTrack,
+  onDropFromPool,
+  onExportM3u8,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
+
+  useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
   const { widths: colWidths, beginResize } = useResizableColumns(
     'xeremia-set-tracklist-col-widths',
   )
@@ -91,7 +102,14 @@ export function SetTracklist({
     },
     [allTracks, onAddTrack],
   )
-  const { dropActive, dropHandlers } = useExternalTrackDrop(handleExternalDrop)
+  const dropTargets = useMemo<TrackDropTarget[]>(
+    () => [
+      { mime: TRACK_DRAG_MIME, onDropTrack: handleExternalDrop },
+      { mime: POOL_ROW_MIME, onDropTrack: onDropFromPool, dropEffect: 'move' },
+    ],
+    [handleExternalDrop, onDropFromPool],
+  )
+  const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
 
   const colStyle = (id: string) =>
     colWidths[id] != null ? { width: colWidths[id] } : undefined
@@ -134,7 +152,35 @@ export function SetTracklist({
       {...dropHandlers}
     >
       <div className="set-tracklist-header">
-        <h3 className="set-section-title">Tracklist ({tracklist.length})</h3>
+        <div className="set-tracklist-title-group">
+          <h3 className="set-section-title">Tracklist ({tracklist.length})</h3>
+          {tracklist.length > 0 && (
+            <div className="set-tracklist-menu-wrapper" ref={menuRef}>
+              <button
+                className="set-tracklist-menu-toggle"
+                aria-label="Tracklist menu"
+                aria-haspopup="true"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((prev) => !prev)}
+              >
+                ⋯
+              </button>
+              {menuOpen && (
+                <div className="set-tracklist-menu">
+                  <button
+                    className="set-tracklist-menu-item"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onExportM3u8()
+                    }}
+                  >
+                    Export m3u8
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="set-tracklist-search-wrapper">
           <input
             className="set-tracklist-search"
@@ -202,6 +248,10 @@ export function SetTracklist({
                 }
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/plain', String(entry.track_id))
+                  e.dataTransfer.setData(
+                    TRACKLIST_ROW_MIME,
+                    String(entry.track_id),
+                  )
                   e.dataTransfer.effectAllowed = 'move'
                   setDragIndex(i)
                 }}
@@ -240,7 +290,7 @@ export function SetTracklist({
                 </td>
                 <td className="mono set-ws-cell-num">{i + 1}</td>
                 <td className="set-ws-cell-title">
-                  {cleanTitle(entry.track, entry.track_id)}
+                  {displayTitle(entry.track, entry.track_id)}
                 </td>
                 <td className="mono set-ws-cell-key">
                   {entry.track?.camelot_code ?? '—'}
