@@ -146,7 +146,7 @@ export function App() {
   }, [clearMatchSource])
 
   const handleUseAsSource = useCallback(
-    (candidateId: number) => {
+    (candidateId: number, syncBrowseSelection = false) => {
       if (!matchSource) {
         return
       }
@@ -156,10 +156,17 @@ export function App() {
       }
       setTransitionChain((prev) => [...prev, { track: matchSource }])
       setDetailMatch(null)
-      setBrowseSelection(candidate)
+      if (syncBrowseSelection) {
+        setBrowseSelection(candidate)
+      }
       selectMatchSource(candidate)
     },
     [matchSource, allTracks, selectMatchSource],
+  )
+
+  const handleTrackDropAsSource = useCallback(
+    (candidateId: number) => handleUseAsSource(candidateId, true),
+    [handleUseAsSource],
   )
 
   const handleChainNavigate = useCallback(
@@ -259,7 +266,7 @@ export function App() {
                 clearBrowseSelection={handleClearBrowse}
                 onSearchTextChange={setSearchText}
                 searchText={searchText}
-                onTrackDrop={handleUseAsSource}
+                onTrackDrop={handleTrackDropAsSource}
               />
               <FilterBar
                 camelotCodes={filters.camelotCodes}
