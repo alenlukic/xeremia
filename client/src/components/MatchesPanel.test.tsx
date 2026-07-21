@@ -237,9 +237,9 @@ describe('MatchesPanel', () => {
       )
       const toggles = document.querySelectorAll('.ds-toggle-filter')
       expect(toggles.length).toBe(3)
-      expect(Array.from(toggles).map((t) => t.getAttribute('aria-pressed'))).toEqual(
-        ['true', 'true', 'true'],
-      )
+      expect(
+        Array.from(toggles).map((t) => t.getAttribute('aria-pressed')),
+      ).toEqual(['true', 'true', 'true'])
     })
 
     it('shows correct per-bucket counts', () => {
@@ -319,7 +319,9 @@ describe('MatchesPanel', () => {
       ) as HTMLElement
       expect(scoreCell).toBeTruthy()
       expect(scoreCell.style.backgroundColor).not.toBe('')
-      expect(scoreCell.style.backgroundImage).toContain('repeating-linear-gradient')
+      expect(scoreCell.style.backgroundImage).toContain(
+        'repeating-linear-gradient',
+      )
     })
   })
 

@@ -373,6 +373,80 @@ class TestPoolSubgroups:
         assert memberships[0].pool_entry_id == entries[10].id
 
 
+class TestSubgroupDrop:
+    def _set_with_subgroup(self, svc, session):
+        s = svc.create_set("S")
+        session.commit()
+        sg = svc.subgroup_create(s.id, "Warmup")
+        session.commit()
+        return s, sg
+
+    def test_drop_from_browse_adds_pool_and_membership(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, sg = self._set_with_subgroup(svc, session)
+        member, err = svc.subgroup_drop_track(s.id, sg.id, 42, "browse")
+        assert err is None
+        assert member is not None
+        pool = session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=42).one()
+        assert (
+            session.query(SetPoolSubgroupMember)
+            .filter_by(subgroup_id=sg.id, pool_entry_id=pool.id)
+            .count()
+            == 1
+        )
+
+    def test_drop_from_tracklist_moves_and_assigns(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, sg = self._set_with_subgroup(svc, session)
+        svc.tracklist_add(s.id, 55)
+        session.commit()
+        member, err = svc.subgroup_drop_track(s.id, sg.id, 55, "tracklist")
+        assert err is None
+        assert member is not None
+        assert (
+            session.query(SetTracklistEntry).filter_by(set_id=s.id, track_id=55).count()
+            == 0
+        )
+        pool = session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=55).one()
+        assert member.pool_entry_id == pool.id
+
+    def test_drop_already_pooled_is_membership_only(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, sg = self._set_with_subgroup(svc, session)
+        entry, _ = svc.pool_add(s.id, 77)
+        session.commit()
+        original_order = entry.insertion_order
+        member, err = svc.subgroup_drop_track(s.id, sg.id, 77, "pool")
+        assert err is None
+        assert member is not None
+        session.refresh(entry)
+        assert entry.insertion_order == original_order
+        m2, err2 = svc.subgroup_drop_track(s.id, sg.id, 77, "pool")
+        assert err2 is None
+        assert m2.id == member.id
+
+    def test_drop_rejects_tracklist_source_when_not_in_tracklist(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, sg = self._set_with_subgroup(svc, session)
+        member, err = svc.subgroup_drop_track(s.id, sg.id, 88, "tracklist")
+        assert member is None
+        assert err is not None
+        assert "tracklist" in err.lower()
+
+    def test_drop_rejects_pool_source_when_not_in_pool(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s, sg = self._set_with_subgroup(svc, session)
+        member, err = svc.subgroup_drop_track(s.id, sg.id, 99, "pool")
+        assert member is None
+        assert err is not None
+        assert "pool" in err.lower()
+
+
 class TestPoolReorder:
     def _pool_track_order(self, session, set_id):
         entries = (

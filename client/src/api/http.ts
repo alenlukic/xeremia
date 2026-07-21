@@ -347,6 +347,28 @@ export async function subgroupRemoveMember(
   }
 }
 
+export type SubgroupDropSource = 'browse' | 'tracklist' | 'pool'
+
+export async function subgroupDropTrack(
+  setId: number,
+  subgroupId: number,
+  trackId: number,
+  source: SubgroupDropSource,
+): Promise<void> {
+  const res = await fetch(
+    `/api/sets/${setId}/pool/subgroups/${subgroupId}/drop`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ track_id: trackId, source }),
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || `Subgroup drop failed: ${res.status}`)
+  }
+}
+
 export async function tracklistAdd(
   setId: number,
   trackId: number,

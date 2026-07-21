@@ -97,10 +97,10 @@ describe('BrowseFilterGroups', () => {
       <BrowseFilterGroups {...filterProps} model={model} />,
     )
     expect(container.querySelectorAll('.filter-group')).toHaveLength(2)
-    expect(container.querySelector('.filter-or-divider')?.textContent).toBe('OR')
-    expect(
-      screen.getByRole('button', { name: 'Key: 01A' }),
-    ).toBeInTheDocument()
+    expect(container.querySelector('.filter-or-divider')?.textContent).toBe(
+      'OR',
+    )
+    expect(screen.getByRole('button', { name: 'Key: 01A' })).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'BPM: 120–130' }),
     ).toBeInTheDocument()
@@ -119,9 +119,9 @@ describe('BrowseFilterGroups', () => {
       screen.getByRole('button', { name: 'Remove Key filter' }),
     )
     const next = applyLastSetModel(setModel, model)
-    expect(
-      next.flatMap((g) => g.conditions).some((c) => c.id === 'c1'),
-    ).toBe(false)
+    expect(next.flatMap((g) => g.conditions).some((c) => c.id === 'c1')).toBe(
+      false,
+    )
   })
 })
 
@@ -161,13 +161,19 @@ describe('matchesModel', () => {
 
   it('ORs across groups', () => {
     const model: FilterModel = [
-      { id: 'g1', conditions: [{ id: 'a', kind: 'genre', values: ['Techno'] }] },
-      { id: 'g2', conditions: [{ id: 'b', kind: 'label', values: ['Anjuna'] }] },
+      {
+        id: 'g1',
+        conditions: [{ id: 'a', kind: 'genre', values: ['Techno'] }],
+      },
+      {
+        id: 'g2',
+        conditions: [{ id: 'b', kind: 'label', values: ['Anjuna'] }],
+      },
     ]
     // Genre House fails group 1 but label Anjuna satisfies group 2.
-    expect(matchesModel(track({ genre: 'House', label: 'Anjuna' }), model)).toBe(
-      true,
-    )
+    expect(
+      matchesModel(track({ genre: 'House', label: 'Anjuna' }), model),
+    ).toBe(true)
     expect(matchesModel(track({ genre: 'House', label: 'Other' }), model)).toBe(
       false,
     )
@@ -178,7 +184,12 @@ describe('matchesModel', () => {
       {
         id: 'g',
         conditions: [
-          { id: 'd', kind: 'dateAdded', after: '2024-01-01', before: '2024-01-31' },
+          {
+            id: 'd',
+            kind: 'dateAdded',
+            after: '2024-01-01',
+            before: '2024-01-31',
+          },
         ],
       },
     ]
@@ -243,7 +254,10 @@ describe('TrackTable column visibility', () => {
 
   it('renders BPM as a rounded integer', () => {
     render(
-      <TrackTable tracks={[{ ...sampleTrack, bpm: 128.7 }]} {...trackTableProps} />,
+      <TrackTable
+        tracks={[{ ...sampleTrack, bpm: 128.7 }]}
+        {...trackTableProps}
+      />,
     )
     const cells = screen.getAllByRole('cell')
     const bpmCell = cells.find((c) => c.textContent === '129')
@@ -254,7 +268,10 @@ describe('TrackTable column visibility', () => {
 
   it('renders BPM as integer with no trailing decimal for whole numbers', () => {
     render(
-      <TrackTable tracks={[{ ...sampleTrack, bpm: 130.0 }]} {...trackTableProps} />,
+      <TrackTable
+        tracks={[{ ...sampleTrack, bpm: 130.0 }]}
+        {...trackTableProps}
+      />,
     )
     const cells = screen.getAllByRole('cell')
     const bpmCell = cells.find((c) => c.textContent === '130')

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import type { TracklistEntry, Track } from '../types'
 import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
@@ -125,7 +125,9 @@ export function SetTracklist({
   onDropFromPool,
   onExportM3u8,
 }: Props) {
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  // Track-id based (not index): survives list refresh mid-drag and never
+  // leaves a stale "dragging" class stuck on whatever sits at index 0.
+  const [dragTrackId, setDragTrackId] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
   // Live width for the column being resized. Kept local so a drag re-renders
@@ -142,6 +144,47 @@ export function SetTracklist({
     () => new Map(TABLE_REGISTRIES.tracklist.map((entry) => [entry.id, entry])),
     [],
   )
+  const tracklistIdsKey = useMemo(
+    () => tracklist.map((entry) => entry.id).join(','),
+    [tracklist],
+  )
+
+  const clearRowDragState = useCallback(() => {
+    setDragTrackId(null)
+    setDropIndex(null)
+  }, [])
+
+  const dataTransferHasType = useCallback(
+    (e: React.DragEvent, mime: string) => {
+      const types = e.dataTransfer?.types
+      if (!types) {
+        return false
+      }
+      return Array.from(types as ArrayLike<string>).includes(mime)
+    },
+    [],
+  )
+
+  // Dropping an external track onto a row must not be stolen by a stale
+  // internal reorder session (e.g. dragEnd skipped after a list refresh).
+  const isExternalTrackDrag = useCallback(
+    (e: React.DragEvent) =>
+      dataTransferHasType(e, TRACK_DRAG_MIME) ||
+      dataTransferHasType(e, POOL_ROW_MIME),
+    [dataTransferHasType],
+  )
+
+  // Clear ghost-drag styling if the row set changes or the browser cancels
+  // the drag without delivering dragEnd to the original element.
+  useEffect(() => {
+    clearRowDragState()
+  }, [tracklistIdsKey, clearRowDragState])
+
+  useEffect(() => {
+    const onDragEnd = () => clearRowDragState()
+    window.addEventListener('dragend', onDragEnd, true)
+    return () => window.removeEventListener('dragend', onDragEnd, true)
+  }, [clearRowDragState])
 
   const beginResize = useCallback(
     (colId: string, e: React.MouseEvent) => {
@@ -217,21 +260,31 @@ export function SetTracklist({
     [],
   )
 
-  const handleColumnDragOver = useCallback((e: React.DragEvent) => {
-    const types = e.dataTransfer?.types ?? []
-    if (
-      types.includes(TRACK_DRAG_MIME) ||
-      types.includes(TRACKLIST_ROW_MIME) ||
-      types.includes(POOL_ROW_MIME)
-    ) {
-      return
-    }
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }, [])
+  const handleColumnDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (
+        dataTransferHasType(e, TRACK_DRAG_MIME) ||
+        dataTransferHasType(e, TRACKLIST_ROW_MIME) ||
+        dataTransferHasType(e, POOL_ROW_MIME)
+      ) {
+        return
+      }
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+    },
+    [dataTransferHasType],
+  )
 
   const handleColumnDrop = useCallback(
     (e: React.DragEvent, targetId: string) => {
+      // Track drops belong to the panel container, not column reorder.
+      if (
+        dataTransferHasType(e, TRACK_DRAG_MIME) ||
+        dataTransferHasType(e, TRACKLIST_ROW_MIME) ||
+        dataTransferHasType(e, POOL_ROW_MIME)
+      ) {
+        return
+      }
       e.preventDefault()
       const draggedId = e.dataTransfer.getData('text/plain')
       if (!draggedId || draggedId === targetId) {
@@ -241,7 +294,7 @@ export function SetTracklist({
       onReorderColumn(draggedId, targetId)
       setDraggedColumn(null)
     },
-    [onReorderColumn],
+    [dataTransferHasType, onReorderColumn],
   )
 
   const handleColumnDragEnd = useCallback(() => {
@@ -427,50 +480,70 @@ export function SetTracklist({
                     key={entry.id}
                     draggable
                     className={
-                      (dragIndex === i ? 'set-row-dragging' : '') +
-                      (dropIndex === i && dragIndex !== null && dragIndex !== i
+                      (dragTrackId === entry.track_id
+                        ? 'set-row-dragging'
+                        : '') +
+                      (dropIndex === i &&
+                      dragTrackId !== null &&
+                      dragTrackId !== entry.track_id
                         ? ' set-row-drop-target'
                         : '')
                     }
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('text/plain', String(entry.track_id))
-                  e.dataTransfer.setData(
-                    TRACKLIST_ROW_MIME,
-                    String(entry.track_id),
-                  )
-                  e.dataTransfer.effectAllowed = 'move'
-                  setDragIndex(i)
-                }}
-                onDragOver={(e) => {
-                  if (dragIndex === null) {
-                    return
-                  }
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                  setDropIndex(i)
-                }}
-                onDragLeave={() => {
-                  setDropIndex((prev) => (prev === i ? null : prev))
-                }}
-                onDrop={(e) => {
-                  if (dragIndex === null) {
-                    return
-                  }
-                  e.preventDefault()
-                  if (dragIndex !== i) {
-                    onReorder(tracklist[dragIndex].track_id, i)
-                  }
-                  setDragIndex(null)
-                  setDropIndex(null)
-                }}
-                onDragEnd={() => {
-                  setDragIndex(null)
-                  setDropIndex(null)
-                }}
-              >
-                {visibleIds.map((colId) => renderBodyCell(colId, entry, i))}
-              </tr>
-            ))}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(
+                        'text/plain',
+                        String(entry.track_id),
+                      )
+                      e.dataTransfer.setData(
+                        TRACKLIST_ROW_MIME,
+                        String(entry.track_id),
+                      )
+                      e.dataTransfer.effectAllowed = 'move'
+                      setDragTrackId(entry.track_id)
+                    }}
+                    onDragOver={(e) => {
+                      if (isExternalTrackDrag(e)) {
+                        // Stale internal drag must not block panel-level drops.
+                        if (dragTrackId !== null) {
+                          clearRowDragState()
+                        }
+                        return
+                      }
+                      if (dragTrackId === null) {
+                        return
+                      }
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      setDropIndex(i)
+                    }}
+                    onDragLeave={() => {
+                      setDropIndex((prev) => (prev === i ? null : prev))
+                    }}
+                    onDrop={(e) => {
+                      if (isExternalTrackDrag(e)) {
+                        clearRowDragState()
+                        return
+                      }
+                      if (dragTrackId === null) {
+                        return
+                      }
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const fromIndex = tracklist.findIndex(
+                        (row) => row.track_id === dragTrackId,
+                      )
+                      if (fromIndex !== -1 && fromIndex !== i) {
+                        onReorder(dragTrackId, i)
+                      }
+                      clearRowDragState()
+                    }}
+                    onDragEnd={() => {
+                      clearRowDragState()
+                    }}
+                  >
+                    {visibleIds.map((colId) => renderBodyCell(colId, entry, i))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

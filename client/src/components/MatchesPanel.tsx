@@ -33,20 +33,14 @@ import {
 import { TableHeader } from './table/TableHeader'
 import { TableControlPanel } from './table/TableControlPanel'
 import { SortTierBar, SortAddButton } from './SortTierBar'
-import {
-  TableFilterAddButton,
-  TableFilterPills,
-} from './table/TableFilterBar'
+import { TableFilterAddButton, TableFilterPills } from './table/TableFilterBar'
 import {
   isActiveFilter,
   passesFilter,
   type FilterMap,
   type NumericFilter,
 } from './table/tableFilter'
-import {
-  ToggleFilterGroup,
-  type ToggleOption,
-} from './table/ToggleFilterGroup'
+import { ToggleFilterGroup, type ToggleOption } from './table/ToggleFilterGroup'
 import { normalizeScore, scoreCellStyle } from './table/scoreGradient'
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key'
@@ -239,9 +233,8 @@ export const MatchesPanel = memo(function MatchesPanel({
   // Column widths live locally during an active resize so the drag doesn't
   // round-trip through App state on every mousemove (which re-rendered every
   // quadrant). The final width is flushed on mouse-up.
-  const [resizingSizing, setResizingSizing] = useState<ColumnSizingState | null>(
-    null,
-  )
+  const [resizingSizing, setResizingSizing] =
+    useState<ColumnSizingState | null>(null)
 
   // Persistent Same/Higher/Lower key-relationship toggles (replace the old tabs;
   // all buckets on by default, all results live in one table).

@@ -857,6 +857,53 @@ describe('SetExplorerCanvas', () => {
     })
   })
 
+  describe('level row labels', () => {
+    it('renders one accessible label per rendered level left of nodes', () => {
+      const nodes = [
+        makeNode({
+          id: 1,
+          node_id: 'n1',
+          track_id: 10,
+          level: 0,
+          col_index: 0,
+        }),
+        makeNode({
+          id: 2,
+          node_id: 'n2',
+          track_id: 11,
+          level: 1,
+          col_index: 0,
+        }),
+      ]
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ]
+      const { container } = render(
+        <SetExplorerCanvas {...defaultProps({ nodes, edges })} />,
+      )
+      const labels = screen.getAllByTestId('explorer-level-label')
+      expect(labels.length).toBe(3)
+      expect(labels[0]).toHaveAttribute('data-level', '0')
+      expect(labels[1]).toHaveAttribute('data-level', '1')
+      expect(labels[2]).toHaveAttribute('data-level', '2')
+      const firstNode = container.querySelector(
+        '[data-testid="explorer-node"]',
+      )!
+      const labelX = Number(labels[0].getAttribute('x'))
+      const nodeX = Number(
+        firstNode.getAttribute('transform')?.match(/translate\(([^,]+)/)?.[1],
+      )
+      expect(labelX).toBeLessThan(nodeX)
+    })
+
+    it('renders a level-0 label in the empty explorer state', () => {
+      render(<SetExplorerCanvas {...defaultProps()} />)
+      const label = screen.getByTestId('explorer-level-label')
+      expect(label).toHaveAttribute('data-level', '0')
+      expect(label).toHaveAttribute('aria-label', 'Level 0')
+    })
+  })
+
   describe('empty state', () => {
     it('shows empty message when no nodes exist', () => {
       render(<SetExplorerCanvas {...defaultProps()} />)
@@ -1121,9 +1168,10 @@ describe('SetExplorerCanvas', () => {
     const HALF_SLOT_SPAN = NODE_W / 2 / EDGE_SLOTS
     const LANE_STUB = 10
     const LANE_S = 6
+    const LEVEL_LABEL_GUTTER = 56
 
     function parentX(col: number) {
-      return col * SLOT_W + (SLOT_W - NODE_W) / 2
+      return LEVEL_LABEL_GUTTER + col * SLOT_W + (SLOT_W - NODE_W) / 2
     }
     function parentBottom(level: number) {
       return TOP_PAD + level * (NODE_H + V_GAP) + NODE_H

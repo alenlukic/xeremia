@@ -30,10 +30,7 @@ import {
 } from './TableColumnControls'
 import { TableHeader } from './table/TableHeader'
 import { TableControlPanel } from './table/TableControlPanel'
-import {
-  TableFilterAddButton,
-  TableFilterPills,
-} from './table/TableFilterBar'
+import { TableFilterAddButton, TableFilterPills } from './table/TableFilterBar'
 import {
   isActiveFilter,
   passesFilter,
@@ -96,6 +93,32 @@ const DEFAULT_POOL_SORTING: SortDescriptor[] = [
 /** Filterable pool columns for the design-system Add-filter control. */
 const POOL_FILTER_COLUMNS = [{ id: 'bpm', label: 'BPM' }]
 
+type SubgroupDropSource = 'browse' | 'tracklist' | 'pool'
+
+function trackDropSource(types: readonly string[]): SubgroupDropSource | null {
+  if (types.includes(TRACK_DRAG_MIME)) {
+    return 'browse'
+  }
+  if (types.includes(TRACKLIST_ROW_MIME)) {
+    return 'tracklist'
+  }
+  if (types.includes(POOL_ROW_MIME)) {
+    return 'pool'
+  }
+  return null
+}
+
+function trackDropMime(source: SubgroupDropSource): string {
+  switch (source) {
+    case 'browse':
+      return TRACK_DRAG_MIME
+    case 'tracklist':
+      return TRACKLIST_ROW_MIME
+    case 'pool':
+      return POOL_ROW_MIME
+  }
+}
+
 /** Group-dot color for a subgroup by its stable index; cycles the 8 tokens. */
 function subgroupColorVar(index: number): string {
   return `var(--dot-${(index % 8) + 1})`
@@ -155,6 +178,11 @@ interface Props {
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
   onDropFromTracklist: (trackId: number) => void
+  onDropTrackToSubgroup: (
+    subgroupId: number,
+    trackId: number,
+    source: SubgroupDropSource,
+  ) => void
 }
 
 function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
@@ -590,6 +618,9 @@ function PoolTabBar({
   onReorderSubgroups,
   activeTab,
   onTabChange,
+  onDropTrackToSubgroup,
+  trackDropSubgroupId,
+  onTrackDropSubgroupChange,
 }: {
   subgroups: PoolSubgroup[]
   colorByIndex: Map<number, string>
@@ -600,6 +631,13 @@ function PoolTabBar({
   onReorderSubgroups: (subgroupIds: number[]) => Promise<boolean>
   activeTab: PoolTab
   onTabChange: (tab: PoolTab) => void
+  onDropTrackToSubgroup: (
+    subgroupId: number,
+    trackId: number,
+    source: SubgroupDropSource,
+  ) => void
+  trackDropSubgroupId: number | null
+  onTrackDropSubgroupChange: (subgroupId: number | null) => void
 }) {
   const [showNewInput, setShowNewInput] = useState(false)
   const [newName, setNewName] = useState('')
@@ -679,6 +717,9 @@ function PoolTabBar({
             tabDragIndex !== null &&
             tabDragIndex !== idx
               ? ' pool-tab-wrapper--drop-target'
+              : '') +
+            (trackDropSubgroupId === sg.id
+              ? ' pool-tab-wrapper--track-drop-target'
               : '')
           }
           draggable={editingId !== sg.id}
@@ -688,6 +729,14 @@ function PoolTabBar({
             setTabDragIndex(idx)
           }}
           onDragOver={(e) => {
+            const source = trackDropSource(e.dataTransfer?.types ?? [])
+            if (source) {
+              e.preventDefault()
+              e.stopPropagation()
+              e.dataTransfer.dropEffect = source === 'browse' ? 'copy' : 'move'
+              onTrackDropSubgroupChange(sg.id)
+              return
+            }
             if (tabDragIndex === null) {
               return
             }
@@ -695,10 +744,30 @@ function PoolTabBar({
             e.dataTransfer.dropEffect = 'move'
             setTabDropIndex(idx)
           }}
-          onDragLeave={() => {
+          onDragLeave={(e) => {
+            if (trackDropSource(e.dataTransfer?.types ?? [])) {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                onTrackDropSubgroupChange(null)
+              }
+              return
+            }
             setTabDropIndex((prev) => (prev === idx ? null : prev))
           }}
-          onDrop={(e) => handleTabDrop(idx, e)}
+          onDrop={(e) => {
+            const source = trackDropSource(e.dataTransfer?.types ?? [])
+            if (source) {
+              e.preventDefault()
+              e.stopPropagation()
+              onTrackDropSubgroupChange(null)
+              const raw = e.dataTransfer.getData(trackDropMime(source))
+              const trackId = Number(raw)
+              if (raw && Number.isInteger(trackId)) {
+                onDropTrackToSubgroup(sg.id, trackId, source)
+              }
+              return
+            }
+            handleTabDrop(idx, e)
+          }}
           onDragEnd={() => {
             setTabDragIndex(null)
             setTabDropIndex(null)
@@ -832,6 +901,9 @@ function SubgroupSection({
   onRemoveSubgroupMember,
   visibleColumnIds: columnIds,
   poolHeadProps,
+  onDropTrackToSubgroup,
+  trackDropSubgroupId,
+  onTrackDropSubgroupChange,
 }: {
   subgroup: PoolSubgroup
   entries: PoolEntry[]
@@ -850,6 +922,13 @@ function SubgroupSection({
     React.ComponentProps<typeof PoolTableHead>,
     'sorting' | 'onHeaderSort'
   >
+  onDropTrackToSubgroup: (
+    subgroupId: number,
+    trackId: number,
+    source: SubgroupDropSource,
+  ) => void
+  trackDropSubgroupId: number | null
+  onTrackDropSubgroupChange: (subgroupId: number | null) => void
 }) {
   const {
     attributes,
@@ -895,8 +974,37 @@ function SubgroupSection({
     <div
       ref={ref}
       style={style}
-      className={`subgroup-section${index % 2 === 1 ? ' subgroup-section--alt' : ''}${isOver && !isDragging ? ' subgroup-section--drop-target' : ''}`}
+      className={`subgroup-section${index % 2 === 1 ? ' subgroup-section--alt' : ''}${isOver && !isDragging ? ' subgroup-section--drop-target' : ''}${trackDropSubgroupId === subgroup.id ? ' subgroup-section--track-drop-target' : ''}`}
       data-subgroup-id={subgroup.id}
+      onDragOver={(e) => {
+        const source = trackDropSource(e.dataTransfer?.types ?? [])
+        if (!source) {
+          return
+        }
+        e.preventDefault()
+        e.stopPropagation()
+        e.dataTransfer.dropEffect = source === 'browse' ? 'copy' : 'move'
+        onTrackDropSubgroupChange(subgroup.id)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          onTrackDropSubgroupChange(null)
+        }
+      }}
+      onDrop={(e) => {
+        const source = trackDropSource(e.dataTransfer?.types ?? [])
+        if (!source) {
+          return
+        }
+        e.preventDefault()
+        e.stopPropagation()
+        onTrackDropSubgroupChange(null)
+        const raw = e.dataTransfer.getData(trackDropMime(source))
+        const trackId = Number(raw)
+        if (raw && Number.isInteger(trackId)) {
+          onDropTrackToSubgroup(subgroup.id, trackId, source)
+        }
+      }}
     >
       <div className="subgroup-section-header" {...attributes} {...listeners}>
         <span className="subgroup-section-drag-handle" aria-hidden="true">
@@ -969,6 +1077,7 @@ export function SetPoolTable({
   onAddSubgroupMember,
   onRemoveSubgroupMember,
   onDropFromTracklist,
+  onDropTrackToSubgroup,
 }: Props) {
   const poolColWidths = tableConfig.columnWidths
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
@@ -1005,9 +1114,12 @@ export function SetPoolTable({
   // Numeric column filters (design-system Add filter), applied on top of the
   // active tab/scope. Keyed by column id (currently BPM).
   const [poolFilters, setPoolFilters] = useState<FilterMap>({})
-  const setPoolFilter = useCallback((columnId: string, filter: NumericFilter) => {
-    setPoolFilters((prev) => ({ ...prev, [columnId]: filter }))
-  }, [])
+  const setPoolFilter = useCallback(
+    (columnId: string, filter: NumericFilter) => {
+      setPoolFilters((prev) => ({ ...prev, [columnId]: filter }))
+    },
+    [],
+  )
   const removePoolFilter = useCallback((columnId: string) => {
     setPoolFilters((prev) => {
       const next = { ...prev }
@@ -1135,10 +1247,9 @@ export function SetPoolTable({
     Record<string, SortDescriptor[]>
   >({})
   const [selectedTab, setSelectedTab] = useState<PoolTab>('all')
-  const pendingSubgroupAssign = useRef<{
-    trackId: number
-    subgroupId: number
-  } | null>(null)
+  const [trackDropSubgroupId, setTrackDropSubgroupId] = useState<number | null>(
+    null,
+  )
 
   // The selected subgroup tab can go stale when its group is deleted;
   // fall back to All without extra state.
@@ -1147,20 +1258,6 @@ export function SetPoolTable({
     !subgroups.some((sg) => sg.id === selectedTab)
       ? 'all'
       : selectedTab
-
-  // When a track was added from a subgroup tab, assign it to that subgroup
-  // as soon as its pool entry appears in the hydrated state.
-  useEffect(() => {
-    const pending = pendingSubgroupAssign.current
-    if (!pending) {
-      return
-    }
-    const entry = pool.find((e) => e.track_id === pending.trackId)
-    if (entry) {
-      pendingSubgroupAssign.current = null
-      onAddSubgroupMember(pending.subgroupId, entry.id)
-    }
-  }, [pool, onAddSubgroupMember])
 
   const membershipByEntry = useMemo(
     () =>
@@ -1363,6 +1460,9 @@ export function SetPoolTable({
                 onReorderSubgroups={onReorderSubgroups}
                 activeTab={activeTab}
                 onTabChange={setSelectedTab}
+                onDropTrackToSubgroup={onDropTrackToSubgroup}
+                trackDropSubgroupId={trackDropSubgroupId}
+                onTrackDropSubgroupChange={setTrackDropSubgroupId}
               />
             </div>
             {activeSortScope !== null && (
@@ -1390,7 +1490,9 @@ export function SetPoolTable({
           <SortTierBar
             sorting={activeSorting}
             columns={POOL_SORT_COLUMNS}
-            onSortingChange={(next) => setSortingForScope(activeSortScope, next)}
+            onSortingChange={(next) =>
+              setSortingForScope(activeSortScope, next)
+            }
             hideAddButton
           />
         )}
@@ -1441,6 +1543,9 @@ export function SetPoolTable({
                     onRemoveSubgroupMember={onRemoveSubgroupMember}
                     visibleColumnIds={displayColumns}
                     poolHeadProps={poolHeadBaseProps}
+                    onDropTrackToSubgroup={onDropTrackToSubgroup}
+                    trackDropSubgroupId={trackDropSubgroupId}
+                    onTrackDropSubgroupChange={setTrackDropSubgroupId}
                   />
                 )
               })}
@@ -1483,24 +1588,24 @@ export function SetPoolTable({
                     onAddSubgroupMember={onAddSubgroupMember}
                     onRemoveSubgroupMember={onRemoveSubgroupMember}
                     reorder={
-                  rowReorderEnabled
-                    ? {
-                        index: i,
-                        isDragging: rowDragIndex === i,
-                        isDropTarget:
-                          rowDropIndex === i &&
-                          rowDragIndex !== null &&
-                          rowDragIndex !== i,
-                        onDragStart: handleRowDragStart,
-                        onDragOver: handleRowDragOver,
-                        onDragLeave: handleRowDragLeave,
-                        onDrop: handleRowDrop,
-                        onDragEnd: handleRowDragEnd,
-                      }
-                    : undefined
-                }
-              />
-            ))}
+                      rowReorderEnabled
+                        ? {
+                            index: i,
+                            isDragging: rowDragIndex === i,
+                            isDropTarget:
+                              rowDropIndex === i &&
+                              rowDragIndex !== null &&
+                              rowDragIndex !== i,
+                            onDragStart: handleRowDragStart,
+                            onDragOver: handleRowDragOver,
+                            onDragLeave: handleRowDragLeave,
+                            onDrop: handleRowDrop,
+                            onDragEnd: handleRowDragEnd,
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
               </tbody>
             </table>
           </div>

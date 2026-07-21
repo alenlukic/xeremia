@@ -80,6 +80,7 @@ const TOP_PAD = ACTION_H + ACTION_ROW_MARGIN
 const LEVEL_ADD_W = 70
 const LEVEL_ADD_H = 28
 const LEVEL_ADD_GAP = 16
+const LEVEL_LABEL_GUTTER = 56
 const EDGE_SLOTS = 5
 // Departure slots (left half) and arrival slots (right half) of a node's
 // width never share an x-coordinate, even though `nodeX` itself repeats
@@ -720,7 +721,9 @@ export function SetExplorerCanvas({
           }
           colIndices.set(lvNodes[i].node.node_id, col)
           lvNodes[i].x =
-            Math.min(col, MAX_COLS - 1) * SLOT_W + (SLOT_W - NODE_W) / 2
+            LEVEL_LABEL_GUTTER +
+            Math.min(col, MAX_COLS - 1) * SLOT_W +
+            (SLOT_W - NODE_W) / 2
           lvNodes[i].y = TOP_PAD + lv * (NODE_H + V_GAP)
         }
       }
@@ -731,7 +734,7 @@ export function SetExplorerCanvas({
       const usedCols = byLevel.size > 0 ? maxColIndex + 1 : 1
       return {
         allFlat: flat,
-        totalWidth: Math.max(usedCols, MAX_COLS) * SLOT_W,
+        totalWidth: LEVEL_LABEL_GUTTER + Math.max(usedCols, MAX_COLS) * SLOT_W,
         totalHeight: TOP_PAD + (maxLv + 2) * (NODE_H + V_GAP) + 40,
         columnIndices: colIndices,
         byLevelMap: byLevel,
@@ -1214,10 +1217,22 @@ export function SetExplorerCanvas({
               className="set-explorer-svg"
               width={200}
               height={80}
-              viewBox="0 0 200 80"
+              viewBox={`0 0 ${Math.max(200, LEVEL_LABEL_GUTTER + 200)} 80`}
             >
+              <text
+                x={LEVEL_LABEL_GUTTER / 2}
+                y={40}
+                textAnchor="middle"
+                dominantBaseline="central"
+                className="explorer-level-label"
+                data-testid="explorer-level-label"
+                data-level="0"
+                aria-label="Level 0"
+              >
+                L0
+              </text>
               <g
-                transform={`translate(${(200 - LEVEL_ADD_W) / 2}, ${(80 - LEVEL_ADD_H) / 2})`}
+                transform={`translate(${LEVEL_LABEL_GUTTER + (200 - LEVEL_ADD_W) / 2}, ${(80 - LEVEL_ADD_H) / 2})`}
                 className="explorer-level-add-btn"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -1266,6 +1281,26 @@ export function SetExplorerCanvas({
             }}
             onClick={handleSvgClick}
           >
+            {/* Level row labels */}
+            {levelEntries.map(({ level }) => {
+              const rowY = TOP_PAD + level * (NODE_H + V_GAP) + NODE_H / 2
+              return (
+                <text
+                  key={`level-label-${level}`}
+                  x={LEVEL_LABEL_GUTTER / 2}
+                  y={rowY}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  className="explorer-level-label"
+                  data-testid="explorer-level-label"
+                  data-level={level}
+                  aria-label={`Level ${level}`}
+                >
+                  {`L${level}`}
+                </text>
+              )
+            })}
+
             {/* Edges */}
             {edges.map((edge) => {
               const parent = nodeMap.get(edge.parent_node_id)
@@ -1348,7 +1383,7 @@ export function SetExplorerCanvas({
                   : null
               const addX = lastNode
                 ? lastNode.x + NODE_W + LEVEL_ADD_GAP
-                : (SLOT_W - NODE_W) / 2
+                : LEVEL_LABEL_GUTTER + (SLOT_W - NODE_W) / 2
               const addY =
                 TOP_PAD + level * (NODE_H + V_GAP) + (NODE_H - LEVEL_ADD_H) / 2
               return (

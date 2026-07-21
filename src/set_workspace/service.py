@@ -342,6 +342,56 @@ class SetWorkspaceService:
         self.session.flush()
         return True, None
 
+    def subgroup_drop_track(
+        self,
+        set_id: int,
+        subgroup_id: int,
+        track_id: int,
+        source: str,
+    ) -> Tuple[Optional[SetPoolSubgroupMember], Optional[str]]:
+        """Atomically pool/move a track when needed, then assign subgroup membership."""
+        sg = self._get_subgroup(set_id, subgroup_id)
+        if sg is None:
+            return None, "Subgroup does not belong to this set"
+
+        pool_entry = (
+            self.session.query(SetPoolEntry)
+            .filter_by(set_id=set_id, track_id=track_id)
+            .first()
+        )
+        if pool_entry is not None:
+            return self.subgroup_add_track(set_id, subgroup_id, pool_entry.id)
+
+        if source == "browse":
+            entry, err = self.pool_add(set_id, track_id)
+            if err:
+                return None, err
+            pool_entry = entry
+        elif source == "tracklist":
+            tl_entry = (
+                self.session.query(SetTracklistEntry)
+                .filter_by(set_id=set_id, track_id=track_id)
+                .first()
+            )
+            if tl_entry is None:
+                return None, "Track not found in tracklist"
+            ok, err = self.tracklist_move_to_pool(set_id, track_id)
+            if not ok:
+                return None, err
+            pool_entry = (
+                self.session.query(SetPoolEntry)
+                .filter_by(set_id=set_id, track_id=track_id)
+                .first()
+            )
+        elif source == "pool":
+            return None, "Track not found in pool"
+        else:
+            return None, f"Invalid source: {source}"
+
+        if pool_entry is None:
+            return None, "Pool entry not found after move"
+        return self.subgroup_add_track(set_id, subgroup_id, pool_entry.id)
+
     # --- Tracklist operations ---
 
     def tracklist_add(

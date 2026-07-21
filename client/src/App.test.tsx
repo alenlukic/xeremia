@@ -564,7 +564,9 @@ describe('Error state handling', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('No matches for the active filters')).toBeInTheDocument()
+      expect(
+        screen.getByText('No matches for the active filters'),
+      ).toBeInTheDocument()
     })
 
     expect(screen.queryByText(/Failed to load matches/)).not.toBeInTheDocument()

@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react'
 import { SetPoolTable } from './SetPoolTable'
-import { TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
+import { TRACKLIST_ROW_MIME, POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types'
 import {
   testPoolTableProps,
@@ -66,6 +66,7 @@ function renderPool(
       onReorderSubgroups={asyncTrue}
       onAddSubgroupMember={asyncTrue}
       onRemoveSubgroupMember={asyncTrue}
+      onDropTrackToSubgroup={noop}
       onDropFromTracklist={noop}
       {...testPoolTableProps}
       {...extra}
@@ -474,8 +475,8 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     // Each dot carries a color (assigned from the group palette).
     expect(
       Array.from(pills).every(
-        (p) => (p.querySelector('.subgroup-dot') as HTMLElement).style
-          .background,
+        (p) =>
+          (p.querySelector('.subgroup-dot') as HTMLElement).style.background,
       ),
     ).toBe(true)
   })
@@ -744,6 +745,97 @@ describe('SetPoolTable cross-panel drag-and-drop', () => {
     fireEvent.drop(panel, crossDragData(POOL_ROW_MIME, 10))
     expect(onDropFromTracklist).not.toHaveBeenCalled()
     expect(onAddTrack).not.toHaveBeenCalled()
+  })
+})
+
+describe('SetPoolTable subgroup track drops', () => {
+  const subgroups: PoolSubgroup[] = [
+    { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+  ]
+
+  const crossDragData = (mime: string, trackId: number) => ({
+    dataTransfer: {
+      types: [mime],
+      getData: (m: string) => (m === mime ? String(trackId) : ''),
+      setData: noop,
+      effectAllowed: '',
+      dropEffect: '',
+    },
+  })
+
+  it('maps browse drag onto a subgroup tab to source browse', () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup },
+    )
+    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    fireEvent.drop(tabWrapper, crossDragData(TRACK_DRAG_MIME, 42))
+    expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 42, 'browse')
+  })
+
+  it('maps tracklist drag onto a subgroup tab to source tracklist', () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup },
+    )
+    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    fireEvent.drop(tabWrapper, crossDragData(TRACKLIST_ROW_MIME, 55))
+    expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 55, 'tracklist')
+  })
+
+  it('maps pool row drag onto a subgroup tab to source pool', () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup },
+    )
+    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    fireEvent.drop(tabWrapper, crossDragData(POOL_ROW_MIME, 10))
+    expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 10, 'pool')
+  })
+
+  it('marks subgroup tab as track-drop target while hovering', () => {
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup: noop },
+    )
+    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    fireEvent.dragOver(tabWrapper, crossDragData(TRACK_DRAG_MIME, 42))
+    expect(
+      tabWrapper.classList.contains('pool-tab-wrapper--track-drop-target'),
+    ).toBe(true)
+  })
+
+  it('still reorders tabs when dragging text/plain without track MIME', () => {
+    const onReorderSubgroups = vi.fn()
+    const twoGroups: PoolSubgroup[] = [
+      { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+      { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
+    ]
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      twoGroups,
+      [],
+      { onReorderSubgroups },
+    )
+    const wrappers = container.querySelectorAll('.pool-tab-wrapper')
+    fireEvent.dragStart(wrappers[0], {
+      dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
+    })
+    fireEvent.drop(wrappers[1], {
+      dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
+    })
+    expect(onReorderSubgroups).toHaveBeenCalledWith([2, 1])
   })
 })
 

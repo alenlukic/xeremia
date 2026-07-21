@@ -30,6 +30,7 @@ from src.api.schemas import (
     SetSummary,
     SetUpdateRequest,
     SubgroupCreateRequest,
+    SubgroupDropRequest,
     SubgroupMemberRequest,
     SubgroupRenameRequest,
     SubgroupReorderRequest,
@@ -1004,6 +1005,41 @@ def api_subgroup_remove_member(set_id: int, subgroup_id: int, pool_entry_id: int
         session.rollback()
         logger.exception("Subgroup remove member failed")
         raise HTTPException(status_code=500, detail="Subgroup remove member failed")
+    finally:
+        session.close()
+
+
+@router.post(
+    "/sets/{set_id}/pool/subgroups/{subgroup_id}/drop",
+    status_code=201,
+)
+def api_subgroup_drop_track(
+    set_id: int, subgroup_id: int, body: SubgroupDropRequest
+):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        if svc.get_set(set_id) is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        member, error = svc.subgroup_drop_track(
+            set_id,
+            subgroup_id,
+            body.track_id,
+            body.source,
+        )
+        if error:
+            status = 404 if "not found" in error.lower() else 400
+            raise HTTPException(status_code=status, detail=error)
+        session.commit()
+        return {"ok": True, "member_id": member.id}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Subgroup drop failed")
+        raise HTTPException(status_code=500, detail="Subgroup drop failed")
     finally:
         session.close()
 

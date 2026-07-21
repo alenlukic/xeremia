@@ -515,6 +515,7 @@ export function App() {
             reorderSubgroups={setBuilder.reorderSubgroups}
             addSubgroupMember={setBuilder.addSubgroupMember}
             removeSubgroupMember={setBuilder.removeSubgroupMember}
+            dropTrackToSubgroup={setBuilder.dropTrackToSubgroup}
             removeFromTracklist={setBuilder.removeFromTracklist}
             moveTracklistToPool={setBuilder.moveTracklistToPool}
             reorderTracklist={setBuilder.reorderTracklist}
