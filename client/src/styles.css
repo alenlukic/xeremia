@@ -26,6 +26,35 @@
   --divider-size: 14px;
   --divider-bar: 5px;
   --divider-bar-hover: 20px;
+
+  /* === Design system: table component === */
+  /* Elevation / contrast. --surface-2 lifts headers & control panels off the
+     quadrant surface; --row-alt is the alternating value-row wash; the strong
+     border sharpens zone edges where the hairline --border reads too faint. */
+  --surface-2: #20242f;
+  --row-alt: rgba(255, 255, 255, 0.022);
+  --border-strong: #3a4055;
+  /* Emphasis. Reserve --accent-emphasis for one primary element per view
+     (e.g. the search bar); --focus-ring is the visible keyboard focus state
+     required by the accessibility baseline. */
+  --accent-emphasis: #8aa2ff;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  /* Score gradient stops (red = 0 → green = 100), consumed by the matches
+     score cross-hatch. --score-hatch is the overlay alpha keeping text legible. */
+  --score-red: 4 78% 58%;
+  --score-yellow: 46 90% 56%;
+  --score-green: 128 52% 50%;
+  --score-tint-alpha: 0.16;
+  --score-hatch-alpha: 0.06;
+  /* Group-dot palette (defined now; consumed by the pool follow-up). */
+  --dot-1: #6c8cff;
+  --dot-2: #43a047;
+  --dot-3: #e0a53a;
+  --dot-4: #d9534f;
+  --dot-5: #b06cff;
+  --dot-6: #38b2ac;
+  --dot-7: #ec6ea8;
+  --dot-8: #7f8c99;
 }
 
 /* === Reset === */
@@ -68,7 +97,9 @@ body,
 
 .quad-row {
   display: flex;
-  flex: 1;
+  /* Zero basis so the top (browser + matches) and bottom (set workspace) rows
+     split the viewport height evenly regardless of intrinsic content height. */
+  flex: 1 1 0;
   min-height: 0;
 }
 
@@ -543,24 +574,27 @@ body,
 }
 
 .filter-add-btn {
-  padding: 4px 10px;
-  background: none;
-  border: 1px dashed var(--border);
+  padding: 4px 11px;
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  color: var(--text-muted);
+  color: var(--text);
   font-family: var(--font-body);
   font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   transition:
     color var(--transition),
-    border-color var(--transition);
+    border-color var(--transition),
+    background var(--transition);
 }
 
 .filter-add-btn:hover,
 .filter-add-btn[aria-expanded='true'] {
-  color: var(--text);
-  border-color: var(--text-muted);
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+  background: var(--accent-dim);
 }
 
 /* The Add filter button sits near the quadrant's right edge, so its menu
@@ -639,13 +673,98 @@ body,
   gap: 4px;
 }
 
-/* Full-width flex line: wraps below the search/controls row. */
+/* Flows inline with the sort tiers in the control panel (active sorts and
+   filters share one line rather than stacking). */
 .filter-pills {
-  flex-basis: 100%;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* --- Filter groups: (AND within a group) OR (between groups) --- */
+.filter-groups {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filter-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+.filter-or-divider {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0 2px;
+  user-select: none;
+}
+.filter-group-add-btn,
+.filter-or-add-btn {
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+.filter-group-add-btn:hover,
+.filter-group-add-btn[aria-expanded='true'],
+.filter-or-add-btn:hover,
+.filter-or-add-btn[aria-expanded='true'] {
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+}
+
+/* Multi-select popover body (genre / label): search box + scrollable checklist. */
+.filter-multiselect {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+.filter-multiselect-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.filter-multiselect-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.filter-multiselect-item:hover {
+  background: var(--surface-hover);
+}
+.filter-multiselect-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-multiselect-empty {
+  padding: 8px 6px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .filter-pill-group {
@@ -777,6 +896,7 @@ body,
 
 /* === Tables (shared) === */
 .track-table-outer {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -910,6 +1030,14 @@ body,
   transition: background var(--transition);
 }
 
+/* Alternating value-row wash (design-system). The virtualized browse table
+   can't rely on :nth-of-type (windowed rows + spacer rows shift the parity),
+   so striping is driven by the row's absolute index via .row-alt. Placed before
+   :hover/.row-selected so those still win. */
+.track-table tbody tr.row-alt {
+  background: var(--row-alt);
+}
+
 .track-table tbody tr:hover {
   background: var(--surface-hover);
 }
@@ -927,8 +1055,31 @@ body,
   transition: background var(--transition);
 }
 
+/* Alternating value-row wash for scan-ability (design-system). Placed before
+   the :hover rule so hover still wins. Score cells carry their own inline
+   gradient background and paint over this. */
+.matches-table tbody tr:nth-of-type(even) {
+  background: var(--row-alt);
+}
+
 .matches-table tbody tr:hover {
   background: var(--surface-hover);
+}
+
+/* The Track column embeds the play button (24px) + gap (6px) at the head of
+   each cell. Offset the header label by that footprint so "Track" sits above the
+   title text rather than flush above the play button — matching the other
+   quadrants, where the playback column carries no header label. */
+.matches-th-track .th-content {
+  padding-left: 30px;
+}
+
+/* Keep score text legible over the red→green cross-hatch. */
+.ds-score-cell {
+  position: relative;
+}
+.ds-score-cell .mono {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
 }
 
 .table-status {
@@ -958,6 +1109,286 @@ body,
 .matches-track-name {
   color: var(--accent);
   font-weight: 500;
+}
+
+/* ===================================================================
+   Design system: table chrome (header · control panel · insert rail)
+   Shared zones stacked vertically: header → control panel → columns → rows.
+   =================================================================== */
+
+/* --- Header zone --- */
+.ds-table-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.ds-table-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Primary controls sit at the right edge of the header (Fitts: grouped,
+   consistent placement across quadrants). Pushed right by the title's flex. */
+.ds-table-header-primary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.ds-table-header-trailing {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Shared header action button (e.g. Add sort). Solid and legible so it reads as
+   an actionable control; matches the Add-filter button. */
+.ds-header-btn {
+  padding: 4px 11px;
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition),
+    background var(--transition);
+}
+.ds-header-btn:hover,
+.ds-header-btn[aria-expanded='true'] {
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* Tracklist header groups two different *kinds* of control, so they are styled
+   distinctly from the sort/filter actions and from each other:
+   • Explorer — a view switch: outlined-accent "ghost" button.
+   • Export — a data-output action: solid accent "primary" button. */
+.set-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.set-explorer-btn {
+  padding: 4px 11px;
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--accent-emphasis);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+.set-explorer-btn:hover {
+  background: var(--accent-dim);
+}
+.set-export-btn {
+  padding: 4px 12px;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--bg);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+.set-export-btn:hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+}
+
+/* Set controls (the set picker) live next to the title, spatially apart from
+   the Explorer/Export group on the right. */
+.ds-header-titlegroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.ds-header-titletext {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+.ds-header-setcontrols {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Search bar hosted in the header title slot (browse quadrant). Let the title
+   slot grow and keep the autocomplete dropdown from being clipped; raise the
+   header so the dropdown paints over the control panel and table below. */
+.ds-table-header:has(.ds-header-search) {
+  position: relative;
+  z-index: 10;
+}
+.ds-table-header-title:has(.ds-header-search) {
+  overflow: visible;
+  flex: 1 1 auto;
+}
+.ds-header-search {
+  display: flex;
+  align-items: center;
+}
+.ds-header-search .search-bar-wrapper {
+  flex: 1;
+}
+
+/* --- Control-panel zone --- */
+.ds-table-control-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Persistent on/off toggle filters (Same/Higher/Lower). Von Restorff: the
+   active state gets the accent; off states stay quiet but legible. */
+.ds-toggle-filters {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.ds-toggle-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.ds-toggle-filter:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.ds-toggle-filter--on {
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.ds-toggle-filter-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 0 5px;
+  border-radius: 8px;
+}
+.ds-toggle-filter--on .ds-toggle-filter-count {
+  color: var(--accent-emphasis);
+}
+
+.ds-table-control-panel .sort-tier-bar,
+.ds-table-control-panel .filter-pills {
+  margin: 0;
+}
+/* Inside the control panel the sort tiers sit inline with the filter pills, so
+   drop the standalone bar's own padding/underline that would otherwise split
+   the single row. */
+.ds-table-control-panel .sort-tier-bar {
+  padding: 0;
+  border-bottom: none;
+  min-height: 0;
+}
+
+/* Secondary sort-tier priority index badge (shown when >1 tier active). */
+.sort-tier-index {
+  font-size: 8px;
+  vertical-align: super;
+  margin-left: 1px;
+  color: var(--accent);
+}
+
+/* --- Column insert rail (out-of-column "+") --- */
+.ds-col-insert-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding-left: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition);
+}
+/* Reveal on table hover or when its menu is open. */
+.track-table-outer:hover .ds-col-insert-rail,
+.ds-col-insert-rail--open {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Reserve the rail's gutter for the whole life of the table whenever a rail
+   exists (it only renders when there are hidden columns), so revealing it on
+   hover never reflows the columns — that reflow was the "jumpiness" seen when
+   moving the pointer on/off the bottom tables. */
+.track-table-outer:has(.ds-col-insert-rail) .track-table-wrapper {
+  padding-right: 24px;
+}
+
+.ds-col-insert-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.ds-col-insert-btn:hover,
+.ds-col-insert-btn[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ds-col-insert-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
 }
 
 /* --- Match row affordances --- */
@@ -1040,6 +1471,26 @@ body,
   flex-shrink: 0;
 }
 
+/* When the chain lives in the matches header it *replaces* the track name, so it
+   drops the standalone bar's chrome and scrolls horizontally (single line) so a
+   long chain never wraps or pushes the header controls off-screen. */
+.ds-table-header-title:has(.transition-chain--header) {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.transition-chain--header {
+  padding: 0;
+  background: none;
+  border-bottom: none;
+  min-height: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* No scrollbar-width override here: setting it in Chromium suppresses the
+     app-wide ::-webkit-scrollbar styling, so the chain would get a mismatched
+     default scrollbar. Omitting it inherits the shared themed scrollbar. */
+}
+
 .chain-back-btn {
   background: none;
   border: 1px solid var(--border);
@@ -1061,6 +1512,14 @@ body,
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+/* Keep chain items at natural width inside the scrolling header chain. */
+.transition-chain--header .chain-step,
+.transition-chain--header .chain-back-btn,
+.transition-chain--header .chain-current,
+.transition-chain--header .chain-entry {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .chain-entry {
@@ -2409,8 +2868,26 @@ body,
 .set-tracklist {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px;
+  /* Design-system table zones stack vertically; the value rows scroll inside
+     an inner .track-table-outer/.track-table-wrapper (shared with the top
+     tables), so the header/control zones stay pinned. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Non-table body content (empty states, group sections) keeps the old inset. */
+.set-pool > .set-empty-tracks,
+.set-tracklist > .set-empty-tracks,
+.set-pool > .subgroup-sections,
+.set-pool > .table-col-empty-recovery,
+.set-tracklist > .table-col-empty-recovery {
+  margin: 8px;
+}
+.set-pool > .subgroup-sections {
   overflow: auto;
+  min-height: 0;
 }
 
 .set-pool-header,
@@ -2558,6 +3035,17 @@ body,
   text-align: left;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+}
+
+/* Alternating value-row wash (design-system) for scan-ability. Reorder
+   drag/drop and hover states are defined later and keep precedence. */
+.set-pool-table tbody tr:nth-of-type(even),
+.set-tracklist-table tbody tr:nth-of-type(even) {
+  background: var(--row-alt);
+}
+.set-pool-table tbody tr:hover,
+.set-tracklist-table tbody tr:hover {
+  background: var(--surface-hover);
 }
 
 .set-ws-cell-num {
@@ -3237,6 +3725,113 @@ body,
   padding: 2px 4px;
 }
 
+/* --- Groups cell (design-system): member dots + "+" multi-select modal --- */
+/* A colored dot keyed to each subgroup's stable index (shared with the tabs). */
+.subgroup-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pool-tab-dot {
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+
+.subgroup-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.subgroup-dots {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.subgroup-dot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text);
+}
+.subgroup-dot-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 84px;
+}
+.subgroup-add-inline {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+.subgroup-add-inline:hover,
+.subgroup-add-inline[aria-expanded='true'] {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+.subgroup-modal {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  margin-top: 4px;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.subgroup-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+.subgroup-modal-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.subgroup-modal-item.active {
+  color: var(--text);
+}
+.subgroup-modal-name {
+  flex: 1;
+}
+.subgroup-modal-check {
+  color: var(--accent);
+}
+
 /* === Sort Tier Bar === */
 
 .sort-tier-bar {
@@ -3412,27 +4007,154 @@ body,
 }
 
 .admin-preferences {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.admin-pref-section-header {
+.admin-pref-intro {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Responsive card grid: the four table configs sit side by side on wide screens
+   instead of stacking narrowly down the left edge. */
+.admin-pref-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-pref-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.admin-pref-card-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 8px;
+}
+
+.admin-pref-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin: 0;
+}
+
+.admin-pref-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.admin-pref-status {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--accent-emphasis);
+}
+
+.admin-pref-retry {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: none;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius);
+  color: var(--danger-bright);
+  cursor: pointer;
 }
 
 .admin-pref-columns {
   list-style: none;
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .admin-pref-column {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 10px;
-  padding: 4px 0;
+  padding: 5px 6px;
+  border-radius: 4px;
+}
+.admin-pref-column:hover {
+  background: var(--surface-hover);
+}
+.admin-pref-column--hidden .admin-pref-name {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.admin-pref-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  cursor: pointer;
+}
+.admin-pref-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.admin-pref-name {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-pref-width {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 42px;
+  text-align: right;
+}
+
+.admin-pref-order {
+  display: inline-flex;
+  gap: 3px;
+}
+.admin-pref-move {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    border-color var(--transition),
+    background var(--transition);
+}
+.admin-pref-move:hover:not(:disabled) {
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.admin-pref-move:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .set-pool-header--inline {
@@ -3454,7 +4176,19 @@ body,
   overflow-x: auto;
 }
 
-.set-pool-header--inline .pool-tab-bar {
+/* The pool's group tabs live in the design-system header's primary slot; let
+   that slot grow so the tabs get room and scroll horizontally when crowded. */
+.ds-table-header:has(.set-pool-header-tabs) .ds-table-header-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 12px;
+}
+/* Keep "Pool (N)" fully visible; the tab bar (not the title) absorbs crowding. */
+.ds-table-header:has(.set-pool-header-tabs) .ds-table-header-title {
+  flex: 0 0 auto;
+}
+
+.set-pool-header-tabs .pool-tab-bar {
   padding: 0;
   border-bottom: none;
   min-height: unset;

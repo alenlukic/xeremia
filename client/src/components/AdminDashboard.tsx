@@ -283,83 +283,104 @@ function PreferencesSection({
 
   return (
     <div className="admin-preferences">
+      <p className="admin-pref-intro">
+        Show or hide columns and set their order for each table. Changes save
+        automatically.
+      </p>
       {tablePrefs.error && (
         <p className="table-status admin-error">{tablePrefs.error}</p>
       )}
-      {TABLE_IDS.map((tableId) => {
-        const config = tablePrefs.configs[tableId]
-        const registry = TABLE_REGISTRIES[tableId]
-        const saveError = tablePrefs.saveErrors[tableId]
-        const isSaving = tablePrefs.saving[tableId]
-        return (
-          <section key={tableId} className="admin-pref-section">
-            <div className="admin-pref-section-header">
-              <h3 className="admin-card-title">{TABLE_LABELS[tableId]}</h3>
-              {isSaving && <span className="admin-pref-status">Saving…</span>}
-              {!isSaving && saveError && (
-                <button
-                  type="button"
-                  className="admin-pref-retry"
-                  onClick={() => tablePrefs.retrySave(tableId)}
-                >
-                  Retry save
-                </button>
+      <div className="admin-pref-grid">
+        {TABLE_IDS.map((tableId) => {
+          const config = tablePrefs.configs[tableId]
+          const registry = TABLE_REGISTRIES[tableId]
+          const saveError = tablePrefs.saveErrors[tableId]
+          const isSaving = tablePrefs.saving[tableId]
+          const visibleCount = config.columnOrder.filter(
+            (id) => config.columnVisibility[id] !== false,
+          ).length
+          return (
+            <section key={tableId} className="admin-pref-card">
+              <div className="admin-pref-card-header">
+                <h3 className="admin-pref-card-title">
+                  {TABLE_LABELS[tableId]}
+                </h3>
+                <span className="admin-pref-count">
+                  {visibleCount}/{config.columnOrder.length} shown
+                </span>
+                {isSaving ? (
+                  <span className="admin-pref-status">Saving…</span>
+                ) : saveError ? (
+                  <button
+                    type="button"
+                    className="admin-pref-retry"
+                    onClick={() => tablePrefs.retrySave(tableId)}
+                  >
+                    Retry save
+                  </button>
+                ) : null}
+              </div>
+              {saveError && (
+                <p className="table-status admin-error">{saveError}</p>
               )}
-            </div>
-            {saveError && (
-              <p className="table-status admin-error">{saveError}</p>
-            )}
-            <ul className="admin-pref-columns">
-              {config.columnOrder.map((columnId, index) => {
-                const entry = registry.find((col) => col.id === columnId)
-                if (!entry) {
-                  return null
-                }
-                const width = config.columnWidths[columnId]
-                return (
-                  <li key={columnId} className="admin-pref-column">
-                    <label className="admin-pref-toggle">
-                      <input
-                        type="checkbox"
-                        checked={config.columnVisibility[columnId] !== false}
-                        onChange={() =>
-                          tablePrefs.toggleVisibility(tableId, columnId)
-                        }
-                      />
-                      <span>{entry.label}</span>
-                    </label>
-                    <div className="admin-pref-order">
-                      <button
-                        type="button"
-                        aria-label={`Move ${entry.label} up`}
-                        disabled={index === 0}
-                        onClick={() =>
-                          tablePrefs.moveColumn(tableId, columnId, -1)
-                        }
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Move ${entry.label} down`}
-                        disabled={index === config.columnOrder.length - 1}
-                        onClick={() =>
-                          tablePrefs.moveColumn(tableId, columnId, 1)
-                        }
-                      >
-                        ↓
-                      </button>
-                    </div>
-                    {width != null && (
-                      <span className="admin-pref-width mono">{width}px</span>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
-        )
-      })}
+              <ul className="admin-pref-columns">
+                {config.columnOrder.map((columnId, index) => {
+                  const entry = registry.find((col) => col.id === columnId)
+                  if (!entry) {
+                    return null
+                  }
+                  const width = config.columnWidths[columnId]
+                  const visible = config.columnVisibility[columnId] !== false
+                  return (
+                    <li
+                      key={columnId}
+                      className={`admin-pref-column${visible ? '' : ' admin-pref-column--hidden'}`}
+                    >
+                      <label className="admin-pref-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visible}
+                          onChange={() =>
+                            tablePrefs.toggleVisibility(tableId, columnId)
+                          }
+                        />
+                        <span className="admin-pref-name">{entry.label}</span>
+                      </label>
+                      <span className="admin-pref-width mono">
+                        {width != null ? `${width}px` : '—'}
+                      </span>
+                      <div className="admin-pref-order">
+                        <button
+                          type="button"
+                          className="admin-pref-move"
+                          aria-label={`Move ${entry.label} up`}
+                          disabled={index === 0}
+                          onClick={() =>
+                            tablePrefs.moveColumn(tableId, columnId, -1)
+                          }
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-pref-move"
+                          aria-label={`Move ${entry.label} down`}
+                          disabled={index === config.columnOrder.length - 1}
+                          onClick={() =>
+                            tablePrefs.moveColumn(tableId, columnId, 1)
+                          }
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )
+        })}
+      </div>
     </div>
   )
 }

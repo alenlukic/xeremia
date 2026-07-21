@@ -160,7 +160,8 @@ describe('SetTracklist column resizing', () => {
     const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })])
     const titleTh = screen.getByRole('columnheader', { name: /title/i })
     expect(titleTh.querySelector('.col-resizer')).toBeTruthy()
-    expect(container.querySelectorAll('.col-resizer')).toHaveLength(5)
+    // num, title, key, bpm, note, actions — Actions is now resizable too.
+    expect(container.querySelectorAll('.col-resizer')).toHaveLength(6)
   })
 
   it('drag on a resize handle flushes the column width via callback', () => {
@@ -269,22 +270,27 @@ describe('SetTracklist cross-panel drag-and-drop', () => {
   })
 })
 
-describe('SetTracklist export menu', () => {
-  it('calls onExportM3u8 from the 3-dot menu next to the heading', () => {
+describe('SetTracklist header controls', () => {
+  it('exports directly from the header Export button (no ⋯ menu)', () => {
     const onExportM3u8 = vi.fn()
     renderTracklist([makeEntry({ id: 1, track_id: 10 })], { onExportM3u8 })
 
-    expect(screen.queryByText('Export m3u8')).toBeNull()
-    fireEvent.click(screen.getByLabelText('Tracklist menu'))
-    fireEvent.click(screen.getByText('Export m3u8'))
+    // The old three-dot menu is gone; Export is a first-class header button.
+    expect(screen.queryByLabelText('Tracklist menu')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }))
     expect(onExportM3u8).toHaveBeenCalledTimes(1)
-    // Menu closes after the action.
-    expect(screen.queryByText('Export m3u8')).toBeNull()
   })
 
-  it('hides the menu toggle when the tracklist is empty', () => {
+  it('hides the Export button when the tracklist is empty', () => {
     renderTracklist([])
-    expect(screen.queryByLabelText('Tracklist menu')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Export' })).toBeNull()
+  })
+
+  it('offers Explorer in the header when onOpenExplorer is provided', () => {
+    const onOpenExplorer = vi.fn()
+    renderTracklist([makeEntry({ id: 1, track_id: 10 })], { onOpenExplorer })
+    fireEvent.click(screen.getByRole('button', { name: 'Explorer' }))
+    expect(onOpenExplorer).toHaveBeenCalledTimes(1)
   })
 })
 

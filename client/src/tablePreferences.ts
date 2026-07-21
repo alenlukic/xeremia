@@ -141,13 +141,7 @@ const TRACKLIST_REGISTRY: ColumnRegistryEntry[] = [
   { id: 'key', label: 'Key', defaultVisible: true, defaultWidth: 62 },
   { id: 'bpm', label: 'BPM', defaultVisible: true, defaultWidth: 62 },
   { id: 'note', label: 'Note', defaultVisible: true, defaultWidth: 160 },
-  {
-    id: 'actions',
-    label: 'Actions',
-    defaultVisible: true,
-    defaultWidth: 120,
-    resizable: false,
-  },
+  { id: 'actions', label: 'Actions', defaultVisible: true, defaultWidth: 120 },
 ]
 
 const POOL_REGISTRY: ColumnRegistryEntry[] = [
@@ -162,13 +156,7 @@ const POOL_REGISTRY: ColumnRegistryEntry[] = [
     defaultVisible: true,
     defaultWidth: 140,
   },
-  {
-    id: 'actions',
-    label: 'Actions',
-    defaultVisible: true,
-    defaultWidth: 120,
-    resizable: false,
-  },
+  { id: 'actions', label: 'Actions', defaultVisible: true, defaultWidth: 120 },
 ]
 
 export const TABLE_REGISTRIES: Record<TableId, ColumnRegistryEntry[]> = {

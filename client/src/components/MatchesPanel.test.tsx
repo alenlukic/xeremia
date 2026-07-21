@@ -225,8 +225,24 @@ describe('MatchesPanel', () => {
     })
   })
 
-  describe('bucket tabs', () => {
-    it('shows correct bucket counts', () => {
+  describe('same/higher/lower toggles', () => {
+    it('renders three persistent toggle filters, all on by default', () => {
+      render(
+        <MatchesPanel
+          matchSource={matchSource}
+          matches={[makeMatch()]}
+          loading={false}
+          {...testMatchesPanelTableProps}
+        />,
+      )
+      const toggles = document.querySelectorAll('.ds-toggle-filter')
+      expect(toggles.length).toBe(3)
+      expect(Array.from(toggles).map((t) => t.getAttribute('aria-pressed'))).toEqual(
+        ['true', 'true', 'true'],
+      )
+    })
+
+    it('shows correct per-bucket counts', () => {
       const matches = [
         makeMatch({ candidate_id: 1, bucket: 'same_key' }),
         makeMatch({ candidate_id: 2, bucket: 'same_key' }),
@@ -240,13 +256,13 @@ describe('MatchesPanel', () => {
           {...testMatchesPanelTableProps}
         />,
       )
-      const counts = document.querySelectorAll('.bucket-count')
-      expect(counts[0].textContent).toBe('2')
-      expect(counts[1].textContent).toBe('1')
-      expect(counts[2].textContent).toBe('0')
+      const counts = document.querySelectorAll('.ds-toggle-filter-count')
+      expect(counts[0].textContent).toBe('2') // Same
+      expect(counts[1].textContent).toBe('1') // Higher
+      expect(counts[2].textContent).toBe('0') // Lower
     })
 
-    it('filters matches by active bucket', async () => {
+    it('shows all buckets in one table by default and hides a bucket when toggled off', async () => {
       const matches = [
         makeMatch({ candidate_id: 1, bucket: 'same_key' }),
         makeMatch({ candidate_id: 2, bucket: 'higher_key' }),
@@ -260,14 +276,50 @@ describe('MatchesPanel', () => {
           {...testMatchesPanelTableProps}
         />,
       )
+      // All results live in the same table (no tabs): 1 same + 2 higher = 3.
+      expect(document.querySelectorAll('.matches-table tbody tr').length).toBe(
+        3,
+      )
+
+      // Toggling Higher off removes those rows, leaving only the same-key match.
+      await userEvent.click(screen.getByRole('button', { name: /Higher/ }))
       expect(document.querySelectorAll('.matches-table tbody tr').length).toBe(
         1,
       )
+    })
+  })
 
-      await userEvent.click(screen.getByRole('button', { name: /Higher/ }))
-      expect(document.querySelectorAll('.matches-table tbody tr').length).toBe(
-        2,
+  describe('design-system chrome', () => {
+    it('renders Add sort and Add filter controls in the header', () => {
+      render(
+        <MatchesPanel
+          matchSource={matchSource}
+          matches={[makeMatch()]}
+          loading={false}
+          {...testMatchesPanelTableProps}
+        />,
       )
+      expect(
+        screen.getByRole('button', { name: /add sort tier/i }),
+      ).toBeInTheDocument()
+      expect(screen.getByText('Add filter')).toBeInTheDocument()
+    })
+
+    it('tints score cells with an inline gradient background', () => {
+      render(
+        <MatchesPanel
+          matchSource={matchSource}
+          matches={[makeMatch({ overall_score: 90 })]}
+          loading={false}
+          {...testMatchesPanelTableProps}
+        />,
+      )
+      const scoreCell = document.querySelector(
+        '.matches-table tbody td.ds-score-cell',
+      ) as HTMLElement
+      expect(scoreCell).toBeTruthy()
+      expect(scoreCell.style.backgroundColor).not.toBe('')
+      expect(scoreCell.style.backgroundImage).toContain('repeating-linear-gradient')
     })
   })
 
@@ -284,7 +336,7 @@ describe('MatchesPanel', () => {
       expect(screen.getByText('Loading matches…')).toBeInTheDocument()
     })
 
-    it('shows empty message when no matches in bucket', () => {
+    it('shows empty message when no matches pass the active filters', () => {
       render(
         <MatchesPanel
           matchSource={matchSource}
@@ -293,7 +345,9 @@ describe('MatchesPanel', () => {
           {...testMatchesPanelTableProps}
         />,
       )
-      expect(screen.getByText('No matches in this bucket')).toBeInTheDocument()
+      expect(
+        screen.getByText('No matches for the active filters'),
+      ).toBeInTheDocument()
     })
 
     it('shows placeholder when no track selected', () => {

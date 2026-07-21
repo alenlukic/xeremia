@@ -11,17 +11,28 @@ export interface SortColumn {
   label: string
 }
 
-interface SortTierBarProps {
+interface SortAddButtonProps {
   sorting: SortDescriptor[]
   columns: SortColumn[]
   onSortingChange: (sorting: SortDescriptor[]) => void
+  /** Button label (default "+Sort"). Header quadrants pass "Add Sort". */
+  label?: string
+  className?: string
 }
 
-export function SortTierBar({
+/**
+ * The "add a sort tier" control: a button opening a menu of not-yet-sorted
+ * columns. Extracted so the design-system header can host the entry point while
+ * the active tiers render in the control panel. Returns null when every column
+ * is already sorted.
+ */
+export function SortAddButton({
   sorting,
   columns,
   onSortingChange,
-}: SortTierBarProps) {
+  label = '+Sort',
+  className = 'sort-tier-add-btn',
+}: SortAddButtonProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const wrapperRef = useRef<HTMLSpanElement>(null)
 
@@ -37,6 +48,56 @@ export function SortTierBar({
       setMenuOpen(false)
     },
     [sorting, onSortingChange],
+  )
+
+  if (availableColumns.length === 0) {
+    return null
+  }
+
+  return (
+    <span className="sort-tier-add-wrapper" ref={wrapperRef}>
+      <button
+        className={className}
+        onClick={() => setMenuOpen((o) => !o)}
+        title="Add sort tier"
+        aria-label="Add sort tier"
+        aria-expanded={menuOpen}
+      >
+        {label}
+      </button>
+      {menuOpen && (
+        <ul className="sort-tier-menu">
+          {availableColumns.map((col) => (
+            <li
+              key={col.id}
+              className="sort-tier-menu-item"
+              onMouseDown={() => addTier(col.id)}
+            >
+              {col.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </span>
+  )
+}
+
+interface SortTierBarProps {
+  sorting: SortDescriptor[]
+  columns: SortColumn[]
+  onSortingChange: (sorting: SortDescriptor[]) => void
+  /** Hide the built-in +Sort button (e.g. when the header hosts "Add Sort"). */
+  hideAddButton?: boolean
+}
+
+export function SortTierBar({
+  sorting,
+  columns,
+  onSortingChange,
+  hideAddButton = false,
+}: SortTierBarProps) {
+  const availableColumns = columns.filter(
+    (c) => !sorting.some((s) => s.id === c.id),
   )
 
   const removeTier = useCallback(
@@ -82,7 +143,8 @@ export function SortTierBar({
   const columnLabel = (id: string) =>
     columns.find((c) => c.id === id)?.label ?? id
 
-  if (sorting.length === 0 && availableColumns.length === 0) {
+  const showAdd = !hideAddButton && availableColumns.length > 0
+  if (sorting.length === 0 && !showAdd) {
     return null
   }
 
@@ -131,30 +193,12 @@ export function SortTierBar({
           </span>
         </span>
       ))}
-      {availableColumns.length > 0 && (
-        <span className="sort-tier-add-wrapper" ref={wrapperRef}>
-          <button
-            className="sort-tier-add-btn"
-            onClick={() => setMenuOpen((o) => !o)}
-            title="Add sort tier"
-            aria-label="Add sort tier"
-          >
-            +Sort
-          </button>
-          {menuOpen && (
-            <ul className="sort-tier-menu">
-              {availableColumns.map((col) => (
-                <li
-                  key={col.id}
-                  className="sort-tier-menu-item"
-                  onMouseDown={() => addTier(col.id)}
-                >
-                  {col.label}
-                </li>
-              ))}
-            </ul>
-          )}
-        </span>
+      {showAdd && (
+        <SortAddButton
+          sorting={sorting}
+          columns={columns}
+          onSortingChange={onSortingChange}
+        />
       )}
     </div>
   )
