@@ -967,7 +967,6 @@ export function SetPoolTable({
   onToggleColumn,
   onReorderColumn,
   onInsertColumnAfter,
-  onColumnWidthChange,
   onColumnWidthFlush,
   onRemove,
   onMoveToTracklist,
@@ -983,6 +982,20 @@ export function SetPoolTable({
 }: Props) {
   const poolColWidths = tableConfig.columnWidths
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  // Live width for the column being resized. Kept local so a drag re-renders
+  // only the pool table, not the whole App (which re-rendered every quadrant on
+  // each mousemove). Flushed to App on mouse-up.
+  const [liveResize, setLiveResize] = useState<{
+    id: string
+    width: number
+  } | null>(null)
+  const effectivePoolColWidths = useMemo(
+    () =>
+      liveResize
+        ? { ...poolColWidths, [liveResize.id]: liveResize.width }
+        : poolColWidths,
+    [poolColWidths, liveResize],
+  )
   const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
   const hiddenInactive = useMemo(
     () => inactiveColumns('pool', tableConfig),
@@ -1083,7 +1096,7 @@ export function SetPoolTable({
 
       function handleMove(ev: MouseEvent) {
         latestWidth = Math.max(40, Math.round(startWidth + ev.clientX - startX))
-        onColumnWidthChange(colId, latestWidth)
+        setLiveResize({ id: colId, width: latestWidth })
       }
 
       function handleUp() {
@@ -1091,6 +1104,7 @@ export function SetPoolTable({
         document.removeEventListener('mouseup', handleUp)
         document.body.style.removeProperty('cursor')
         document.body.style.removeProperty('user-select')
+        setLiveResize(null)
         onColumnWidthFlush(colId, latestWidth)
       }
 
@@ -1099,13 +1113,13 @@ export function SetPoolTable({
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     },
-    [onColumnWidthChange, onColumnWidthFlush],
+    [onColumnWidthFlush],
   )
 
   const poolHeadBaseProps = useMemo(
     () => ({
       visibleColumnIds: displayColumns,
-      colWidths: poolColWidths,
+      colWidths: effectivePoolColWidths,
       beginResize: beginPoolColResize,
       hiddenInactive,
       registryById,
@@ -1119,7 +1133,7 @@ export function SetPoolTable({
     }),
     [
       displayColumns,
-      poolColWidths,
+      effectivePoolColWidths,
       hiddenInactive,
       registryById,
       draggedColumn,

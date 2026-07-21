@@ -574,24 +574,27 @@ body,
 }
 
 .filter-add-btn {
-  padding: 4px 10px;
-  background: none;
-  border: 1px dashed var(--border);
+  padding: 4px 11px;
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  color: var(--text-muted);
+  color: var(--text);
   font-family: var(--font-body);
   font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   transition:
     color var(--transition),
-    border-color var(--transition);
+    border-color var(--transition),
+    background var(--transition);
 }
 
 .filter-add-btn:hover,
 .filter-add-btn[aria-expanded='true'] {
-  color: var(--text);
-  border-color: var(--text-muted);
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+  background: var(--accent-dim);
 }
 
 /* The Add filter button sits near the quadrant's right edge, so its menu
@@ -670,9 +673,9 @@ body,
   gap: 4px;
 }
 
-/* Full-width flex line: wraps below the search/controls row. */
+/* Flows inline with the sort tiers in the control panel (active sorts and
+   filters share one line rather than stacking). */
 .filter-pills {
-  flex-basis: 100%;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -983,7 +986,7 @@ body,
   position: relative;
 }
 .ds-score-cell .mono {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
 }
 
 .table-status {
@@ -1057,25 +1060,92 @@ body,
   flex-shrink: 0;
 }
 
-/* Shared header button (e.g. Add sort). Matches the dashed Add-filter button. */
+/* Shared header action button (e.g. Add sort). Solid and legible so it reads as
+   an actionable control; matches the Add-filter button. */
 .ds-header-btn {
-  padding: 4px 10px;
-  background: none;
-  border: 1px dashed var(--border-strong);
+  padding: 4px 11px;
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  color: var(--text-muted);
+  color: var(--text);
   font-family: var(--font-body);
   font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   transition:
     color var(--transition),
-    border-color var(--transition);
+    border-color var(--transition),
+    background var(--transition);
 }
 .ds-header-btn:hover,
 .ds-header-btn[aria-expanded='true'] {
-  color: var(--text);
-  border-color: var(--text-muted);
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* Tracklist header groups two different *kinds* of control, so they are styled
+   distinctly from the sort/filter actions and from each other:
+   • Explorer — a view switch: outlined-accent "ghost" button.
+   • Export — a data-output action: solid accent "primary" button. */
+.set-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.set-explorer-btn {
+  padding: 4px 11px;
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--accent-emphasis);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+.set-explorer-btn:hover {
+  background: var(--accent-dim);
+}
+.set-export-btn {
+  padding: 4px 12px;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--bg);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition);
+}
+.set-export-btn:hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+}
+
+/* Set controls (the set picker) live next to the title, spatially apart from
+   the Explorer/Export group on the right. */
+.ds-header-titlegroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.ds-header-titletext {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+.ds-header-setcontrols {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
 }
 
 /* Search bar hosted in the header title slot (browse quadrant). Let the title
@@ -1155,6 +1225,14 @@ body,
 .ds-table-control-panel .filter-pills {
   margin: 0;
 }
+/* Inside the control panel the sort tiers sit inline with the filter pills, so
+   drop the standalone bar's own padding/underline that would otherwise split
+   the single row. */
+.ds-table-control-panel .sort-tier-bar {
+  padding: 0;
+  border-bottom: none;
+  min-height: 0;
+}
 
 /* Secondary sort-tier priority index badge (shown when >1 tier active). */
 .sort-tier-index {
@@ -1178,15 +1256,17 @@ body,
   pointer-events: none;
   transition: opacity var(--transition);
 }
-/* Reveal on table hover or when its menu is open; "push out" the table area so
-   the rail never overlaps the rightmost column's resize handle. */
+/* Reveal on table hover or when its menu is open. */
 .track-table-outer:hover .ds-col-insert-rail,
 .ds-col-insert-rail--open {
   opacity: 1;
   pointer-events: auto;
 }
-.track-table-outer:hover .track-table-wrapper,
-.track-table-outer:has(.ds-col-insert-rail--open) .track-table-wrapper {
+/* Reserve the rail's gutter for the whole life of the table whenever a rail
+   exists (it only renders when there are hidden columns), so revealing it on
+   hover never reflows the columns — that reflow was the "jumpiness" seen when
+   moving the pointer on/off the bottom tables. */
+.track-table-outer:has(.ds-col-insert-rail) .track-table-wrapper {
   padding-right: 24px;
 }
 
@@ -1298,6 +1378,26 @@ body,
   flex-shrink: 0;
 }
 
+/* When the chain lives in the matches header it *replaces* the track name, so it
+   drops the standalone bar's chrome and scrolls horizontally (single line) so a
+   long chain never wraps or pushes the header controls off-screen. */
+.ds-table-header-title:has(.transition-chain--header) {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.transition-chain--header {
+  padding: 0;
+  background: none;
+  border-bottom: none;
+  min-height: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* No scrollbar-width override here: setting it in Chromium suppresses the
+     app-wide ::-webkit-scrollbar styling, so the chain would get a mismatched
+     default scrollbar. Omitting it inherits the shared themed scrollbar. */
+}
+
 .chain-back-btn {
   background: none;
   border: 1px solid var(--border);
@@ -1319,6 +1419,14 @@ body,
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+/* Keep chain items at natural width inside the scrolling header chain. */
+.transition-chain--header .chain-step,
+.transition-chain--header .chain-back-btn,
+.transition-chain--header .chain-current,
+.transition-chain--header .chain-entry {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .chain-entry {

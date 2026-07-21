@@ -2,6 +2,7 @@ import {
   memo,
   useState,
   useRef,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useCallback,
@@ -192,7 +193,6 @@ export const TrackTable = memo(function TrackTable({
   onToggleColumnVisibility,
   onReorderColumn,
   onInsertColumnAfter,
-  onColumnWidthChange,
   onColumnWidthFlush,
   sorting: sortingProp,
   onSortingChange: onSortingChangeProp,
@@ -212,6 +212,12 @@ export const TrackTable = memo(function TrackTable({
   const sorting = sortingProp ?? internalSorting
   const onSortingChange = onSortingChangeProp ?? setInternalSorting
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  // Column widths are held locally during an active resize so the drag doesn't
+  // round-trip through App state on every mousemove — which re-rendered all four
+  // quadrants and made resizing crawl. The final width is flushed on mouse-up.
+  const [resizingSizing, setResizingSizing] = useState<ColumnSizingState | null>(
+    null,
+  )
 
   const columnVisibility = tableConfig.columnVisibility
   const columnOrder = tableConfig.columnOrder
@@ -254,12 +260,18 @@ export const TrackTable = memo(function TrackTable({
     return sizing
   }, [containerWidth, visibleFixedIds])
 
-  const effectiveSizing = useMemo(() => {
+  const persistedSizing = useMemo(() => {
     if (Object.keys(columnSizing).length > 0) {
       return columnSizing
     }
     return responsiveSizing
   }, [columnSizing, responsiveSizing])
+
+  // During an active resize the live width lives in local state; otherwise the
+  // persisted (App) widths drive the table.
+  const effectiveSizing = resizingSizing ?? persistedSizing
+  const effectiveSizingRef = useRef(effectiveSizing)
+  effectiveSizingRef.current = effectiveSizing
 
   const hiddenInactive = inactiveColumns('search', tableConfig)
   const visibleIds = visibleColumnIds(tableConfig)
@@ -270,15 +282,12 @@ export const TrackTable = memo(function TrackTable({
 
   const handleColumnSizingChange = useCallback(
     (updater: Updater<ColumnSizingState>) => {
-      const base = columnSizing
-      const next = typeof updater === 'function' ? updater(base) : updater
-      for (const [id, width] of Object.entries(next)) {
-        if (base[id] !== width) {
-          onColumnWidthChange(id, width)
-        }
-      }
+      setResizingSizing((prev) => {
+        const base = prev ?? effectiveSizingRef.current
+        return typeof updater === 'function' ? updater(base) : updater
+      })
     },
-    [columnSizing, onColumnWidthChange],
+    [],
   )
 
   const addToSetColumn = useMemo(
@@ -374,6 +383,23 @@ export const TrackTable = memo(function TrackTable({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
+
+  // When a resize ends (TanStack clears its resizing marker), persist the final
+  // widths to App and release the local override. Keying off the table's own
+  // resize state — rather than the resizer's onMouseUp — flushes reliably even
+  // when the pointer is released away from the 4px handle.
+  const isResizing = table.getState().columnSizingInfo.isResizingColumn
+  useEffect(() => {
+    if (isResizing || !resizingSizing) {
+      return
+    }
+    for (const [id, width] of Object.entries(resizingSizing)) {
+      if (persistedSizing[id] !== width) {
+        onColumnWidthFlush(id, width)
+      }
+    }
+    setResizingSizing(null)
+  }, [isResizing, resizingSizing, persistedSizing, onColumnWidthFlush])
 
   const totalWidth = table.getTotalSize()
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth
@@ -591,14 +617,6 @@ export const TrackTable = memo(function TrackTable({
                           className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          onMouseUp={() => {
-                            if (header.column.getIsResizing()) {
-                              onColumnWidthFlush(
-                                header.column.id,
-                                header.getSize(),
-                              )
-                            }
-                          }}
                         />
                       )}
                     </th>

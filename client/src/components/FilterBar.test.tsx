@@ -39,7 +39,7 @@ describe('BrowseFilterAddButton add-filter flow', () => {
     expect(screen.getByRole('button', { name: 'BPM' })).toBeInTheDocument()
   })
 
-  it('selecting Key opens the camelot popover and toggles codes', async () => {
+  it('stages camelot codes and commits them when the popover closes', async () => {
     const setCamelotCodes = vi.fn()
     render(
       <BrowseFilterAddButton {...baseProps} setCamelotCodes={setCamelotCodes} />,
@@ -47,6 +47,9 @@ describe('BrowseFilterAddButton add-filter flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Key' }))
     await userEvent.click(screen.getByRole('button', { name: '01A' }))
+    // Staged only — the filter (and thus the search) is not touched until close.
+    expect(setCamelotCodes).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Escape}')
     expect(setCamelotCodes).toHaveBeenCalledWith(['01A'])
   })
 

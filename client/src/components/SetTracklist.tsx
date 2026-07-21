@@ -117,7 +117,6 @@ export function SetTracklist({
   onToggleColumn,
   onReorderColumn,
   onInsertColumnAfter,
-  onColumnWidthChange,
   onColumnWidthFlush,
   headerControls,
   onOpenExplorer,
@@ -132,6 +131,13 @@ export function SetTracklist({
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  // Live width for the column being resized. Kept local so a drag re-renders
+  // only this table, not the whole App (which re-rendered every quadrant on
+  // each mousemove and made resizing crawl). Flushed to App on mouse-up.
+  const [liveResize, setLiveResize] = useState<{
+    id: string
+    width: number
+  } | null>(null)
 
   const colWidths = tableConfig.columnWidths
   const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
@@ -158,7 +164,7 @@ export function SetTracklist({
       let latestWidth = startWidth
       function handleMove(ev: MouseEvent) {
         latestWidth = Math.max(40, Math.round(startWidth + ev.clientX - startX))
-        onColumnWidthChange(colId, latestWidth)
+        setLiveResize({ id: colId, width: latestWidth })
       }
 
       function handleUp() {
@@ -166,6 +172,7 @@ export function SetTracklist({
         document.removeEventListener('mouseup', handleUp)
         document.body.style.removeProperty('cursor')
         document.body.style.removeProperty('user-select')
+        setLiveResize(null)
         onColumnWidthFlush(colId, latestWidth)
       }
 
@@ -174,7 +181,7 @@ export function SetTracklist({
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     },
-    [onColumnWidthChange, onColumnWidthFlush],
+    [onColumnWidthFlush],
   )
 
   const handleExternalDrop = useCallback(
@@ -193,8 +200,12 @@ export function SetTracklist({
   )
   const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
 
-  const colStyle = (id: string) =>
-    colWidths[id] != null ? { width: colWidths[id] } : undefined
+  const colStyle = (id: string) => {
+    if (liveResize?.id === id) {
+      return { width: liveResize.width }
+    }
+    return colWidths[id] != null ? { width: colWidths[id] } : undefined
+  }
 
   const resizer = (id: string) => (
     <div
@@ -365,29 +376,37 @@ export function SetTracklist({
       {...dropHandlers}
     >
       <TableHeader
-        title={`Tracklist (${tracklist.length})`}
+        title={
+          <div className="ds-header-titlegroup">
+            <span className="ds-header-titletext">
+              Tracklist ({tracklist.length})
+            </span>
+            {headerControls && (
+              <span className="ds-header-setcontrols">{headerControls}</span>
+            )}
+          </div>
+        }
         primary={
-          <>
+          <div className="set-header-actions">
             {onOpenExplorer && (
               <button
                 type="button"
-                className="ds-header-btn"
+                className="set-explorer-btn"
                 onClick={onOpenExplorer}
               >
                 Explorer
               </button>
             )}
-            {headerControls}
             {tracklist.length > 0 && (
               <button
                 type="button"
-                className="ds-header-btn"
+                className="set-export-btn"
                 onClick={onExportM3u8}
               >
                 Export
               </button>
             )}
-          </>
+          </div>
         }
       />
       {tracklist.length === 0 ? (

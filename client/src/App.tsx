@@ -386,39 +386,41 @@ export function App() {
             aria-label="Matches"
             hidden={topSplit === 'matches-collapsed'}
           >
-            {transitionChain.length > 0 && matchSource && (
-              <div className="transition-chain">
-                <button
-                  className="chain-back-btn"
-                  onClick={handleChainBack}
-                  title="Go back to previous source"
-                >
-                  ← Back
-                </button>
-                {transitionChain.map((entry, i) => (
-                  <span
-                    key={`chain-${entry.track.id}-${i}`}
-                    className="chain-step"
-                  >
-                    <button
-                      className="chain-entry"
-                      onClick={() => handleChainNavigate(i)}
-                      title={`Return to ${entry.track.title}`}
-                    >
-                      {entry.track.title}
-                    </button>
-                    <span className="chain-arrow">→</span>
-                  </span>
-                ))}
-                <span className="chain-current">{matchSource.title}</span>
-              </div>
-            )}
             {!detailMatch && (
               <MatchesPanel
                 matchSource={matchSource}
                 matches={matches}
                 loading={matchesLoading}
                 matchesError={matchesError}
+                headerTitle={
+                  transitionChain.length > 0 && matchSource ? (
+                    <div className="transition-chain transition-chain--header">
+                      <button
+                        className="chain-back-btn"
+                        onClick={handleChainBack}
+                        title="Go back to previous source"
+                      >
+                        ← Back
+                      </button>
+                      {transitionChain.map((entry, i) => (
+                        <span
+                          key={`chain-${entry.track.id}-${i}`}
+                          className="chain-step"
+                        >
+                          <button
+                            className="chain-entry"
+                            onClick={() => handleChainNavigate(i)}
+                            title={`Return to ${entry.track.title}`}
+                          >
+                            {entry.track.title}
+                          </button>
+                          <span className="chain-arrow">→</span>
+                        </span>
+                      ))}
+                      <span className="chain-current">{matchSource.title}</span>
+                    </div>
+                  ) : undefined
+                }
                 tableConfig={matchesConfig}
                 onClearMatchSource={handleClearMatches}
                 onToggleColumnVisibility={(id) =>

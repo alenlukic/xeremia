@@ -178,6 +178,14 @@ async function openBpmFilterPopover() {
   })
 }
 
+// Filters are staged in the popover and only applied to the search when it
+// closes, so tests close the popover (Escape) to commit their edits.
+async function closeFilterPopover() {
+  await act(async () => {
+    fireEvent.keyDown(document, { key: 'Escape' })
+  })
+}
+
 describe('Reset Weights', () => {
   it('renders a Reset Weights button in the Admin overlay', async () => {
     const httpMod = await import('./api/http')
@@ -361,6 +369,7 @@ describe('Browse table', () => {
     await act(async () => {
       screen.getByRole('button', { name: '01A' }).click()
     })
+    await closeFilterPopover()
 
     await waitFor(() => {
       expect(getRowCount()).toBe(300)
@@ -388,7 +397,7 @@ describe('Browse table', () => {
     await openBpmFilterPopover()
     const minInput = screen.getByPlaceholderText('Min')
     await userEvent.type(minInput, '125')
-    fireEvent.blur(minInput)
+    await closeFilterPopover()
 
     await waitFor(() => {
       expect(getRowCount()).toBe(300)
@@ -411,6 +420,7 @@ describe('Browse table', () => {
 
     await openKeyFilterPopover()
     await userEvent.click(screen.getByRole('button', { name: '01A' }))
+    await closeFilterPopover()
 
     const dateHeader = screen.getByText('Date Added')
     await userEvent.click(dateHeader)
@@ -839,8 +849,10 @@ describe('Transition chaining', () => {
     await userEvent.click(screen.getByTitle('Use as source track'))
 
     await waitFor(() => {
+      // While a chain is active, the source title supplants the header name and
+      // is rendered as the chain's current step.
       expect(
-        screen.getByText('Track 2', { selector: '.ds-table-header-title' }),
+        screen.getByText('Track 2', { selector: '.chain-current' }),
       ).toBeInTheDocument()
       expect(screen.getByTitle('Use as source track')).toHaveTextContent(
         'Track 3',
@@ -854,7 +866,7 @@ describe('Transition chaining', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Track 3', { selector: '.ds-table-header-title' }),
+        screen.getByText('Track 3', { selector: '.chain-current' }),
       ).toBeInTheDocument()
       expect(document.querySelectorAll('.chain-entry')).toHaveLength(2)
     })

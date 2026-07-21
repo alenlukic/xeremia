@@ -3,8 +3,10 @@ import {
   useState,
   useMemo,
   useRef,
+  useEffect,
   useLayoutEffect,
   useCallback,
+  type ReactNode,
 } from 'react'
 import {
   useReactTable,
@@ -192,6 +194,9 @@ interface Props {
   matches: TransitionMatch[]
   loading: boolean
   matchesError?: string | null
+  /** Overrides the header title (e.g. the transition chain, which supplants the
+   *  bare track name while following a chain). Falls back to the source title. */
+  headerTitle?: ReactNode
   tableConfig: NormalizedTableConfig
   onClearMatchSource: () => void
   onToggleColumnVisibility: (columnId: string) => void
@@ -211,12 +216,12 @@ export const MatchesPanel = memo(function MatchesPanel({
   matches,
   loading,
   matchesError,
+  headerTitle,
   tableConfig,
   onClearMatchSource,
   onToggleColumnVisibility,
   onReorderColumn,
   onInsertColumnAfter,
-  onColumnWidthChange,
   onColumnWidthFlush,
   onViewDetail,
   onUseAsSource,
@@ -234,6 +239,12 @@ export const MatchesPanel = memo(function MatchesPanel({
   const columnVisibility = tableConfig.columnVisibility
   const [sorting, setSorting] = useState<SortingState>([])
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  // Column widths live locally during an active resize so the drag doesn't
+  // round-trip through App state on every mousemove (which re-rendered every
+  // quadrant). The final width is flushed on mouse-up.
+  const [resizingSizing, setResizingSizing] = useState<ColumnSizingState | null>(
+    null,
+  )
 
   // Persistent Same/Higher/Lower key-relationship toggles (replace the old tabs;
   // all buckets on by default, all results live in one table).
@@ -434,24 +445,27 @@ export const MatchesPanel = memo(function MatchesPanel({
     return sizing
   }, [containerWidth])
 
-  const effectiveSizing = useMemo(() => {
+  const persistedSizing = useMemo(() => {
     if (Object.keys(columnSizing).length > 0) {
       return columnSizing
     }
     return responsiveSizing
   }, [columnSizing, responsiveSizing])
 
+  // During an active resize the live width lives in local state; otherwise the
+  // persisted (App) widths drive the table.
+  const effectiveSizing = resizingSizing ?? persistedSizing
+  const effectiveSizingRef = useRef(effectiveSizing)
+  effectiveSizingRef.current = effectiveSizing
+
   const handleColumnSizingChange = useCallback(
     (updater: Updater<ColumnSizingState>) => {
-      const base = columnSizing
-      const next = typeof updater === 'function' ? updater(base) : updater
-      for (const [id, width] of Object.entries(next)) {
-        if (base[id] !== width) {
-          onColumnWidthChange(id, width)
-        }
-      }
+      setResizingSizing((prev) => {
+        const base = prev ?? effectiveSizingRef.current
+        return typeof updater === 'function' ? updater(base) : updater
+      })
     },
-    [columnSizing, onColumnWidthChange],
+    [],
   )
 
   // @tanstack/react-table is not yet annotated for the React Compiler, so the
@@ -473,6 +487,23 @@ export const MatchesPanel = memo(function MatchesPanel({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
+
+  // When a resize ends (TanStack clears its resizing marker), persist the final
+  // widths to App and release the local override. Keying off the table's own
+  // resize state — rather than the resizer's onMouseUp — flushes reliably even
+  // when the pointer is released away from the 4px handle.
+  const isResizing = table.getState().columnSizingInfo.isResizingColumn
+  useEffect(() => {
+    if (isResizing || !resizingSizing) {
+      return
+    }
+    for (const [id, width] of Object.entries(resizingSizing)) {
+      if (persistedSizing[id] !== width) {
+        onColumnWidthFlush(id, width)
+      }
+    }
+    setResizingSizing(null)
+  }, [isResizing, resizingSizing, persistedSizing, onColumnWidthFlush])
 
   const totalWidth = table.getTotalSize()
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth
@@ -591,7 +622,7 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const header = (
     <TableHeader
-      title={matchSource.title}
+      title={headerTitle ?? matchSource.title}
       primary={
         <>
           <SortAddButton
@@ -759,14 +790,6 @@ export const MatchesPanel = memo(function MatchesPanel({
                             className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
                             onMouseDown={header.getResizeHandler()}
                             onTouchStart={header.getResizeHandler()}
-                            onMouseUp={() => {
-                              if (header.column.getIsResizing()) {
-                                onColumnWidthFlush(
-                                  header.column.id,
-                                  header.getSize(),
-                                )
-                              }
-                            }}
                           />
                         )}
                       </th>

@@ -60,8 +60,6 @@ const CAMELOT_CODES = [
   '12B',
 ]
 
-const RANGE_DEBOUNCE_MS = 300
-
 type FilterKind = 'key' | 'bpm'
 
 /** Browse-filter state, shared by the header add-button and control-panel pills. */
@@ -105,12 +103,29 @@ function KeyPopover({
   camelotCodes,
   setCamelotCodes,
 }: Pick<BrowseFilterProps, 'camelotCodes' | 'setCamelotCodes'>) {
-  function toggleCode(code: string) {
-    if (camelotCodes.includes(code)) {
-      setCamelotCodes(camelotCodes.filter((c) => c !== code))
-    } else {
-      setCamelotCodes([...camelotCodes, code])
+  // Selection is staged locally and committed to the actual filter (which drives
+  // the search) only when the popover closes, so toggling many keys doesn't
+  // re-run the query on every click.
+  const [draft, setDraft] = useState(camelotCodes)
+  const commitRef = useRef(() => {})
+  useEffect(() => {
+    commitRef.current = () => {
+      // Skip the commit (and the search it triggers) when nothing changed, so
+      // closing an untouched popover — or teardown — is a no-op.
+      const unchanged =
+        draft.length === camelotCodes.length &&
+        draft.every((c) => camelotCodes.includes(c))
+      if (!unchanged) {
+        setCamelotCodes(draft)
+      }
     }
+  })
+  useEffect(() => () => commitRef.current(), [])
+
+  function toggleCode(code: string) {
+    setDraft((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+    )
   }
 
   return (
@@ -119,7 +134,7 @@ function KeyPopover({
         {CAMELOT_CODES.map((code) => (
           <button
             key={code}
-            className={`camelot-chip${camelotCodes.includes(code) ? ' selected' : ''}`}
+            className={`camelot-chip${draft.includes(code) ? ' selected' : ''}`}
             onClick={() => toggleCode(code)}
           >
             {code}
@@ -141,66 +156,67 @@ function BpmPopover({
   BrowseFilterProps,
   'bpm' | 'bpmMin' | 'bpmMax' | 'setBpm' | 'setBpmMin' | 'setBpmMax'
 >) {
+  // Inputs are staged locally and committed to the actual filter (which drives
+  // the search) only when the popover closes, so typing never re-runs the query
+  // mid-keystroke. Exact and range are mutually exclusive; whichever the user
+  // last edited wins.
+  const [exactText, setExactText] = useState(bpm != null ? String(bpm) : '')
   const [minText, setMinText] = useState(bpmMin != null ? String(bpmMin) : '')
   const [maxText, setMaxText] = useState(bpmMax != null ? String(bpmMax) : '')
-  const minTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const maxTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  // Mirror numeric bpmMin/bpmMax props into the text inputs. Adjusting during
-  // render (vs. in an effect) avoids a cascading render and the
-  // react-hooks/set-state-in-effect warning.
-  const [prevBpmMin, setPrevBpmMin] = useState(bpmMin)
-  if (bpmMin !== prevBpmMin) {
-    setPrevBpmMin(bpmMin)
-    setMinText(bpmMin != null ? String(bpmMin) : '')
-  }
-  const [prevBpmMax, setPrevBpmMax] = useState(bpmMax)
-  if (bpmMax !== prevBpmMax) {
-    setPrevBpmMax(bpmMax)
-    setMaxText(bpmMax != null ? String(bpmMax) : '')
-  }
-
+  const commitRef = useRef(() => {})
   useEffect(() => {
-    return () => {
-      clearTimeout(minTimer.current)
-      clearTimeout(maxTimer.current)
+    commitRef.current = () => {
+      // Only push values that actually changed, so closing an untouched popover
+      // (or teardown) doesn't re-run the search.
+      const exact = parseNum(exactText)
+      if (exact != null) {
+        if (bpm !== exact) {
+          setBpm(exact)
+        }
+        if (bpmMin !== undefined) {
+          setBpmMin(undefined)
+        }
+        if (bpmMax !== undefined) {
+          setBpmMax(undefined)
+        }
+      } else {
+        const min = parseNum(minText)
+        const max = parseNum(maxText)
+        if (bpm !== undefined) {
+          setBpm(undefined)
+        }
+        if (bpmMin !== min) {
+          setBpmMin(min)
+        }
+        if (bpmMax !== max) {
+          setBpmMax(max)
+        }
+      }
     }
-  }, [])
+  })
+  useEffect(() => () => commitRef.current(), [])
+
+  function handleExactChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setExactText(e.target.value)
+    if (e.target.value) {
+      setMinText('')
+      setMaxText('')
+    }
+  }
 
   function handleMinChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const text = e.target.value
-    setMinText(text)
-    if (text && bpm != null) {
-      setBpm(undefined)
+    setMinText(e.target.value)
+    if (e.target.value) {
+      setExactText('')
     }
-    clearTimeout(minTimer.current)
-    minTimer.current = setTimeout(
-      () => setBpmMin(parseNum(text)),
-      RANGE_DEBOUNCE_MS,
-    )
   }
 
   function handleMaxChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const text = e.target.value
-    setMaxText(text)
-    if (text && bpm != null) {
-      setBpm(undefined)
+    setMaxText(e.target.value)
+    if (e.target.value) {
+      setExactText('')
     }
-    clearTimeout(maxTimer.current)
-    maxTimer.current = setTimeout(
-      () => setBpmMax(parseNum(text)),
-      RANGE_DEBOUNCE_MS,
-    )
-  }
-
-  function handleMinBlur() {
-    clearTimeout(minTimer.current)
-    setBpmMin(parseNum(minText))
-  }
-
-  function handleMaxBlur() {
-    clearTimeout(maxTimer.current)
-    setBpmMax(parseNum(maxText))
   }
 
   return (
@@ -211,8 +227,8 @@ function BpmPopover({
           type="number"
           className="filter-input mono"
           placeholder="Exact"
-          value={bpm ?? ''}
-          onChange={(e) => setBpm(parseNum(e.target.value))}
+          value={exactText}
+          onChange={handleExactChange}
         />
       </div>
       <div className="filter-popover-row">
@@ -223,7 +239,6 @@ function BpmPopover({
           placeholder="Min"
           value={minText}
           onChange={handleMinChange}
-          onBlur={handleMinBlur}
         />
         <span className="range-sep">–</span>
         <input
@@ -232,7 +247,6 @@ function BpmPopover({
           placeholder="Max"
           value={maxText}
           onChange={handleMaxChange}
-          onBlur={handleMaxBlur}
         />
       </div>
     </div>
