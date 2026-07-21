@@ -10,7 +10,7 @@ import { colorForColumn, ACTION_FILL } from '../utils/explorer'
 import { fetchMatches } from '../api/http'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { SetExplorerDeleteModal } from './SetExplorerDeleteModal'
-import { formatOverallScore } from '../utils'
+import { formatOverallScore, TRACK_DRAG_MIME } from '../utils'
 
 interface Props {
   allTracks: Track[]
@@ -22,7 +22,7 @@ interface Props {
   onDeleteNode: (
     nodeId: string,
     rewireEdges?: { parent_node_id: string; child_node_id: string }[],
-  ) => void
+  ) => void | Promise<void>
   onAddEdge: (parentNodeId: string, childNodeId: string) => Promise<void>
   onDeleteEdge: (edgeId: number) => Promise<void>
   onSwap: (nodeAId: string, nodeBId: string) => void
@@ -147,9 +147,10 @@ interface ExplorerNodeItemProps {
   colIndex: number
   trackTitle: string | undefined
   isSelected: boolean
+  showActions: boolean
   isSwapSource: boolean
   inTracklist: boolean
-  onNodeClick: (nodeId: string) => void
+  onNodeClick: (nodeId: string, additive: boolean) => void
   onNodeMouseDown: (
     e: React.MouseEvent,
     nodeId: string,
@@ -174,6 +175,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   colIndex,
   trackTitle,
   isSelected,
+  showActions,
   isSwapSource,
   inTracklist,
   onNodeClick,
@@ -251,7 +253,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       className="explorer-node-group"
       onClick={(e) => {
         e.stopPropagation()
-        onNodeClick(nodeId)
+        onNodeClick(nodeId, e.shiftKey || e.metaKey)
       }}
       onMouseDown={(e) => onNodeMouseDown(e, nodeId, level, x, y)}
       onMouseUp={() => onNodeMouseUp(nodeId, level)}
@@ -263,7 +265,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
         transform={`translate(${actionsStartX}, ${-(ACTION_H + ACTION_ROW_MARGIN)})`}
       >
         <g
-          className={`explorer-action-row ${isSelected ? 'explorer-action-row--visible' : ''}`}
+          className={`explorer-action-row ${showActions ? 'explorer-action-row--visible' : ''}`}
           data-testid="explorer-action-row"
         >
           {actions.map((a, i) => (
@@ -355,7 +357,12 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
         }}
         onDrop={(e) => {
           e.preventDefault()
-          const rawTrackId = e.dataTransfer.getData('text/plain')
+          // Drop on a node's lower edge adds a child; stop propagation so the
+          // viewport-level root drop does not also fire.
+          e.stopPropagation()
+          const rawTrackId =
+            e.dataTransfer.getData(TRACK_DRAG_MIME) ||
+            e.dataTransfer.getData('text/plain')
           if (rawTrackId.trim() === '') {
             return
           }
@@ -528,8 +535,17 @@ export function SetExplorerCanvas({
   const [swapSource, setSwapSource] = useState<string | null>(null)
   const [siblingAdd, setSiblingAdd] = useState<SiblingAddState | null>(null)
   const [childAdd, setChildAdd] = useState<ChildAddState | null>(null)
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null)
+  const [bulkDeleteIds, setBulkDeleteIds] = useState<string[] | null>(null)
+  const [marquee, setMarquee] = useState<{
+    x0: number
+    y0: number
+    x1: number
+    y1: number
+  } | null>(null)
   const [connectDrag, setConnectDrag] = useState<ConnectDragState | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -539,6 +555,18 @@ export function SetExplorerCanvas({
   const nodesRef = useRef(nodes)
   const edgesRef = useRef(edges)
   const byLevelMapRef = useRef<Map<number, LayoutNode[]>>(new Map())
+  // Layout positions + current node selection, read from event-handler
+  // callbacks (marquee finalize / backspace) without taking them as deps.
+  const allFlatRef = useRef<LayoutNode[]>([])
+  const selectedNodeIdsRef = useRef(selectedNodeIds)
+  // Rubber-band (marquee) drag-select origin in SVG user-space; non-null only
+  // while a Shift+background drag is in progress.
+  const marqueeOriginRef = useRef<{ x: number; y: number } | null>(null)
+  const marqueeEndRef = useRef<{ x: number; y: number } | null>(null)
+  const marqueeMovedRef = useRef(false)
+  // Suppress the click that fires right after a marquee/pan drag so it does not
+  // immediately clear the selection the drag just made.
+  const suppressSvgClickRef = useRef(false)
   // Refs for volatile UI state consumed by stable callbacks — prevents callbacks
   // from changing identity on every render, which would defeat React.memo on sub-components.
   const connectDragRef = useRef<ConnectDragState | null>(null)
@@ -574,6 +602,7 @@ export function SetExplorerCanvas({
     onSwapRef.current = onSwap
     onNodeToTracklistRef.current = onNodeToTracklist
     onAddSiblingRef.current = onAddSibling
+    selectedNodeIdsRef.current = selectedNodeIds
   })
 
   // Stable wrapper callbacks — identity never changes, body reads via ref.
@@ -624,21 +653,56 @@ export function SetExplorerCanvas({
     }
   }, [])
 
-  const handleBgMouseDown = useCallback((e: React.MouseEvent) => {
-    if (connectDragRef.current) {
-      return
-    }
-    pendingDragRef.current = null
-    if (
-      e.target === svgRef.current ||
-      (e.target as Element).tagName === 'svg'
-    ) {
+  // Map a client (screen) coordinate to the SVG user-space, accounting for the
+  // CSS pan/zoom transform on the <svg>. Returns null if the SVG is unavailable.
+  const toSvgPoint = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } | null => {
+      const svg = svgRef.current
+      if (!svg) {
+        return null
+      }
+      const pt = svg.createSVGPoint()
+      pt.x = clientX
+      pt.y = clientY
+      const ctm = svg.getScreenCTM()
+      if (!ctm) {
+        return null
+      }
+      const p = pt.matrixTransform(ctm.inverse())
+      return { x: p.x, y: p.y }
+    },
+    [],
+  )
+
+  const handleBgMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (connectDragRef.current) {
+        return
+      }
+      pendingDragRef.current = null
+      const onBackground =
+        e.target === svgRef.current || (e.target as Element).tagName === 'svg'
+      if (!onBackground) {
+        return
+      }
+      // Shift+drag on the background draws a marquee to multi-select nodes;
+      // a plain drag pans the canvas.
+      if (e.shiftKey) {
+        const origin = toSvgPoint(e.clientX, e.clientY)
+        if (origin) {
+          marqueeOriginRef.current = origin
+          marqueeMovedRef.current = false
+          setMarquee({ x0: origin.x, y0: origin.y, x1: origin.x, y1: origin.y })
+          return
+        }
+      }
       draggingRef.current = true
       lastMouseRef.current = { x: e.clientX, y: e.clientY }
-    }
-  }, [])
+    },
+    [toSvgPoint],
+  )
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
     const cd = connectDragRef.current
     if (pendingDragRef.current && !cd) {
       const pd = pendingDragRef.current
@@ -684,7 +748,55 @@ export function SetExplorerCanvas({
     setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }))
   }, [])
 
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      const o = marqueeOriginRef.current
+      if (o) {
+        const p = toSvgPoint(e.clientX, e.clientY)
+        if (p) {
+          marqueeEndRef.current = p
+          if (Math.abs(p.x - o.x) + Math.abs(p.y - o.y) >= DRAG_THRESHOLD) {
+            marqueeMovedRef.current = true
+          }
+          setMarquee({ x0: o.x, y0: o.y, x1: p.x, y1: p.y })
+        }
+        return
+      }
+      handleCanvasMouseMove(e)
+    },
+    [toSvgPoint, handleCanvasMouseMove],
+  )
+
   const handleMouseUp = useCallback(() => {
+    const origin = marqueeOriginRef.current
+    if (origin) {
+      const end = marqueeEndRef.current ?? origin
+      marqueeOriginRef.current = null
+      marqueeEndRef.current = null
+      setMarquee(null)
+      if (marqueeMovedRef.current) {
+        // Select every node whose box intersects the marquee rect.
+        const minX = Math.min(origin.x, end.x)
+        const maxX = Math.max(origin.x, end.x)
+        const minY = Math.min(origin.y, end.y)
+        const maxY = Math.max(origin.y, end.y)
+        const hits = new Set<string>()
+        for (const ln of allFlatRef.current) {
+          if (
+            ln.x <= maxX &&
+            ln.x + NODE_W >= minX &&
+            ln.y <= maxY &&
+            ln.y + NODE_H >= minY
+          ) {
+            hits.add(ln.node.node_id)
+          }
+        }
+        setSelectedNodeIds(hits)
+        setSelectedEdgeId(null)
+        suppressSvgClickRef.current = true
+      }
+      return
+    }
     draggingRef.current = false
     pendingDragRef.current = null
     if (connectDragRef.current) {
@@ -741,6 +853,10 @@ export function SetExplorerCanvas({
   useEffect(() => {
     byLevelMapRef.current = byLevelMap
   }, [byLevelMap])
+
+  useEffect(() => {
+    allFlatRef.current = allFlat
+  }, [allFlat])
 
   const levelEntries = useMemo(() => {
     const entries: { level: number; nodesAtLevel: LayoutNode[] }[] = []
@@ -901,11 +1017,43 @@ export function SetExplorerCanvas({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedEdgeId, onDeleteEdge])
 
+  // Delete selected node(s) on Backspace/Delete. A single selection opens the
+  // per-node delete modal (which handles child rewiring); multiple selected
+  // nodes open a bulk-confirm modal.
+  useEffect(() => {
+    if (selectedNodeIds.size === 0) {
+      return
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        const ids = Array.from(selectedNodeIds)
+        if (ids.length === 1) {
+          const node = nodesRef.current.find((n) => n.node_id === ids[0])
+          if (node) {
+            setDeleteTarget(node)
+          }
+        } else {
+          setBulkDeleteIds(ids)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedNodeIds])
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSwapSource(null)
         setSelectedEdgeId(null)
+        setSelectedNodeIds(new Set())
       }
     }
     window.addEventListener('keydown', handleEscape)
@@ -930,17 +1078,23 @@ export function SetExplorerCanvas({
   )
 
   const handleSvgClick = useCallback((e: React.MouseEvent) => {
+    // Ignore the click synthesized at the end of a marquee drag so it does not
+    // wipe the just-made selection.
+    if (suppressSvgClickRef.current) {
+      suppressSvgClickRef.current = false
+      return
+    }
     if (
       e.target === svgRef.current ||
       (e.target as Element).classList.contains('set-explorer-svg')
     ) {
-      setSelectedNodeId(null)
+      setSelectedNodeIds(new Set())
       setSelectedEdgeId(null)
       setSwapSource(null)
     }
   }, [])
 
-  const handleNodeClick = useCallback((nodeId: string) => {
+  const handleNodeClick = useCallback((nodeId: string, additive: boolean) => {
     const ss = swapSourceRef.current
     if (ss) {
       if (ss !== nodeId) {
@@ -949,7 +1103,22 @@ export function SetExplorerCanvas({
       setSwapSource(null)
       return
     }
-    setSelectedNodeId((prev) => (prev === nodeId ? null : nodeId))
+    setSelectedNodeIds((prev) => {
+      if (additive) {
+        const next = new Set(prev)
+        if (next.has(nodeId)) {
+          next.delete(nodeId)
+        } else {
+          next.add(nodeId)
+        }
+        return next
+      }
+      // Plain click: toggle a sole selection off, otherwise select just this one.
+      if (prev.size === 1 && prev.has(nodeId)) {
+        return new Set()
+      }
+      return new Set([nodeId])
+    })
     setSelectedEdgeId(null)
   }, [])
 
@@ -1118,7 +1287,7 @@ export function SetExplorerCanvas({
   const handleEdgeClick = useCallback((e: React.MouseEvent, edgeId: number) => {
     e.stopPropagation()
     setSelectedEdgeId((prev) => (prev === edgeId ? null : edgeId))
-    setSelectedNodeId(null)
+    setSelectedNodeIds(new Set())
     setSwapSource(null)
   }, [])
 
@@ -1141,6 +1310,49 @@ export function SetExplorerCanvas({
       setDeleteTarget(node)
     }
   }, [])
+
+  const handleBulkDelete = useCallback(async () => {
+    const ids = bulkDeleteIds
+    if (!ids) {
+      return
+    }
+    setBulkDeleteIds(null)
+    setSelectedNodeIds(new Set())
+    // Delete sequentially so each set-refresh settles before the next removal.
+    for (const id of ids) {
+      await onDeleteNodeRef.current(id)
+    }
+  }, [bulkDeleteIds])
+
+  // Drop a track from a top quadrant onto empty canvas to seed a root node.
+  // Drops that land on a node's lower edge are handled there (child add) and
+  // stop propagation, so they never reach here.
+  const handleViewportDragOver = useCallback((e: React.DragEvent) => {
+    if (
+      e.dataTransfer.types.includes(TRACK_DRAG_MIME) ||
+      e.dataTransfer.types.includes('text/plain')
+    ) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }, [])
+
+  const handleViewportDrop = useCallback(
+    (e: React.DragEvent) => {
+      const raw =
+        e.dataTransfer.getData(TRACK_DRAG_MIME) ||
+        e.dataTransfer.getData('text/plain')
+      if (raw.trim() === '') {
+        return
+      }
+      e.preventDefault()
+      const trackId = Number(raw)
+      if (Number.isInteger(trackId)) {
+        stableOnAddNode(trackId)
+      }
+    },
+    [stableOnAddNode],
+  )
 
   const nodeMap = useMemo(() => {
     const map = new Map<string, LayoutNode>()
@@ -1204,11 +1416,14 @@ export function SetExplorerCanvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDragOver={handleViewportDragOver}
+        onDrop={handleViewportDrop}
       >
         {nodes.length === 0 ? (
           <div>
             <p className="set-empty-tracks">
-              Explorer is empty. Search above to add a root node.
+              Explorer is empty. Search above, or drag a track here, to add a
+              root node.
             </p>
             <svg
               className="set-explorer-svg"
@@ -1313,6 +1528,19 @@ export function SetExplorerCanvas({
               />
             )}
 
+            {/* Marquee (drag-select) rectangle */}
+            {marquee && (
+              <rect
+                className="explorer-marquee"
+                x={Math.min(marquee.x0, marquee.x1)}
+                y={Math.min(marquee.y0, marquee.y1)}
+                width={Math.abs(marquee.x1 - marquee.x0)}
+                height={Math.abs(marquee.y1 - marquee.y0)}
+                pointerEvents="none"
+                data-testid="explorer-marquee"
+              />
+            )}
+
             {/* Nodes */}
             {allFlat.map((ln) => (
               <ExplorerNodeItem
@@ -1324,7 +1552,11 @@ export function SetExplorerCanvas({
                 trackTitle={ln.node.track?.title}
                 x={ln.x}
                 y={ln.y}
-                isSelected={selectedNodeId === ln.node.node_id}
+                isSelected={selectedNodeIds.has(ln.node.node_id)}
+                showActions={
+                  selectedNodeIds.size === 1 &&
+                  selectedNodeIds.has(ln.node.node_id)
+                }
                 isSwapSource={swapSource === ln.node.node_id}
                 inTracklist={tracklistTrackIds.has(ln.node.track_id)}
                 onNodeClick={handleNodeClick}
@@ -1402,9 +1634,43 @@ export function SetExplorerCanvas({
           onConfirm={(rewireEdges) => {
             onDeleteNodeRef.current(deleteTarget.node_id, rewireEdges)
             setDeleteTarget(null)
+            setSelectedNodeIds(new Set())
           }}
           onCancel={() => setDeleteTarget(null)}
         />
+      )}
+
+      {bulkDeleteIds && (
+        <div
+          className="explorer-delete-overlay"
+          onClick={() => setBulkDeleteIds(null)}
+        >
+          <div
+            className="explorer-delete-modal"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="bulk-delete-modal"
+          >
+            <h3>Delete {bulkDeleteIds.length} nodes</h3>
+            <p className="text-muted">
+              This removes the selected nodes and all of their connections. This
+              cannot be undone.
+            </p>
+            <div className="explorer-delete-buttons" style={{ marginTop: 12 }}>
+              <button
+                className="set-action-btn"
+                onClick={() => setBulkDeleteIds(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="set-action-btn set-action-btn--danger"
+                onClick={handleBulkDelete}
+              >
+                Delete all
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {siblingAdd && (

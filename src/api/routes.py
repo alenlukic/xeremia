@@ -1417,7 +1417,9 @@ def api_update_table_preferences(table_id: str, body: TablePreferenceConfig):
             row.column_visibility = payload["column_visibility"]
             row.column_widths = payload["column_widths"]
         session.commit()
-        session.refresh(row)
+        # No session.refresh(row): the custom __Session wrapper has no refresh()
+        # method, and expire_on_commit=True already reloads fresh column values
+        # lazily during serialization below.
         return _serialize_table_preference(row)
     except ProgrammingError:
         session.rollback()

@@ -2718,6 +2718,13 @@ body,
   display: block;
 }
 
+.explorer-marquee {
+  fill: color-mix(in srgb, var(--accent) 12%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
 .explorer-node-group {
   cursor: pointer;
 }
