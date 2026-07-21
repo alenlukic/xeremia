@@ -518,7 +518,11 @@ function PoolTableHead({
           : 'set-ws-th'
 
     if (colId === 'play') {
-      return <th key={colId} className={thClass} />
+      return (
+        <th key={colId} className={thClass}>
+          <div className="th-content th-content--play">Pre.</div>
+        </th>
+      )
     }
 
     return (

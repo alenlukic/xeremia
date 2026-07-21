@@ -7,6 +7,7 @@ import { QuadrantDivider, QuadrantExpandBar } from './QuadrantControls'
 import { SetPoolTable } from './SetPoolTable'
 import { SetTracklist } from './SetTracklist'
 import { SetExplorerCanvas } from './SetExplorerCanvas'
+import type { ExplorerAddResult } from './SetExplorerCanvas'
 
 type SubTab = 'tracks' | 'explorer'
 
@@ -59,7 +60,7 @@ interface Props {
     trackId: number,
     parentNodeId?: string,
     level?: number,
-  ) => Promise<unknown>
+  ) => Promise<ExplorerAddResult>
   deleteExplorerNode: (
     nodeId: string,
     rewireEdges?: { parent_node_id: string; child_node_id: string }[],
@@ -72,7 +73,7 @@ interface Props {
     trackId: number,
     inheritParentIds: string[],
     level: number,
-  ) => Promise<unknown>
+  ) => Promise<ExplorerAddResult>
   fetchEdgeScores: (
     pairs: [number, number][],
   ) => Promise<{ scores: (number | null)[] }>

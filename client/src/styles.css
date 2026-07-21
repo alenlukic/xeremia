@@ -3146,6 +3146,69 @@ body,
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  position: relative;
+}
+
+/* Zoom controls floating in the Explorer's top-right corner. */
+.explorer-zoom-controls {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.explorer-zoom-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.explorer-zoom-btn:hover {
+  background: var(--surface-active, rgba(255, 255, 255, 0.08));
+}
+
+.explorer-zoom-reset {
+  font-size: 14px;
+}
+
+.explorer-zoom-level {
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, var(--text));
+  padding: 1px 0;
+  user-select: none;
+}
+
+/* Drop-target highlight while dragging a track onto a node (add as child). */
+.explorer-node-group--drop .explorer-node-body {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.set-explorer-hint {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .set-explorer-controls {

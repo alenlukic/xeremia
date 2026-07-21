@@ -262,6 +262,20 @@ export const MatchesPanel = memo(function MatchesPanel({
   const allColumns = useMemo(() => {
     const cols = [
       col.display({
+        id: 'play',
+        header: 'Pre.',
+        size: 40,
+        minSize: 28,
+        enableSorting: false,
+        enableResizing: false,
+        cell: ({ row }) => (
+          <PlayButton
+            trackId={row.original.candidate_id}
+            title={row.original.title}
+          />
+        ),
+      }),
+      col.display({
         id: 'add_to_set',
         header: 'Actions',
         size: 92,
@@ -315,10 +329,6 @@ export const MatchesPanel = memo(function MatchesPanel({
         minSize: 100,
         cell: (info) => (
           <div className="match-track-cell">
-            <PlayButton
-              trackId={info.row.original.candidate_id}
-              title={info.getValue()}
-            />
             <button
               className="match-track-link"
               onClick={() => onUseAsSource?.(info.row.original.candidate_id)}
@@ -377,7 +387,12 @@ export const MatchesPanel = memo(function MatchesPanel({
     return cols
   }, [onViewDetail, onUseAsSource, onAddToSet, onAddToPool, onAddToTracklist])
 
-  const fullColumnOrder = columnOrder
+  // The play ("Pre.") column is a fixed leading column (as in the other
+  // quadrants), independent of the persisted/reorderable order of the rest.
+  const fullColumnOrder = useMemo(
+    () => ['play', ...columnOrder.filter((id) => id !== 'play')],
+    [columnOrder],
+  )
 
   const bucketCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -714,6 +729,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                     const sorted = header.column.getIsSorted()
                     const sortIndex = header.column.getSortIndex()
                     const isDetails = header.column.id === 'details'
+                    const isPlay = header.column.id === 'play'
                     return (
                       <th
                         key={header.id}
@@ -737,7 +753,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                       >
                         <div
                           className={`th-content${canSort ? ' th-sortable' : ''}`}
-                          draggable
+                          draggable={!isPlay}
                           onDragStart={(e) =>
                             handleDragStart(e, header.column.id)
                           }
@@ -748,20 +764,27 @@ export const MatchesPanel = memo(function MatchesPanel({
                               : undefined
                           }
                         >
-                          <TableColumnControls
-                            label={
-                              registryById.get(header.column.id)?.label ??
-                              String(header.column.columnDef.header ?? '')
-                            }
-                            onRemove={() =>
-                              onToggleColumnVisibility(header.column.id)
-                            }
-                          >
-                            {flexRender(
+                          {isPlay ? (
+                            flexRender(
                               header.column.columnDef.header,
                               header.getContext(),
-                            )}
-                          </TableColumnControls>
+                            )
+                          ) : (
+                            <TableColumnControls
+                              label={
+                                registryById.get(header.column.id)?.label ??
+                                String(header.column.columnDef.header ?? '')
+                              }
+                              onRemove={() =>
+                                onToggleColumnVisibility(header.column.id)
+                              }
+                            >
+                              {flexRender(
+                                header.column.columnDef.header,
+                                header.getContext(),
+                              )}
+                            </TableColumnControls>
+                          )}
                           {sorted && (
                             <span className="sort-indicator">
                               {sorted === 'asc' ? ' ▲' : ' ▼'}

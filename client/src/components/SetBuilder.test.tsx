@@ -61,11 +61,11 @@ function defaultProps() {
     reorderTracklist: noop,
     updateTracklistNote: noop,
     addToTracklist: noop,
-    addExplorerNode: asyncNoop as (
+    addExplorerNode: asyncNoop as unknown as (
       trackId: number,
       parentNodeId?: string,
       level?: number,
-    ) => Promise<unknown>,
+    ) => Promise<{ node_id: string } | null>,
     deleteExplorerNode: noop as (
       nodeId: string,
       rewireEdges?: { parent_node_id: string; child_node_id: string }[],
@@ -79,11 +79,11 @@ function defaultProps() {
     ) => Promise<void>,
     swapExplorerNodes: noop,
     explorerNodeAddToTracklist: noop,
-    addSiblingNode: asyncNoop as (
+    addSiblingNode: asyncNoop as unknown as (
       trackId: number,
       inheritParentIds: string[],
       level: number,
-    ) => Promise<unknown>,
+    ) => Promise<{ node_id: string } | null>,
     fetchEdgeScores: async () => ({ scores: [] as (number | null)[] }),
     clearError: noop,
     ...testSetBuilderTableProps,
@@ -655,8 +655,8 @@ describe('SetBuilder', () => {
     })
   })
 
-  describe('explorer delete modal per-edge resolution', () => {
-    it('shows per-child resolution controls in delete modal', async () => {
+  describe('explorer node deletion', () => {
+    it('deletes a node immediately without a confirmation modal (children orphaned)', async () => {
       const hydrated = makeHydratedSet({
         explorer_nodes: [
           {
@@ -738,9 +738,9 @@ describe('SetBuilder', () => {
       const deleteBtns = screen.getAllByLabelText('Delete node')
       await userEvent.click(deleteBtns[1])
 
-      expect(screen.getByText('Delete Node')).toBeInTheDocument()
-      const childRows = screen.getAllByTestId('delete-child-row')
-      expect(childRows.length).toBeGreaterThan(0)
+      expect(screen.queryByText('Delete Node')).toBeNull()
+      expect(screen.queryAllByTestId('delete-child-row')).toHaveLength(0)
+      expect(deleteExplorerNode).toHaveBeenCalledWith('mid')
     })
   })
 })

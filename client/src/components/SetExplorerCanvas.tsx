@@ -9,7 +9,6 @@ import type {
 import { colorForColumn, ACTION_FILL } from '../utils/explorer'
 import { fetchMatches } from '../api/http'
 import { useTrackSearch } from '../hooks/useTrackSearch'
-import { SetExplorerDeleteModal } from './SetExplorerDeleteModal'
 import { formatOverallScore, TRACK_DRAG_MIME } from '../utils'
 
 interface Props {
@@ -18,7 +17,11 @@ interface Props {
   edges: ExplorerEdge[]
   /** Return to the tracklist/pool view. */
   onBack?: () => void
-  onAddNode: (trackId: number, parentNodeId?: string, level?: number) => void
+  onAddNode: (
+    trackId: number,
+    parentNodeId?: string,
+    level?: number,
+  ) => void | Promise<ExplorerAddResult>
   onDeleteNode: (
     nodeId: string,
     rewireEdges?: { parent_node_id: string; child_node_id: string }[],
@@ -31,7 +34,7 @@ interface Props {
     trackId: number,
     inheritParentIds: string[],
     level: number,
-  ) => Promise<unknown>
+  ) => Promise<ExplorerAddResult>
   tracklistTrackIds: Set<number>
   fetchEdgeScores: (
     pairs: [number, number][],
@@ -67,6 +70,19 @@ interface LayoutNode {
   children: LayoutNode[]
 }
 
+/** Snapshot of a deleted node + its connections, used to reconstruct it on undo. */
+interface DeletedNode {
+  node_id: string
+  track_id: number
+  level: number
+  /** node_ids of incoming-edge parents at deletion time. */
+  parentIds: string[]
+  /** node_ids of outgoing-edge children at deletion time. */
+  childIds: string[]
+}
+
+export type ExplorerAddResult = { node_id: string } | null
+
 const NODE_W = 360
 const NODE_H = 48
 const V_GAP = 176
@@ -76,6 +92,8 @@ const ACTION_H = 48
 const ACTION_LABEL_SIZE = 20
 const ACTION_GAP = 8
 const ACTION_ROW_MARGIN = 8
+// The click-controls (delete/swap/+child/→TL row) render at 75% scale.
+const ACTION_SCALE = 0.75
 const TOP_PAD = ACTION_H + ACTION_ROW_MARGIN
 const LEVEL_ADD_W = 70
 const LEVEL_ADD_H = 28
@@ -239,7 +257,6 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
 
   const totalActionsW =
     actions.reduce((s, a) => s + a.w, 0) + (actions.length - 1) * ACTION_GAP
-  const actionsStartX = (NODE_W - totalActionsW) / 2
   const actionXs: number[] = []
   let runX = 0
   for (const a of actions) {
@@ -253,16 +270,41 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       className="explorer-node-group"
       onClick={(e) => {
         e.stopPropagation()
-        onNodeClick(nodeId, e.shiftKey || e.metaKey)
+        onNodeClick(nodeId, e.shiftKey || e.metaKey || e.ctrlKey)
       }}
       onMouseDown={(e) => onNodeMouseDown(e, nodeId, level, x, y)}
       onMouseUp={() => onNodeMouseUp(nodeId, level)}
+      onDragOver={(e) => {
+        // A track dropped anywhere on a node becomes that node's child.
+        e.preventDefault()
+        e.stopPropagation()
+        e.dataTransfer.dropEffect = 'copy'
+        e.currentTarget.classList.add('explorer-node-group--drop')
+      }}
+      onDragLeave={(e) => {
+        e.currentTarget.classList.remove('explorer-node-group--drop')
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        e.currentTarget.classList.remove('explorer-node-group--drop')
+        const raw =
+          e.dataTransfer.getData(TRACK_DRAG_MIME) ||
+          e.dataTransfer.getData('text/plain')
+        if (raw.trim() === '') {
+          return
+        }
+        const trackId = Number(raw)
+        if (Number.isInteger(trackId)) {
+          onAddNode(trackId, nodeId, level + 1)
+        }
+      }}
       data-testid="explorer-node"
       data-level={level}
       data-col-index={colIndex}
     >
       <g
-        transform={`translate(${actionsStartX}, ${-(ACTION_H + ACTION_ROW_MARGIN)})`}
+        transform={`translate(${NODE_W / 2}, ${-(ACTION_SCALE * ACTION_H + ACTION_ROW_MARGIN)}) scale(${ACTION_SCALE}) translate(${-totalActionsW / 2}, 0)`}
       >
         <g
           className={`explorer-action-row ${showActions ? 'explorer-action-row--visible' : ''}`}
@@ -325,6 +367,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
 
       <title>{fullTitle}</title>
       <rect
+        className="explorer-node-body"
         width={NODE_W}
         height={NODE_H}
         rx={6}
@@ -344,34 +387,6 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       >
         {title}
       </text>
-
-      <rect
-        x={0}
-        y={NODE_H - 4}
-        width={NODE_W}
-        height={8}
-        fill="transparent"
-        onDragOver={(e) => {
-          e.preventDefault()
-          e.dataTransfer.dropEffect = 'copy'
-        }}
-        onDrop={(e) => {
-          e.preventDefault()
-          // Drop on a node's lower edge adds a child; stop propagation so the
-          // viewport-level root drop does not also fire.
-          e.stopPropagation()
-          const rawTrackId =
-            e.dataTransfer.getData(TRACK_DRAG_MIME) ||
-            e.dataTransfer.getData('text/plain')
-          if (rawTrackId.trim() === '') {
-            return
-          }
-          const trackId = Number(rawTrackId)
-          if (Number.isInteger(trackId)) {
-            onAddNode(trackId, nodeId, level + 1)
-          }
-        }}
-      />
     </g>
   )
 })
@@ -516,18 +531,11 @@ export function SetExplorerCanvas({
   tracklistTrackIds,
   fetchEdgeScores,
 }: Props) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const {
-    suggestions: rootSuggestions,
-    search: rootSearch,
-    clear: rootClear,
-  } = useTrackSearch(allTracks)
   const {
     suggestions: siblingSuggestions,
     search: siblingSearch,
     clear: siblingClear,
   } = useTrackSearch(allTracks)
-  const [deleteTarget, setDeleteTarget] = useState<ExplorerNode | null>(null)
   const [edgeScores, setEdgeScores] = useState<Map<string, number | null>>(
     new Map(),
   )
@@ -539,7 +547,6 @@ export function SetExplorerCanvas({
     () => new Set(),
   )
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null)
-  const [bulkDeleteIds, setBulkDeleteIds] = useState<string[] | null>(null)
   const [marquee, setMarquee] = useState<{
     x0: number
     y0: number
@@ -567,6 +574,14 @@ export function SetExplorerCanvas({
   // Suppress the click that fires right after a marquee/pan drag so it does not
   // immediately clear the selection the drag just made.
   const suppressSvgClickRef = useRef(false)
+  // Undo stack of deletion batches; Ctrl/Cmd+Z pops and reconstructs the last one.
+  const undoStackRef = useRef<DeletedNode[][]>([])
+  // Stable indirection so the keydown effect can call delete/undo without
+  // listing them as deps (they are defined later in the component body).
+  const deleteNodesRef = useRef<(ids: string[]) => void | Promise<void>>(
+    () => {},
+  )
+  const undoDeleteRef = useRef<() => void | Promise<void>>(() => {})
   // Refs for volatile UI state consumed by stable callbacks — prevents callbacks
   // from changing identity on every render, which would defeat React.memo on sub-components.
   const connectDragRef = useRef<ConnectDragState | null>(null)
@@ -634,24 +649,41 @@ export function SetExplorerCanvas({
   } | null>(null)
   const DRAG_THRESHOLD = 5
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    if (e.ctrlKey) {
-      const delta = e.deltaY > 0 ? -0.1 : 0.1
-      setZoom((prev) => {
-        const next = Math.max(0.2, Math.min(3, prev + delta))
-        try {
-          localStorage.setItem(ZOOM_STORAGE_KEY, String(next))
-        } catch {
-          /* storage unavailable */
-        }
-        return next
-      })
-    } else {
-      const dy = e.deltaMode === 0 ? e.deltaY : e.deltaY * 14
-      setPan((prev) => ({ ...prev, y: prev.y - dy }))
+  const setZoomValue = useCallback((next: number) => {
+    const clamped = Math.max(0.2, Math.min(3, next))
+    setZoom(clamped)
+    try {
+      localStorage.setItem(ZOOM_STORAGE_KEY, String(clamped))
+    } catch {
+      /* storage unavailable */
     }
   }, [])
+
+  const zoomBy = useCallback(
+    (delta: number) => setZoom((prev) => {
+      const next = Math.max(0.2, Math.min(3, prev + delta))
+      try {
+        localStorage.setItem(ZOOM_STORAGE_KEY, String(next))
+      } catch {
+        /* storage unavailable */
+      }
+      return next
+    }),
+    [],
+  )
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault()
+      if (e.ctrlKey) {
+        zoomBy(e.deltaY > 0 ? -0.1 : 0.1)
+      } else {
+        const dy = e.deltaMode === 0 ? e.deltaY : e.deltaY * 14
+        setPan((prev) => ({ ...prev, y: prev.y - dy }))
+      }
+    },
+    [zoomBy],
+  )
 
   // Map a client (screen) coordinate to the SVG user-space, accounting for the
   // CSS pan/zoom transform on the <svg>. Returns null if the SVG is unavailable.
@@ -685,9 +717,9 @@ export function SetExplorerCanvas({
       if (!onBackground) {
         return
       }
-      // Shift+drag on the background draws a marquee to multi-select nodes;
+      // Ctrl/Cmd+drag on the background draws a marquee to multi-select nodes;
       // a plain drag pans the canvas.
-      if (e.shiftKey) {
+      if (e.metaKey || e.ctrlKey) {
         const origin = toSvgPoint(e.clientX, e.clientY)
         if (origin) {
           marqueeOriginRef.current = origin
@@ -1017,13 +1049,9 @@ export function SetExplorerCanvas({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedEdgeId, onDeleteEdge])
 
-  // Delete selected node(s) on Backspace/Delete. A single selection opens the
-  // per-node delete modal (which handles child rewiring); multiple selected
-  // nodes open a bulk-confirm modal.
+  // Delete selected node(s) immediately on Backspace/Delete — no confirmation;
+  // children are orphaned. Ctrl/Cmd+Z reconstructs the last deletion.
   useEffect(() => {
-    if (selectedNodeIds.size === 0) {
-      return
-    }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
@@ -1031,22 +1059,24 @@ export function SetExplorerCanvas({
       ) {
         return
       }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'
+      if (isUndo) {
         e.preventDefault()
-        const ids = Array.from(selectedNodeIds)
-        if (ids.length === 1) {
-          const node = nodesRef.current.find((n) => n.node_id === ids[0])
-          if (node) {
-            setDeleteTarget(node)
-          }
-        } else {
-          setBulkDeleteIds(ids)
+        void undoDeleteRef.current()
+        return
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const ids = Array.from(selectedNodeIdsRef.current)
+        if (ids.length === 0) {
+          return
         }
+        e.preventDefault()
+        void deleteNodesRef.current(ids)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNodeIds])
+  }, [])
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -1059,23 +1089,6 @@ export function SetExplorerCanvas({
     window.addEventListener('keydown', handleEscape)
     return () => window.removeEventListener('keydown', handleEscape)
   }, [])
-
-  const handleSearchAdd = useCallback(
-    (q: string) => {
-      setSearchQuery(q)
-      rootSearch(q)
-    },
-    [rootSearch],
-  )
-
-  const handleSearchSelect = useCallback(
-    (s: SearchSuggestion) => {
-      stableOnAddNode(s.id)
-      setSearchQuery('')
-      rootClear()
-    },
-    [stableOnAddNode, rootClear],
-  )
 
   const handleSvgClick = useCallback((e: React.MouseEvent) => {
     // Ignore the click synthesized at the end of a marquee drag so it does not
@@ -1304,29 +1317,101 @@ export function SetExplorerCanvas({
     setSelectedEdgeId(null)
   }, [])
 
-  const handleSetDeleteTarget = useCallback((nodeId: string) => {
+  // Snapshot a node's identity + connections so a delete can be undone.
+  const captureNode = useCallback((nodeId: string): DeletedNode | null => {
     const node = nodesRef.current.find((n) => n.node_id === nodeId)
-    if (node) {
-      setDeleteTarget(node)
+    if (!node) {
+      return null
+    }
+    const parentIds = edgesRef.current
+      .filter((e) => e.child_node_id === nodeId)
+      .map((e) => e.parent_node_id)
+    const childIds = edgesRef.current
+      .filter((e) => e.parent_node_id === nodeId)
+      .map((e) => e.child_node_id)
+    return {
+      node_id: nodeId,
+      track_id: node.track_id,
+      level: node.level,
+      parentIds,
+      childIds,
     }
   }, [])
 
-  const handleBulkDelete = useCallback(async () => {
-    const ids = bulkDeleteIds
-    if (!ids) {
+  // Delete node(s) immediately (children are orphaned — no confirmation), pushing
+  // an undo batch so Ctrl/Cmd+Z can reconstruct them.
+  const deleteNodes = useCallback(
+    async (ids: string[]) => {
+      const batch = ids
+        .map(captureNode)
+        .filter((d): d is DeletedNode => d !== null)
+      if (batch.length === 0) {
+        return
+      }
+      undoStackRef.current.push(batch)
+      setSelectedNodeIds(new Set())
+      // Sequential so each set-refresh settles before the next removal.
+      for (const d of batch) {
+        await onDeleteNodeRef.current(d.node_id)
+      }
+    },
+    [captureNode],
+  )
+
+  // Reconstruct the most recently deleted batch: recreate nodes parent-first
+  // (mapping old ids to freshly-minted ones), then relink surviving children.
+  const undoDelete = useCallback(async () => {
+    const batch = undoStackRef.current.pop()
+    if (!batch || batch.length === 0) {
       return
     }
-    setBulkDeleteIds(null)
-    setSelectedNodeIds(new Set())
-    // Delete sequentially so each set-refresh settles before the next removal.
-    for (const id of ids) {
-      await onDeleteNodeRef.current(id)
+    const ordered = [...batch].sort((a, b) => a.level - b.level)
+    const deletedSet = new Set(batch.map((d) => d.node_id))
+    const idMap = new Map<string, string>()
+    for (const d of ordered) {
+      const parentIds = d.parentIds.map((pid) => idMap.get(pid) ?? pid)
+      let result: ExplorerAddResult = null
+      if (parentIds.length > 0) {
+        result = await onAddSiblingRef.current(d.track_id, parentIds, d.level)
+      } else {
+        const r = await onAddNodeRef.current(d.track_id, undefined, d.level)
+        result = r ?? null
+      }
+      if (result?.node_id) {
+        idMap.set(d.node_id, result.node_id)
+      }
     }
-  }, [bulkDeleteIds])
+    // Relink edges to children that survived (edges among restored nodes were
+    // recreated via their parent lists above).
+    for (const d of ordered) {
+      const newId = idMap.get(d.node_id)
+      if (!newId) {
+        continue
+      }
+      for (const childOld of d.childIds) {
+        if (deletedSet.has(childOld)) {
+          continue
+        }
+        await onAddEdgeRef.current(newId, childOld)
+      }
+    }
+  }, [])
+
+  const handleSetDeleteTarget = useCallback(
+    (nodeId: string) => {
+      void deleteNodes([nodeId])
+    },
+    [deleteNodes],
+  )
+
+  useEffect(() => {
+    deleteNodesRef.current = deleteNodes
+    undoDeleteRef.current = undoDelete
+  })
 
   // Drop a track from a top quadrant onto empty canvas to seed a root node.
-  // Drops that land on a node's lower edge are handled there (child add) and
-  // stop propagation, so they never reach here.
+  // Drops that land on a node are handled there (child add) and stop
+  // propagation, so they never reach here.
   const handleViewportDragOver = useCallback((e: React.DragEvent) => {
     if (
       e.dataTransfer.types.includes(TRACK_DRAG_MIME) ||
@@ -1375,37 +1460,51 @@ export function SetExplorerCanvas({
             ←
           </button>
         )}
-        <div className="set-explorer-search-wrapper">
-          <input
-            className="set-explorer-search"
-            placeholder="Search to add root node…"
-            value={searchQuery}
-            onChange={(e) => handleSearchAdd(e.target.value)}
-          />
-          {searchQuery.trim() !== '' && rootSuggestions.length > 0 && (
-            <ul className="set-explorer-search-dropdown">
-              {rootSuggestions.map((s) => (
-                <li
-                  key={s.id}
-                  className="set-explorer-search-item"
-                  onMouseDown={() => handleSearchSelect(s)}
-                >
-                  <span>{s.title}</span>
-                  <span className="text-muted">
-                    {s.camelot_code && (
-                      <span className="mono"> {s.camelot_code}</span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <span className="set-explorer-hint text-muted">
+          Drag a track here to add a root node · drop on a node to add a child
+        </span>
         {swapSource && (
           <span className="set-explorer-swap-hint">
             Click another node to swap
           </span>
         )}
+      </div>
+
+      <div
+        className="explorer-zoom-controls"
+        role="group"
+        aria-label="Explorer zoom"
+      >
+        <button
+          type="button"
+          className="explorer-zoom-btn"
+          aria-label="Zoom in"
+          title="Zoom in"
+          onClick={() => zoomBy(0.1)}
+        >
+          +
+        </button>
+        <span className="explorer-zoom-level" data-testid="explorer-zoom-level">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          type="button"
+          className="explorer-zoom-btn"
+          aria-label="Zoom out"
+          title="Zoom out"
+          onClick={() => zoomBy(-0.1)}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          className="explorer-zoom-btn explorer-zoom-reset"
+          aria-label="Reset zoom"
+          title="Reset zoom"
+          onClick={() => setZoomValue(1)}
+        >
+          ⤢
+        </button>
       </div>
 
       <div
@@ -1422,8 +1521,8 @@ export function SetExplorerCanvas({
         {nodes.length === 0 ? (
           <div>
             <p className="set-empty-tracks">
-              Explorer is empty. Search above, or drag a track here, to add a
-              root node.
+              Explorer is empty. Drag a track here, or use “+ Add Track”, to add
+              a root node.
             </p>
             <svg
               className="set-explorer-svg"
@@ -1625,53 +1724,6 @@ export function SetExplorerCanvas({
           </svg>
         )}
       </div>
-
-      {deleteTarget && (
-        <SetExplorerDeleteModal
-          node={deleteTarget}
-          edges={edges}
-          nodes={nodes}
-          onConfirm={(rewireEdges) => {
-            onDeleteNodeRef.current(deleteTarget.node_id, rewireEdges)
-            setDeleteTarget(null)
-            setSelectedNodeIds(new Set())
-          }}
-          onCancel={() => setDeleteTarget(null)}
-        />
-      )}
-
-      {bulkDeleteIds && (
-        <div
-          className="explorer-delete-overlay"
-          onClick={() => setBulkDeleteIds(null)}
-        >
-          <div
-            className="explorer-delete-modal"
-            onClick={(e) => e.stopPropagation()}
-            data-testid="bulk-delete-modal"
-          >
-            <h3>Delete {bulkDeleteIds.length} nodes</h3>
-            <p className="text-muted">
-              This removes the selected nodes and all of their connections. This
-              cannot be undone.
-            </p>
-            <div className="explorer-delete-buttons" style={{ marginTop: 12 }}>
-              <button
-                className="set-action-btn"
-                onClick={() => setBulkDeleteIds(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="set-action-btn set-action-btn--danger"
-                onClick={handleBulkDelete}
-              >
-                Delete all
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {siblingAdd && (
         <div

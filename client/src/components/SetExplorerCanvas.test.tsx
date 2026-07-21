@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SetExplorerCanvas } from './SetExplorerCanvas'
 import type { ExplorerNode, ExplorerEdge, Track } from '../types'
@@ -702,16 +708,18 @@ describe('SetExplorerCanvas', () => {
   })
 
   describe('delete action', () => {
-    it('opens delete modal when delete action is clicked', async () => {
+    it('deletes the node immediately (no confirmation) when the delete action is clicked', async () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
-      render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+      const props = defaultProps({ nodes })
+      render(<SetExplorerCanvas {...props} />)
 
       await userEvent.click(screen.getByTestId('explorer-node'))
 
       const deleteBtns = screen.getAllByLabelText('Delete node')
       await userEvent.click(deleteBtns[0])
 
-      expect(screen.getByText('Delete Node')).toBeInTheDocument()
+      expect(screen.queryByText('Delete Node')).toBeNull()
+      expect(props.onDeleteNode).toHaveBeenCalledWith('n1')
     })
   })
 
@@ -929,18 +937,18 @@ describe('SetExplorerCanvas', () => {
         { id: 42, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ]
       const props = defaultProps({ nodes, edges })
-      render(<SetExplorerCanvas {...props} />)
+      const { container } = render(<SetExplorerCanvas {...props} />)
 
       const hitbox = screen.getByTestId('explorer-edge-hitbox')
       await userEvent.click(hitbox)
       expect(screen.getByTestId('explorer-edge-delete-btn')).toBeInTheDocument()
 
-      const input = document.querySelector(
-        '.set-explorer-search',
-      ) as HTMLInputElement
+      const input = document.createElement('input')
+      container.appendChild(input)
       fireEvent.keyDown(input, { key: 'Delete', bubbles: true })
 
       expect(props.onDeleteEdge).not.toHaveBeenCalled()
+      container.removeChild(input)
     })
 
     it('does not delete edge when Backspace is pressed inside an input', async () => {
@@ -952,17 +960,17 @@ describe('SetExplorerCanvas', () => {
         { id: 42, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
       ]
       const props = defaultProps({ nodes, edges })
-      render(<SetExplorerCanvas {...props} />)
+      const { container } = render(<SetExplorerCanvas {...props} />)
 
       const hitbox = screen.getByTestId('explorer-edge-hitbox')
       await userEvent.click(hitbox)
 
-      const input = document.querySelector(
-        '.set-explorer-search',
-      ) as HTMLInputElement
+      const input = document.createElement('input')
+      container.appendChild(input)
       fireEvent.keyDown(input, { key: 'Backspace', bubbles: true })
 
       expect(props.onDeleteEdge).not.toHaveBeenCalled()
+      container.removeChild(input)
     })
 
     it('does not delete edge when Delete/Backspace originates from a textarea', async () => {
@@ -1949,27 +1957,66 @@ describe('SetExplorerCanvas', () => {
       fireEvent.drop(viewport, dropData(TRACK_DRAG_MIME, '   '))
       expect(props.onAddNode).not.toHaveBeenCalled()
     })
+
+    it('dropping a track onto a specific node adds it as that node’s child', () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+      const props = defaultProps({ nodes })
+      render(<SetExplorerCanvas {...props} />)
+      const nodeGroup = screen.getByTestId('explorer-node')
+      fireEvent.drop(nodeGroup, dropData(TRACK_DRAG_MIME, '77'))
+      // child of n1 at level+1
+      expect(props.onAddNode).toHaveBeenCalledWith(77, 'n1', 1)
+    })
+
+    it('a node drop does not also trigger the root (viewport) drop', () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+      const props = defaultProps({ nodes })
+      render(<SetExplorerCanvas {...props} />)
+      const nodeGroup = screen.getByTestId('explorer-node')
+      fireEvent.drop(nodeGroup, dropData(TRACK_DRAG_MIME, '77'))
+      expect(props.onAddNode).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('node selection and deletion by keyboard', () => {
-    it('opens the per-node delete modal on Backspace for a single selection', async () => {
+    it('deletes a single selected node immediately on Backspace (no confirmation)', async () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
-      render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+      const props = defaultProps({ nodes })
+      render(<SetExplorerCanvas {...props} />)
 
       await userEvent.click(screen.getByTestId('explorer-node'))
       fireEvent.keyDown(window, { key: 'Backspace' })
 
-      expect(screen.getByText('Delete Node')).toBeInTheDocument()
+      expect(screen.queryByText('Delete Node')).toBeNull()
+      expect(props.onDeleteNode).toHaveBeenCalledWith('n1')
     })
 
     it('does not delete on Backspace when nothing is selected', () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
-      render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+      const props = defaultProps({ nodes })
+      render(<SetExplorerCanvas {...props} />)
       fireEvent.keyDown(window, { key: 'Backspace' })
-      expect(screen.queryByText('Delete Node')).toBeNull()
+      expect(props.onDeleteNode).not.toHaveBeenCalled()
     })
 
-    it('shift-clicking selects multiple nodes; Backspace opens bulk-delete', async () => {
+    it('reconstructs the deleted node on Ctrl+Z (undo)', async () => {
+      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+      const props = defaultProps({ nodes })
+      render(<SetExplorerCanvas {...props} />)
+
+      await userEvent.click(screen.getByTestId('explorer-node'))
+      fireEvent.keyDown(window, { key: 'Backspace' })
+      await waitFor(() =>
+        expect(props.onDeleteNode).toHaveBeenCalledWith('n1'),
+      )
+
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      await waitFor(() =>
+        expect(props.onAddNode).toHaveBeenCalledWith(10, undefined, 0),
+      )
+    })
+
+    it('shift-clicking selects multiple nodes; Backspace deletes them all (no confirmation)', async () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -1983,11 +2030,10 @@ describe('SetExplorerCanvas', () => {
 
       fireEvent.keyDown(window, { key: 'Delete' })
 
-      const modal = screen.getByTestId('bulk-delete-modal')
-      expect(within(modal).getByText('Delete 2 nodes')).toBeInTheDocument()
-
-      await userEvent.click(within(modal).getByText('Delete all'))
-      expect(props.onDeleteNode).toHaveBeenCalledTimes(2)
+      expect(screen.queryByTestId('bulk-delete-modal')).toBeNull()
+      await waitFor(() =>
+        expect(props.onDeleteNode).toHaveBeenCalledTimes(2),
+      )
       expect(props.onDeleteNode).toHaveBeenCalledWith('n1')
       expect(props.onDeleteNode).toHaveBeenCalledWith('n2')
     })
@@ -2011,7 +2057,7 @@ describe('SetExplorerCanvas', () => {
       ).toBe(false)
     })
 
-    it('marquee drag-selects nodes and Backspace bulk-deletes them', () => {
+    it('marquee (Ctrl/Cmd+drag) selects nodes and Backspace deletes them', async () => {
       // jsdom lacks SVG coordinate mapping; stub it to identity (svg == client).
       const proto = window.SVGSVGElement.prototype as unknown as {
         createSVGPoint?: () => {
@@ -2044,13 +2090,16 @@ describe('SetExplorerCanvas', () => {
         const svg = container.querySelector('.set-explorer-svg')!
         const viewport = container.querySelector('.set-explorer-viewport')!
 
-        fireEvent.mouseDown(svg, { shiftKey: true, clientX: 0, clientY: 0 })
+        fireEvent.mouseDown(svg, { ctrlKey: true, clientX: 0, clientY: 0 })
         fireEvent.mouseMove(viewport, { clientX: 400, clientY: 400 })
         expect(screen.getByTestId('explorer-marquee')).toBeInTheDocument()
         fireEvent.mouseUp(viewport)
 
         fireEvent.keyDown(window, { key: 'Backspace' })
-        expect(screen.getByTestId('bulk-delete-modal')).toBeInTheDocument()
+        expect(screen.queryByTestId('bulk-delete-modal')).toBeNull()
+        await waitFor(() =>
+          expect(props.onDeleteNode).toHaveBeenCalledTimes(2),
+        )
       } finally {
         proto.createSVGPoint = origPoint
         proto.getScreenCTM = origCTM

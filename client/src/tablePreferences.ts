@@ -33,7 +33,7 @@ export const MIN_COL_WIDTH = 40
 export const MAX_COL_WIDTH = 2000
 
 const SEARCH_REGISTRY: ColumnRegistryEntry[] = [
-  { id: 'play', label: 'Play', defaultVisible: true, resizable: false },
+  { id: 'play', label: 'Pre.', defaultVisible: true, resizable: false },
   {
     id: 'camelot_code',
     label: 'Camelot',
@@ -62,6 +62,7 @@ const SEARCH_REGISTRY: ColumnRegistryEntry[] = [
 ]
 
 const MATCHES_REGISTRY: ColumnRegistryEntry[] = [
+  { id: 'play', label: 'Pre.', defaultVisible: true, resizable: false },
   {
     id: 'add_to_set',
     label: 'Actions',
@@ -135,7 +136,7 @@ const MATCHES_REGISTRY: ColumnRegistryEntry[] = [
 ]
 
 const TRACKLIST_REGISTRY: ColumnRegistryEntry[] = [
-  { id: 'play', label: 'Play', defaultVisible: true, resizable: false },
+  { id: 'play', label: 'Pre.', defaultVisible: true, resizable: false },
   { id: 'num', label: '#', defaultVisible: true, defaultWidth: 40 },
   { id: 'title', label: 'Title', defaultVisible: true, defaultWidth: 220 },
   { id: 'key', label: 'Key', defaultVisible: true, defaultWidth: 62 },
@@ -145,7 +146,7 @@ const TRACKLIST_REGISTRY: ColumnRegistryEntry[] = [
 ]
 
 const POOL_REGISTRY: ColumnRegistryEntry[] = [
-  { id: 'play', label: 'Play', defaultVisible: true, resizable: false },
+  { id: 'play', label: 'Pre.', defaultVisible: true, resizable: false },
   { id: 'num', label: '#', defaultVisible: true, defaultWidth: 40 },
   { id: 'title', label: 'Title', defaultVisible: true, defaultWidth: 220 },
   { id: 'key', label: 'Key', defaultVisible: true, defaultWidth: 62 },
@@ -228,11 +229,24 @@ export function normalizeTableConfig(
       columnOrder.push(id)
     }
   }
-  for (const entry of registry) {
-    if (!seen.has(entry.id)) {
-      columnOrder.push(entry.id)
-      seen.add(entry.id)
+  // Insert registry columns absent from the saved order at their registry-relative
+  // position (before the next registry sibling already present) rather than at the
+  // very end — so a newly-introduced column appears where the registry intends it.
+  for (let i = 0; i < registry.length; i++) {
+    const id = registry[i].id
+    if (seen.has(id)) {
+      continue
     }
+    let insertAt = columnOrder.length
+    for (let j = i + 1; j < registry.length; j++) {
+      const idx = columnOrder.indexOf(registry[j].id)
+      if (idx >= 0) {
+        insertAt = idx
+        break
+      }
+    }
+    columnOrder.splice(insertAt, 0, id)
+    seen.add(id)
   }
 
   const columnVisibility = { ...defaults.columnVisibility }

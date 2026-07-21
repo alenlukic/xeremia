@@ -50,7 +50,7 @@ const SCORE_HEADERS = [
   'Vocals',
 ]
 
-const ALL_HEADERS = ['Actions', 'Track', ...SCORE_HEADERS, 'DETAILS']
+const ALL_HEADERS = ['Pre.', 'Actions', 'Track', ...SCORE_HEADERS, 'DETAILS']
 
 function headerLabels(): string[] {
   return screen
@@ -128,17 +128,18 @@ describe('MatchesPanel', () => {
       )
       const headers = screen.getAllByRole('columnheader')
       const widths = headers.map((h) => (h as HTMLElement).style.width)
-      expect(widths[0]).toBe('92px') // add_to_set
-      expect(widths[2]).toBe('70px') // SCORE
-      expect(widths[3]).toBe('60px') // Spectral
-      expect(widths[4]).toBe('60px') // Key
-      expect(widths[5]).toBe('60px') // BPM
-      expect(widths[6]).toBe('60px') // Genre
-      expect(widths[7]).toBe('60px') // Recency
-      expect(widths[8]).toBe('73px') // Energy (MIK)
-      expect(widths[9]).toBe('60px') // Mood
-      expect(widths[10]).toBe('73px') // Instruments
-      expect(widths[11]).toBe('60px') // Vocals
+      expect(widths[0]).toBe('40px') // play (Pre.)
+      expect(widths[1]).toBe('92px') // add_to_set
+      expect(widths[3]).toBe('70px') // SCORE
+      expect(widths[4]).toBe('60px') // Spectral
+      expect(widths[5]).toBe('60px') // Key
+      expect(widths[6]).toBe('60px') // BPM
+      expect(widths[7]).toBe('60px') // Genre
+      expect(widths[8]).toBe('60px') // Recency
+      expect(widths[9]).toBe('73px') // Energy (MIK)
+      expect(widths[10]).toBe('60px') // Mood
+      expect(widths[11]).toBe('73px') // Instruments
+      expect(widths[12]).toBe('60px') // Vocals
     })
 
     it('track column renders at its compact 260px default', () => {
@@ -151,7 +152,7 @@ describe('MatchesPanel', () => {
         />,
       )
       const headers = screen.getAllByRole('columnheader')
-      expect((headers[1] as HTMLElement).style.width).toBe('260px')
+      expect((headers[2] as HTMLElement).style.width).toBe('260px')
     })
 
     it('add_to_set column is 92px and details column is 50px', () => {
@@ -165,11 +166,12 @@ describe('MatchesPanel', () => {
         />,
       )
       const headers = screen.getAllByRole('columnheader')
-      expect((headers[0] as HTMLElement).style.width).toBe('92px') // add_to_set
-      expect((headers[1] as HTMLElement).style.width).toBe('260px') // Track
-      expect((headers[8] as HTMLElement).style.width).toBe('73px') // Energy (MIK)
-      expect((headers[10] as HTMLElement).style.width).toBe('73px') // Instruments
-      expect((headers[12] as HTMLElement).style.width).toBe('50px') // DETAILS
+      expect((headers[0] as HTMLElement).style.width).toBe('40px') // play (Pre.)
+      expect((headers[1] as HTMLElement).style.width).toBe('92px') // add_to_set
+      expect((headers[2] as HTMLElement).style.width).toBe('260px') // Track
+      expect((headers[9] as HTMLElement).style.width).toBe('73px') // Energy (MIK)
+      expect((headers[11] as HTMLElement).style.width).toBe('73px') // Instruments
+      expect((headers[13] as HTMLElement).style.width).toBe('50px') // DETAILS
     })
   })
 
@@ -185,10 +187,11 @@ describe('MatchesPanel', () => {
         />,
       )
       const resizers = document.querySelectorAll('.col-resizer')
-      expect(resizers.length).toBe(SCORE_HEADERS.length + 3) // add_to_set + Track + score columns + details
+      // play (Pre.) is non-resizable; add_to_set + Track + score columns + details resize.
+      expect(resizers.length).toBe(SCORE_HEADERS.length + 3)
 
       const headers = document.querySelectorAll('.matches-table thead th')
-      const trackTh = headers[1]
+      const trackTh = headers[2]
       expect(trackTh.querySelector('.col-resizer')).toBeTruthy()
     })
 
