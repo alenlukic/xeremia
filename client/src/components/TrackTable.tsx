@@ -2,6 +2,7 @@ import {
   memo,
   useState,
   useRef,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useCallback,
@@ -13,6 +14,7 @@ import {
   flexRender,
   createColumnHelper,
   type ColumnSizingState,
+  type OnChangeFn,
   type SortingFn,
   type SortingState,
   type Updater,
@@ -34,7 +36,6 @@ import {
 } from './TableColumnControls'
 import {
   TABLE_REGISTRIES,
-  inactiveColumns,
   visibleColumnIds,
   type NormalizedTableConfig,
 } from '../tablePreferences'
@@ -171,6 +172,9 @@ interface Props {
   onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
   onColumnWidthChange: (columnId: string, width: number) => void
   onColumnWidthFlush: (columnId: string, width: number) => void
+  /** Controlled multi-tier sort. Falls back to internal state when omitted. */
+  sorting?: SortingState
+  onSortingChange?: OnChangeFn<SortingState>
   scrollRestorationKey?: string
   onAddToSet?: (trackId: number) => void
   onAddToPool?: (trackId: number) => void
@@ -186,9 +190,9 @@ export const TrackTable = memo(function TrackTable({
   tableConfig,
   onToggleColumnVisibility,
   onReorderColumn,
-  onInsertColumnAfter,
-  onColumnWidthChange,
   onColumnWidthFlush,
+  sorting: sortingProp,
+  onSortingChange: onSortingChangeProp,
   scrollRestorationKey,
   onAddToSet,
   onAddToPool,
@@ -199,8 +203,18 @@ export const TrackTable = memo(function TrackTable({
   const topScrollRef = useRef<HTMLDivElement>(null)
 
   const [containerWidth, setContainerWidth] = useState(0)
-  const [sorting, setSorting] = useState<SortingState>([])
+  // Sorting is controlled by the parent when provided (design-system header +
+  // control panel); otherwise TrackTable manages its own single/multi-tier sort.
+  const [internalSorting, setInternalSorting] = useState<SortingState>([])
+  const sorting = sortingProp ?? internalSorting
+  const onSortingChange = onSortingChangeProp ?? setInternalSorting
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  // Column widths are held locally during an active resize so the drag doesn't
+  // round-trip through App state on every mousemove — which re-rendered all four
+  // quadrants and made resizing crawl. The final width is flushed on mouse-up.
+  const [resizingSizing, setResizingSizing] = useState<ColumnSizingState | null>(
+    null,
+  )
 
   const columnVisibility = tableConfig.columnVisibility
   const columnOrder = tableConfig.columnOrder
@@ -243,14 +257,19 @@ export const TrackTable = memo(function TrackTable({
     return sizing
   }, [containerWidth, visibleFixedIds])
 
-  const effectiveSizing = useMemo(() => {
+  const persistedSizing = useMemo(() => {
     if (Object.keys(columnSizing).length > 0) {
       return columnSizing
     }
     return responsiveSizing
   }, [columnSizing, responsiveSizing])
 
-  const hiddenInactive = inactiveColumns('search', tableConfig)
+  // During an active resize the live width lives in local state; otherwise the
+  // persisted (App) widths drive the table.
+  const effectiveSizing = resizingSizing ?? persistedSizing
+  const effectiveSizingRef = useRef(effectiveSizing)
+  effectiveSizingRef.current = effectiveSizing
+
   const visibleIds = visibleColumnIds(tableConfig)
   const registryById = useMemo(
     () => new Map(TABLE_REGISTRIES.search.map((entry) => [entry.id, entry])),
@@ -259,15 +278,12 @@ export const TrackTable = memo(function TrackTable({
 
   const handleColumnSizingChange = useCallback(
     (updater: Updater<ColumnSizingState>) => {
-      const base = columnSizing
-      const next = typeof updater === 'function' ? updater(base) : updater
-      for (const [id, width] of Object.entries(next)) {
-        if (base[id] !== width) {
-          onColumnWidthChange(id, width)
-        }
-      }
+      setResizingSizing((prev) => {
+        const base = prev ?? effectiveSizingRef.current
+        return typeof updater === 'function' ? updater(base) : updater
+      })
     },
-    [columnSizing, onColumnWidthChange],
+    [],
   )
 
   const addToSetColumn = useMemo(
@@ -357,11 +373,29 @@ export const TrackTable = memo(function TrackTable({
       sorting,
     },
     columnResizeMode: 'onChange',
+    enableMultiSort: true,
     onColumnSizingChange: handleColumnSizingChange,
-    onSortingChange: setSorting,
+    onSortingChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
+
+  // When a resize ends (TanStack clears its resizing marker), persist the final
+  // widths to App and release the local override. Keying off the table's own
+  // resize state — rather than the resizer's onMouseUp — flushes reliably even
+  // when the pointer is released away from the 4px handle.
+  const isResizing = table.getState().columnSizingInfo.isResizingColumn
+  useEffect(() => {
+    if (isResizing || !resizingSizing) {
+      return
+    }
+    for (const [id, width] of Object.entries(resizingSizing)) {
+      if (persistedSizing[id] !== width) {
+        onColumnWidthFlush(id, width)
+      }
+    }
+    setResizingSizing(null)
+  }, [isResizing, resizingSizing, persistedSizing, onColumnWidthFlush])
 
   const totalWidth = table.getTotalSize()
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth
@@ -468,10 +502,7 @@ export const TrackTable = memo(function TrackTable({
   if (visibleIds.length === 0) {
     return (
       <div className="track-table-outer">
-        <TableColumnEmptyRecovery
-          inactiveColumns={hiddenInactive}
-          onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
-        />
+        <TableColumnEmptyRecovery />
       </div>
     )
   }
@@ -509,6 +540,7 @@ export const TrackTable = memo(function TrackTable({
                 {hg.headers.map((header) => {
                   const canSort = header.column.getCanSort()
                   const sorted = header.column.getIsSorted()
+                  const sortIndex = header.column.getSortIndex()
                   return (
                     <th
                       key={header.id}
@@ -543,12 +575,8 @@ export const TrackTable = memo(function TrackTable({
                               registryById.get(header.column.id)?.label ??
                               String(header.column.columnDef.header ?? '')
                             }
-                            inactiveColumns={hiddenInactive}
                             onRemove={() =>
                               onToggleColumnVisibility(header.column.id)
-                            }
-                            onInsertAfter={(columnId) =>
-                              onInsertColumnAfter(header.column.id, columnId)
                             }
                           >
                             {flexRender(
@@ -560,6 +588,11 @@ export const TrackTable = memo(function TrackTable({
                         {sorted && (
                           <span className="sort-indicator">
                             {sorted === 'asc' ? ' ▲' : ' ▼'}
+                            {sorting.length > 1 && (
+                              <span className="sort-tier-index">
+                                {sortIndex + 1}
+                              </span>
+                            )}
                           </span>
                         )}
                       </div>
@@ -568,14 +601,6 @@ export const TrackTable = memo(function TrackTable({
                           className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          onMouseUp={() => {
-                            if (header.column.getIsResizing()) {
-                              onColumnWidthFlush(
-                                header.column.id,
-                                header.getSize(),
-                              )
-                            }
-                          }}
                         />
                       )}
                     </th>
@@ -625,10 +650,16 @@ export const TrackTable = memo(function TrackTable({
                 {virtualRows.map((virtualRow) => {
                   const row = rows[virtualRow.index]
                   const isSelected = selectedTrack?.id === row.original.id
+                  const rowClass = [
+                    virtualRow.index % 2 === 1 ? 'row-alt' : '',
+                    isSelected ? 'row-selected' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
                   return (
                     <tr
                       key={row.id}
-                      className={isSelected ? 'row-selected' : ''}
+                      className={rowClass}
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData(

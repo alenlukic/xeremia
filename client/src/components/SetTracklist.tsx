@@ -1,14 +1,12 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import type { TracklistEntry, Track } from '../types'
 import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import { displayTitle } from '../utils/trackTitle'
-import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
 import {
   TABLE_REGISTRIES,
-  inactiveColumns,
   visibleColumnIds,
   type NormalizedTableConfig,
 } from '../tablePreferences'
@@ -16,6 +14,7 @@ import {
   TableColumnControls,
   TableColumnEmptyRecovery,
 } from './TableColumnControls'
+import { TableHeader } from './table/TableHeader'
 import { PlayButton } from './PlayButton'
 
 const TRACKLIST_COL_CLASS: Record<string, string> = {
@@ -115,8 +114,6 @@ export function SetTracklist({
   tableConfig,
   onToggleColumn,
   onReorderColumn,
-  onInsertColumnAfter,
-  onColumnWidthChange,
   onColumnWidthFlush,
   headerControls,
   onOpenExplorer,
@@ -128,19 +125,19 @@ export function SetTracklist({
   onDropFromPool,
   onExportM3u8,
 }: Props) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  // Live width for the column being resized. Kept local so a drag re-renders
+  // only this table, not the whole App (which re-rendered every quadrant on
+  // each mousemove and made resizing crawl). Flushed to App on mouse-up.
+  const [liveResize, setLiveResize] = useState<{
+    id: string
+    width: number
+  } | null>(null)
 
-  useDismissOnOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
   const colWidths = tableConfig.columnWidths
   const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
-  const hiddenInactive = useMemo(
-    () => inactiveColumns('tracklist', tableConfig),
-    [tableConfig],
-  )
   const registryById = useMemo(
     () => new Map(TABLE_REGISTRIES.tracklist.map((entry) => [entry.id, entry])),
     [],
@@ -160,7 +157,7 @@ export function SetTracklist({
       let latestWidth = startWidth
       function handleMove(ev: MouseEvent) {
         latestWidth = Math.max(40, Math.round(startWidth + ev.clientX - startX))
-        onColumnWidthChange(colId, latestWidth)
+        setLiveResize({ id: colId, width: latestWidth })
       }
 
       function handleUp() {
@@ -168,6 +165,7 @@ export function SetTracklist({
         document.removeEventListener('mouseup', handleUp)
         document.body.style.removeProperty('cursor')
         document.body.style.removeProperty('user-select')
+        setLiveResize(null)
         onColumnWidthFlush(colId, latestWidth)
       }
 
@@ -176,7 +174,7 @@ export function SetTracklist({
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     },
-    [onColumnWidthChange, onColumnWidthFlush],
+    [onColumnWidthFlush],
   )
 
   const handleExternalDrop = useCallback(
@@ -195,8 +193,12 @@ export function SetTracklist({
   )
   const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
 
-  const colStyle = (id: string) =>
-    colWidths[id] != null ? { width: colWidths[id] } : undefined
+  const colStyle = (id: string) => {
+    if (liveResize?.id === id) {
+      return { width: liveResize.width }
+    }
+    return colWidths[id] != null ? { width: colWidths[id] } : undefined
+  }
 
   const resizer = (id: string) => (
     <div
@@ -272,9 +274,7 @@ export function SetTracklist({
         >
           <TableColumnControls
             label={registry?.label ?? label}
-            inactiveColumns={hiddenInactive}
             onRemove={() => onToggleColumn(colId)}
-            onInsertAfter={(columnId) => onInsertColumnAfter(colId, columnId)}
           >
             {label}
           </TableColumnControls>
@@ -365,85 +365,73 @@ export function SetTracklist({
       className={`set-tracklist${dropActive ? ' set-drop-active' : ''}`}
       {...dropHandlers}
     >
-      <div className="set-tracklist-header">
-        <div className="set-tracklist-title-group">
-          <h3 className="set-section-title">Tracklist ({tracklist.length})</h3>
-          {(tracklist.length > 0 || onOpenExplorer) && (
-            <div className="set-tracklist-menu-wrapper" ref={menuRef}>
+      <TableHeader
+        title={
+          <div className="ds-header-titlegroup">
+            <span className="ds-header-titletext">
+              Tracklist ({tracklist.length})
+            </span>
+            {headerControls && (
+              <span className="ds-header-setcontrols">{headerControls}</span>
+            )}
+          </div>
+        }
+        primary={
+          <div className="set-header-actions">
+            {onOpenExplorer && (
               <button
-                className="set-tracklist-menu-toggle"
-                aria-label="Tracklist menu"
-                aria-haspopup="true"
-                aria-expanded={menuOpen}
-                onClick={() => setMenuOpen((prev) => !prev)}
+                type="button"
+                className="set-explorer-btn"
+                onClick={onOpenExplorer}
               >
-                ⋯
+                Explorer
               </button>
-              {menuOpen && (
-                <div className="set-tracklist-menu">
-                  {onOpenExplorer && (
-                    <button
-                      className="set-tracklist-menu-item"
-                      onClick={() => {
-                        setMenuOpen(false)
-                        onOpenExplorer()
-                      }}
-                    >
-                      Explorer
-                    </button>
-                  )}
-                  {tracklist.length > 0 && (
-                    <button
-                      className="set-tracklist-menu-item"
-                      onClick={() => {
-                        setMenuOpen(false)
-                        onExportM3u8()
-                      }}
-                    >
-                      Export m3u8
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {headerControls}
-      </div>
+            )}
+            {tracklist.length > 0 && (
+              <button
+                type="button"
+                className="set-export-btn"
+                onClick={onExportM3u8}
+              >
+                Export
+              </button>
+            )}
+          </div>
+        }
+      />
       {tracklist.length === 0 ? (
         <p className="set-empty-tracks">
           Tracklist is empty. Drag tracks from the Search table above.
         </p>
       ) : visibleIds.length === 0 ? (
-        <TableColumnEmptyRecovery
-          inactiveColumns={hiddenInactive}
-          onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
-        />
+        <TableColumnEmptyRecovery />
       ) : (
-        <table className="set-tracklist-table">
-          <colgroup>
-            {visibleIds.map((colId) => (
-              <col
-                key={colId}
-                className={TRACKLIST_COL_CLASS[colId]}
-                style={colStyle(colId)}
-              />
-            ))}
-          </colgroup>
-          <thead>
-            <tr>{visibleIds.map((colId) => renderHeaderCell(colId))}</tr>
-          </thead>
-          <tbody>
-            {tracklist.map((entry, i) => (
-              <tr
-                key={entry.id}
-                draggable
-                className={
-                  (dragIndex === i ? 'set-row-dragging' : '') +
-                  (dropIndex === i && dragIndex !== null && dragIndex !== i
-                    ? ' set-row-drop-target'
-                    : '')
-                }
+        <div className="track-table-outer">
+          <div className="track-table-wrapper">
+            <table className="set-tracklist-table">
+              <colgroup>
+                {visibleIds.map((colId) => (
+                  <col
+                    key={colId}
+                    className={TRACKLIST_COL_CLASS[colId]}
+                    style={colStyle(colId)}
+                  />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>{visibleIds.map((colId) => renderHeaderCell(colId))}</tr>
+              </thead>
+              <tbody>
+                {tracklist.map((entry, i) => (
+                  <tr
+                    key={entry.id}
+                    draggable
+                    className={
+                      (dragIndex === i ? 'set-row-dragging' : '') +
+                      (dropIndex === i && dragIndex !== null && dragIndex !== i
+                        ? ' set-row-drop-target'
+                        : '')
+                    }
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/plain', String(entry.track_id))
                   e.dataTransfer.setData(
@@ -483,8 +471,10 @@ export function SetTracklist({
                 {visibleIds.map((colId) => renderBodyCell(colId, entry, i))}
               </tr>
             ))}
-          </tbody>
-        </table>
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   )

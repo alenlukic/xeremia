@@ -165,7 +165,7 @@ async function openKeyFilterPopover() {
     screen.getByRole('button', { name: /Add filter/ }).click()
   })
   await act(async () => {
-    screen.getByRole('button', { name: 'Key' }).click()
+    screen.getByRole('menuitem', { name: 'Key' }).click()
   })
 }
 
@@ -174,7 +174,15 @@ async function openBpmFilterPopover() {
     screen.getByRole('button', { name: /Add filter/ }).click()
   })
   await act(async () => {
-    screen.getByRole('button', { name: 'BPM' }).click()
+    screen.getByRole('menuitem', { name: 'BPM' }).click()
+  })
+}
+
+// Filters are staged in the popover and only applied to the search when it
+// closes, so tests close the popover (Escape) to commit their edits.
+async function closeFilterPopover() {
+  await act(async () => {
+    fireEvent.keyDown(document, { key: 'Escape' })
   })
 }
 
@@ -361,6 +369,7 @@ describe('Browse table', () => {
     await act(async () => {
       screen.getByRole('button', { name: '01A' }).click()
     })
+    await closeFilterPopover()
 
     await waitFor(() => {
       expect(getRowCount()).toBe(300)
@@ -388,7 +397,7 @@ describe('Browse table', () => {
     await openBpmFilterPopover()
     const minInput = screen.getByPlaceholderText('Min')
     await userEvent.type(minInput, '125')
-    fireEvent.blur(minInput)
+    await closeFilterPopover()
 
     await waitFor(() => {
       expect(getRowCount()).toBe(300)
@@ -411,6 +420,7 @@ describe('Browse table', () => {
 
     await openKeyFilterPopover()
     await userEvent.click(screen.getByRole('button', { name: '01A' }))
+    await closeFilterPopover()
 
     const dateHeader = screen.getByText('Date Added')
     await userEvent.click(dateHeader)
@@ -531,7 +541,7 @@ describe('Error state handling', () => {
     })
 
     expect(
-      screen.queryByText('No matches in this bucket'),
+      screen.queryByText('No matches for the active filters'),
     ).not.toBeInTheDocument()
   })
 
@@ -554,7 +564,7 @@ describe('Error state handling', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('No matches in this bucket')).toBeInTheDocument()
+      expect(screen.getByText('No matches for the active filters')).toBeInTheDocument()
     })
 
     expect(screen.queryByText(/Failed to load matches/)).not.toBeInTheDocument()
@@ -738,7 +748,7 @@ describe('Key filter popover', () => {
     })
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Remove key filter' }).click()
+      screen.getByRole('button', { name: 'Remove Key filter' }).click()
     })
     expect(
       screen.queryByRole('button', { name: /Key: 01A/ }),
@@ -798,7 +808,7 @@ async function selectTrackViaBrowse(trackTitle: string) {
 
   await waitFor(() => {
     expect(
-      screen.getByText(trackTitle, { selector: '.matches-source-title' }),
+      screen.getByText(trackTitle, { selector: '.ds-table-header-title' }),
     ).toBeInTheDocument()
   })
 }
@@ -839,8 +849,10 @@ describe('Transition chaining', () => {
     await userEvent.click(screen.getByTitle('Use as source track'))
 
     await waitFor(() => {
+      // While a chain is active, the source title supplants the header name and
+      // is rendered as the chain's current step.
       expect(
-        screen.getByText('Track 2', { selector: '.matches-source-title' }),
+        screen.getByText('Track 2', { selector: '.chain-current' }),
       ).toBeInTheDocument()
       expect(screen.getByTitle('Use as source track')).toHaveTextContent(
         'Track 3',
@@ -854,7 +866,7 @@ describe('Transition chaining', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Track 3', { selector: '.matches-source-title' }),
+        screen.getByText('Track 3', { selector: '.chain-current' }),
       ).toBeInTheDocument()
       expect(document.querySelectorAll('.chain-entry')).toHaveLength(2)
     })
