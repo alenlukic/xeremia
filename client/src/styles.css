@@ -26,6 +26,35 @@
   --divider-size: 14px;
   --divider-bar: 5px;
   --divider-bar-hover: 20px;
+
+  /* === Design system: table component === */
+  /* Elevation / contrast. --surface-2 lifts headers & control panels off the
+     quadrant surface; --row-alt is the alternating value-row wash; the strong
+     border sharpens zone edges where the hairline --border reads too faint. */
+  --surface-2: #20242f;
+  --row-alt: rgba(255, 255, 255, 0.022);
+  --border-strong: #3a4055;
+  /* Emphasis. Reserve --accent-emphasis for one primary element per view
+     (e.g. the search bar); --focus-ring is the visible keyboard focus state
+     required by the accessibility baseline. */
+  --accent-emphasis: #8aa2ff;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  /* Score gradient stops (red = 0 → green = 100), consumed by the matches
+     score cross-hatch. --score-hatch is the overlay alpha keeping text legible. */
+  --score-red: 4 78% 58%;
+  --score-yellow: 46 90% 56%;
+  --score-green: 128 52% 50%;
+  --score-tint-alpha: 0.16;
+  --score-hatch-alpha: 0.06;
+  /* Group-dot palette (defined now; consumed by the pool follow-up). */
+  --dot-1: #6c8cff;
+  --dot-2: #43a047;
+  --dot-3: #e0a53a;
+  --dot-4: #d9534f;
+  --dot-5: #b06cff;
+  --dot-6: #38b2ac;
+  --dot-7: #ec6ea8;
+  --dot-8: #7f8c99;
 }
 
 /* === Reset === */
@@ -68,7 +97,9 @@ body,
 
 .quad-row {
   display: flex;
-  flex: 1;
+  /* Zero basis so the top (browser + matches) and bottom (set workspace) rows
+     split the viewport height evenly regardless of intrinsic content height. */
+  flex: 1 1 0;
   min-height: 0;
 }
 
@@ -777,6 +808,7 @@ body,
 
 /* === Tables (shared) === */
 .track-table-outer {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -927,8 +959,23 @@ body,
   transition: background var(--transition);
 }
 
+/* Alternating value-row wash for scan-ability (design-system). Placed before
+   the :hover rule so hover still wins. Score cells carry their own inline
+   gradient background and paint over this. */
+.matches-table tbody tr:nth-of-type(even) {
+  background: var(--row-alt);
+}
+
 .matches-table tbody tr:hover {
   background: var(--surface-hover);
+}
+
+/* Keep score text legible over the red→green cross-hatch. */
+.ds-score-cell {
+  position: relative;
+}
+.ds-score-cell .mono {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .table-status {
@@ -958,6 +1005,190 @@ body,
 .matches-track-name {
   color: var(--accent);
   font-weight: 500;
+}
+
+/* ===================================================================
+   Design system: table chrome (header · control panel · insert rail)
+   Shared zones stacked vertically: header → control panel → columns → rows.
+   =================================================================== */
+
+/* --- Header zone --- */
+.ds-table-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.ds-table-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Primary controls sit at the right edge of the header (Fitts: grouped,
+   consistent placement across quadrants). Pushed right by the title's flex. */
+.ds-table-header-primary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.ds-table-header-trailing {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Shared header button (e.g. Add sort). Matches the dashed Add-filter button. */
+.ds-header-btn {
+  padding: 4px 10px;
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+.ds-header-btn:hover,
+.ds-header-btn[aria-expanded='true'] {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* --- Control-panel zone --- */
+.ds-table-control-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Persistent on/off toggle filters (Same/Higher/Lower). Von Restorff: the
+   active state gets the accent; off states stay quiet but legible. */
+.ds-toggle-filters {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.ds-toggle-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.ds-toggle-filter:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.ds-toggle-filter--on {
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.ds-toggle-filter-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 0 5px;
+  border-radius: 8px;
+}
+.ds-toggle-filter--on .ds-toggle-filter-count {
+  color: var(--accent-emphasis);
+}
+
+.ds-table-control-panel .sort-tier-bar,
+.ds-table-control-panel .filter-pills {
+  margin: 0;
+}
+
+/* Secondary sort-tier priority index badge (shown when >1 tier active). */
+.sort-tier-index {
+  font-size: 8px;
+  vertical-align: super;
+  margin-left: 1px;
+  color: var(--accent);
+}
+
+/* --- Column insert rail (out-of-column "+") --- */
+.ds-col-insert-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding-left: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition);
+}
+/* Reveal on table hover or when its menu is open; "push out" the table area so
+   the rail never overlaps the rightmost column's resize handle. */
+.track-table-outer:hover .ds-col-insert-rail,
+.ds-col-insert-rail--open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.track-table-outer:hover .track-table-wrapper,
+.track-table-outer:has(.ds-col-insert-rail--open) .track-table-wrapper {
+  padding-right: 24px;
+}
+
+.ds-col-insert-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.ds-col-insert-btn:hover,
+.ds-col-insert-btn[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ds-col-insert-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
 }
 
 /* --- Match row affordances --- */

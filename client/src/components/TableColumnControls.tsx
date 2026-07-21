@@ -13,6 +13,12 @@ interface Props {
   onRemove: () => void
   onInsertAfter: (columnId: string) => void
   children?: React.ReactNode
+  /**
+   * Suppress the inline rightmost-column `+` insert affordance. Tables that
+   * render the out-of-column {@link ColumnInsertRail} pass this so the `+`
+   * never overlaps the rightmost column's resize handle.
+   */
+  hideInsert?: boolean
 }
 
 function useIsRightmostColumn(
@@ -49,10 +55,11 @@ export function TableColumnControls({
   onRemove,
   onInsertAfter,
   children,
+  hideInsert = false,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const isRightmost = useIsRightmostColumn(wrapperRef)
+  const isRightmost = useIsRightmostColumn(wrapperRef) && !hideInsert
   const insertMenuOpen = menuOpen && isRightmost
 
   useEffect(() => {

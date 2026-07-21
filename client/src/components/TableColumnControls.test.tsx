@@ -234,7 +234,7 @@ describe('TableColumnControls add-column affordance', () => {
 })
 
 describe('MatchesPanel header layout and column controls', () => {
-  it('surfaces add-column control only on the rightmost preference-managed header', async () => {
+  it('moves the add-column control out of the header (no inline per-column +)', () => {
     render(
       <MatchesPanel
         matchSource={matchSource}
@@ -245,19 +245,34 @@ describe('MatchesPanel header layout and column controls', () => {
     )
     const headers = screen.getAllByRole('columnheader')
     expect(headers.length).toBeGreaterThan(1)
-    await waitFor(() => {
-      headers.forEach((header, index) => {
-        const insertBtn = header.querySelector('.table-col-insert-btn')
-        if (index === headers.length - 1) {
-          expect(insertBtn).toBeTruthy()
-        } else {
-          expect(insertBtn).toBeNull()
-        }
-      })
+    // The inline rightmost `+` is gone so the rightmost column is resizable;
+    // adding columns happens via the out-of-column insert rail instead.
+    headers.forEach((header) => {
+      expect(header.querySelector('.table-col-insert-btn')).toBeNull()
     })
   })
 
-  it('places the source title immediately after bucket tabs inside the tab row', () => {
+  it('exposes the add-column insert rail when a column is hidden', () => {
+    const hiddenConfig = {
+      ...testMatchesPanelTableProps.tableConfig,
+      columnVisibility: {
+        ...testMatchesPanelTableProps.tableConfig.columnVisibility,
+        energy_score: false,
+      },
+    }
+    const { container } = render(
+      <MatchesPanel
+        matchSource={matchSource}
+        matches={[makeMatch()]}
+        loading={false}
+        {...testMatchesPanelTableProps}
+        tableConfig={hiddenConfig}
+      />,
+    )
+    expect(container.querySelector('.ds-col-insert-btn')).toBeTruthy()
+  })
+
+  it('renders the source title in the header and S/H/L toggles in the control panel', () => {
     const { container } = render(
       <MatchesPanel
         matchSource={matchSource}
@@ -266,16 +281,14 @@ describe('MatchesPanel header layout and column controls', () => {
         {...testMatchesPanelTableProps}
       />,
     )
-    const tabs = container.querySelector('.bucket-tabs')!
-    const children = Array.from(tabs.children)
-    const titleIndex = children.findIndex((el) =>
-      el.classList.contains('matches-source-title'),
+    expect(container.querySelector('.ds-table-header-title')?.textContent).toBe(
+      matchSource.title,
     )
-    expect(titleIndex).toBe(3)
-    expect(children[0].textContent).toMatch(/Same/)
-    expect(children[1].textContent).toMatch(/Higher/)
-    expect(children[2].textContent).toMatch(/Lower/)
-    expect(children[titleIndex].textContent).toBe(matchSource.title)
+    const toggles = container.querySelectorAll('.ds-toggle-filter')
+    expect(toggles.length).toBe(3)
+    expect(toggles[0].textContent).toMatch(/Same/)
+    expect(toggles[1].textContent).toMatch(/Higher/)
+    expect(toggles[2].textContent).toMatch(/Lower/)
   })
 })
 

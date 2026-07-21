@@ -531,7 +531,7 @@ describe('Error state handling', () => {
     })
 
     expect(
-      screen.queryByText('No matches in this bucket'),
+      screen.queryByText('No matches for the active filters'),
     ).not.toBeInTheDocument()
   })
 
@@ -554,7 +554,7 @@ describe('Error state handling', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('No matches in this bucket')).toBeInTheDocument()
+      expect(screen.getByText('No matches for the active filters')).toBeInTheDocument()
     })
 
     expect(screen.queryByText(/Failed to load matches/)).not.toBeInTheDocument()
@@ -798,7 +798,7 @@ async function selectTrackViaBrowse(trackTitle: string) {
 
   await waitFor(() => {
     expect(
-      screen.getByText(trackTitle, { selector: '.matches-source-title' }),
+      screen.getByText(trackTitle, { selector: '.ds-table-header-title' }),
     ).toBeInTheDocument()
   })
 }
@@ -840,7 +840,7 @@ describe('Transition chaining', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Track 2', { selector: '.matches-source-title' }),
+        screen.getByText('Track 2', { selector: '.ds-table-header-title' }),
       ).toBeInTheDocument()
       expect(screen.getByTitle('Use as source track')).toHaveTextContent(
         'Track 3',
@@ -854,7 +854,7 @@ describe('Transition chaining', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Track 3', { selector: '.matches-source-title' }),
+        screen.getByText('Track 3', { selector: '.ds-table-header-title' }),
       ).toBeInTheDocument()
       expect(document.querySelectorAll('.chain-entry')).toHaveLength(2)
     })

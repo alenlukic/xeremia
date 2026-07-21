@@ -29,14 +29,50 @@ import {
   visibleColumnIds,
   type NormalizedTableConfig,
 } from '../tablePreferences'
+import { TableHeader } from './table/TableHeader'
+import { TableControlPanel } from './table/TableControlPanel'
+import { SortTierBar, SortAddButton } from './SortTierBar'
+import {
+  TableFilterAddButton,
+  TableFilterPills,
+} from './table/TableFilterBar'
+import {
+  isActiveFilter,
+  passesFilter,
+  type FilterMap,
+  type NumericFilter,
+} from './table/tableFilter'
+import {
+  ToggleFilterGroup,
+  type ToggleOption,
+} from './table/ToggleFilterGroup'
+import { ColumnInsertRail } from './table/ColumnInsertRail'
+import { normalizeScore, scoreCellStyle } from './table/scoreGradient'
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key'
 
-const BUCKET_TABS: { key: BucketKey; label: string }[] = [
+const BUCKETS: { key: BucketKey; label: string }[] = [
   { key: 'same_key', label: 'Same' },
   { key: 'higher_key', label: 'Higher' },
   { key: 'lower_key', label: 'Lower' },
 ]
+
+/** Columns whose cells get the red→green score background, with their scale. */
+const SCORE_SCALE: Record<string, '0-1' | '0-100'> = {
+  overall_score: '0-100',
+  similarity_score: '0-1',
+  camelot_score: '0-1',
+  bpm_score: '0-1',
+  genre_similarity_score: '0-1',
+  freshness_score: '0-1',
+  energy_score: '0-1',
+  mood_continuity_score: '0-1',
+  instrument_similarity_score: '0-1',
+  vocal_clash_score: '0-1',
+}
+
+/** Columns that cannot be sorted (display/action columns). */
+const NON_SORTABLE = new Set(['play', 'add_to_set', 'details'])
 
 const COL_SIZES: Record<string, number> = {
   overall_score: 70,
@@ -58,6 +94,15 @@ const SCORE_COLUMN_IDS = Object.keys(COL_SIZES)
 const TOTAL_BASE = Object.values(COL_SIZES).reduce((a, b) => a + b, 0)
 
 const col = createColumnHelper<TransitionMatch>()
+
+/** The value a numeric filter compares against — always in displayed (0–100) scale. */
+function displayScore(m: TransitionMatch, id: string): number | null {
+  const raw = (m as unknown as Record<string, number | null | undefined>)[id]
+  if (raw == null || !Number.isFinite(raw)) {
+    return null
+  }
+  return id === 'overall_score' ? raw : raw * 100
+}
 
 const scoreColumns = [
   col.accessor('overall_score', {
@@ -179,7 +224,6 @@ export const MatchesPanel = memo(function MatchesPanel({
   onAddToPool,
   onAddToTracklist,
 }: Props) {
-  const [bucketTab, setBucketTab] = useState<BucketKey>('same_key')
   const outerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const topScrollRef = useRef<HTMLDivElement>(null)
@@ -190,6 +234,14 @@ export const MatchesPanel = memo(function MatchesPanel({
   const columnVisibility = tableConfig.columnVisibility
   const [sorting, setSorting] = useState<SortingState>([])
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+
+  // Persistent Same/Higher/Lower key-relationship toggles (replace the old tabs;
+  // all buckets on by default, all results live in one table).
+  const [activeBuckets, setActiveBuckets] = useState<Set<string>>(
+    () => new Set(BUCKETS.map((b) => b.key)),
+  )
+  // Active numeric column filters, keyed by column id, in displayed (0–100) scale.
+  const [filters, setFilters] = useState<FilterMap>({})
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null)
   const hasTrack = matchSource != null
@@ -322,8 +374,8 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const bucketCounts = useMemo(() => {
     const counts: Record<string, number> = {}
-    for (const bt of BUCKET_TABS) {
-      counts[bt.key] = 0
+    for (const b of BUCKETS) {
+      counts[b.key] = 0
     }
     for (const m of matches) {
       if (m.bucket in counts) {
@@ -333,10 +385,24 @@ export const MatchesPanel = memo(function MatchesPanel({
     return counts
   }, [matches])
 
-  const bucketMatches = useMemo(
-    () => matches.filter((m) => m.bucket === bucketTab),
-    [matches, bucketTab],
-  )
+  // All matches in one table, narrowed by the persistent bucket toggles and any
+  // active numeric column filters.
+  const visibleMatches = useMemo(() => {
+    const activeFilters = Object.entries(filters).filter(([, f]) =>
+      isActiveFilter(f),
+    )
+    return matches.filter((m) => {
+      if (!activeBuckets.has(m.bucket)) {
+        return false
+      }
+      for (const [id, f] of activeFilters) {
+        if (!passesFilter(displayScore(m, id), f)) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [matches, activeBuckets, filters])
 
   useLayoutEffect(() => {
     const el = outerRef.current
@@ -392,7 +458,7 @@ export const MatchesPanel = memo(function MatchesPanel({
   // compiler skips optimization here (informational; not a code defect).
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
-    data: bucketMatches,
+    data: visibleMatches,
     columns: allColumns,
     state: {
       columnSizing: effectiveSizing,
@@ -401,6 +467,7 @@ export const MatchesPanel = memo(function MatchesPanel({
       sorting,
     },
     columnResizeMode: 'onChange',
+    enableMultiSort: true,
     onColumnSizingChange: handleColumnSizingChange,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
@@ -409,6 +476,52 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const totalWidth = table.getTotalSize()
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth
+
+  // Sort/filter control descriptors derived from the visible columns.
+  const sortColumns = useMemo(
+    () =>
+      visibleIds
+        .filter((id) => !NON_SORTABLE.has(id))
+        .map((id) => ({ id, label: registryById.get(id)?.label ?? id })),
+    [visibleIds, registryById],
+  )
+  const filterColumns = useMemo(
+    () =>
+      visibleIds
+        .filter((id) => id in SCORE_SCALE)
+        .map((id) => ({ id, label: registryById.get(id)?.label ?? id })),
+    [visibleIds, registryById],
+  )
+
+  const bucketOptions: ToggleOption[] = BUCKETS.map((b) => ({
+    key: b.key,
+    label: b.label,
+    count: bucketCounts[b.key],
+  }))
+
+  const toggleBucket = useCallback((key: string) => {
+    setActiveBuckets((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }, [])
+
+  const setFilter = useCallback((columnId: string, filter: NumericFilter) => {
+    setFilters((prev) => ({ ...prev, [columnId]: filter }))
+  }, [])
+
+  const removeFilter = useCallback((columnId: string) => {
+    setFilters((prev) => {
+      const next = { ...prev }
+      delete next[columnId]
+      return next
+    })
+  }, [])
 
   const handleTopScroll = useCallback(() => {
     if (ignoreNextScroll.current === 'top') {
@@ -476,33 +589,68 @@ export const MatchesPanel = memo(function MatchesPanel({
     )
   }
 
+  const header = (
+    <TableHeader
+      title={matchSource.title}
+      primary={
+        <>
+          <SortAddButton
+            sorting={sorting}
+            columns={sortColumns}
+            onSortingChange={setSorting}
+            label="Add sort"
+            className="ds-header-btn"
+          />
+          <TableFilterAddButton
+            columns={filterColumns}
+            filters={filters}
+            onFilterChange={setFilter}
+            label="Add filter"
+          />
+        </>
+      }
+      trailing={
+        <button
+          type="button"
+          className="matches-clear-btn"
+          aria-label="Clear matches"
+          title="Clear matches"
+          onClick={onClearMatchSource}
+        >
+          ×
+        </button>
+      }
+    />
+  )
+
+  const controlPanel = (
+    <TableControlPanel>
+      <ToggleFilterGroup
+        options={bucketOptions}
+        active={activeBuckets}
+        onToggle={toggleBucket}
+        ariaLabel="Key relationship filter"
+      />
+      <SortTierBar
+        sorting={sorting}
+        columns={sortColumns}
+        onSortingChange={setSorting}
+        hideAddButton
+      />
+      <TableFilterPills
+        columns={filterColumns}
+        filters={filters}
+        onFilterChange={setFilter}
+        onRemove={removeFilter}
+      />
+    </TableControlPanel>
+  )
+
   if (visibleIds.length === 0) {
     return (
       <div className="matches-panel">
-        <div className="matches-header-compact">
-          <div className="bucket-tabs">
-            {BUCKET_TABS.map((bt) => (
-              <button
-                key={bt.key}
-                className={`bucket-tab${bucketTab === bt.key ? ' active' : ''}`}
-                onClick={() => setBucketTab(bt.key)}
-              >
-                {bt.label}
-                <span className="bucket-count">{bucketCounts[bt.key]}</span>
-              </button>
-            ))}
-            <span className="matches-source-title">{matchSource.title}</span>
-            <button
-              type="button"
-              className="matches-clear-btn"
-              aria-label="Clear matches"
-              title="Clear matches"
-              onClick={onClearMatchSource}
-            >
-              ×
-            </button>
-          </div>
-        </div>
+        {header}
+        {controlPanel}
         <TableColumnEmptyRecovery
           inactiveColumns={hiddenInactive}
           onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
@@ -513,31 +661,13 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   return (
     <div className="matches-panel">
-      <div className="matches-header-compact">
-        <div className="bucket-tabs">
-          {BUCKET_TABS.map((bt) => (
-            <button
-              key={bt.key}
-              className={`bucket-tab${bucketTab === bt.key ? ' active' : ''}`}
-              onClick={() => setBucketTab(bt.key)}
-            >
-              {bt.label}
-              <span className="bucket-count">{bucketCounts[bt.key]}</span>
-            </button>
-          ))}
-          <span className="matches-source-title">{matchSource.title}</span>
-          <button
-            type="button"
-            className="matches-clear-btn"
-            aria-label="Clear matches"
-            title="Clear matches"
-            onClick={onClearMatchSource}
-          >
-            ×
-          </button>
-        </div>
-      </div>
+      {header}
+      {controlPanel}
       <div className="track-table-outer" ref={outerRef}>
+        <ColumnInsertRail
+          inactiveColumns={hiddenInactive}
+          onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
+        />
         {isOverflowing && (
           <div
             className="track-table-top-scrollbar"
@@ -562,6 +692,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                   {hg.headers.map((header) => {
                     const canSort = header.column.getCanSort()
                     const sorted = header.column.getIsSorted()
+                    const sortIndex = header.column.getSortIndex()
                     const isDetails = header.column.id === 'details'
                     return (
                       <th
@@ -605,6 +736,7 @@ export const MatchesPanel = memo(function MatchesPanel({
                             onInsertAfter={(columnId) =>
                               onInsertColumnAfter(header.column.id, columnId)
                             }
+                            hideInsert
                           >
                             {flexRender(
                               header.column.columnDef.header,
@@ -614,6 +746,11 @@ export const MatchesPanel = memo(function MatchesPanel({
                           {sorted && (
                             <span className="sort-indicator">
                               {sorted === 'asc' ? ' ▲' : ' ▼'}
+                              {sorting.length > 1 && (
+                                <span className="sort-tier-index">
+                                  {sortIndex + 1}
+                                </span>
+                              )}
                             </span>
                           )}
                         </div>
@@ -639,7 +776,7 @@ export const MatchesPanel = memo(function MatchesPanel({
               ))}
             </thead>
             <tbody>
-              {loading && bucketMatches.length === 0 ? (
+              {loading && visibleMatches.length === 0 ? (
                 <tr>
                   <td
                     colSpan={table.getVisibleLeafColumns().length}
@@ -657,13 +794,13 @@ export const MatchesPanel = memo(function MatchesPanel({
                     Failed to load matches — {matchesError}
                   </td>
                 </tr>
-              ) : bucketMatches.length === 0 ? (
+              ) : visibleMatches.length === 0 ? (
                 <tr>
                   <td
                     colSpan={table.getVisibleLeafColumns().length}
                     className="table-status"
                   >
-                    No matches in this bucket
+                    No matches for the active filters
                   </td>
                 </tr>
               ) : (
@@ -680,14 +817,34 @@ export const MatchesPanel = memo(function MatchesPanel({
                     }}
                     style={loading ? { opacity: 0.6 } : undefined}
                   >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
-                    ))}
+                    {row.getVisibleCells().map((cell) => {
+                      const scale = SCORE_SCALE[cell.column.id]
+                      const style = scale
+                        ? scoreCellStyle(
+                            normalizeScore(
+                              (
+                                row.original as unknown as Record<
+                                  string,
+                                  number | null
+                                >
+                              )[cell.column.id],
+                              scale,
+                            ),
+                          )
+                        : undefined
+                      return (
+                        <td
+                          key={cell.id}
+                          className={scale ? 'ds-score-cell' : undefined}
+                          style={style}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </td>
+                      )
+                    })}
                   </tr>
                 ))
               )}
