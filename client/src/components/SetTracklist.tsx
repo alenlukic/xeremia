@@ -7,7 +7,6 @@ import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
 import {
   TABLE_REGISTRIES,
-  inactiveColumns,
   visibleColumnIds,
   type NormalizedTableConfig,
 } from '../tablePreferences'
@@ -16,7 +15,6 @@ import {
   TableColumnEmptyRecovery,
 } from './TableColumnControls'
 import { TableHeader } from './table/TableHeader'
-import { ColumnInsertRail } from './table/ColumnInsertRail'
 import { PlayButton } from './PlayButton'
 
 const TRACKLIST_COL_CLASS: Record<string, string> = {
@@ -116,7 +114,6 @@ export function SetTracklist({
   tableConfig,
   onToggleColumn,
   onReorderColumn,
-  onInsertColumnAfter,
   onColumnWidthFlush,
   headerControls,
   onOpenExplorer,
@@ -141,10 +138,6 @@ export function SetTracklist({
 
   const colWidths = tableConfig.columnWidths
   const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
-  const hiddenInactive = useMemo(
-    () => inactiveColumns('tracklist', tableConfig),
-    [tableConfig],
-  )
   const registryById = useMemo(
     () => new Map(TABLE_REGISTRIES.tracklist.map((entry) => [entry.id, entry])),
     [],
@@ -281,10 +274,7 @@ export function SetTracklist({
         >
           <TableColumnControls
             label={registry?.label ?? label}
-            inactiveColumns={hiddenInactive}
             onRemove={() => onToggleColumn(colId)}
-            onInsertAfter={(columnId) => onInsertColumnAfter(colId, columnId)}
-            hideInsert
           >
             {label}
           </TableColumnControls>
@@ -414,16 +404,9 @@ export function SetTracklist({
           Tracklist is empty. Drag tracks from the Search table above.
         </p>
       ) : visibleIds.length === 0 ? (
-        <TableColumnEmptyRecovery
-          inactiveColumns={hiddenInactive}
-          onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
-        />
+        <TableColumnEmptyRecovery />
       ) : (
         <div className="track-table-outer">
-          <ColumnInsertRail
-            inactiveColumns={hiddenInactive}
-            onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
-          />
           <div className="track-table-wrapper">
             <table className="set-tracklist-table">
               <colgroup>

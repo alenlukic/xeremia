@@ -36,11 +36,9 @@ import {
 } from './TableColumnControls'
 import {
   TABLE_REGISTRIES,
-  inactiveColumns,
   visibleColumnIds,
   type NormalizedTableConfig,
 } from '../tablePreferences'
-import { ColumnInsertRail } from './table/ColumnInsertRail'
 
 const col = createColumnHelper<Track>()
 
@@ -192,7 +190,6 @@ export const TrackTable = memo(function TrackTable({
   tableConfig,
   onToggleColumnVisibility,
   onReorderColumn,
-  onInsertColumnAfter,
   onColumnWidthFlush,
   sorting: sortingProp,
   onSortingChange: onSortingChangeProp,
@@ -273,7 +270,6 @@ export const TrackTable = memo(function TrackTable({
   const effectiveSizingRef = useRef(effectiveSizing)
   effectiveSizingRef.current = effectiveSizing
 
-  const hiddenInactive = inactiveColumns('search', tableConfig)
   const visibleIds = visibleColumnIds(tableConfig)
   const registryById = useMemo(
     () => new Map(TABLE_REGISTRIES.search.map((entry) => [entry.id, entry])),
@@ -506,20 +502,13 @@ export const TrackTable = memo(function TrackTable({
   if (visibleIds.length === 0) {
     return (
       <div className="track-table-outer">
-        <TableColumnEmptyRecovery
-          inactiveColumns={hiddenInactive}
-          onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
-        />
+        <TableColumnEmptyRecovery />
       </div>
     )
   }
 
   return (
     <div className="track-table-outer" ref={outerRef}>
-      <ColumnInsertRail
-        inactiveColumns={hiddenInactive}
-        onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
-      />
       {isOverflowing && (
         <div
           className="track-table-top-scrollbar"
@@ -586,14 +575,9 @@ export const TrackTable = memo(function TrackTable({
                               registryById.get(header.column.id)?.label ??
                               String(header.column.columnDef.header ?? '')
                             }
-                            inactiveColumns={hiddenInactive}
                             onRemove={() =>
                               onToggleColumnVisibility(header.column.id)
                             }
-                            onInsertAfter={(columnId) =>
-                              onInsertColumnAfter(header.column.id, columnId)
-                            }
-                            hideInsert
                           >
                             {flexRender(
                               header.column.columnDef.header,

@@ -21,7 +21,6 @@ import { SortTierBar, SortAddButton } from './SortTierBar'
 import type { SortDescriptor, SortColumn } from './SortTierBar'
 import {
   TABLE_REGISTRIES,
-  inactiveColumns,
   visibleColumnIds,
   type NormalizedTableConfig,
 } from '../tablePreferences'
@@ -31,7 +30,6 @@ import {
 } from './TableColumnControls'
 import { TableHeader } from './table/TableHeader'
 import { TableControlPanel } from './table/TableControlPanel'
-import { ColumnInsertRail } from './table/ColumnInsertRail'
 import {
   TableFilterAddButton,
   TableFilterPills,
@@ -454,11 +452,9 @@ function PoolTableHead({
   onHeaderSort,
   colWidths,
   beginResize,
-  hiddenInactive,
   registryById,
   draggedColumn,
   onToggleColumn,
-  onInsertColumnAfter,
   onColumnDragStart,
   onColumnDragOver,
   onColumnDrop,
@@ -469,11 +465,9 @@ function PoolTableHead({
   onHeaderSort?: (col: string, e: React.MouseEvent) => void
   colWidths?: Record<string, number>
   beginResize?: (colId: string, e: React.MouseEvent) => void
-  hiddenInactive: import('../tablePreferences').ColumnRegistryEntry[]
   registryById: Map<string, import('../tablePreferences').ColumnRegistryEntry>
   draggedColumn: string | null
   onToggleColumn: (columnId: string) => void
-  onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
   onColumnDragStart: (e: React.DragEvent, columnId: string) => void
   onColumnDragOver: (e: React.DragEvent) => void
   onColumnDrop: (e: React.DragEvent, targetId: string) => void
@@ -557,10 +551,7 @@ function PoolTableHead({
         >
           <TableColumnControls
             label={registry?.label ?? label}
-            inactiveColumns={hiddenInactive}
             onRemove={() => onToggleColumn(colId)}
-            onInsertAfter={(columnId) => onInsertColumnAfter(colId, columnId)}
-            hideInsert
           >
             {label}
             {sortCol ? sortIndicator(sortCol) : null}
@@ -966,7 +957,6 @@ export function SetPoolTable({
   tableConfig,
   onToggleColumn,
   onReorderColumn,
-  onInsertColumnAfter,
   onColumnWidthFlush,
   onRemove,
   onMoveToTracklist,
@@ -997,10 +987,6 @@ export function SetPoolTable({
     [poolColWidths, liveResize],
   )
   const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
-  const hiddenInactive = useMemo(
-    () => inactiveColumns('pool', tableConfig),
-    [tableConfig],
-  )
   const registryById = useMemo(
     () => new Map(TABLE_REGISTRIES.pool.map((entry) => [entry.id, entry])),
     [],
@@ -1121,11 +1107,9 @@ export function SetPoolTable({
       visibleColumnIds: displayColumns,
       colWidths: effectivePoolColWidths,
       beginResize: beginPoolColResize,
-      hiddenInactive,
       registryById,
       draggedColumn,
       onToggleColumn,
-      onInsertColumnAfter,
       onColumnDragStart: handleColumnDragStart,
       onColumnDragOver: handleColumnDragOver,
       onColumnDrop: handleColumnDrop,
@@ -1134,11 +1118,9 @@ export function SetPoolTable({
     [
       displayColumns,
       effectivePoolColWidths,
-      hiddenInactive,
       registryById,
       draggedColumn,
       onToggleColumn,
-      onInsertColumnAfter,
       handleColumnDragStart,
       handleColumnDragOver,
       handleColumnDrop,
@@ -1475,16 +1457,9 @@ export function SetPoolTable({
           the Groups column on the All tab.
         </p>
       ) : displayColumns.length === 0 ? (
-        <TableColumnEmptyRecovery
-          inactiveColumns={hiddenInactive}
-          onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
-        />
+        <TableColumnEmptyRecovery />
       ) : (
         <div className="track-table-outer">
-          <ColumnInsertRail
-            inactiveColumns={hiddenInactive}
-            onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
-          />
           <div className="track-table-wrapper">
             <table className="set-pool-table">
               <PoolTableHead

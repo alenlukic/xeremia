@@ -27,7 +27,6 @@ import {
 } from './TableColumnControls'
 import {
   TABLE_REGISTRIES,
-  inactiveColumns,
   visibleColumnIds,
   type NormalizedTableConfig,
 } from '../tablePreferences'
@@ -48,7 +47,6 @@ import {
   ToggleFilterGroup,
   type ToggleOption,
 } from './table/ToggleFilterGroup'
-import { ColumnInsertRail } from './table/ColumnInsertRail'
 import { normalizeScore, scoreCellStyle } from './table/scoreGradient'
 
 type BucketKey = 'same_key' | 'higher_key' | 'lower_key'
@@ -221,7 +219,6 @@ export const MatchesPanel = memo(function MatchesPanel({
   onClearMatchSource,
   onToggleColumnVisibility,
   onReorderColumn,
-  onInsertColumnAfter,
   onColumnWidthFlush,
   onViewDetail,
   onUseAsSource,
@@ -256,7 +253,6 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null)
   const hasTrack = matchSource != null
-  const hiddenInactive = inactiveColumns('matches', tableConfig)
   const visibleIds = visibleColumnIds(tableConfig)
   const registryById = useMemo(
     () => new Map(TABLE_REGISTRIES.matches.map((entry) => [entry.id, entry])),
@@ -682,10 +678,7 @@ export const MatchesPanel = memo(function MatchesPanel({
       <div className="matches-panel">
         {header}
         {controlPanel}
-        <TableColumnEmptyRecovery
-          inactiveColumns={hiddenInactive}
-          onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
-        />
+        <TableColumnEmptyRecovery />
       </div>
     )
   }
@@ -695,10 +688,6 @@ export const MatchesPanel = memo(function MatchesPanel({
       {header}
       {controlPanel}
       <div className="track-table-outer" ref={outerRef}>
-        <ColumnInsertRail
-          inactiveColumns={hiddenInactive}
-          onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
-        />
         {isOverflowing && (
           <div
             className="track-table-top-scrollbar"
@@ -729,11 +718,15 @@ export const MatchesPanel = memo(function MatchesPanel({
                       <th
                         key={header.id}
                         style={{ width: header.getSize() }}
-                        className={
+                        className={`${
                           draggedColumn === header.column.id
                             ? 'th-dragging'
                             : ''
-                        }
+                        }${
+                          header.column.id === 'track_title'
+                            ? ' matches-th-track'
+                            : ''
+                        }`}
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDrop(e, header.column.id)}
                         title={
@@ -760,14 +753,9 @@ export const MatchesPanel = memo(function MatchesPanel({
                               registryById.get(header.column.id)?.label ??
                               String(header.column.columnDef.header ?? '')
                             }
-                            inactiveColumns={hiddenInactive}
                             onRemove={() =>
                               onToggleColumnVisibility(header.column.id)
                             }
-                            onInsertAfter={(columnId) =>
-                              onInsertColumnAfter(header.column.id, columnId)
-                            }
-                            hideInsert
                           >
                             {flexRender(
                               header.column.columnDef.header,

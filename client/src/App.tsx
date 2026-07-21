@@ -7,7 +7,7 @@ import {
 } from './components/QuadrantControls'
 import {
   BrowseFilterAddButton,
-  BrowseFilterPills,
+  BrowseFilterGroups,
 } from './components/FilterBar'
 import { TrackTable } from './components/TrackTable'
 import { MatchesPanel } from './components/MatchesPanel'
@@ -97,12 +97,12 @@ export function App() {
   } = useSelectedTrack(refreshCacheStats)
 
   const {
-    filters,
     filteredTracks,
-    setCamelotCodes,
-    setBpm,
-    setBpmMin,
-    setBpmMax,
+    model: filterModel,
+    setModel: setFilterModel,
+    isActive: filtersActive,
+    genres: filterGenres,
+    labels: filterLabels,
   } = useTrackFilters(allTracks, searchText)
 
   const {
@@ -301,14 +301,10 @@ export function App() {
                     className="ds-header-btn"
                   />
                   <BrowseFilterAddButton
-                    camelotCodes={filters.camelotCodes}
-                    bpm={filters.bpm}
-                    bpmMin={filters.bpmMin}
-                    bpmMax={filters.bpmMax}
-                    setCamelotCodes={setCamelotCodes}
-                    setBpm={setBpm}
-                    setBpmMin={setBpmMin}
-                    setBpmMax={setBpmMax}
+                    model={filterModel}
+                    setModel={setFilterModel}
+                    genres={filterGenres}
+                    labels={filterLabels}
                   />
                 </>
               }
@@ -322,19 +318,12 @@ export function App() {
                   hideAddButton
                 />
               )}
-              {(filters.camelotCodes.length > 0 ||
-                filters.bpm != null ||
-                filters.bpmMin != null ||
-                filters.bpmMax != null) && (
-                <BrowseFilterPills
-                  camelotCodes={filters.camelotCodes}
-                  bpm={filters.bpm}
-                  bpmMin={filters.bpmMin}
-                  bpmMax={filters.bpmMax}
-                  setCamelotCodes={setCamelotCodes}
-                  setBpm={setBpm}
-                  setBpmMin={setBpmMin}
-                  setBpmMax={setBpmMax}
+              {filtersActive && (
+                <BrowseFilterGroups
+                  model={filterModel}
+                  setModel={setFilterModel}
+                  genres={filterGenres}
+                  labels={filterLabels}
                 />
               )}
             </TableControlPanel>

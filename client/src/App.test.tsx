@@ -165,7 +165,7 @@ async function openKeyFilterPopover() {
     screen.getByRole('button', { name: /Add filter/ }).click()
   })
   await act(async () => {
-    screen.getByRole('button', { name: 'Key' }).click()
+    screen.getByRole('menuitem', { name: 'Key' }).click()
   })
 }
 
@@ -174,7 +174,7 @@ async function openBpmFilterPopover() {
     screen.getByRole('button', { name: /Add filter/ }).click()
   })
   await act(async () => {
-    screen.getByRole('button', { name: 'BPM' }).click()
+    screen.getByRole('menuitem', { name: 'BPM' }).click()
   })
 }
 
@@ -748,7 +748,7 @@ describe('Key filter popover', () => {
     })
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Remove key filter' }).click()
+      screen.getByRole('button', { name: 'Remove Key filter' }).click()
     })
     expect(
       screen.queryByRole('button', { name: /Key: 01A/ }),

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { BrowseFilterAddButton, BrowseFilterPills } from './FilterBar'
+import { BrowseFilterAddButton, BrowseFilterGroups } from './FilterBar'
+import { matchesModel, type FilterModel } from '../hooks/useTrackFilters'
 import { TrackTable } from './TrackTable'
 import {
   testSearchConfig,
@@ -20,129 +21,169 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
 })
 
-const baseProps = {
-  camelotCodes: [],
-  bpm: undefined,
-  bpmMin: undefined,
-  bpmMax: undefined,
-  setCamelotCodes: vi.fn(),
-  setBpm: vi.fn(),
-  setBpmMin: vi.fn(),
-  setBpmMax: vi.fn(),
+const filterProps = {
+  model: [] as FilterModel,
+  setModel: vi.fn(),
+  genres: ['House', 'Techno'],
+  labels: ['Anjuna', 'Drumcode'],
 }
 
-describe('BrowseFilterAddButton add-filter flow', () => {
-  it('opens a menu with Key and BPM options', async () => {
-    render(<BrowseFilterAddButton {...baseProps} />)
-    await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
-    expect(screen.getByRole('button', { name: 'Key' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'BPM' })).toBeInTheDocument()
+/** Resolve a `setModel(updater)` call to the model it would produce from `prev`. */
+function applyLastSetModel(fn: ReturnType<typeof vi.fn>, prev: FilterModel) {
+  const updater = fn.mock.calls.at(-1)?.[0] as (m: FilterModel) => FilterModel
+  return updater(prev)
+}
+
+describe('BrowseFilterAddButton', () => {
+  it('opens a menu with every filter kind', async () => {
+    render(<BrowseFilterAddButton {...filterProps} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+    for (const name of ['Key', 'BPM', 'Genre', 'Label', 'Date Added']) {
+      expect(screen.getByRole('menuitem', { name })).toBeInTheDocument()
+    }
   })
 
-  it('stages camelot codes and commits them when the popover closes', async () => {
-    const setCamelotCodes = vi.fn()
-    render(
-      <BrowseFilterAddButton {...baseProps} setCamelotCodes={setCamelotCodes} />,
-    )
-    await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
-    await userEvent.click(screen.getByRole('button', { name: 'Key' }))
+  it('stages a key condition and commits it to the first group on close', async () => {
+    const setModel = vi.fn()
+    render(<BrowseFilterAddButton {...filterProps} setModel={setModel} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Key' }))
     await userEvent.click(screen.getByRole('button', { name: '01A' }))
-    // Staged only — the filter (and thus the search) is not touched until close.
-    expect(setCamelotCodes).not.toHaveBeenCalled()
+    // Staged only until the popover closes.
+    expect(setModel).not.toHaveBeenCalled()
     await userEvent.keyboard('{Escape}')
-    expect(setCamelotCodes).toHaveBeenCalledWith(['01A'])
+    const next = applyLastSetModel(setModel, [])
+    expect(next).toHaveLength(1)
+    expect(next[0].conditions[0]).toMatchObject({
+      kind: 'key',
+      values: ['01A'],
+    })
   })
 
-  it('selecting BPM opens the popover with exact and range inputs', async () => {
-    render(<BrowseFilterAddButton {...baseProps} />)
-    await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
-    await userEvent.click(screen.getByRole('button', { name: 'BPM' }))
-    expect(screen.getByPlaceholderText('Exact')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Min')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Max')).toBeInTheDocument()
-  })
-
-  it('does not render the removed Columns menu', () => {
-    render(<BrowseFilterAddButton {...baseProps} />)
-    expect(
-      screen.queryByRole('button', { name: /Columns/ }),
-    ).not.toBeInTheDocument()
+  it('commits a genre condition from the multi-select', async () => {
+    const setModel = vi.fn()
+    render(<BrowseFilterAddButton {...filterProps} setModel={setModel} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Genre' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'House' }))
+    await userEvent.keyboard('{Escape}')
+    const next = applyLastSetModel(setModel, [])
+    expect(next[0].conditions[0]).toMatchObject({
+      kind: 'genre',
+      values: ['House'],
+    })
   })
 })
 
-describe('BrowseFilterPills', () => {
-  it('shows no pills row when no filters are active', () => {
-    render(<BrowseFilterPills {...baseProps} />)
-    expect(document.querySelector('.filter-pills')).not.toBeInTheDocument()
+describe('BrowseFilterGroups', () => {
+  const model: FilterModel = [
+    {
+      id: 'g1',
+      conditions: [
+        { id: 'c1', kind: 'key', values: ['01A'] },
+        { id: 'c2', kind: 'bpm', min: 120, max: 130 },
+      ],
+    },
+    { id: 'g2', conditions: [{ id: 'c3', kind: 'genre', values: ['House'] }] },
+  ]
+
+  it('renders nothing when the model is empty', () => {
+    const { container } = render(<BrowseFilterGroups {...filterProps} />)
+    expect(container.querySelector('.filter-groups')).toBeNull()
   })
 
-  it('renders a key pill listing selected codes', () => {
-    render(<BrowseFilterPills {...baseProps} camelotCodes={['01A', '02B']} />)
+  it('renders groups, pills and an OR divider', () => {
+    const { container } = render(
+      <BrowseFilterGroups {...filterProps} model={model} />,
+    )
+    expect(container.querySelectorAll('.filter-group')).toHaveLength(2)
+    expect(container.querySelector('.filter-or-divider')?.textContent).toBe('OR')
     expect(
-      screen.getByRole('button', { name: 'Key: 01A, 02B' }),
+      screen.getByRole('button', { name: 'Key: 01A' }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'BPM: 120–130' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Genre: House' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ OR' })).toBeInTheDocument()
   })
 
-  it('renders BPM pill labels for exact, range, and open-ended filters', () => {
-    const { rerender } = render(<BrowseFilterPills {...baseProps} bpm={124} />)
-    expect(screen.getByRole('button', { name: 'BPM: 124' })).toBeInTheDocument()
-
-    rerender(<BrowseFilterPills {...baseProps} bpmMin={120} bpmMax={140} />)
-    expect(
-      screen.getByRole('button', { name: 'BPM: 120–140' }),
-    ).toBeInTheDocument()
-
-    rerender(<BrowseFilterPills {...baseProps} bpmMin={120} />)
-    expect(
-      screen.getByRole('button', { name: 'BPM: ≥ 120' }),
-    ).toBeInTheDocument()
-
-    rerender(<BrowseFilterPills {...baseProps} bpmMax={140} />)
-    expect(
-      screen.getByRole('button', { name: 'BPM: ≤ 140' }),
-    ).toBeInTheDocument()
-  })
-
-  it('removes the key filter via the pill remove button', async () => {
-    const setCamelotCodes = vi.fn()
+  it('removes a condition via its pill remove button', async () => {
+    const setModel = vi.fn()
     render(
-      <BrowseFilterPills
-        {...baseProps}
-        camelotCodes={['01A']}
-        setCamelotCodes={setCamelotCodes}
-      />,
+      <BrowseFilterGroups {...filterProps} model={model} setModel={setModel} />,
     )
     await userEvent.click(
-      screen.getByRole('button', { name: 'Remove key filter' }),
+      screen.getByRole('button', { name: 'Remove Key filter' }),
     )
-    expect(setCamelotCodes).toHaveBeenCalledWith([])
+    const next = applyLastSetModel(setModel, model)
+    expect(
+      next.flatMap((g) => g.conditions).some((c) => c.id === 'c1'),
+    ).toBe(false)
+  })
+})
+
+describe('matchesModel', () => {
+  const track = (over: Partial<Track>): Track => ({
+    id: 1,
+    title: 'T',
+    artist_names: [],
+    bpm: 128,
+    key: 'Am',
+    camelot_code: '01A',
+    genre: 'House',
+    label: 'Anjuna',
+    energy: null,
+    date_added: '2024-01-15',
+    ...over,
   })
 
-  it('clears exact and range values via the BPM pill remove button', async () => {
-    const setBpm = vi.fn()
-    const setBpmMin = vi.fn()
-    const setBpmMax = vi.fn()
-    render(
-      <BrowseFilterPills
-        {...baseProps}
-        bpm={124}
-        setBpm={setBpm}
-        setBpmMin={setBpmMin}
-        setBpmMax={setBpmMax}
-      />,
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Remove BPM filter' }),
-    )
-    expect(setBpm).toHaveBeenCalledWith(undefined)
-    expect(setBpmMin).toHaveBeenCalledWith(undefined)
-    expect(setBpmMax).toHaveBeenCalledWith(undefined)
+  it('passes everything when no group is active', () => {
+    expect(matchesModel(track({}), [])).toBe(true)
   })
 
-  it('opens the popover for editing when a pill body is clicked', async () => {
-    render(<BrowseFilterPills {...baseProps} camelotCodes={['01A']} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Key: 01A' }))
-    expect(screen.getByRole('button', { name: '03A' })).toBeInTheDocument()
+  it('ANDs conditions within a group', () => {
+    const model: FilterModel = [
+      {
+        id: 'g',
+        conditions: [
+          { id: 'a', kind: 'key', values: ['01A'] },
+          { id: 'b', kind: 'bpm', min: 130 },
+        ],
+      },
+    ]
+    // key matches but bpm (128) is below the 130 minimum → excluded.
+    expect(matchesModel(track({ bpm: 128 }), model)).toBe(false)
+    expect(matchesModel(track({ bpm: 132 }), model)).toBe(true)
+  })
+
+  it('ORs across groups', () => {
+    const model: FilterModel = [
+      { id: 'g1', conditions: [{ id: 'a', kind: 'genre', values: ['Techno'] }] },
+      { id: 'g2', conditions: [{ id: 'b', kind: 'label', values: ['Anjuna'] }] },
+    ]
+    // Genre House fails group 1 but label Anjuna satisfies group 2.
+    expect(matchesModel(track({ genre: 'House', label: 'Anjuna' }), model)).toBe(
+      true,
+    )
+    expect(matchesModel(track({ genre: 'House', label: 'Other' }), model)).toBe(
+      false,
+    )
+  })
+
+  it('filters by date-added bounds inclusively', () => {
+    const model: FilterModel = [
+      {
+        id: 'g',
+        conditions: [
+          { id: 'd', kind: 'dateAdded', after: '2024-01-01', before: '2024-01-31' },
+        ],
+      },
+    ]
+    expect(matchesModel(track({ date_added: '2024-01-15' }), model)).toBe(true)
+    expect(matchesModel(track({ date_added: '2023-12-31' }), model)).toBe(false)
   })
 })
 
@@ -202,10 +243,7 @@ describe('TrackTable column visibility', () => {
 
   it('renders BPM as a rounded integer', () => {
     render(
-      <TrackTable
-        tracks={[{ ...sampleTrack, bpm: 128.7 }]}
-        {...trackTableProps}
-      />,
+      <TrackTable tracks={[{ ...sampleTrack, bpm: 128.7 }]} {...trackTableProps} />,
     )
     const cells = screen.getAllByRole('cell')
     const bpmCell = cells.find((c) => c.textContent === '129')
@@ -216,10 +254,7 @@ describe('TrackTable column visibility', () => {
 
   it('renders BPM as integer with no trailing decimal for whole numbers', () => {
     render(
-      <TrackTable
-        tracks={[{ ...sampleTrack, bpm: 130.0 }]}
-        {...trackTableProps}
-      />,
+      <TrackTable tracks={[{ ...sampleTrack, bpm: 130.0 }]} {...trackTableProps} />,
     )
     const cells = screen.getAllByRole('cell')
     const bpmCell = cells.find((c) => c.textContent === '130')

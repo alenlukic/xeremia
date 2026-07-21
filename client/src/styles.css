@@ -682,6 +682,91 @@ body,
   gap: 6px;
 }
 
+/* --- Filter groups: (AND within a group) OR (between groups) --- */
+.filter-groups {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filter-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+.filter-or-divider {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0 2px;
+  user-select: none;
+}
+.filter-group-add-btn,
+.filter-or-add-btn {
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+.filter-group-add-btn:hover,
+.filter-group-add-btn[aria-expanded='true'],
+.filter-or-add-btn:hover,
+.filter-or-add-btn[aria-expanded='true'] {
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+}
+
+/* Multi-select popover body (genre / label): search box + scrollable checklist. */
+.filter-multiselect {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+.filter-multiselect-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.filter-multiselect-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.filter-multiselect-item:hover {
+  background: var(--surface-hover);
+}
+.filter-multiselect-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-multiselect-empty {
+  padding: 8px 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .filter-pill-group {
   position: relative;
   display: inline-flex;
@@ -979,6 +1064,14 @@ body,
 
 .matches-table tbody tr:hover {
   background: var(--surface-hover);
+}
+
+/* The Track column embeds the play button (24px) + gap (6px) at the head of
+   each cell. Offset the header label by that footprint so "Track" sits above the
+   title text rather than flush above the play button — matching the other
+   quadrants, where the playback column carries no header label. */
+.matches-th-track .th-content {
+  padding-left: 30px;
 }
 
 /* Keep score text legible over the red→green cross-hatch. */
@@ -3907,27 +4000,154 @@ body,
 }
 
 .admin-preferences {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.admin-pref-section-header {
+.admin-pref-intro {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Responsive card grid: the four table configs sit side by side on wide screens
+   instead of stacking narrowly down the left edge. */
+.admin-pref-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-pref-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.admin-pref-card-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 8px;
+}
+
+.admin-pref-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin: 0;
+}
+
+.admin-pref-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.admin-pref-status {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--accent-emphasis);
+}
+
+.admin-pref-retry {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: none;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius);
+  color: var(--danger-bright);
+  cursor: pointer;
 }
 
 .admin-pref-columns {
   list-style: none;
-  margin: 8px 0 0;
+  margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .admin-pref-column {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 10px;
-  padding: 4px 0;
+  padding: 5px 6px;
+  border-radius: 4px;
+}
+.admin-pref-column:hover {
+  background: var(--surface-hover);
+}
+.admin-pref-column--hidden .admin-pref-name {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.admin-pref-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  cursor: pointer;
+}
+.admin-pref-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.admin-pref-name {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-pref-width {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 42px;
+  text-align: right;
+}
+
+.admin-pref-order {
+  display: inline-flex;
+  gap: 3px;
+}
+.admin-pref-move {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--transition),
+    border-color var(--transition),
+    background var(--transition);
+}
+.admin-pref-move:hover:not(:disabled) {
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.admin-pref-move:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .set-pool-header--inline {

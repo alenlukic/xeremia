@@ -61,7 +61,7 @@ export function TableFilterAddButton({
   columns,
   filters,
   onFilterChange,
-  label = '+ Add filter',
+  label = 'Add filter',
 }: AddButtonProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [openColumn, setOpenColumn] = useState<string | null>(null)

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within, waitFor } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   TableColumnControls,
@@ -7,7 +7,6 @@ import {
 } from './TableColumnControls'
 import { MatchesPanel } from './MatchesPanel'
 import { SetPoolTable } from './SetPoolTable'
-import type { ColumnRegistryEntry } from '../tablePreferences'
 import type { TransitionMatch, PoolEntry, PoolSubgroup } from '../types'
 import {
   testMatchesPanelTableProps,
@@ -27,11 +26,6 @@ beforeEach(() => {
 vi.mock('../api/http', () => ({
   searchTracks: vi.fn().mockResolvedValue([]),
 }))
-
-const inactive: ColumnRegistryEntry[] = [
-  { id: 'label', label: 'Label', defaultVisible: false, defaultWidth: 90 },
-  { id: 'genre', label: 'Genre', defaultVisible: false, defaultWidth: 90 },
-]
 
 const matchSource = {
   id: 1,
@@ -87,129 +81,20 @@ const noop = () => {}
 const asyncTrue = () => Promise.resolve(true)
 const asyncNull = () => Promise.resolve(null)
 
-describe('TableColumnControls add-column affordance', () => {
-  it('renders an add-column control when not inside a table header row', () => {
+describe('TableColumnControls', () => {
+  it('renders the column label', () => {
     render(
-      <TableColumnControls
-        label="Actions"
-        inactiveColumns={inactive}
-        onRemove={vi.fn()}
-        onInsertAfter={vi.fn()}
-      >
-        ACTIONS
+      <TableColumnControls label="BPM" onRemove={vi.fn()}>
+        BPM
       </TableColumnControls>,
     )
-    const addBtn = screen.getByRole('button', {
-      name: 'Add column after Actions',
-    })
-    expect(addBtn.classList.contains('table-col-insert-btn')).toBe(true)
-    expect(
-      addBtn
-        .closest('.table-col-controls')
-        ?.querySelector('.table-col-insert-zone'),
-    ).toBeTruthy()
-  })
-
-  it('renders add-column only on the rightmost th in a header row', async () => {
-    render(
-      <table>
-        <thead>
-          <tr>
-            <th>
-              <TableColumnControls
-                label="Title"
-                inactiveColumns={inactive}
-                onRemove={vi.fn()}
-                onInsertAfter={vi.fn()}
-              >
-                TITLE
-              </TableColumnControls>
-            </th>
-            <th>
-              <TableColumnControls
-                label="BPM"
-                inactiveColumns={inactive}
-                onRemove={vi.fn()}
-                onInsertAfter={vi.fn()}
-              >
-                BPM
-              </TableColumnControls>
-            </th>
-            <th>
-              <TableColumnControls
-                label="Actions"
-                inactiveColumns={inactive}
-                onRemove={vi.fn()}
-                onInsertAfter={vi.fn()}
-              >
-                ACTIONS
-              </TableColumnControls>
-            </th>
-          </tr>
-        </thead>
-      </table>,
-    )
-    await waitFor(() => {
-      expect(
-        screen.queryByRole('button', { name: 'Add column after Title' }),
-      ).toBeNull()
-      expect(
-        screen.queryByRole('button', { name: 'Add column after BPM' }),
-      ).toBeNull()
-      expect(
-        screen.getByRole('button', { name: 'Add column after Actions' }),
-      ).toBeTruthy()
-    })
-  })
-
-  it('opens inactive-column menu with readable item class and inserts on selection', async () => {
-    const onInsertAfter = vi.fn()
-    render(
-      <TableColumnControls
-        label="Title"
-        inactiveColumns={inactive}
-        onRemove={vi.fn()}
-        onInsertAfter={onInsertAfter}
-      >
-        TITLE
-      </TableColumnControls>,
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Add column after Title' }),
-    )
-    expect(screen.getByRole('menu')).toBeTruthy()
-    const genreItem = screen.getByRole('menuitem', { name: 'Genre' })
-    expect(genreItem.classList.contains('table-col-insert-item')).toBe(true)
-    await userEvent.click(genreItem)
-    expect(onInsertAfter).toHaveBeenCalledWith('genre')
-  })
-
-  it('does not open a menu when there are no inactive columns', async () => {
-    render(
-      <TableColumnControls
-        label="Score"
-        inactiveColumns={[]}
-        onRemove={vi.fn()}
-        onInsertAfter={vi.fn()}
-      >
-        SCORE
-      </TableColumnControls>,
-    )
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Add column after Score' }),
-    )
-    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByText('BPM')).toBeTruthy()
   })
 
   it('removes the column when the remove control is clicked', async () => {
     const onRemove = vi.fn()
     render(
-      <TableColumnControls
-        label="BPM"
-        inactiveColumns={inactive}
-        onRemove={onRemove}
-        onInsertAfter={vi.fn()}
-      >
+      <TableColumnControls label="BPM" onRemove={onRemove}>
         BPM
       </TableColumnControls>,
     )
@@ -219,17 +104,19 @@ describe('TableColumnControls add-column affordance', () => {
     expect(onRemove).toHaveBeenCalledTimes(1)
   })
 
-  it('lets EmptyRecovery restore a hidden column', async () => {
-    const onInsert = vi.fn()
-    render(
-      <TableColumnEmptyRecovery
-        inactiveColumns={inactive}
-        onInsert={onInsert}
-      />,
+  it('has no in-table add-column affordance (managed in Admin → Preferences)', () => {
+    const { container } = render(
+      <TableColumnControls label="BPM" onRemove={vi.fn()}>
+        BPM
+      </TableColumnControls>,
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Add column' }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Label' }))
-    expect(onInsert).toHaveBeenCalledWith('label')
+    expect(container.querySelector('.table-col-insert-btn')).toBeNull()
+  })
+
+  it('EmptyRecovery points to Preferences rather than adding inline', () => {
+    render(<TableColumnEmptyRecovery />)
+    expect(screen.queryByRole('button', { name: /Add column/ })).toBeNull()
+    expect(screen.getByText(/Restore columns in Admin/)).toBeTruthy()
   })
 })
 
@@ -250,26 +137,6 @@ describe('MatchesPanel header layout and column controls', () => {
     headers.forEach((header) => {
       expect(header.querySelector('.table-col-insert-btn')).toBeNull()
     })
-  })
-
-  it('exposes the add-column insert rail when a column is hidden', () => {
-    const hiddenConfig = {
-      ...testMatchesPanelTableProps.tableConfig,
-      columnVisibility: {
-        ...testMatchesPanelTableProps.tableConfig.columnVisibility,
-        energy_score: false,
-      },
-    }
-    const { container } = render(
-      <MatchesPanel
-        matchSource={matchSource}
-        matches={[makeMatch()]}
-        loading={false}
-        {...testMatchesPanelTableProps}
-        tableConfig={hiddenConfig}
-      />,
-    )
-    expect(container.querySelector('.ds-col-insert-btn')).toBeTruthy()
   })
 
   it('renders the source title in the header and S/H/L toggles in the control panel', () => {
@@ -348,17 +215,5 @@ describe('SetPoolTable header layout and column controls', () => {
     headers.forEach((header) => {
       expect(header.querySelector('.table-col-insert-btn')).toBeNull()
     })
-  })
-
-  it('exposes the add-column insert rail when a pool column is hidden', () => {
-    const hiddenConfig = {
-      ...testPoolTableProps.tableConfig,
-      columnVisibility: {
-        ...testPoolTableProps.tableConfig.columnVisibility,
-        bpm: false,
-      },
-    }
-    const { container } = renderPool({ tableConfig: hiddenConfig })
-    expect(container.querySelector('.ds-col-insert-btn')).toBeTruthy()
   })
 })
