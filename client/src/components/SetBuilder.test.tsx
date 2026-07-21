@@ -181,9 +181,8 @@ describe('SetBuilder', () => {
       expect(screen.queryByLabelText('Collapse pool')).not.toBeInTheDocument()
     })
 
-    it('opens the Explorer view via the tracklist menu and returns with the back arrow', async () => {
+    it('opens the Explorer view via the tracklist header and returns with the back arrow', async () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
-      await userEvent.click(screen.getByLabelText('Tracklist menu'))
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
       expect(screen.getByText(/Explorer is empty/)).toBeInTheDocument()
 
@@ -303,27 +302,21 @@ describe('SetBuilder', () => {
       })
     }
 
-    it('exports the tracklist through the Tracklist 3-dot menu', async () => {
+    it('exports the tracklist through the header Export button', async () => {
       const { exportSetM3u8 } = await import('../api/http')
       render(
         <SetBuilder {...defaultProps()} activeSet={hydratedWithTracklist()} />,
       )
-      expect(
-        screen.queryByRole('button', { name: 'Export m3u8' }),
-      ).not.toBeInTheDocument()
-
-      await userEvent.click(screen.getByLabelText('Tracklist menu'))
-      await userEvent.click(screen.getByRole('button', { name: 'Export m3u8' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Export' }))
       expect(exportSetM3u8).toHaveBeenCalledWith([20], 'My Set')
     })
 
-    it('offers no export item when the tracklist is empty', async () => {
+    it('offers no Export button when the tracklist is empty', () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
-      await userEvent.click(screen.getByLabelText('Tracklist menu'))
       expect(
-        screen.queryByRole('button', { name: 'Export m3u8' }),
+        screen.queryByRole('button', { name: 'Export' }),
       ).not.toBeInTheDocument()
-      // Explorer stays reachable from the menu even with an empty tracklist.
+      // Explorer stays reachable from the header even with an empty tracklist.
       expect(
         screen.getByRole('button', { name: 'Explorer' }),
       ).toBeInTheDocument()
@@ -656,7 +649,6 @@ describe('SetBuilder', () => {
         explorer_edges: [],
       })
       render(<SetBuilder {...defaultProps()} activeSet={hydrated} />)
-      await userEvent.click(screen.getByLabelText('Tracklist menu'))
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
       const addBtns = screen.getAllByTestId('level-add-btn')
       expect(addBtns.length).toBeGreaterThan(0)
@@ -741,7 +733,6 @@ describe('SetBuilder', () => {
           deleteExplorerNode={deleteExplorerNode}
         />,
       )
-      await userEvent.click(screen.getByLabelText('Tracklist menu'))
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
 
       const deleteBtns = screen.getAllByLabelText('Delete node')

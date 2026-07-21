@@ -13,6 +13,7 @@ import {
   flexRender,
   createColumnHelper,
   type ColumnSizingState,
+  type OnChangeFn,
   type SortingFn,
   type SortingState,
   type Updater,
@@ -38,6 +39,7 @@ import {
   visibleColumnIds,
   type NormalizedTableConfig,
 } from '../tablePreferences'
+import { ColumnInsertRail } from './table/ColumnInsertRail'
 
 const col = createColumnHelper<Track>()
 
@@ -171,6 +173,9 @@ interface Props {
   onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
   onColumnWidthChange: (columnId: string, width: number) => void
   onColumnWidthFlush: (columnId: string, width: number) => void
+  /** Controlled multi-tier sort. Falls back to internal state when omitted. */
+  sorting?: SortingState
+  onSortingChange?: OnChangeFn<SortingState>
   scrollRestorationKey?: string
   onAddToSet?: (trackId: number) => void
   onAddToPool?: (trackId: number) => void
@@ -189,6 +194,8 @@ export const TrackTable = memo(function TrackTable({
   onInsertColumnAfter,
   onColumnWidthChange,
   onColumnWidthFlush,
+  sorting: sortingProp,
+  onSortingChange: onSortingChangeProp,
   scrollRestorationKey,
   onAddToSet,
   onAddToPool,
@@ -199,7 +206,11 @@ export const TrackTable = memo(function TrackTable({
   const topScrollRef = useRef<HTMLDivElement>(null)
 
   const [containerWidth, setContainerWidth] = useState(0)
-  const [sorting, setSorting] = useState<SortingState>([])
+  // Sorting is controlled by the parent when provided (design-system header +
+  // control panel); otherwise TrackTable manages its own single/multi-tier sort.
+  const [internalSorting, setInternalSorting] = useState<SortingState>([])
+  const sorting = sortingProp ?? internalSorting
+  const onSortingChange = onSortingChangeProp ?? setInternalSorting
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
 
   const columnVisibility = tableConfig.columnVisibility
@@ -357,8 +368,9 @@ export const TrackTable = memo(function TrackTable({
       sorting,
     },
     columnResizeMode: 'onChange',
+    enableMultiSort: true,
     onColumnSizingChange: handleColumnSizingChange,
-    onSortingChange: setSorting,
+    onSortingChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
@@ -478,6 +490,10 @@ export const TrackTable = memo(function TrackTable({
 
   return (
     <div className="track-table-outer" ref={outerRef}>
+      <ColumnInsertRail
+        inactiveColumns={hiddenInactive}
+        onInsert={(columnId) => onInsertColumnAfter('add_to_set', columnId)}
+      />
       {isOverflowing && (
         <div
           className="track-table-top-scrollbar"
@@ -509,6 +525,7 @@ export const TrackTable = memo(function TrackTable({
                 {hg.headers.map((header) => {
                   const canSort = header.column.getCanSort()
                   const sorted = header.column.getIsSorted()
+                  const sortIndex = header.column.getSortIndex()
                   return (
                     <th
                       key={header.id}
@@ -550,6 +567,7 @@ export const TrackTable = memo(function TrackTable({
                             onInsertAfter={(columnId) =>
                               onInsertColumnAfter(header.column.id, columnId)
                             }
+                            hideInsert
                           >
                             {flexRender(
                               header.column.columnDef.header,
@@ -560,6 +578,11 @@ export const TrackTable = memo(function TrackTable({
                         {sorted && (
                           <span className="sort-indicator">
                             {sorted === 'asc' ? ' ▲' : ' ▼'}
+                            {sorting.length > 1 && (
+                              <span className="sort-tier-index">
+                                {sortIndex + 1}
+                              </span>
+                            )}
                           </span>
                         )}
                       </div>
@@ -625,10 +648,16 @@ export const TrackTable = memo(function TrackTable({
                 {virtualRows.map((virtualRow) => {
                   const row = rows[virtualRow.index]
                   const isSelected = selectedTrack?.id === row.original.id
+                  const rowClass = [
+                    virtualRow.index % 2 === 1 ? 'row-alt' : '',
+                    isSelected ? 'row-selected' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
                   return (
                     <tr
                       key={row.id}
-                      className={isSelected ? 'row-selected' : ''}
+                      className={rowClass}
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData(

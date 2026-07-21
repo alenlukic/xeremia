@@ -17,7 +17,7 @@ import { displayTitle } from '../utils/trackTitle'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
 import { PlayButton } from './PlayButton'
-import { SortTierBar } from './SortTierBar'
+import { SortTierBar, SortAddButton } from './SortTierBar'
 import type { SortDescriptor, SortColumn } from './SortTierBar'
 import {
   TABLE_REGISTRIES,
@@ -29,6 +29,20 @@ import {
   TableColumnControls,
   TableColumnEmptyRecovery,
 } from './TableColumnControls'
+import { TableHeader } from './table/TableHeader'
+import { TableControlPanel } from './table/TableControlPanel'
+import { ColumnInsertRail } from './table/ColumnInsertRail'
+import {
+  TableFilterAddButton,
+  TableFilterPills,
+} from './table/TableFilterBar'
+import {
+  isActiveFilter,
+  passesFilter,
+  type FilterMap,
+  type NumericFilter,
+} from './table/tableFilter'
+import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 
 const POOL_COL_CLASS: Record<string, string> = {
   play: 'set-ws-col-play',
@@ -80,6 +94,14 @@ const POOL_SORT_COLUMNS: SortColumn[] = [
 const DEFAULT_POOL_SORTING: SortDescriptor[] = [
   { id: 'insertion_order', desc: false },
 ]
+
+/** Filterable pool columns for the design-system Add-filter control. */
+const POOL_FILTER_COLUMNS = [{ id: 'bpm', label: 'BPM' }]
+
+/** Group-dot color for a subgroup by its stable index; cycles the 8 tokens. */
+function subgroupColorVar(index: number): string {
+  return `var(--dot-${(index % 8) + 1})`
+}
 
 function nextHeaderSorting(
   prev: SortDescriptor[],
@@ -186,19 +208,42 @@ function groupMembershipIds(
   return map
 }
 
-function SubgroupChips({
+/**
+ * Groups cell: shows only the groups the track is actually in, each with a
+ * colored dot, plus a "+" that opens a multi-select modal to toggle membership
+ * across all groups (replacing the old always-expanded chip list).
+ */
+function SubgroupCell({
   entry,
   subgroups,
+  colorByIndex,
   memberSubgroupIds,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
 }: {
   entry: PoolEntry
   subgroups: PoolSubgroup[]
+  colorByIndex: Map<number, string>
   memberSubgroupIds: Set<number>
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
 }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useDismissOnOutsideClick(ref, open, () => setOpen(false))
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('keydown', onEsc)
+    return () => document.removeEventListener('keydown', onEsc)
+  }, [open])
+
   const handleToggle = useCallback(
     (sgId: number) => {
       if (memberSubgroupIds.has(sgId)) {
@@ -210,22 +255,65 @@ function SubgroupChips({
     [memberSubgroupIds, entry.id, onAddSubgroupMember, onRemoveSubgroupMember],
   )
 
+  const members = subgroups.filter((sg) => memberSubgroupIds.has(sg.id))
+
   return (
-    <div className="subgroup-chips subgroup-chips--stack">
-      {subgroups.map((sg) => (
+    <div className="subgroup-cell" ref={ref}>
+      <div className="subgroup-dots">
+        {members.map((sg) => (
+          <span key={sg.id} className="subgroup-dot-pill" title={sg.name}>
+            <span
+              className="subgroup-dot"
+              style={{ background: colorByIndex.get(sg.id) }}
+              aria-hidden="true"
+            />
+            <span className="subgroup-dot-name">{sg.name}</span>
+          </span>
+        ))}
+      </div>
+      {subgroups.length > 0 && (
         <button
-          key={sg.id}
-          className={`subgroup-chip${memberSubgroupIds.has(sg.id) ? ' active' : ''}`}
-          onClick={() => handleToggle(sg.id)}
-          title={
-            memberSubgroupIds.has(sg.id)
-              ? `Remove from ${sg.name}`
-              : `Add to ${sg.name}`
-          }
+          className="subgroup-add-inline"
+          aria-label="Edit groups"
+          aria-haspopup="true"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
         >
-          {sg.name}
+          +
         </button>
-      ))}
+      )}
+      {open && (
+        <div
+          className="subgroup-modal"
+          role="menu"
+          aria-label={`Assign groups for ${entry.track?.title ?? 'track'}`}
+        >
+          {subgroups.map((sg) => {
+            const active = memberSubgroupIds.has(sg.id)
+            return (
+              <button
+                key={sg.id}
+                role="menuitemcheckbox"
+                aria-checked={active}
+                className={`subgroup-modal-item${active ? ' active' : ''}`}
+                onClick={() => handleToggle(sg.id)}
+              >
+                <span
+                  className="subgroup-dot"
+                  style={{ background: colorByIndex.get(sg.id) }}
+                  aria-hidden="true"
+                />
+                <span className="subgroup-modal-name">{sg.name}</span>
+                {active && (
+                  <span className="subgroup-modal-check" aria-hidden="true">
+                    ✓
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -236,6 +324,7 @@ function PoolRow({
   onRemove,
   onMoveToTracklist,
   subgroups,
+  colorByIndex,
   memberSubgroupIds,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
@@ -246,6 +335,7 @@ function PoolRow({
   onRemove: (trackId: number) => void
   onMoveToTracklist: (trackId: number) => void
   subgroups: PoolSubgroup[]
+  colorByIndex: Map<number, string>
   memberSubgroupIds: Set<number>
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
@@ -291,9 +381,10 @@ function PoolRow({
       case 'subgroups':
         return (
           <td key={colId} className="set-ws-cell-subgroups">
-            <SubgroupChips
+            <SubgroupCell
               entry={entry}
               subgroups={subgroups}
+              colorByIndex={colorByIndex}
               memberSubgroupIds={memberSubgroupIds}
               onAddSubgroupMember={onAddSubgroupMember}
               onRemoveSubgroupMember={onRemoveSubgroupMember}
@@ -469,6 +560,7 @@ function PoolTableHead({
             inactiveColumns={hiddenInactive}
             onRemove={() => onToggleColumn(colId)}
             onInsertAfter={(columnId) => onInsertColumnAfter(colId, columnId)}
+            hideInsert
           >
             {label}
             {sortCol ? sortIndicator(sortCol) : null}
@@ -499,6 +591,7 @@ function PoolTableHead({
 
 function PoolTabBar({
   subgroups,
+  colorByIndex,
   memberCounts,
   onCreateSubgroup,
   onRenameSubgroup,
@@ -508,6 +601,7 @@ function PoolTabBar({
   onTabChange,
 }: {
   subgroups: PoolSubgroup[]
+  colorByIndex: Map<number, string>
   memberCounts: Map<number, number>
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
   onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
@@ -649,6 +743,11 @@ function PoolTabBar({
               }}
               title={`View ${sg.name} (double-click to rename)`}
             >
+              <span
+                className="subgroup-dot pool-tab-dot"
+                style={{ background: colorByIndex.get(sg.id) }}
+                aria-hidden="true"
+              />
               {sg.name}
               <span className="pool-tab-count">
                 {memberCounts.get(sg.id) ?? 0}
@@ -731,6 +830,7 @@ function SubgroupSection({
   subgroup,
   entries,
   subgroups,
+  colorByIndex,
   membershipByEntry,
   sorting,
   onSortingChange,
@@ -745,6 +845,7 @@ function SubgroupSection({
   subgroup: PoolSubgroup
   entries: PoolEntry[]
   subgroups: PoolSubgroup[]
+  colorByIndex: Map<number, string>
   membershipByEntry: Map<number, Set<number>>
   sorting: SortDescriptor[]
   onSortingChange: (next: SortDescriptor[]) => void
@@ -841,6 +942,7 @@ function SubgroupSection({
                   onRemove={onRemove}
                   onMoveToTracklist={onMoveToTracklist}
                   subgroups={subgroups}
+                  colorByIndex={colorByIndex}
                   memberSubgroupIds={
                     membershipByEntry.get(entry.id) ?? new Set()
                   }
@@ -893,6 +995,38 @@ export function SetPoolTable({
   const displayColumns = useMemo(
     () => effectivePoolColumns(visibleIds, subgroups.length > 0),
     [visibleIds, subgroups.length],
+  )
+  // Stable dot color per subgroup (shared by the tabs and the Groups cell).
+  const subgroupColorById = useMemo(() => {
+    const m = new Map<number, string>()
+    subgroups.forEach((sg, i) => m.set(sg.id, subgroupColorVar(i)))
+    return m
+  }, [subgroups])
+
+  // Numeric column filters (design-system Add filter), applied on top of the
+  // active tab/scope. Keyed by column id (currently BPM).
+  const [poolFilters, setPoolFilters] = useState<FilterMap>({})
+  const setPoolFilter = useCallback((columnId: string, filter: NumericFilter) => {
+    setPoolFilters((prev) => ({ ...prev, [columnId]: filter }))
+  }, [])
+  const removePoolFilter = useCallback((columnId: string) => {
+    setPoolFilters((prev) => {
+      const next = { ...prev }
+      delete next[columnId]
+      return next
+    })
+  }, [])
+  const bpmFilter = poolFilters.bpm
+  const filterEntries = useCallback(
+    (entries: PoolEntry[]) => {
+      if (!isActiveFilter(bpmFilter)) {
+        return entries
+      }
+      return entries.filter((e) =>
+        passesFilter(e.track?.bpm ?? null, bpmFilter),
+      )
+    },
+    [bpmFilter],
   )
 
   const handleColumnDragStart = useCallback(
@@ -1119,15 +1253,15 @@ export function SetPoolTable({
   )
 
   const filteredPool = useMemo(() => {
-    if (activeTab === 'all' || activeTab === 'groups') {
-      return pool
-    }
-    const entryIds = memberEntriesBySubgroup.get(activeTab)
-    if (!entryIds) {
-      return []
-    }
-    return pool.filter((e) => entryIds.has(e.id))
-  }, [pool, activeTab, memberEntriesBySubgroup])
+    const base =
+      activeTab === 'all' || activeTab === 'groups'
+        ? pool
+        : (() => {
+            const entryIds = memberEntriesBySubgroup.get(activeTab)
+            return entryIds ? pool.filter((e) => entryIds.has(e.id)) : []
+          })()
+    return filterEntries(base)
+  }, [pool, activeTab, memberEntriesBySubgroup, filterEntries])
 
   const sorted = useMemo(
     () => sortEntries(filteredPool, activeSorting),
@@ -1218,34 +1352,61 @@ export function SetPoolTable({
       className={`set-pool${dropActive ? ' set-drop-active' : ''}`}
       {...dropHandlers}
     >
-      <div className="set-pool-header set-pool-header--inline">
-        <h3 className="set-section-title set-pool-title">
-          Pool ({pool.length})
-        </h3>
-        <div className="set-pool-header-tabs">
-          <PoolTabBar
-            subgroups={subgroups}
-            memberCounts={memberCounts}
-            onCreateSubgroup={onCreateSubgroup}
-            onRenameSubgroup={onRenameSubgroup}
-            onDeleteSubgroup={onDeleteSubgroup}
-            onReorderSubgroups={onReorderSubgroups}
-            activeTab={activeTab}
-            onTabChange={setSelectedTab}
-          />
-        </div>
-        {activeSortScope !== null ? (
-          <div className="set-pool-header-sort">
-            <SortTierBar
-              sorting={activeSorting}
-              columns={POOL_SORT_COLUMNS}
-              onSortingChange={(next) =>
-                setSortingForScope(activeSortScope, next)
-              }
+      <TableHeader
+        title={`Pool (${pool.length})`}
+        primary={
+          <>
+            <div className="set-pool-header-tabs">
+              <PoolTabBar
+                subgroups={subgroups}
+                colorByIndex={subgroupColorById}
+                memberCounts={memberCounts}
+                onCreateSubgroup={onCreateSubgroup}
+                onRenameSubgroup={onRenameSubgroup}
+                onDeleteSubgroup={onDeleteSubgroup}
+                onReorderSubgroups={onReorderSubgroups}
+                activeTab={activeTab}
+                onTabChange={setSelectedTab}
+              />
+            </div>
+            {activeSortScope !== null && (
+              <SortAddButton
+                sorting={activeSorting}
+                columns={POOL_SORT_COLUMNS}
+                onSortingChange={(next) =>
+                  setSortingForScope(activeSortScope, next)
+                }
+                label="Add sort"
+                className="ds-header-btn"
+              />
+            )}
+            <TableFilterAddButton
+              columns={POOL_FILTER_COLUMNS}
+              filters={poolFilters}
+              onFilterChange={setPoolFilter}
+              label="Add filter"
             />
-          </div>
-        ) : null}
-      </div>
+          </>
+        }
+      />
+      <TableControlPanel>
+        {activeSortScope !== null && (
+          <SortTierBar
+            sorting={activeSorting}
+            columns={POOL_SORT_COLUMNS}
+            onSortingChange={(next) => setSortingForScope(activeSortScope, next)}
+            hideAddButton
+          />
+        )}
+        {isActiveFilter(poolFilters.bpm) && (
+          <TableFilterPills
+            columns={POOL_FILTER_COLUMNS}
+            filters={poolFilters}
+            onFilterChange={setPoolFilter}
+            onRemove={removePoolFilter}
+          />
+        )}
+      </TableControlPanel>
       {activeTab === 'groups' ? (
         subgroups.length === 0 ? (
           <p className="set-empty-tracks">
@@ -1260,15 +1421,16 @@ export function SetPoolTable({
             <div className="subgroup-sections">
               {subgroups.map((sg, idx) => {
                 const entryIds = memberEntriesBySubgroup.get(sg.id)
-                const entries = entryIds
-                  ? pool.filter((e) => entryIds.has(e.id))
-                  : []
+                const entries = filterEntries(
+                  entryIds ? pool.filter((e) => entryIds.has(e.id)) : [],
+                )
                 return (
                   <SubgroupSection
                     key={sg.id}
                     subgroup={sg}
                     entries={entries}
                     subgroups={subgroups}
+                    colorByIndex={subgroupColorById}
                     membershipByEntry={membershipByEntry}
                     sorting={
                       sortingByScope[String(sg.id)] ?? DEFAULT_POOL_SORTING
@@ -1295,8 +1457,8 @@ export function SetPoolTable({
         </p>
       ) : sorted.length === 0 && typeof activeTab === 'number' ? (
         <p className="set-empty-tracks">
-          No tracks in this group yet. Search above to add one, or use the chips
-          in the All tab.
+          No tracks in this group yet. Search above to add one, or use the + in
+          the Groups column on the All tab.
         </p>
       ) : displayColumns.length === 0 ? (
         <TableColumnEmptyRecovery
@@ -1304,25 +1466,34 @@ export function SetPoolTable({
           onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
         />
       ) : (
-        <table className="set-pool-table">
-          <PoolTableHead
-            {...poolHeadBaseProps}
-            sorting={activeSorting}
-            onHeaderSort={handleHeaderSort}
+        <div className="track-table-outer">
+          <ColumnInsertRail
+            inactiveColumns={hiddenInactive}
+            onInsert={(columnId) => onInsertColumnAfter('actions', columnId)}
           />
-          <tbody>
-            {sorted.map((entry, i) => (
-              <PoolRow
-                key={entry.id}
-                entry={entry}
-                visibleColumnIds={displayColumns}
-                onRemove={onRemove}
-                onMoveToTracklist={onMoveToTracklist}
-                subgroups={subgroups}
-                memberSubgroupIds={membershipByEntry.get(entry.id) ?? new Set()}
-                onAddSubgroupMember={onAddSubgroupMember}
-                onRemoveSubgroupMember={onRemoveSubgroupMember}
-                reorder={
+          <div className="track-table-wrapper">
+            <table className="set-pool-table">
+              <PoolTableHead
+                {...poolHeadBaseProps}
+                sorting={activeSorting}
+                onHeaderSort={handleHeaderSort}
+              />
+              <tbody>
+                {sorted.map((entry, i) => (
+                  <PoolRow
+                    key={entry.id}
+                    entry={entry}
+                    visibleColumnIds={displayColumns}
+                    onRemove={onRemove}
+                    onMoveToTracklist={onMoveToTracklist}
+                    subgroups={subgroups}
+                    colorByIndex={subgroupColorById}
+                    memberSubgroupIds={
+                      membershipByEntry.get(entry.id) ?? new Set()
+                    }
+                    onAddSubgroupMember={onAddSubgroupMember}
+                    onRemoveSubgroupMember={onRemoveSubgroupMember}
+                    reorder={
                   rowReorderEnabled
                     ? {
                         index: i,
@@ -1341,8 +1512,10 @@ export function SetPoolTable({
                 }
               />
             ))}
-          </tbody>
-        </table>
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   )

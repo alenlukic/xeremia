@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { FilterBar } from './FilterBar'
+import { BrowseFilterAddButton, BrowseFilterPills } from './FilterBar'
 import { TrackTable } from './TrackTable'
 import {
   testSearchConfig,
@@ -31,9 +31,9 @@ const baseProps = {
   setBpmMax: vi.fn(),
 }
 
-describe('FilterBar add-filter flow', () => {
+describe('BrowseFilterAddButton add-filter flow', () => {
   it('opens a menu with Key and BPM options', async () => {
-    render(<FilterBar {...baseProps} />)
+    render(<BrowseFilterAddButton {...baseProps} />)
     await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
     expect(screen.getByRole('button', { name: 'Key' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'BPM' })).toBeInTheDocument()
@@ -41,7 +41,9 @@ describe('FilterBar add-filter flow', () => {
 
   it('selecting Key opens the camelot popover and toggles codes', async () => {
     const setCamelotCodes = vi.fn()
-    render(<FilterBar {...baseProps} setCamelotCodes={setCamelotCodes} />)
+    render(
+      <BrowseFilterAddButton {...baseProps} setCamelotCodes={setCamelotCodes} />,
+    )
     await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Key' }))
     await userEvent.click(screen.getByRole('button', { name: '01A' }))
@@ -49,43 +51,50 @@ describe('FilterBar add-filter flow', () => {
   })
 
   it('selecting BPM opens the popover with exact and range inputs', async () => {
-    render(<FilterBar {...baseProps} />)
+    render(<BrowseFilterAddButton {...baseProps} />)
     await userEvent.click(screen.getByRole('button', { name: /Add filter/ }))
     await userEvent.click(screen.getByRole('button', { name: 'BPM' }))
     expect(screen.getByPlaceholderText('Exact')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Min')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Max')).toBeInTheDocument()
   })
+
+  it('does not render the removed Columns menu', () => {
+    render(<BrowseFilterAddButton {...baseProps} />)
+    expect(
+      screen.queryByRole('button', { name: /Columns/ }),
+    ).not.toBeInTheDocument()
+  })
 })
 
-describe('FilterBar pills', () => {
+describe('BrowseFilterPills', () => {
   it('shows no pills row when no filters are active', () => {
-    render(<FilterBar {...baseProps} />)
+    render(<BrowseFilterPills {...baseProps} />)
     expect(document.querySelector('.filter-pills')).not.toBeInTheDocument()
   })
 
   it('renders a key pill listing selected codes', () => {
-    render(<FilterBar {...baseProps} camelotCodes={['01A', '02B']} />)
+    render(<BrowseFilterPills {...baseProps} camelotCodes={['01A', '02B']} />)
     expect(
       screen.getByRole('button', { name: 'Key: 01A, 02B' }),
     ).toBeInTheDocument()
   })
 
   it('renders BPM pill labels for exact, range, and open-ended filters', () => {
-    const { rerender } = render(<FilterBar {...baseProps} bpm={124} />)
+    const { rerender } = render(<BrowseFilterPills {...baseProps} bpm={124} />)
     expect(screen.getByRole('button', { name: 'BPM: 124' })).toBeInTheDocument()
 
-    rerender(<FilterBar {...baseProps} bpmMin={120} bpmMax={140} />)
+    rerender(<BrowseFilterPills {...baseProps} bpmMin={120} bpmMax={140} />)
     expect(
       screen.getByRole('button', { name: 'BPM: 120–140' }),
     ).toBeInTheDocument()
 
-    rerender(<FilterBar {...baseProps} bpmMin={120} />)
+    rerender(<BrowseFilterPills {...baseProps} bpmMin={120} />)
     expect(
       screen.getByRole('button', { name: 'BPM: ≥ 120' }),
     ).toBeInTheDocument()
 
-    rerender(<FilterBar {...baseProps} bpmMax={140} />)
+    rerender(<BrowseFilterPills {...baseProps} bpmMax={140} />)
     expect(
       screen.getByRole('button', { name: 'BPM: ≤ 140' }),
     ).toBeInTheDocument()
@@ -94,7 +103,7 @@ describe('FilterBar pills', () => {
   it('removes the key filter via the pill remove button', async () => {
     const setCamelotCodes = vi.fn()
     render(
-      <FilterBar
+      <BrowseFilterPills
         {...baseProps}
         camelotCodes={['01A']}
         setCamelotCodes={setCamelotCodes}
@@ -111,7 +120,7 @@ describe('FilterBar pills', () => {
     const setBpmMin = vi.fn()
     const setBpmMax = vi.fn()
     render(
-      <FilterBar
+      <BrowseFilterPills
         {...baseProps}
         bpm={124}
         setBpm={setBpm}
@@ -128,18 +137,9 @@ describe('FilterBar pills', () => {
   })
 
   it('opens the popover for editing when a pill body is clicked', async () => {
-    render(<FilterBar {...baseProps} camelotCodes={['01A']} />)
+    render(<BrowseFilterPills {...baseProps} camelotCodes={['01A']} />)
     await userEvent.click(screen.getByRole('button', { name: 'Key: 01A' }))
     expect(screen.getByRole('button', { name: '03A' })).toBeInTheDocument()
-  })
-})
-
-describe('FilterBar column configurator', () => {
-  it('does not render the removed Columns menu', () => {
-    render(<FilterBar {...baseProps} />)
-    expect(
-      screen.queryByRole('button', { name: /Columns/ }),
-    ).not.toBeInTheDocument()
   })
 })
 

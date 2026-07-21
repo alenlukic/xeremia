@@ -942,6 +942,14 @@ body,
   transition: background var(--transition);
 }
 
+/* Alternating value-row wash (design-system). The virtualized browse table
+   can't rely on :nth-of-type (windowed rows + spacer rows shift the parity),
+   so striping is driven by the row's absolute index via .row-alt. Placed before
+   :hover/.row-selected so those still win. */
+.track-table tbody tr.row-alt {
+  background: var(--row-alt);
+}
+
 .track-table tbody tr:hover {
   background: var(--surface-hover);
 }
@@ -1068,6 +1076,25 @@ body,
 .ds-header-btn[aria-expanded='true'] {
   color: var(--text);
   border-color: var(--text-muted);
+}
+
+/* Search bar hosted in the header title slot (browse quadrant). Let the title
+   slot grow and keep the autocomplete dropdown from being clipped; raise the
+   header so the dropdown paints over the control panel and table below. */
+.ds-table-header:has(.ds-header-search) {
+  position: relative;
+  z-index: 10;
+}
+.ds-table-header-title:has(.ds-header-search) {
+  overflow: visible;
+  flex: 1 1 auto;
+}
+.ds-header-search {
+  display: flex;
+  align-items: center;
+}
+.ds-header-search .search-bar-wrapper {
+  flex: 1;
 }
 
 /* --- Control-panel zone --- */
@@ -2640,8 +2667,26 @@ body,
 .set-tracklist {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px;
+  /* Design-system table zones stack vertically; the value rows scroll inside
+     an inner .track-table-outer/.track-table-wrapper (shared with the top
+     tables), so the header/control zones stay pinned. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Non-table body content (empty states, group sections) keeps the old inset. */
+.set-pool > .set-empty-tracks,
+.set-tracklist > .set-empty-tracks,
+.set-pool > .subgroup-sections,
+.set-pool > .table-col-empty-recovery,
+.set-tracklist > .table-col-empty-recovery {
+  margin: 8px;
+}
+.set-pool > .subgroup-sections {
   overflow: auto;
+  min-height: 0;
 }
 
 .set-pool-header,
@@ -2789,6 +2834,17 @@ body,
   text-align: left;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+}
+
+/* Alternating value-row wash (design-system) for scan-ability. Reorder
+   drag/drop and hover states are defined later and keep precedence. */
+.set-pool-table tbody tr:nth-of-type(even),
+.set-tracklist-table tbody tr:nth-of-type(even) {
+  background: var(--row-alt);
+}
+.set-pool-table tbody tr:hover,
+.set-tracklist-table tbody tr:hover {
+  background: var(--surface-hover);
 }
 
 .set-ws-cell-num {
@@ -3461,6 +3517,113 @@ body,
   padding: 2px 4px;
 }
 
+/* --- Groups cell (design-system): member dots + "+" multi-select modal --- */
+/* A colored dot keyed to each subgroup's stable index (shared with the tabs). */
+.subgroup-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pool-tab-dot {
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+
+.subgroup-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.subgroup-dots {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.subgroup-dot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text);
+}
+.subgroup-dot-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 84px;
+}
+.subgroup-add-inline {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+.subgroup-add-inline:hover,
+.subgroup-add-inline[aria-expanded='true'] {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+.subgroup-modal {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  margin-top: 4px;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.subgroup-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+.subgroup-modal-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.subgroup-modal-item.active {
+  color: var(--text);
+}
+.subgroup-modal-name {
+  flex: 1;
+}
+.subgroup-modal-check {
+  color: var(--accent);
+}
+
 /* === Sort Tier Bar === */
 
 .sort-tier-bar {
@@ -3678,7 +3841,19 @@ body,
   overflow-x: auto;
 }
 
-.set-pool-header--inline .pool-tab-bar {
+/* The pool's group tabs live in the design-system header's primary slot; let
+   that slot grow so the tabs get room and scroll horizontally when crowded. */
+.ds-table-header:has(.set-pool-header-tabs) .ds-table-header-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 12px;
+}
+/* Keep "Pool (N)" fully visible; the tab bar (not the title) absorbs crowding. */
+.ds-table-header:has(.set-pool-header-tabs) .ds-table-header-title {
+  flex: 0 0 auto;
+}
+
+.set-pool-header-tabs .pool-tab-bar {
   padding: 0;
   border-bottom: none;
   min-height: unset;

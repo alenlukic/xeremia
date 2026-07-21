@@ -298,7 +298,9 @@ describe('SetPoolTable header layout and column controls', () => {
     { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
   ]
 
-  function renderPool() {
+  function renderPool(
+    extra?: Partial<React.ComponentProps<typeof SetPoolTable>>,
+  ) {
     return render(
       <SetPoolTable
         allTracks={[]}
@@ -317,41 +319,46 @@ describe('SetPoolTable header layout and column controls', () => {
         onRemoveSubgroupMember={asyncTrue}
         onDropFromTracklist={noop}
         {...testPoolTableProps}
+        {...extra}
       />,
     )
   }
 
-  it('keeps Pool title fixed, tabs in the middle, and sort controls on the right', () => {
+  it('renders the Pool title in the design-system header with tabs and controls beside it', () => {
     const { container } = renderPool()
-    const header = container.querySelector('.set-pool-header--inline')!
-    const children = Array.from(header.children)
-    expect(children[0].classList.contains('set-pool-title')).toBe(true)
-    expect(children[0].textContent).toMatch(/^Pool \(/)
-    expect(children[1].classList.contains('set-pool-header-tabs')).toBe(true)
-    expect(within(children[1] as HTMLElement).getByRole('tablist')).toBeTruthy()
-    expect(children[2].classList.contains('set-pool-header-sort')).toBe(true)
+    const header = container.querySelector('.ds-table-header')!
+    expect(header.querySelector('.ds-table-header-title')?.textContent).toMatch(
+      /^Pool \(/,
+    )
+    const primary = header.querySelector<HTMLElement>(
+      '.ds-table-header-primary',
+    )!
+    expect(within(primary).getByRole('tablist')).toBeTruthy()
     expect(
-      children[2].querySelector('.sort-tier-bar[role="toolbar"]'),
+      within(primary).getByRole('button', { name: 'Add filter' }),
     ).toBeTruthy()
   })
 
-  it('surfaces an add-column control only on the rightmost Actions header', async () => {
+  it('moves the add-column control off the headers (no inline per-column +)', () => {
     const { container } = renderPool()
     const headers = Array.from(container.querySelectorAll('thead th'))
     expect(headers.length).toBeGreaterThan(1)
-    await waitFor(() => {
-      headers.forEach((header, index) => {
-        const insertBtn = header.querySelector(
-          'button[aria-label^="Add column after"]',
-        )
-        if (index === headers.length - 1) {
-          expect(insertBtn?.getAttribute('aria-label')).toBe(
-            'Add column after Actions',
-          )
-        } else {
-          expect(insertBtn).toBeNull()
-        }
-      })
+    // Actions is now resizable; the inline rightmost + is gone so its resize
+    // handle is reachable. Adding columns happens via the out-of-column rail.
+    headers.forEach((header) => {
+      expect(header.querySelector('.table-col-insert-btn')).toBeNull()
     })
+  })
+
+  it('exposes the add-column insert rail when a pool column is hidden', () => {
+    const hiddenConfig = {
+      ...testPoolTableProps.tableConfig,
+      columnVisibility: {
+        ...testPoolTableProps.tableConfig.columnVisibility,
+        bpm: false,
+      },
+    }
+    const { container } = renderPool({ tableConfig: hiddenConfig })
+    expect(container.querySelector('.ds-col-insert-btn')).toBeTruthy()
   })
 })

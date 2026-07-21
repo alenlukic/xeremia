@@ -437,18 +437,22 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     expect(counts).toEqual(['2', '0'])
   })
 
-  it('shows subgroup chips and marks active memberships', () => {
+  it('shows a dot only for the groups a track actually belongs to', () => {
     const memberships: PoolSubgroupMembership[] = [
       { id: 1, subgroup_id: 1, pool_entry_id: 10 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
-    expect(container.querySelectorAll('.subgroup-chip').length).toBe(4)
-    const activeChips = container.querySelectorAll('.subgroup-chip.active')
-    expect(activeChips.length).toBe(1)
-    expect(activeChips[0].textContent).toBe('Warmup')
+    const rows = container.querySelectorAll('tbody tr')
+    const cell10 = rows[0].querySelector('.set-ws-cell-subgroups')!
+    const pills10 = cell10.querySelectorAll('.subgroup-dot-pill')
+    expect(pills10.length).toBe(1)
+    expect(pills10[0].textContent).toBe('Warmup')
+    // A non-member row shows no dots (unlike the old always-expanded chips).
+    const cell20 = rows[1].querySelector('.set-ws-cell-subgroups')!
+    expect(cell20.querySelectorAll('.subgroup-dot-pill').length).toBe(0)
   })
 
-  it('stacks Groups-column chips one per line for multi-group rows', () => {
+  it('stacks a dot-pill per group a multi-group track is in', () => {
     const manyGroups: PoolSubgroup[] = [
       { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
       { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
@@ -461,29 +465,26 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     ]
     const { container } = renderPool(makeEntries(), manyGroups, memberships)
     const cell = container.querySelector('td.set-ws-cell-subgroups')!
-    const stack = cell.querySelector('.subgroup-chips')!
-    expect(stack.classList.contains('subgroup-chips--stack')).toBe(true)
-    const chips = stack.querySelectorAll(':scope > .subgroup-chip')
-    expect(chips.length).toBe(3)
-    expect(Array.from(chips).map((chip) => chip.textContent)).toEqual([
+    const pills = cell.querySelectorAll('.subgroup-dots > .subgroup-dot-pill')
+    expect(Array.from(pills).map((p) => p.textContent)).toEqual([
       'Warmup',
       'Peak',
       'Cooldown',
     ])
-    expect(chips[0].classList.contains('active')).toBe(true)
-    expect(chips[1].classList.contains('active')).toBe(true)
-    expect(chips[2].classList.contains('active')).toBe(true)
+    // Each dot carries a color (assigned from the group palette).
+    expect(
+      Array.from(pills).every(
+        (p) => (p.querySelector('.subgroup-dot') as HTMLElement).style
+          .background,
+      ),
+    ).toBe(true)
   })
 
-  it('renders inactive Groups chips when a row has no memberships', () => {
+  it('shows no dots but offers the "+" editor when a row has no memberships', () => {
     const { container } = renderPool(makeEntries(), subgroups, [])
     const cell = container.querySelector('td.set-ws-cell-subgroups')!
-    const stack = cell.querySelector('.subgroup-chips.subgroup-chips--stack')!
-    const chips = stack.querySelectorAll(':scope > .subgroup-chip')
-    expect(chips.length).toBe(2)
-    expect(
-      Array.from(chips).every((chip) => !chip.classList.contains('active')),
-    ).toBe(true)
+    expect(cell.querySelectorAll('.subgroup-dot-pill').length).toBe(0)
+    expect(cell.querySelector('.subgroup-add-inline')).toBeTruthy()
   })
 
   it('clicking subgroup tab shows only filtered tracks', () => {
@@ -591,7 +592,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     }
   })
 
-  it('toggling a chip calls add or remove membership', () => {
+  it('toggling membership via the "+" modal calls add or remove', () => {
     const onAddSubgroupMember = vi.fn().mockResolvedValue(true)
     const onRemoveSubgroupMember = vi.fn().mockResolvedValue(true)
     const memberships: PoolSubgroupMembership[] = [
@@ -602,10 +603,11 @@ describe('SetPoolTable tab bar and subgroup features', () => {
       onRemoveSubgroupMember,
     })
     const firstRow = container.querySelector('tbody tr')!
-    const chips = firstRow.querySelectorAll('.subgroup-chip')
-    fireEvent.click(chips[0]) // active → remove from Warmup
+    fireEvent.click(firstRow.querySelector('.subgroup-add-inline')!)
+    const items = firstRow.querySelectorAll('.subgroup-modal-item')
+    fireEvent.click(items[0]) // Warmup active → remove
     expect(onRemoveSubgroupMember).toHaveBeenCalledWith(1, 10)
-    fireEvent.click(chips[1]) // inactive → add to Peak
+    fireEvent.click(items[1]) // Peak inactive → add
     expect(onAddSubgroupMember).toHaveBeenCalledWith(2, 10)
   })
 })

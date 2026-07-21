@@ -1,5 +1,38 @@
 import { useEffect, useRef, useState } from 'react'
 
+/** Dismiss on outside mousedown or Escape while `active`. */
+function useDismiss(
+  ref: React.RefObject<HTMLElement | null>,
+  active: boolean,
+  onDismiss: () => void,
+) {
+  const onDismissRef = useRef(onDismiss)
+  useEffect(() => {
+    onDismissRef.current = onDismiss
+  })
+  useEffect(() => {
+    if (!active) {
+      return
+    }
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onDismissRef.current()
+      }
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onDismissRef.current()
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onEsc)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onEsc)
+    }
+  }, [ref, active])
+}
+
 const CAMELOT_CODES = [
   '01A',
   '01B',
@@ -31,7 +64,8 @@ const RANGE_DEBOUNCE_MS = 300
 
 type FilterKind = 'key' | 'bpm'
 
-interface Props {
+/** Browse-filter state, shared by the header add-button and control-panel pills. */
+export interface BrowseFilterProps {
   camelotCodes: string[]
   bpm: number | undefined
   bpmMin: number | undefined
@@ -40,6 +74,14 @@ interface Props {
   setBpm: (bpm: number | undefined) => void
   setBpmMin: (min: number | undefined) => void
   setBpmMax: (max: number | undefined) => void
+}
+
+function parseNum(val: string): number | undefined {
+  if (val.trim() === '') {
+    return undefined
+  }
+  const n = Number(val)
+  return Number.isFinite(n) ? n : undefined
 }
 
 function bpmPillLabel(
@@ -59,29 +101,46 @@ function bpmPillLabel(
   return `BPM: ≤ ${bpmMax}`
 }
 
-/**
- * Browse filter controls: an "Add filter" menu opens a per-kind popover
- * (Key or BPM); active filters render as removable/editable pills on their
- * own row (`.filter-pills` wraps to a full-width line in `.browse-controls`).
- */
-export function FilterBar({
+function KeyPopover({
   camelotCodes,
+  setCamelotCodes,
+}: Pick<BrowseFilterProps, 'camelotCodes' | 'setCamelotCodes'>) {
+  function toggleCode(code: string) {
+    if (camelotCodes.includes(code)) {
+      setCamelotCodes(camelotCodes.filter((c) => c !== code))
+    } else {
+      setCamelotCodes([...camelotCodes, code])
+    }
+  }
+
+  return (
+    <div className="filter-popover" role="dialog" aria-label="Key filter">
+      <div className="camelot-grid-inline">
+        {CAMELOT_CODES.map((code) => (
+          <button
+            key={code}
+            className={`camelot-chip${camelotCodes.includes(code) ? ' selected' : ''}`}
+            onClick={() => toggleCode(code)}
+          >
+            {code}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function BpmPopover({
   bpm,
   bpmMin,
   bpmMax,
-  setCamelotCodes,
   setBpm,
   setBpmMin,
   setBpmMax,
-}: Props) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  // Which filter's params popover is open, and where it is anchored:
-  // 'menu' (under the Add filter button) or 'pill' (under the filter's pill).
-  const [openFilter, setOpenFilter] = useState<FilterKind | null>(null)
-  const [popoverAnchor, setPopoverAnchor] = useState<'menu' | 'pill'>('menu')
-  const addFilterRef = useRef<HTMLDivElement>(null)
-  const pillsRef = useRef<HTMLDivElement>(null)
-
+}: Pick<
+  BrowseFilterProps,
+  'bpm' | 'bpmMin' | 'bpmMax' | 'setBpm' | 'setBpmMin' | 'setBpmMax'
+>) {
   const [minText, setMinText] = useState(bpmMin != null ? String(bpmMin) : '')
   const [maxText, setMaxText] = useState(bpmMax != null ? String(bpmMax) : '')
   const minTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -107,51 +166,6 @@ export function FilterBar({
       clearTimeout(maxTimer.current)
     }
   }, [])
-
-  const anythingOpen = menuOpen || openFilter !== null
-  useEffect(() => {
-    if (!anythingOpen) {
-      return
-    }
-    function handleClickOutside(e: MouseEvent) {
-      const target = e.target as Node
-      if (
-        !addFilterRef.current?.contains(target) &&
-        !pillsRef.current?.contains(target)
-      ) {
-        setMenuOpen(false)
-        setOpenFilter(null)
-      }
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setMenuOpen(false)
-        setOpenFilter(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [anythingOpen])
-
-  function toggleCode(code: string) {
-    if (camelotCodes.includes(code)) {
-      setCamelotCodes(camelotCodes.filter((c) => c !== code))
-    } else {
-      setCamelotCodes([...camelotCodes, code])
-    }
-  }
-
-  function parseNum(val: string): number | undefined {
-    if (val.trim() === '') {
-      return undefined
-    }
-    const n = Number(val)
-    return Number.isFinite(n) ? n : undefined
-  }
 
   function handleMinChange(e: React.ChangeEvent<HTMLInputElement>) {
     const text = e.target.value
@@ -189,42 +203,7 @@ export function FilterBar({
     setBpmMax(parseNum(maxText))
   }
 
-  function openPopover(kind: FilterKind, anchor: 'menu' | 'pill') {
-    setMenuOpen(false)
-    setPopoverAnchor(anchor)
-    setOpenFilter(kind)
-  }
-
-  function clearBpmFilter() {
-    clearTimeout(minTimer.current)
-    clearTimeout(maxTimer.current)
-    setMinText('')
-    setMaxText('')
-    setBpm(undefined)
-    setBpmMin(undefined)
-    setBpmMax(undefined)
-  }
-
-  const hasKeyFilter = camelotCodes.length > 0
-  const hasBpmFilter = bpm != null || bpmMin != null || bpmMax != null
-
-  const keyPopover = (
-    <div className="filter-popover" role="dialog" aria-label="Key filter">
-      <div className="camelot-grid-inline">
-        {CAMELOT_CODES.map((code) => (
-          <button
-            key={code}
-            className={`camelot-chip${camelotCodes.includes(code) ? ' selected' : ''}`}
-            onClick={() => toggleCode(code)}
-          >
-            {code}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-
-  const bpmPopover = (
+  return (
     <div className="filter-popover" role="dialog" aria-label="BPM filter">
       <div className="filter-popover-row">
         <label className="filter-popover-label">Exact</label>
@@ -258,110 +237,181 @@ export function FilterBar({
       </div>
     </div>
   )
+}
 
-  const activePopover = openFilter === 'key' ? keyPopover : bpmPopover
+/**
+ * Browse "Add filter" entry point for the design-system header: an "Add filter"
+ * menu opens a per-kind create popover (Key or BPM). Active filters render
+ * separately as pills via {@link BrowseFilterPills} in the control panel.
+ */
+export function BrowseFilterAddButton(props: BrowseFilterProps) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [openFilter, setOpenFilter] = useState<FilterKind | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const anyOpen = menuOpen || openFilter !== null
+  useDismiss(ref, anyOpen, () => {
+    setMenuOpen(false)
+    setOpenFilter(null)
+  })
+
+  function openPopover(kind: FilterKind) {
+    setMenuOpen(false)
+    setOpenFilter(kind)
+  }
 
   return (
-    <>
-      <div className="filter-add-group" ref={addFilterRef}>
-        <button
-          className="filter-add-btn"
-          aria-haspopup="true"
-          aria-expanded={
-            menuOpen || (openFilter !== null && popoverAnchor === 'menu')
-          }
-          onClick={() => {
-            setOpenFilter(null)
-            setMenuOpen((prev) => !prev)
-          }}
-        >
-          + Add filter
-        </button>
-        {menuOpen && (
-          <div className="filter-add-menu">
-            <button
-              className="filter-add-menu-item"
-              onClick={() => openPopover('key', 'menu')}
-            >
-              Key
-            </button>
-            <button
-              className="filter-add-menu-item"
-              onClick={() => openPopover('bpm', 'menu')}
-            >
-              BPM
-            </button>
-          </div>
-        )}
-        {openFilter !== null && popoverAnchor === 'menu' && activePopover}
-      </div>
-
-      {(hasKeyFilter || hasBpmFilter) && (
-        <div className="filter-pills" ref={pillsRef}>
-          {hasKeyFilter && (
-            <span className="filter-pill-group">
-              <span className="filter-pill">
-                <button
-                  className="filter-pill-body"
-                  title="Edit key filter"
-                  onClick={() =>
-                    openFilter === 'key' && popoverAnchor === 'pill'
-                      ? setOpenFilter(null)
-                      : openPopover('key', 'pill')
-                  }
-                >
-                  Key: {camelotCodes.join(', ')}
-                </button>
-                <button
-                  className="filter-pill-remove"
-                  aria-label="Remove key filter"
-                  title="Remove key filter"
-                  onClick={() => {
-                    setCamelotCodes([])
-                    if (openFilter === 'key') {
-                      setOpenFilter(null)
-                    }
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-              {openFilter === 'key' && popoverAnchor === 'pill' && keyPopover}
-            </span>
-          )}
-          {hasBpmFilter && (
-            <span className="filter-pill-group">
-              <span className="filter-pill">
-                <button
-                  className="filter-pill-body"
-                  title="Edit BPM filter"
-                  onClick={() =>
-                    openFilter === 'bpm' && popoverAnchor === 'pill'
-                      ? setOpenFilter(null)
-                      : openPopover('bpm', 'pill')
-                  }
-                >
-                  {bpmPillLabel(bpm, bpmMin, bpmMax)}
-                </button>
-                <button
-                  className="filter-pill-remove"
-                  aria-label="Remove BPM filter"
-                  title="Remove BPM filter"
-                  onClick={() => {
-                    clearBpmFilter()
-                    if (openFilter === 'bpm') {
-                      setOpenFilter(null)
-                    }
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-              {openFilter === 'bpm' && popoverAnchor === 'pill' && bpmPopover}
-            </span>
-          )}
+    <div className="filter-add-group" ref={ref}>
+      <button
+        className="filter-add-btn"
+        aria-haspopup="true"
+        aria-expanded={anyOpen}
+        onClick={() => {
+          setOpenFilter(null)
+          setMenuOpen((prev) => !prev)
+        }}
+      >
+        + Add filter
+      </button>
+      {menuOpen && (
+        <div className="filter-add-menu">
+          <button
+            className="filter-add-menu-item"
+            onClick={() => openPopover('key')}
+          >
+            Key
+          </button>
+          <button
+            className="filter-add-menu-item"
+            onClick={() => openPopover('bpm')}
+          >
+            BPM
+          </button>
         </div>
       )}
-    </>
+      {openFilter === 'key' && (
+        <KeyPopover
+          camelotCodes={props.camelotCodes}
+          setCamelotCodes={props.setCamelotCodes}
+        />
+      )}
+      {openFilter === 'bpm' && (
+        <BpmPopover
+          bpm={props.bpm}
+          bpmMin={props.bpmMin}
+          bpmMax={props.bpmMax}
+          setBpm={props.setBpm}
+          setBpmMin={props.setBpmMin}
+          setBpmMax={props.setBpmMax}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Active browse-filter pills for the control panel: editable and removable. */
+export function BrowseFilterPills(props: BrowseFilterProps) {
+  const {
+    camelotCodes,
+    bpm,
+    bpmMin,
+    bpmMax,
+    setCamelotCodes,
+    setBpm,
+    setBpmMin,
+    setBpmMax,
+  } = props
+  const [openFilter, setOpenFilter] = useState<FilterKind | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+  useDismiss(ref, openFilter !== null, () => setOpenFilter(null))
+
+  const hasKeyFilter = camelotCodes.length > 0
+  const hasBpmFilter = bpm != null || bpmMin != null || bpmMax != null
+
+  function clearBpmFilter() {
+    setBpm(undefined)
+    setBpmMin(undefined)
+    setBpmMax(undefined)
+  }
+
+  if (!hasKeyFilter && !hasBpmFilter) {
+    return null
+  }
+
+  return (
+    <div className="filter-pills" ref={ref}>
+      {hasKeyFilter && (
+        <span className="filter-pill-group">
+          <span className="filter-pill">
+            <button
+              className="filter-pill-body"
+              title="Edit key filter"
+              onClick={() =>
+                setOpenFilter((prev) => (prev === 'key' ? null : 'key'))
+              }
+            >
+              Key: {camelotCodes.join(', ')}
+            </button>
+            <button
+              className="filter-pill-remove"
+              aria-label="Remove key filter"
+              title="Remove key filter"
+              onClick={() => {
+                setCamelotCodes([])
+                if (openFilter === 'key') {
+                  setOpenFilter(null)
+                }
+              }}
+            >
+              ×
+            </button>
+          </span>
+          {openFilter === 'key' && (
+            <KeyPopover
+              camelotCodes={camelotCodes}
+              setCamelotCodes={setCamelotCodes}
+            />
+          )}
+        </span>
+      )}
+      {hasBpmFilter && (
+        <span className="filter-pill-group">
+          <span className="filter-pill">
+            <button
+              className="filter-pill-body"
+              title="Edit BPM filter"
+              onClick={() =>
+                setOpenFilter((prev) => (prev === 'bpm' ? null : 'bpm'))
+              }
+            >
+              {bpmPillLabel(bpm, bpmMin, bpmMax)}
+            </button>
+            <button
+              className="filter-pill-remove"
+              aria-label="Remove BPM filter"
+              title="Remove BPM filter"
+              onClick={() => {
+                clearBpmFilter()
+                if (openFilter === 'bpm') {
+                  setOpenFilter(null)
+                }
+              }}
+            >
+              ×
+            </button>
+          </span>
+          {openFilter === 'bpm' && (
+            <BpmPopover
+              bpm={bpm}
+              bpmMin={bpmMin}
+              bpmMax={bpmMax}
+              setBpm={setBpm}
+              setBpmMin={setBpmMin}
+              setBpmMax={setBpmMax}
+            />
+          )}
+        </span>
+      )}
+    </div>
   )
 }

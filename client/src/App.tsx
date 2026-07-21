@@ -1,12 +1,19 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
+import type { SortingState } from '@tanstack/react-table'
 import { SearchPanel } from './components/SearchPanel'
 import {
   QuadrantDivider,
   QuadrantExpandBar,
 } from './components/QuadrantControls'
-import { FilterBar } from './components/FilterBar'
+import {
+  BrowseFilterAddButton,
+  BrowseFilterPills,
+} from './components/FilterBar'
 import { TrackTable } from './components/TrackTable'
 import { MatchesPanel } from './components/MatchesPanel'
+import { TableHeader } from './components/table/TableHeader'
+import { TableControlPanel } from './components/table/TableControlPanel'
+import { SortTierBar, SortAddButton } from './components/SortTierBar'
 import { MatchDetail } from './components/MatchDetail'
 import { AdminDashboard } from './components/AdminDashboard'
 import { SetBuilder } from './components/SetBuilder'
@@ -20,6 +27,7 @@ import { useWeights } from './hooks/useWeights'
 import { useSetBuilder } from './hooks/useSetBuilder'
 import { useTablePreferences } from './hooks/useTablePreferences'
 import { AudioPlayerProvider } from './hooks/useAudioPlayer'
+import { visibleColumnIds, TABLE_REGISTRIES } from './tablePreferences'
 import type {
   Track,
   SearchSuggestion,
@@ -63,6 +71,7 @@ export function App() {
 
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
   const [searchText, setSearchText] = useState('')
+  const [searchSorting, setSearchSorting] = useState<SortingState>([])
   const [browseSelection, setBrowseSelection] = useState<
     Track | SearchSuggestion | null
   >(null)
@@ -230,6 +239,16 @@ export function App() {
   const searchConfig = tablePrefs.configs.search
   const matchesConfig = tablePrefs.configs.matches
 
+  // Sortable browse columns (visible order, minus display/action columns), fed
+  // to the design-system Add-sort control and control-panel sort tiers.
+  const searchSortColumns = useMemo(() => {
+    const reg = new Map(TABLE_REGISTRIES.search.map((e) => [e.id, e]))
+    const nonSortable = new Set(['play', 'add_to_set'])
+    return visibleColumnIds(searchConfig)
+      .filter((id) => !nonSortable.has(id))
+      .map((id) => ({ id, label: reg.get(id)?.label ?? id }))
+  }, [searchConfig])
+
   return (
     <AudioPlayerProvider>
       <div className="app-shell-v2">
@@ -258,27 +277,67 @@ export function App() {
             aria-label="Track browser"
             hidden={topSplit === 'browser-collapsed'}
           >
-            <div className="browse-controls">
-              <SearchPanel
-                allTracks={allTracks}
-                selectedTrack={browseSelection}
-                selectTrack={handleSelectTrack}
-                clearBrowseSelection={handleClearBrowse}
-                onSearchTextChange={setSearchText}
-                searchText={searchText}
-                onTrackDrop={handleTrackDropAsSource}
-              />
-              <FilterBar
-                camelotCodes={filters.camelotCodes}
-                bpm={filters.bpm}
-                bpmMin={filters.bpmMin}
-                bpmMax={filters.bpmMax}
-                setCamelotCodes={setCamelotCodes}
-                setBpm={setBpm}
-                setBpmMin={setBpmMin}
-                setBpmMax={setBpmMax}
-              />
-            </div>
+            <TableHeader
+              title={
+                <div className="ds-header-search">
+                  <SearchPanel
+                    allTracks={allTracks}
+                    selectedTrack={browseSelection}
+                    selectTrack={handleSelectTrack}
+                    clearBrowseSelection={handleClearBrowse}
+                    onSearchTextChange={setSearchText}
+                    searchText={searchText}
+                    onTrackDrop={handleTrackDropAsSource}
+                  />
+                </div>
+              }
+              primary={
+                <>
+                  <SortAddButton
+                    sorting={searchSorting}
+                    columns={searchSortColumns}
+                    onSortingChange={setSearchSorting}
+                    label="Add sort"
+                    className="ds-header-btn"
+                  />
+                  <BrowseFilterAddButton
+                    camelotCodes={filters.camelotCodes}
+                    bpm={filters.bpm}
+                    bpmMin={filters.bpmMin}
+                    bpmMax={filters.bpmMax}
+                    setCamelotCodes={setCamelotCodes}
+                    setBpm={setBpm}
+                    setBpmMin={setBpmMin}
+                    setBpmMax={setBpmMax}
+                  />
+                </>
+              }
+            />
+            <TableControlPanel>
+              {searchSorting.length > 0 && (
+                <SortTierBar
+                  sorting={searchSorting}
+                  columns={searchSortColumns}
+                  onSortingChange={setSearchSorting}
+                  hideAddButton
+                />
+              )}
+              {(filters.camelotCodes.length > 0 ||
+                filters.bpm != null ||
+                filters.bpmMin != null ||
+                filters.bpmMax != null) && (
+                <BrowseFilterPills
+                  camelotCodes={filters.camelotCodes}
+                  bpm={filters.bpm}
+                  bpmMin={filters.bpmMin}
+                  bpmMax={filters.bpmMax}
+                  setCamelotCodes={setCamelotCodes}
+                  setBpm={setBpm}
+                  setBpmMin={setBpmMin}
+                  setBpmMax={setBpmMax}
+                />
+              )}
+            </TableControlPanel>
             {traitsError && (
               <p className="table-status table-status--error">
                 Failed to load track traits — {traitsError}
@@ -291,6 +350,8 @@ export function App() {
               selectTrack={handleSelectTrack}
               error={tracksError}
               tableConfig={searchConfig}
+              sorting={searchSorting}
+              onSortingChange={setSearchSorting}
               onToggleColumnVisibility={(id) =>
                 tablePrefs.toggleVisibility('search', id)
               }
