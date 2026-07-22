@@ -45,10 +45,32 @@ const VOLUME_KEY = 'dj-tools-player-volume'
 const LRU_MAX = 20
 
 /**
+ * Release the underlying object of a blob: URL. Native endpoint URLs
+ * (e.g. /api/tracks/1/audio) are plain strings with no backing resource,
+ * so they are left untouched. An unrevoked blob URL keeps its (potentially
+ * tens of MiB) Blob alive until the document unloads, so every owner that
+ * drops a blob URL MUST revoke it.
+ */
+function revokeIfBlob(url: string | undefined): void {
+  if (url === undefined || !url.startsWith('blob:')) {
+    return
+  }
+  try {
+    URL.revokeObjectURL(url)
+  } catch {
+    /* environment without object-URL support */
+  }
+}
+
+/**
  * Lightweight LRU that tracks recently-validated track URLs.
- * Stores only the mapping trackId→url so replay of a recently validated
+ * Stores the mapping trackId→url so replay of a recently validated
  * track can skip the preflight validation fetch. Map iteration order
  * gives us LRU semantics: delete+re-set moves an entry to the end.
+ *
+ * The cache owns the lifecycle of any blob: URL it holds: whenever an
+ * entry is evicted, overwritten, removed, or cleared, its blob URL is
+ * revoked so the backing WAV Blob can be garbage-collected.
  */
 class ValidationLRU {
   private cache = new Map<number, string>()
@@ -64,18 +86,26 @@ class ValidationLRU {
   }
 
   set(trackId: number, url: string): void {
+    const previous = this.cache.get(trackId)
+    if (previous !== undefined && previous !== url) {
+      revokeIfBlob(previous)
+    }
     this.cache.delete(trackId)
     this.cache.set(trackId, url)
     if (this.cache.size > LRU_MAX) {
       const oldest = this.cache.keys().next().value
       if (oldest !== undefined) {
+        const evicted = this.cache.get(oldest)
         this.cache.delete(oldest)
+        revokeIfBlob(evicted)
       }
     }
   }
 
   remove(trackId: number): void {
+    const url = this.cache.get(trackId)
     this.cache.delete(trackId)
+    revokeIfBlob(url)
   }
 
   get size(): number {
@@ -83,6 +113,9 @@ class ValidationLRU {
   }
 
   clear(): void {
+    for (const url of this.cache.values()) {
+      revokeIfBlob(url)
+    }
     this.cache.clear()
   }
 }
@@ -388,8 +421,9 @@ export async function streamAiffAsWav(
   url: string,
   audioEl: HTMLAudioElement,
   isCancelled: () => boolean,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const resp = await fetch(url)
+  const resp = await fetch(url, signal ? { signal } : undefined)
   if (!resp.ok) {
     throw new Error(`Audio unavailable (${resp.status})`)
   }
@@ -612,6 +646,7 @@ function readStoredVolume(): number {
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const requestIdRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
   const [state, setState] = useState<AudioPlayerState>({
     track: null,
     playing: false,
@@ -652,6 +687,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       el.removeEventListener('error', onError)
       el.pause()
       el.removeAttribute('src')
+      abortRef.current?.abort()
+      abortRef.current = null
+      _validationCache.clear()
     }
   }, [])
 
@@ -663,6 +701,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     const myRequestId = ++requestIdRef.current
     const url = `/api/tracks/${trackId}/audio`
+
+    abortRef.current?.abort()
+    const abortController = new AbortController()
+    abortRef.current = abortController
+    const { signal } = abortController
 
     el.pause()
     el.removeAttribute('src')
@@ -682,7 +725,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     if (!playUrl) {
       try {
-        const resp = await fetch(url, { method: 'HEAD' })
+        const resp = await fetch(url, { method: 'HEAD', signal })
 
         if (requestIdRef.current !== myRequestId) {
           return
@@ -719,6 +762,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
                 url,
                 el,
                 () => requestIdRef.current !== myRequestId,
+                signal,
               )
               if (requestIdRef.current !== myRequestId) {
                 return
@@ -734,7 +778,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
           }
 
           try {
-            const audioResp = await fetch(url)
+            const audioResp = await fetch(url, { signal })
             if (requestIdRef.current !== myRequestId) {
               return
             }
@@ -867,6 +911,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => {
     requestIdRef.current++
+    abortRef.current?.abort()
+    abortRef.current = null
     const el = audioRef.current
     if (el) {
       el.pause()

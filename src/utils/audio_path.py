@@ -9,7 +9,7 @@ matches.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import Mapping
 import os
 from os import PathLike
@@ -21,7 +21,12 @@ from typing import Union
 PathInput = Union[str, PathLike[str]]
 AudioNameIndex = dict[str, tuple[str, ...]]
 
-_INDEX_CACHE: dict[str, AudioNameIndex] = {}
+# Bounded LRU of directory indexes. Without a cap, a long-running server that
+# serves audio from many distinct directories would accumulate a permanent
+# filename index per directory for the life of the process. The cap trades a
+# little repeated scandir work for bounded memory.
+_INDEX_CACHE_MAX = 256
+_INDEX_CACHE: "OrderedDict[str, AudioNameIndex]" = OrderedDict()
 _DISK_SUBSTITUTE_CHARS = str.maketrans({"*": "_", "?": "_"})
 
 
@@ -105,6 +110,11 @@ def _get_audio_index(directory: str) -> AudioNameIndex:
     if index is None:
         index = build_audio_index(directory)
         _INDEX_CACHE[directory] = index
+        _INDEX_CACHE.move_to_end(directory)
+        while len(_INDEX_CACHE) > _INDEX_CACHE_MAX:
+            _INDEX_CACHE.popitem(last=False)
+    else:
+        _INDEX_CACHE.move_to_end(directory)
     return index
 
 
