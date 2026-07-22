@@ -523,7 +523,8 @@ export function SetExplorerCanvas({
   const [swapSource, setSwapSource] = useState<string | null>(null)
   const [siblingAdd, setSiblingAdd] = useState<SiblingAddState | null>(null)
   const [childAdd, setChildAdd] = useState<ChildAddState | null>(null)
-  const [selectedInsertLevel, setSelectedInsertLevel] = useState(0)
+  const [jumpLevelInput, setJumpLevelInput] = useState('1')
+  const [jumpLevelError, setJumpLevelError] = useState<string | null>(null)
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -656,13 +657,11 @@ export function SetExplorerCanvas({
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
-      e.preventDefault()
-      if (e.ctrlKey) {
-        zoomBy(e.deltaY > 0 ? -0.1 : 0.1)
-      } else {
-        const dy = e.deltaMode === 0 ? e.deltaY : e.deltaY * 14
-        setPan((prev) => ({ ...prev, y: prev.y - dy }))
+      if (!e.ctrlKey) {
+        return
       }
+      e.preventDefault()
+      zoomBy(e.deltaY > 0 ? -0.1 : 0.1)
     },
     [zoomBy],
   )
@@ -843,12 +842,8 @@ export function SetExplorerCanvas({
         }
       }
       const colIndices = new Map<string, number>()
-      let maxLv = 0
       let maxColIndex = 0
       for (const [lv, lvNodes] of byLevel) {
-        if (lv > maxLv) {
-          maxLv = lv
-        }
         lvNodes.sort((a, b) => a.node.col_index - b.node.col_index)
         for (let i = 0; i < lvNodes.length; i++) {
           const col = lvNodes[i].node.col_index
@@ -871,7 +866,7 @@ export function SetExplorerCanvas({
       return {
         allFlat: flat,
         totalWidth: LEVEL_LABEL_GUTTER + Math.max(usedCols, MAX_COLS) * SLOT_W,
-        totalHeight: TOP_PAD + (maxLv + 2) * (NODE_H + V_GAP) + 40,
+        totalHeight: TOP_PAD + EXPLORER_LEVEL_COUNT * (NODE_H + V_GAP) + 40,
         columnIndices: colIndices,
         byLevelMap: byLevel,
       }
@@ -886,13 +881,10 @@ export function SetExplorerCanvas({
   }, [allFlat])
 
   const levelEntries = useMemo(() => {
-    const entries: { level: number; nodesAtLevel: LayoutNode[] }[] = []
-    const maxLevel = byLevelMap.size > 0 ? Math.max(...byLevelMap.keys()) : -1
-    const maxRenderedLevel = Math.min(maxLevel + 1, EXPLORER_LEVEL_COUNT - 1)
-    for (let lv = 0; lv <= maxRenderedLevel; lv++) {
-      entries.push({ level: lv, nodesAtLevel: byLevelMap.get(lv) ?? [] })
-    }
-    return entries
+    return EXPLORER_LEVELS.map((level) => ({
+      level,
+      nodesAtLevel: byLevelMap.get(level) ?? [],
+    }))
   }, [byLevelMap])
 
   const svgW = Math.max(totalWidth, 600)
@@ -1222,6 +1214,52 @@ export function SetExplorerCanvas({
     [siblingClear],
   )
 
+  const resolveJumpLevel = useCallback((): number | null => {
+    const userLevel = Number(jumpLevelInput)
+    if (
+      !Number.isInteger(userLevel) ||
+      userLevel < 1 ||
+      userLevel > EXPLORER_LEVEL_COUNT
+    ) {
+      setJumpLevelError('Level must be a whole number from 1 to 200.')
+      return null
+    }
+    setJumpLevelError(null)
+    return userLevel - 1
+  }, [jumpLevelInput])
+
+  const scrollToLevel = useCallback(
+    (level: number) => {
+      const viewport = viewportRef.current
+      if (!viewport) {
+        return
+      }
+      const rowTop = pan.y + (TOP_PAD + level * (NODE_H + V_GAP)) * zoom
+      viewport.scrollTop = Math.max(0, rowTop - 16)
+    },
+    [pan.y, zoom],
+  )
+
+  const handleJumpToLevel = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault()
+      const level = resolveJumpLevel()
+      if (level !== null) {
+        scrollToLevel(level)
+      }
+    },
+    [resolveJumpLevel, scrollToLevel],
+  )
+
+  const handleAddAtJumpLevel = useCallback(() => {
+    const level = resolveJumpLevel()
+    if (level === null) {
+      return
+    }
+    scrollToLevel(level)
+    openLevelAdd(level, byLevelMap.get(level) ?? [])
+  }, [resolveJumpLevel, scrollToLevel, openLevelAdd, byLevelMap])
+
   const openChildAdd = useCallback(async (nodeId: string) => {
     const node = nodesRef.current.find((n) => n.node_id === nodeId)
     if (!node) {
@@ -1513,37 +1551,53 @@ export function SetExplorerCanvas({
             ←
           </button>
         )}
-        <div className="set-picker-controls">
-          <label className="text-muted" htmlFor="explorer-insertion-level">
-            Insert at level
+        <form
+          className="set-picker-controls"
+          noValidate
+          onSubmit={handleJumpToLevel}
+        >
+          <label className="text-muted" htmlFor="explorer-jump-level">
+            Jump to level
           </label>
-          <select
-            id="explorer-insertion-level"
-            className="set-select"
-            aria-label="Explorer insertion level"
-            value={selectedInsertLevel + 1}
-            onChange={(e) => setSelectedInsertLevel(Number(e.target.value) - 1)}
-          >
-            {EXPLORER_LEVELS.map((level) => (
-              <option key={level} value={level + 1}>
-                Level {level + 1}
-              </option>
-            ))}
-          </select>
+          <input
+            id="explorer-jump-level"
+            className={`explorer-level-jump-input${jumpLevelError ? ' explorer-level-jump-input--invalid' : ''}`}
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={EXPLORER_LEVEL_COUNT}
+            step={1}
+            value={jumpLevelInput}
+            onChange={(e) => {
+              setJumpLevelInput(e.target.value)
+              setJumpLevelError(null)
+            }}
+            aria-invalid={jumpLevelError !== null}
+            aria-describedby={
+              jumpLevelError ? 'explorer-jump-level-error' : undefined
+            }
+          />
+          <button type="submit" className="set-action-btn">
+            Jump
+          </button>
           <button
             type="button"
             className="set-action-btn"
-            aria-label="Add track at selected level"
-            onClick={() =>
-              openLevelAdd(
-                selectedInsertLevel,
-                byLevelMap.get(selectedInsertLevel) ?? [],
-              )
-            }
+            aria-label="Add track at entered level"
+            onClick={handleAddAtJumpLevel}
           >
             Add track
           </button>
-        </div>
+          {jumpLevelError && (
+            <span
+              id="explorer-jump-level-error"
+              className="explorer-level-jump-error"
+              role="alert"
+            >
+              {jumpLevelError}
+            </span>
+          )}
+        </form>
         {swapSource && (
           <span className="set-explorer-swap-hint">
             Click another node to swap
@@ -1600,42 +1654,159 @@ export function SetExplorerCanvas({
         onDragLeave={handleViewportDragLeave}
         onDrop={handleViewportDrop}
       >
-        {nodes.length === 0 ? (
-          <div>
-            <p className="set-empty-tracks">
-              Explorer is empty. Drag a track here, or use “+ Add Track”, to add
-              a root node.
-            </p>
-            <svg
-              className="set-explorer-svg"
-              width={200}
-              height={80}
-              viewBox={`0 0 ${Math.max(200, LEVEL_LABEL_GUTTER + 200)} 80`}
-            >
+        {nodes.length === 0 && (
+          <p className="set-empty-tracks set-explorer-empty-message">
+            Explorer is empty. Drag a track here, or use “+ Add Track”, to add a
+            root node.
+          </p>
+        )}
+        <svg
+          ref={svgRef}
+          className="set-explorer-svg"
+          width={svgW}
+          height={svgH}
+          viewBox={`0 0 ${svgW} ${svgH}`}
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: '0 0',
+          }}
+          onClick={handleSvgClick}
+        >
+          {/* Level row labels */}
+          {levelEntries.map(({ level }) => {
+            const rowY = TOP_PAD + level * (NODE_H + V_GAP) + NODE_H / 2
+            return (
               <text
+                key={`level-label-${level}`}
                 x={LEVEL_LABEL_GUTTER / 2}
-                y={40}
+                y={rowY}
                 textAnchor="middle"
                 dominantBaseline="central"
                 className="explorer-level-label"
                 data-testid="explorer-level-label"
-                data-level="0"
-                aria-label="Level 1"
+                data-level={level}
+                aria-label={`Level ${level + 1}`}
               >
-                L1
+                {`L${level + 1}`}
               </text>
+            )
+          })}
+
+          {/* Edges */}
+          {edges.map((edge) => {
+            const parent = nodeMap.get(edge.parent_node_id)
+            const child = nodeMap.get(edge.child_node_id)
+            if (!parent || !child) {
+              return null
+            }
+            const parentColIdx =
+              (columnIndices.get(edge.parent_node_id) ?? 0) % EDGE_SLOTS
+            const childColIdx =
+              (columnIndices.get(edge.child_node_id) ?? 0) % EDGE_SLOTS
+            const nodeKey = `${edge.parent_node_id}-${edge.child_node_id}`
+            const score = edgeScores.get(nodeKey)
+            return (
+              <ExplorerEdgeItem
+                key={`edge-${edge.id}`}
+                edgeId={edge.id}
+                parentX={parent.x}
+                parentY={parent.y}
+                childX={child.x}
+                childY={child.y}
+                parentColIdx={parentColIdx}
+                childColIdx={childColIdx}
+                isSelected={selectedEdgeId === edge.id}
+                score={score}
+                isLoading={loadingEdgeKeys.has(nodeKey)}
+                onEdgeClick={handleEdgeClick}
+                onDeleteEdge={handleDeleteEdge}
+              />
+            )
+          })}
+
+          {/* Connect-drag preview line */}
+          {connectDrag && (
+            <line
+              x1={connectDrag.sourceCX}
+              y1={connectDrag.sourceCY}
+              x2={connectDrag.cursorX}
+              y2={connectDrag.cursorY}
+              stroke="var(--accent)"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              pointerEvents="none"
+              data-testid="connect-drag-line"
+            />
+          )}
+
+          {/* Marquee (drag-select) rectangle */}
+          {marquee && (
+            <rect
+              className="explorer-marquee"
+              x={Math.min(marquee.x0, marquee.x1)}
+              y={Math.min(marquee.y0, marquee.y1)}
+              width={Math.abs(marquee.x1 - marquee.x0)}
+              height={Math.abs(marquee.y1 - marquee.y0)}
+              pointerEvents="none"
+              data-testid="explorer-marquee"
+            />
+          )}
+
+          {/* Nodes */}
+          {allFlat.map((ln) => (
+            <ExplorerNodeItem
+              key={ln.node.node_id}
+              nodeId={ln.node.node_id}
+              trackId={ln.node.track_id}
+              level={ln.node.level}
+              colIndex={ln.node.col_index}
+              trackTitle={ln.node.track?.title}
+              x={ln.x}
+              y={ln.y}
+              isSelected={selectedNodeIds.has(ln.node.node_id)}
+              showActions={
+                selectedNodeIds.size === 1 &&
+                selectedNodeIds.has(ln.node.node_id)
+              }
+              isSwapSource={swapSource === ln.node.node_id}
+              inTracklist={tracklistTrackIds.has(ln.node.track_id)}
+              onNodeClick={handleNodeClick}
+              onNodeMouseDown={handleNodeMouseDown}
+              onNodeMouseUp={handleNodeMouseUp}
+              onSetDeleteTarget={handleSetDeleteTarget}
+              onSetSwapSource={onSetSwapSource}
+              openChildAdd={openChildAdd}
+              onNodeToTracklist={stableOnNodeToTracklist}
+            />
+          ))}
+
+          {/* Per-level +Add Track controls */}
+          {levelEntries.map(({ level, nodesAtLevel }) => {
+            const lastNode =
+              nodesAtLevel.length > 0
+                ? nodesAtLevel.reduce((a, b) =>
+                    a.node.col_index >= b.node.col_index ? a : b,
+                  )
+                : null
+            const addX = lastNode
+              ? lastNode.x + NODE_W + LEVEL_ADD_GAP
+              : LEVEL_LABEL_GUTTER + (SLOT_W - NODE_W) / 2
+            const addY =
+              TOP_PAD + level * (NODE_H + V_GAP) + (NODE_H - LEVEL_ADD_H) / 2
+            return (
               <g
-                transform={`translate(${LEVEL_LABEL_GUTTER + (200 - LEVEL_ADD_W) / 2}, ${(80 - LEVEL_ADD_H) / 2})`}
+                key={`level-add-${level}`}
+                transform={`translate(${addX}, ${addY})`}
                 className="explorer-level-add-btn"
                 onClick={(e) => {
                   e.stopPropagation()
-                  openLevelAdd(0, [])
+                  openLevelAdd(level, nodesAtLevel)
                 }}
                 role="button"
                 tabIndex={0}
-                aria-label="Add track to level 1"
+                aria-label={`Add track to level ${level + 1}`}
                 data-testid="level-add-btn"
-                data-level="0"
+                data-level={level}
                 style={{ cursor: 'pointer' }}
               >
                 <rect
@@ -1659,183 +1830,9 @@ export function SetExplorerCanvas({
                   + Add Track
                 </text>
               </g>
-            </svg>
-          </div>
-        ) : (
-          <svg
-            ref={svgRef}
-            className="set-explorer-svg"
-            width={svgW}
-            height={svgH}
-            viewBox={`0 0 ${svgW} ${svgH}`}
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: '0 0',
-            }}
-            onClick={handleSvgClick}
-          >
-            {/* Level row labels */}
-            {levelEntries.map(({ level }) => {
-              const rowY = TOP_PAD + level * (NODE_H + V_GAP) + NODE_H / 2
-              return (
-                <text
-                  key={`level-label-${level}`}
-                  x={LEVEL_LABEL_GUTTER / 2}
-                  y={rowY}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  className="explorer-level-label"
-                  data-testid="explorer-level-label"
-                  data-level={level}
-                  aria-label={`Level ${level + 1}`}
-                >
-                  {`L${level + 1}`}
-                </text>
-              )
-            })}
-
-            {/* Edges */}
-            {edges.map((edge) => {
-              const parent = nodeMap.get(edge.parent_node_id)
-              const child = nodeMap.get(edge.child_node_id)
-              if (!parent || !child) {
-                return null
-              }
-              const parentColIdx =
-                (columnIndices.get(edge.parent_node_id) ?? 0) % EDGE_SLOTS
-              const childColIdx =
-                (columnIndices.get(edge.child_node_id) ?? 0) % EDGE_SLOTS
-              const nodeKey = `${edge.parent_node_id}-${edge.child_node_id}`
-              const score = edgeScores.get(nodeKey)
-              return (
-                <ExplorerEdgeItem
-                  key={`edge-${edge.id}`}
-                  edgeId={edge.id}
-                  parentX={parent.x}
-                  parentY={parent.y}
-                  childX={child.x}
-                  childY={child.y}
-                  parentColIdx={parentColIdx}
-                  childColIdx={childColIdx}
-                  isSelected={selectedEdgeId === edge.id}
-                  score={score}
-                  isLoading={loadingEdgeKeys.has(nodeKey)}
-                  onEdgeClick={handleEdgeClick}
-                  onDeleteEdge={handleDeleteEdge}
-                />
-              )
-            })}
-
-            {/* Connect-drag preview line */}
-            {connectDrag && (
-              <line
-                x1={connectDrag.sourceCX}
-                y1={connectDrag.sourceCY}
-                x2={connectDrag.cursorX}
-                y2={connectDrag.cursorY}
-                stroke="var(--accent)"
-                strokeWidth={2}
-                strokeDasharray="6 4"
-                pointerEvents="none"
-                data-testid="connect-drag-line"
-              />
-            )}
-
-            {/* Marquee (drag-select) rectangle */}
-            {marquee && (
-              <rect
-                className="explorer-marquee"
-                x={Math.min(marquee.x0, marquee.x1)}
-                y={Math.min(marquee.y0, marquee.y1)}
-                width={Math.abs(marquee.x1 - marquee.x0)}
-                height={Math.abs(marquee.y1 - marquee.y0)}
-                pointerEvents="none"
-                data-testid="explorer-marquee"
-              />
-            )}
-
-            {/* Nodes */}
-            {allFlat.map((ln) => (
-              <ExplorerNodeItem
-                key={ln.node.node_id}
-                nodeId={ln.node.node_id}
-                trackId={ln.node.track_id}
-                level={ln.node.level}
-                colIndex={ln.node.col_index}
-                trackTitle={ln.node.track?.title}
-                x={ln.x}
-                y={ln.y}
-                isSelected={selectedNodeIds.has(ln.node.node_id)}
-                showActions={
-                  selectedNodeIds.size === 1 &&
-                  selectedNodeIds.has(ln.node.node_id)
-                }
-                isSwapSource={swapSource === ln.node.node_id}
-                inTracklist={tracklistTrackIds.has(ln.node.track_id)}
-                onNodeClick={handleNodeClick}
-                onNodeMouseDown={handleNodeMouseDown}
-                onNodeMouseUp={handleNodeMouseUp}
-                onSetDeleteTarget={handleSetDeleteTarget}
-                onSetSwapSource={onSetSwapSource}
-                openChildAdd={openChildAdd}
-                onNodeToTracklist={stableOnNodeToTracklist}
-              />
-            ))}
-
-            {/* Per-level +Add Track controls */}
-            {levelEntries.map(({ level, nodesAtLevel }) => {
-              const lastNode =
-                nodesAtLevel.length > 0
-                  ? nodesAtLevel.reduce((a, b) =>
-                      a.node.col_index >= b.node.col_index ? a : b,
-                    )
-                  : null
-              const addX = lastNode
-                ? lastNode.x + NODE_W + LEVEL_ADD_GAP
-                : LEVEL_LABEL_GUTTER + (SLOT_W - NODE_W) / 2
-              const addY =
-                TOP_PAD + level * (NODE_H + V_GAP) + (NODE_H - LEVEL_ADD_H) / 2
-              return (
-                <g
-                  key={`level-add-${level}`}
-                  transform={`translate(${addX}, ${addY})`}
-                  className="explorer-level-add-btn"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    openLevelAdd(level, nodesAtLevel)
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Add track to level ${level + 1}`}
-                  data-testid="level-add-btn"
-                  data-level={level}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <rect
-                    width={LEVEL_ADD_W}
-                    height={LEVEL_ADD_H}
-                    rx={4}
-                    fill="var(--surface)"
-                    stroke="var(--border)"
-                    strokeWidth={1}
-                    strokeDasharray="4 2"
-                  />
-                  <text
-                    x={LEVEL_ADD_W / 2}
-                    y={LEVEL_ADD_H / 2}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill="var(--success)"
-                    fontSize={10}
-                    fontWeight="600"
-                  >
-                    + Add Track
-                  </text>
-                </g>
-              )
-            })}
-          </svg>
-        )}
+            )
+          })}
+        </svg>
       </div>
 
       {siblingAdd && (

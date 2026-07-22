@@ -3272,6 +3272,31 @@ body,
   margin-bottom: 8px;
 }
 
+.explorer-level-jump-input {
+  width: 72px;
+  padding: 3px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  outline: none;
+}
+
+.explorer-level-jump-input:focus {
+  border-color: var(--accent);
+}
+
+.explorer-level-jump-input--invalid {
+  border-color: var(--danger);
+}
+
+.explorer-level-jump-error {
+  color: var(--danger);
+  font-size: 11px;
+}
+
 .explorer-back-btn {
   display: flex;
   align-items: center;
@@ -3317,6 +3342,17 @@ body,
 
 .set-explorer-viewport:active {
   cursor: grabbing;
+}
+
+.set-explorer-empty-message {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .set-explorer-svg {

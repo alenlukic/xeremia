@@ -145,20 +145,77 @@ describe('SetExplorerCanvas', () => {
   })
 
   describe('C1: per-level +Add Track control', () => {
-    it('offers every user-facing Explorer level from 1 through 200', () => {
+    it('renders all 200 Explorer levels and add controls, including empty levels', () => {
       render(<SetExplorerCanvas {...defaultProps()} />)
 
-      const select = screen.getByLabelText(
-        'Explorer insertion level',
-      ) as HTMLSelectElement
-      expect(select.options).toHaveLength(200)
-      expect(select.options[0]).toHaveTextContent('Level 1')
-      expect(select.options[199]).toHaveTextContent('Level 200')
-      expect(
-        Array.from(select.options).some(
-          (option) => option.textContent === 'Level 201',
-        ),
-      ).toBe(false)
+      const labels = screen.getAllByTestId('explorer-level-label')
+      const addButtons = screen.getAllByTestId('level-add-btn')
+      expect(labels).toHaveLength(200)
+      expect(addButtons).toHaveLength(200)
+      expect(labels[0]).toHaveAttribute('aria-label', 'Level 1')
+      expect(labels[199]).toHaveAttribute('aria-label', 'Level 200')
+      expect(addButtons[0]).toHaveAttribute('data-level', '0')
+      expect(addButtons[199]).toHaveAttribute('data-level', '199')
+    })
+
+    it('leaves regular wheel events available for native vertical scrolling', () => {
+      const { container } = render(<SetExplorerCanvas {...defaultProps()} />)
+      const viewport = container.querySelector('.set-explorer-viewport')!
+      const wheelEvent = new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 100,
+      })
+
+      viewport.dispatchEvent(wheelEvent)
+
+      expect(wheelEvent.defaultPrevented).toBe(false)
+    })
+
+    it('jumps to a valid entered level', async () => {
+      const { container } = render(<SetExplorerCanvas {...defaultProps()} />)
+      const input = screen.getByLabelText('Jump to level')
+      await userEvent.clear(input)
+      await userEvent.type(input, '137')
+      await userEvent.click(screen.getByRole('button', { name: 'Jump' }))
+
+      const viewport = container.querySelector(
+        '.set-explorer-viewport',
+      ) as HTMLElement
+      expect(viewport.scrollTop).toBeGreaterThan(0)
+      expect(input).toHaveAttribute('aria-invalid', 'false')
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it.each(['0', '201'])(
+      'shows a range error for out-of-range level %s',
+      async (level) => {
+        const { container } = render(<SetExplorerCanvas {...defaultProps()} />)
+        const input = screen.getByLabelText('Jump to level')
+        await userEvent.clear(input)
+        await userEvent.type(input, level)
+        await userEvent.click(screen.getByRole('button', { name: 'Jump' }))
+
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Level must be a whole number from 1 to 200.',
+        )
+        expect(input).toHaveAttribute('aria-invalid', 'true')
+        expect(
+          (container.querySelector('.set-explorer-viewport') as HTMLElement)
+            .scrollTop,
+        ).toBe(0)
+      },
+    )
+
+    it('rejects an empty jump value', async () => {
+      render(<SetExplorerCanvas {...defaultProps()} />)
+      const input = screen.getByLabelText('Jump to level')
+      await userEvent.clear(input)
+      await userEvent.click(screen.getByRole('button', { name: 'Jump' }))
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Level must be a whole number from 1 to 200.',
+      )
     })
 
     it('adds a track at an arbitrary selected level beyond the current tree depth', async () => {
@@ -172,13 +229,12 @@ describe('SetExplorerCanvas', () => {
         />,
       )
 
-      await userEvent.selectOptions(
-        screen.getByLabelText('Explorer insertion level'),
-        '137',
-      )
+      const input = screen.getByLabelText('Jump to level')
+      await userEvent.clear(input)
+      await userEvent.type(input, '137')
       await userEvent.click(
         screen.getByRole('button', {
-          name: 'Add track at selected level',
+          name: 'Add track at entered level',
         }),
       )
 
@@ -203,13 +259,12 @@ describe('SetExplorerCanvas', () => {
         />,
       )
 
-      await userEvent.selectOptions(
-        screen.getByLabelText('Explorer insertion level'),
-        '2',
-      )
+      const input = screen.getByLabelText('Jump to level')
+      await userEvent.clear(input)
+      await userEvent.type(input, '2')
       await userEvent.click(
         screen.getByRole('button', {
-          name: 'Add track at selected level',
+          name: 'Add track at entered level',
         }),
       )
 
@@ -236,13 +291,12 @@ describe('SetExplorerCanvas', () => {
         />,
       )
 
-      await userEvent.selectOptions(
-        screen.getByLabelText('Explorer insertion level'),
-        '200',
-      )
+      const input = screen.getByLabelText('Jump to level')
+      await userEvent.clear(input)
+      await userEvent.type(input, '200')
       await userEvent.click(
         screen.getByRole('button', {
-          name: 'Add track at selected level',
+          name: 'Add track at entered level',
         }),
       )
       await userEvent.type(
@@ -272,7 +326,7 @@ describe('SetExplorerCanvas', () => {
       expect(screen.queryByTestId('sibling-add-btn')).toBeNull()
     })
 
-    it('renders one +Add Track per occupied level plus one extra for the next empty level', () => {
+    it('renders one +Add Track control for every level when levels are occupied', () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -283,23 +337,24 @@ describe('SetExplorerCanvas', () => {
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />)
 
       const addBtns = screen.getAllByTestId('level-add-btn')
-      expect(addBtns.length).toBe(3)
+      expect(addBtns.length).toBe(200)
       expect(addBtns[0]).toHaveAttribute('data-level', '0')
       expect(addBtns[1]).toHaveAttribute('data-level', '1')
-      expect(addBtns[2]).toHaveAttribute('data-level', '2')
+      expect(addBtns[199]).toHaveAttribute('data-level', '199')
     })
 
-    it('renders two +Add Track buttons for a single root node (level 0 + extra level 1)', () => {
+    it('renders all 200 +Add Track controls for a single root node', () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
 
       const addBtns = screen.getAllByTestId('level-add-btn')
-      expect(addBtns.length).toBe(2)
+      expect(addBtns.length).toBe(200)
       expect(addBtns[0]).toHaveAttribute('data-level', '0')
       expect(addBtns[1]).toHaveAttribute('data-level', '1')
+      expect(addBtns[199]).toHaveAttribute('data-level', '199')
     })
 
-    it('opens sibling-add modal when the extra deepest-level +Add Track is clicked', async () => {
+    it('opens sibling-add modal from an empty rendered level', async () => {
       const nodes = [
         makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
         makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
@@ -310,7 +365,9 @@ describe('SetExplorerCanvas', () => {
       render(<SetExplorerCanvas {...defaultProps({ nodes, edges })} />)
 
       const addBtns = screen.getAllByTestId('level-add-btn')
-      const extraBtn = addBtns[addBtns.length - 1]
+      const extraBtn = addBtns.find(
+        (button) => button.getAttribute('data-level') === '2',
+      )!
       expect(extraBtn).toHaveAttribute('data-level', '2')
       await userEvent.click(extraBtn)
 
@@ -1033,7 +1090,7 @@ describe('SetExplorerCanvas', () => {
   })
 
   describe('level row labels', () => {
-    it('renders one accessible label per rendered level left of nodes', () => {
+    it('renders all accessible level labels left of nodes', () => {
       const nodes = [
         makeNode({
           id: 1,
@@ -1057,10 +1114,10 @@ describe('SetExplorerCanvas', () => {
         <SetExplorerCanvas {...defaultProps({ nodes, edges })} />,
       )
       const labels = screen.getAllByTestId('explorer-level-label')
-      expect(labels.length).toBe(3)
+      expect(labels.length).toBe(200)
       expect(labels[0]).toHaveAttribute('data-level', '0')
       expect(labels[1]).toHaveAttribute('data-level', '1')
-      expect(labels[2]).toHaveAttribute('data-level', '2')
+      expect(labels[199]).toHaveAttribute('data-level', '199')
       const firstNode = container.querySelector(
         '[data-testid="explorer-node"]',
       )!
@@ -1071,11 +1128,13 @@ describe('SetExplorerCanvas', () => {
       expect(labelX).toBeLessThan(nodeX)
     })
 
-    it('renders a level-0 label in the empty explorer state', () => {
+    it('renders all labels in the empty explorer state', () => {
       render(<SetExplorerCanvas {...defaultProps()} />)
-      const label = screen.getByTestId('explorer-level-label')
-      expect(label).toHaveAttribute('data-level', '0')
-      expect(label).toHaveAttribute('aria-label', 'Level 1')
+      const labels = screen.getAllByTestId('explorer-level-label')
+      expect(labels).toHaveLength(200)
+      expect(labels[0]).toHaveAttribute('data-level', '0')
+      expect(labels[0]).toHaveAttribute('aria-label', 'Level 1')
+      expect(labels[199]).toHaveAttribute('aria-label', 'Level 200')
     })
   })
 
@@ -1085,16 +1144,17 @@ describe('SetExplorerCanvas', () => {
       expect(screen.getByText(/Explorer is empty/)).toBeInTheDocument()
     })
 
-    it('renders a level-0 +Add Track button even when explorer is empty', () => {
+    it('renders all +Add Track buttons even when explorer is empty', () => {
       render(<SetExplorerCanvas {...defaultProps()} />)
-      const addBtn = screen.getByTestId('level-add-btn')
-      expect(addBtn).toBeInTheDocument()
-      expect(addBtn).toHaveAttribute('data-level', '0')
+      const addBtns = screen.getAllByTestId('level-add-btn')
+      expect(addBtns).toHaveLength(200)
+      expect(addBtns[0]).toHaveAttribute('data-level', '0')
+      expect(addBtns[199]).toHaveAttribute('data-level', '199')
     })
 
     it('opens sibling-add modal from the empty-state add button', async () => {
       render(<SetExplorerCanvas {...defaultProps()} />)
-      const addBtn = screen.getByTestId('level-add-btn')
+      const addBtn = screen.getAllByTestId('level-add-btn')[0]
       await userEvent.click(addBtn)
       expect(screen.getByTestId('sibling-add-modal')).toBeInTheDocument()
     })
