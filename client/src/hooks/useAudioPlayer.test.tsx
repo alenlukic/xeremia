@@ -195,9 +195,10 @@ describe('AudioPlayerProvider', () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId('play-btn'))
     })
-    expect(window.fetch).toHaveBeenCalledWith('/api/tracks/1/audio', {
-      method: 'HEAD',
-    })
+    expect(window.fetch).toHaveBeenCalledWith(
+      '/api/tracks/1/audio',
+      expect.objectContaining({ method: 'HEAD' }),
+    )
     expect(mockAudioElement.src).toBe('/api/tracks/1/audio')
     expect(mockPlay).toHaveBeenCalled()
     expect(screen.getByTestId('track-title').textContent).toBe('Test Track')
@@ -704,6 +705,108 @@ describe('Validation LRU cache', () => {
       } as Response)
     })
     expect(screen.getByTestId('track-title').textContent).toBe('none')
+  })
+})
+
+describe('Blob URL lifecycle (leak prevention)', () => {
+  let revokeSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    revokeSpy = vi.fn()
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeSpy)
+  })
+
+  it('revokes an evicted blob URL but not native endpoint URLs', () => {
+    _validationCache.set(1, 'blob:track-1-wav')
+    for (let i = 2; i <= 21; i++) {
+      _validationCache.set(i, `/api/tracks/${i}/audio`)
+    }
+    // Track 1 (oldest, a blob) is evicted → its blob must be revoked
+    expect(revokeSpy).toHaveBeenCalledWith('blob:track-1-wav')
+    expect(_validationCache.get(1)).toBeUndefined()
+  })
+
+  it('does not revoke native URLs on eviction', () => {
+    for (let i = 1; i <= 21; i++) {
+      _validationCache.set(i, `/api/tracks/${i}/audio`)
+    }
+    expect(revokeSpy).not.toHaveBeenCalled()
+  })
+
+  it('revokes the blob URL when an entry is removed', () => {
+    _validationCache.set(5, 'blob:track-5-wav')
+    _validationCache.remove(5)
+    expect(revokeSpy).toHaveBeenCalledWith('blob:track-5-wav')
+  })
+
+  it('revokes the previous blob URL when an entry is overwritten', () => {
+    _validationCache.set(7, 'blob:old-wav')
+    _validationCache.set(7, 'blob:new-wav')
+    expect(revokeSpy).toHaveBeenCalledWith('blob:old-wav')
+    expect(revokeSpy).not.toHaveBeenCalledWith('blob:new-wav')
+  })
+
+  it('revokes all cached blob URLs on clear', () => {
+    _validationCache.set(1, 'blob:a')
+    _validationCache.set(2, '/api/tracks/2/audio')
+    _validationCache.set(3, 'blob:c')
+    _validationCache.clear()
+    expect(revokeSpy).toHaveBeenCalledWith('blob:a')
+    expect(revokeSpy).toHaveBeenCalledWith('blob:c')
+    expect(revokeSpy).not.toHaveBeenCalledWith('/api/tracks/2/audio')
+  })
+
+  it('revokes remaining blob URLs when the provider unmounts', () => {
+    _validationCache.set(9, 'blob:mounted-wav')
+    const { unmount } = renderWithProvider()
+    unmount()
+    expect(revokeSpy).toHaveBeenCalledWith('blob:mounted-wav')
+  })
+})
+
+describe('Preview fetch cancellation (AbortController)', () => {
+  it('aborts the in-flight preview fetch when switching tracks', async () => {
+    const signals: AbortSignal[] = []
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      const sig = (opts as RequestInit | undefined)?.signal
+      if (sig) {
+        signals.push(sig)
+      }
+      return new Promise<Response>(() => {
+        /* never resolves — simulates a stalled LAN read */
+      })
+    })
+
+    renderWithProvider()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'))
+    })
+    expect(signals[0]?.aborted).toBe(false)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn-2'))
+    })
+    // First track's signal must be aborted once the second play starts
+    expect(signals[0]?.aborted).toBe(true)
+  })
+
+  it('aborts the in-flight preview fetch on stop', async () => {
+    let capturedSignal: AbortSignal | undefined
+    vi.spyOn(window, 'fetch').mockImplementation((_url, opts) => {
+      capturedSignal = (opts as RequestInit | undefined)?.signal ?? undefined
+      return new Promise<Response>(() => {})
+    })
+
+    renderWithProvider()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('play-btn'))
+    })
+    expect(capturedSignal?.aborted).toBe(false)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('stop-btn'))
+    })
+    expect(capturedSignal?.aborted).toBe(true)
   })
 })
 
