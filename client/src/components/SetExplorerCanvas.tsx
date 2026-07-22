@@ -99,6 +99,11 @@ const LEVEL_ADD_W = 70
 const LEVEL_ADD_H = 28
 const LEVEL_ADD_GAP = 16
 const LEVEL_LABEL_GUTTER = 56
+const EXPLORER_LEVEL_COUNT = 200
+const EXPLORER_LEVELS = Array.from(
+  { length: EXPLORER_LEVEL_COUNT },
+  (_, level) => level,
+)
 const EDGE_SLOTS = 5
 // Departure slots (left half) and arrival slots (right half) of a node's
 // width never share an x-coordinate, even though `nodeX` itself repeats
@@ -518,6 +523,7 @@ export function SetExplorerCanvas({
   const [swapSource, setSwapSource] = useState<string | null>(null)
   const [siblingAdd, setSiblingAdd] = useState<SiblingAddState | null>(null)
   const [childAdd, setChildAdd] = useState<ChildAddState | null>(null)
+  const [selectedInsertLevel, setSelectedInsertLevel] = useState(0)
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -635,15 +641,16 @@ export function SetExplorerCanvas({
   }, [])
 
   const zoomBy = useCallback(
-    (delta: number) => setZoom((prev) => {
-      const next = Math.max(0.2, Math.min(3, prev + delta))
-      try {
-        localStorage.setItem(ZOOM_STORAGE_KEY, String(next))
-      } catch {
-        /* storage unavailable */
-      }
-      return next
-    }),
+    (delta: number) =>
+      setZoom((prev) => {
+        const next = Math.max(0.2, Math.min(3, prev + delta))
+        try {
+          localStorage.setItem(ZOOM_STORAGE_KEY, String(next))
+        } catch {
+          /* storage unavailable */
+        }
+        return next
+      }),
     [],
   )
 
@@ -881,7 +888,8 @@ export function SetExplorerCanvas({
   const levelEntries = useMemo(() => {
     const entries: { level: number; nodesAtLevel: LayoutNode[] }[] = []
     const maxLevel = byLevelMap.size > 0 ? Math.max(...byLevelMap.keys()) : -1
-    for (let lv = 0; lv <= maxLevel + 1; lv++) {
+    const maxRenderedLevel = Math.min(maxLevel + 1, EXPLORER_LEVEL_COUNT - 1)
+    for (let lv = 0; lv <= maxRenderedLevel; lv++) {
       entries.push({ level: lv, nodesAtLevel: byLevelMap.get(lv) ?? [] })
     }
     return entries
@@ -1505,6 +1513,37 @@ export function SetExplorerCanvas({
             ←
           </button>
         )}
+        <div className="set-picker-controls">
+          <label className="text-muted" htmlFor="explorer-insertion-level">
+            Insert at level
+          </label>
+          <select
+            id="explorer-insertion-level"
+            className="set-select"
+            aria-label="Explorer insertion level"
+            value={selectedInsertLevel + 1}
+            onChange={(e) => setSelectedInsertLevel(Number(e.target.value) - 1)}
+          >
+            {EXPLORER_LEVELS.map((level) => (
+              <option key={level} value={level + 1}>
+                Level {level + 1}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="set-action-btn"
+            aria-label="Add track at selected level"
+            onClick={() =>
+              openLevelAdd(
+                selectedInsertLevel,
+                byLevelMap.get(selectedInsertLevel) ?? [],
+              )
+            }
+          >
+            Add track
+          </button>
+        </div>
         {swapSource && (
           <span className="set-explorer-swap-hint">
             Click another node to swap
@@ -1581,9 +1620,9 @@ export function SetExplorerCanvas({
                 className="explorer-level-label"
                 data-testid="explorer-level-label"
                 data-level="0"
-                aria-label="Level 0"
+                aria-label="Level 1"
               >
-                L0
+                L1
               </text>
               <g
                 transform={`translate(${LEVEL_LABEL_GUTTER + (200 - LEVEL_ADD_W) / 2}, ${(80 - LEVEL_ADD_H) / 2})`}
@@ -1594,7 +1633,7 @@ export function SetExplorerCanvas({
                 }}
                 role="button"
                 tabIndex={0}
-                aria-label="Add track to level 0"
+                aria-label="Add track to level 1"
                 data-testid="level-add-btn"
                 data-level="0"
                 style={{ cursor: 'pointer' }}
@@ -1648,9 +1687,9 @@ export function SetExplorerCanvas({
                   className="explorer-level-label"
                   data-testid="explorer-level-label"
                   data-level={level}
-                  aria-label={`Level ${level}`}
+                  aria-label={`Level ${level + 1}`}
                 >
-                  {`L${level}`}
+                  {`L${level + 1}`}
                 </text>
               )
             })}
@@ -1767,7 +1806,7 @@ export function SetExplorerCanvas({
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Add track to level ${level}`}
+                  aria-label={`Add track to level ${level + 1}`}
                   data-testid="level-add-btn"
                   data-level={level}
                   style={{ cursor: 'pointer' }}
@@ -1809,9 +1848,9 @@ export function SetExplorerCanvas({
             onClick={(e) => e.stopPropagation()}
             data-testid="sibling-add-modal"
           >
-            <h3>Add Track to Level {siblingAdd.targetLevel}</h3>
+            <h3>Add Track to Level {siblingAdd.targetLevel + 1}</h3>
             <p className="text-muted">
-              Add a track at level {siblingAdd.targetLevel}
+              Add a track at level {siblingAdd.targetLevel + 1}
             </p>
 
             {siblingAdd.parentIds.length > 0 && (

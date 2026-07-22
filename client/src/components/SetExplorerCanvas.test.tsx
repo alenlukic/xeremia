@@ -69,6 +69,21 @@ function makeNode(
   }
 }
 
+function makeTrack(id: number, title: string): Track {
+  return {
+    id,
+    title,
+    artist_names: [],
+    bpm: 128,
+    key: 'C',
+    camelot_code: '8B',
+    genre: null,
+    label: null,
+    energy: null,
+    date_added: null,
+  }
+}
+
 function defaultProps(
   overrides: {
     nodes?: ExplorerNode[]
@@ -130,6 +145,126 @@ describe('SetExplorerCanvas', () => {
   })
 
   describe('C1: per-level +Add Track control', () => {
+    it('offers every user-facing Explorer level from 1 through 200', () => {
+      render(<SetExplorerCanvas {...defaultProps()} />)
+
+      const select = screen.getByLabelText(
+        'Explorer insertion level',
+      ) as HTMLSelectElement
+      expect(select.options).toHaveLength(200)
+      expect(select.options[0]).toHaveTextContent('Level 1')
+      expect(select.options[199]).toHaveTextContent('Level 200')
+      expect(
+        Array.from(select.options).some(
+          (option) => option.textContent === 'Level 201',
+        ),
+      ).toBe(false)
+    })
+
+    it('adds a track at an arbitrary selected level beyond the current tree depth', async () => {
+      const props = defaultProps({
+        nodes: [makeNode({ node_id: 'n1', track_id: 10, level: 0 })],
+      })
+      render(
+        <SetExplorerCanvas
+          {...props}
+          allTracks={[makeTrack(99, 'Deep Track')]}
+        />,
+      )
+
+      await userEvent.selectOptions(
+        screen.getByLabelText('Explorer insertion level'),
+        '137',
+      )
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Add track at selected level',
+        }),
+      )
+
+      expect(screen.getByText('Add Track to Level 137')).toBeInTheDocument()
+      await userEvent.type(
+        screen.getByTestId('sibling-search-input'),
+        'Deep Track',
+      )
+      await userEvent.click(screen.getByText('Deep Track'))
+
+      expect(props.onAddNode).toHaveBeenCalledWith(99, undefined, 136)
+    })
+
+    it('offers immediate-parent connections at an arbitrarily selected level', async () => {
+      const props = defaultProps({
+        nodes: [makeNode({ node_id: 'n1', track_id: 10, level: 0 })],
+      })
+      render(
+        <SetExplorerCanvas
+          {...props}
+          allTracks={[makeTrack(99, 'Connected Track')]}
+        />,
+      )
+
+      await userEvent.selectOptions(
+        screen.getByLabelText('Explorer insertion level'),
+        '2',
+      )
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Add track at selected level',
+        }),
+      )
+
+      const modal = within(screen.getByTestId('sibling-add-modal'))
+      const parentChoice = modal.getByRole('checkbox')
+      expect(modal.getByText('Track 10')).toBeInTheDocument()
+      await userEvent.click(parentChoice)
+      await userEvent.type(
+        modal.getByTestId('sibling-search-input'),
+        'Connected Track',
+      )
+      await userEvent.click(modal.getByText('Connected Track'))
+
+      expect(props.onAddSibling).toHaveBeenCalledWith(99, ['n1'], 1)
+      expect(props.onAddNode).not.toHaveBeenCalled()
+    })
+
+    it('maps user-facing level 200 to the deepest valid internal level', async () => {
+      const props = defaultProps()
+      render(
+        <SetExplorerCanvas
+          {...props}
+          allTracks={[makeTrack(99, 'Deepest Track')]}
+        />,
+      )
+
+      await userEvent.selectOptions(
+        screen.getByLabelText('Explorer insertion level'),
+        '200',
+      )
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Add track at selected level',
+        }),
+      )
+      await userEvent.type(
+        screen.getByTestId('sibling-search-input'),
+        'Deepest Track',
+      )
+      await userEvent.click(screen.getByText('Deepest Track'))
+
+      expect(props.onAddNode).toHaveBeenCalledWith(99, undefined, 199)
+    })
+
+    it('does not render an invalid next-level add control after level 200', () => {
+      const nodes = [makeNode({ node_id: 'deepest', track_id: 10, level: 199 })]
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+
+      expect(
+        screen
+          .getAllByTestId('level-add-btn')
+          .some((button) => button.getAttribute('data-level') === '200'),
+      ).toBe(false)
+    })
+
     it('does not render per-node +Sibling button', () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
@@ -940,7 +1075,7 @@ describe('SetExplorerCanvas', () => {
       render(<SetExplorerCanvas {...defaultProps()} />)
       const label = screen.getByTestId('explorer-level-label')
       expect(label).toHaveAttribute('data-level', '0')
-      expect(label).toHaveAttribute('aria-label', 'Level 0')
+      expect(label).toHaveAttribute('aria-label', 'Level 1')
     })
   })
 
@@ -2131,9 +2266,7 @@ describe('SetExplorerCanvas', () => {
 
       await userEvent.click(screen.getByTestId('explorer-node'))
       fireEvent.keyDown(window, { key: 'Backspace' })
-      await waitFor(() =>
-        expect(props.onDeleteNode).toHaveBeenCalledWith('n1'),
-      )
+      await waitFor(() => expect(props.onDeleteNode).toHaveBeenCalledWith('n1'))
 
       fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
       await waitFor(() =>
@@ -2156,9 +2289,7 @@ describe('SetExplorerCanvas', () => {
       fireEvent.keyDown(window, { key: 'Delete' })
 
       expect(screen.queryByTestId('bulk-delete-modal')).toBeNull()
-      await waitFor(() =>
-        expect(props.onDeleteNode).toHaveBeenCalledTimes(2),
-      )
+      await waitFor(() => expect(props.onDeleteNode).toHaveBeenCalledTimes(2))
       expect(props.onDeleteNode).toHaveBeenCalledWith('n1')
       expect(props.onDeleteNode).toHaveBeenCalledWith('n2')
     })
