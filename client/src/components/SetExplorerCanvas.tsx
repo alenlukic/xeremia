@@ -181,7 +181,6 @@ interface ExplorerNodeItemProps {
   onSetSwapSource: (nodeId: string) => void
   openChildAdd: (nodeId: string) => void
   onNodeToTracklist: (nodeId: string) => void
-  onAddNode: (trackId: number, parentNodeId: string, level: number) => void
 }
 
 const ExplorerNodeItem = memo(function ExplorerNodeItem({
@@ -203,7 +202,6 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   onSetSwapSource,
   openChildAdd,
   onNodeToTracklist,
-  onAddNode,
 }: ExplorerNodeItemProps) {
   const color = colorForColumn(colIndex)
   const fullTitle = trackTitle ?? String(trackId)
@@ -274,32 +272,8 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       }}
       onMouseDown={(e) => onNodeMouseDown(e, nodeId, level, x, y)}
       onMouseUp={() => onNodeMouseUp(nodeId, level)}
-      onDragOver={(e) => {
-        // A track dropped anywhere on a node becomes that node's child.
-        e.preventDefault()
-        e.stopPropagation()
-        e.dataTransfer.dropEffect = 'copy'
-        e.currentTarget.classList.add('explorer-node-group--drop')
-      }}
-      onDragLeave={(e) => {
-        e.currentTarget.classList.remove('explorer-node-group--drop')
-      }}
-      onDrop={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        e.currentTarget.classList.remove('explorer-node-group--drop')
-        const raw =
-          e.dataTransfer.getData(TRACK_DRAG_MIME) ||
-          e.dataTransfer.getData('text/plain')
-        if (raw.trim() === '') {
-          return
-        }
-        const trackId = Number(raw)
-        if (Number.isInteger(trackId)) {
-          onAddNode(trackId, nodeId, level + 1)
-        }
-      }}
       data-testid="explorer-node"
+      data-node-id={nodeId}
       data-level={level}
       data-col-index={colIndex}
     >
@@ -686,22 +660,33 @@ export function SetExplorerCanvas({
   )
 
   // Map a client (screen) coordinate to the SVG user-space, accounting for the
-  // CSS pan/zoom transform on the <svg>. Returns null if the SVG is unavailable.
+  // CSS pan/zoom transform on the <svg>. Returns null when the SVG or the SVG
+  // geometry APIs are unavailable (e.g. jsdom), so callers fall back safely.
   const toSvgPoint = useCallback(
     (clientX: number, clientY: number): { x: number; y: number } | null => {
       const svg = svgRef.current
-      if (!svg) {
+      if (
+        !svg ||
+        !Number.isFinite(clientX) ||
+        !Number.isFinite(clientY) ||
+        typeof svg.createSVGPoint !== 'function' ||
+        typeof svg.getScreenCTM !== 'function'
+      ) {
         return null
       }
-      const pt = svg.createSVGPoint()
-      pt.x = clientX
-      pt.y = clientY
-      const ctm = svg.getScreenCTM()
-      if (!ctm) {
+      try {
+        const pt = svg.createSVGPoint()
+        pt.x = clientX
+        pt.y = clientY
+        const ctm = svg.getScreenCTM()
+        if (!ctm) {
+          return null
+        }
+        const p = pt.matrixTransform(ctm.inverse())
+        return { x: p.x, y: p.y }
+      } catch {
         return null
       }
-      const p = pt.matrixTransform(ctm.inverse())
-      return { x: p.x, y: p.y }
     },
     [],
   )
@@ -1409,34 +1394,91 @@ export function SetExplorerCanvas({
     undoDeleteRef.current = undoDelete
   })
 
-  // Drop a track from a top quadrant onto empty canvas to seed a root node.
-  // Drops that land on a node are handled there (child add) and stop
-  // propagation, so they never reach here.
-  const handleViewportDragOver = useCallback((e: React.DragEvent) => {
-    if (
-      e.dataTransfer.types.includes(TRACK_DRAG_MIME) ||
-      e.dataTransfer.types.includes('text/plain')
-    ) {
-      e.preventDefault()
-      e.dataTransfer.dropEffect = 'copy'
+  // Track drops are routed here (viewport level) and resolved by hit-testing the
+  // drop point against node rects in SVG user-space. Drag events dispatched on
+  // SVG <g> children are unreliable across browsers, so the geometry decides:
+  // over a node ⇒ add as that node's child, otherwise ⇒ add a root node.
+  const nodeAtClientPoint = useCallback(
+    (clientX: number, clientY: number): LayoutNode | null => {
+      const pt = toSvgPoint(clientX, clientY)
+      if (!pt) {
+        return null
+      }
+      for (const ln of allFlatRef.current) {
+        if (
+          pt.x >= ln.x &&
+          pt.x <= ln.x + NODE_W &&
+          pt.y >= ln.y &&
+          pt.y <= ln.y + NODE_H
+        ) {
+          return ln
+        }
+      }
+      return null
+    },
+    [toSvgPoint],
+  )
+
+  /** Imperatively mark the hovered node (no re-render during a drag). */
+  const highlightDropNode = useCallback((nodeId: string | null) => {
+    const root = viewportRef.current
+    if (!root) {
+      return
+    }
+    for (const el of root.querySelectorAll('.explorer-node-group--drop')) {
+      if (el.getAttribute('data-node-id') !== nodeId) {
+        el.classList.remove('explorer-node-group--drop')
+      }
+    }
+    if (nodeId) {
+      root
+        .querySelector(`[data-node-id="${nodeId}"]`)
+        ?.classList.add('explorer-node-group--drop')
     }
   }, [])
+
+  const handleViewportDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (
+        !e.dataTransfer.types.includes(TRACK_DRAG_MIME) &&
+        !e.dataTransfer.types.includes('text/plain')
+      ) {
+        return
+      }
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      const hit = nodeAtClientPoint(e.clientX, e.clientY)
+      highlightDropNode(hit ? hit.node.node_id : null)
+    },
+    [nodeAtClientPoint, highlightDropNode],
+  )
+
+  const handleViewportDragLeave = useCallback(() => {
+    highlightDropNode(null)
+  }, [highlightDropNode])
 
   const handleViewportDrop = useCallback(
     (e: React.DragEvent) => {
       const raw =
         e.dataTransfer.getData(TRACK_DRAG_MIME) ||
         e.dataTransfer.getData('text/plain')
+      highlightDropNode(null)
       if (raw.trim() === '') {
         return
       }
       e.preventDefault()
       const trackId = Number(raw)
-      if (Number.isInteger(trackId)) {
+      if (!Number.isInteger(trackId)) {
+        return
+      }
+      const hit = nodeAtClientPoint(e.clientX, e.clientY)
+      if (hit) {
+        stableOnAddNode(trackId, hit.node.node_id, hit.node.level + 1)
+      } else {
         stableOnAddNode(trackId)
       }
     },
-    [stableOnAddNode],
+    [stableOnAddNode, nodeAtClientPoint, highlightDropNode],
   )
 
   const nodeMap = useMemo(() => {
@@ -1460,9 +1502,6 @@ export function SetExplorerCanvas({
             ←
           </button>
         )}
-        <span className="set-explorer-hint text-muted">
-          Drag a track here to add a root node · drop on a node to add a child
-        </span>
         {swapSource && (
           <span className="set-explorer-swap-hint">
             Click another node to swap
@@ -1516,6 +1555,7 @@ export function SetExplorerCanvas({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onDragOver={handleViewportDragOver}
+        onDragLeave={handleViewportDragLeave}
         onDrop={handleViewportDrop}
       >
         {nodes.length === 0 ? (
@@ -1665,7 +1705,6 @@ export function SetExplorerCanvas({
                 onSetSwapSource={onSetSwapSource}
                 openChildAdd={openChildAdd}
                 onNodeToTracklist={stableOnNodeToTracklist}
-                onAddNode={stableOnAddNode}
               />
             ))}
 

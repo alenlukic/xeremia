@@ -1121,6 +1121,7 @@ describe('Browse quadrant', () => {
 
 describe('Cross-region drag and drop', () => {
   const TRACK_MIME = 'application/x-xeremia-track'
+  const TRACKLIST_ROW_MIME = 'application/x-xeremia-tracklist-row'
 
   function makeDataTransfer(data: Record<string, string> = {}) {
     const dt = {
@@ -1230,6 +1231,48 @@ describe('Cross-region drag and drop', () => {
     })
     await waitFor(() => {
       expect(httpMod.poolAdd).toHaveBeenCalledWith(1, 4)
+    })
+  })
+
+  it('dropping a tracklist row on the matches quadrant loads its matches', async () => {
+    const httpMod = await import('./api/http')
+    const [track3] = makeTracks(3).slice(2)
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: {
+        id: 1,
+        name: 'Test',
+        created_at: '',
+        updated_at: '',
+        pool_count: 0,
+        tracklist_count: 1,
+      },
+      pool: [],
+      tracklist: [
+        { id: 10, set_id: 1, track_id: 3, position: 0, track: track3 },
+      ],
+      explorer_nodes: [],
+      explorer_edges: [],
+    })
+    await renderWithActiveSet()
+    vi.mocked(httpMod.fetchMatches).mockClear()
+
+    const tracklist = document.querySelector<HTMLElement>('.set-tracklist')!
+    const row = within(tracklist).getByText('Track 3').closest('tr')!
+    const dt = makeDataTransfer()
+    fireEvent.dragStart(row, { dataTransfer: dt })
+    expect(dt.getData(TRACKLIST_ROW_MIME)).toBe('3')
+
+    const panel = document.querySelector<HTMLElement>('.matches-panel')!
+    fireEvent.dragOver(panel, { dataTransfer: dt })
+    expect(panel.className).toContain('set-drop-active')
+    expect(dt.dropEffect).toBe('move')
+
+    await act(async () => {
+      fireEvent.drop(panel, { dataTransfer: dt })
+    })
+
+    await waitFor(() => {
+      expect(vi.mocked(httpMod.fetchMatches).mock.calls.at(-1)?.[0]).toBe(3)
     })
   })
 

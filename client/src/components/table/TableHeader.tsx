@@ -1,6 +1,11 @@
 import type { ReactNode } from 'react'
 
 interface Props {
+  /**
+   * Affordance pinned to the far left, ahead of the title (e.g. a clear/close
+   * button). Stays put when the title scrolls (e.g. a long transition chain).
+   */
+  leading?: ReactNode
   /** Table title / context label, left-justified per the design-system spec. */
   title: ReactNode
   /** Primary controls for this quadrant, right-justified (e.g. Add Sort/Filter). */
@@ -15,9 +20,10 @@ interface Props {
  * typography stay identical across tables; each quadrant supplies its own
  * `primary` per the header contract.
  */
-export function TableHeader({ title, primary, trailing }: Props) {
+export function TableHeader({ leading, title, primary, trailing }: Props) {
   return (
     <div className="ds-table-header">
+      {leading && <div className="ds-table-header-leading">{leading}</div>}
       <div className="ds-table-header-title">{title}</div>
       {primary && <div className="ds-table-header-primary">{primary}</div>}
       {trailing && <div className="ds-table-header-trailing">{trailing}</div>}

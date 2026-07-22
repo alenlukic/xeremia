@@ -18,8 +18,19 @@ import {
   type SortingState,
   type Updater,
 } from '@tanstack/react-table'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Track, SearchSuggestion, TransitionMatch } from '../types'
-import { formatScore, formatOverallScore, TRACK_DRAG_MIME } from '../utils'
+import {
+  formatScore,
+  formatOverallScore,
+  TRACK_DRAG_MIME,
+  TRACKLIST_ROW_MIME,
+  POOL_ROW_MIME,
+} from '../utils'
+import {
+  useExternalTrackDrop,
+  type TrackDropTarget,
+} from '../hooks/useExternalTrackDrop'
 import { PlayButton } from './PlayButton'
 import {
   TableColumnControls,
@@ -39,9 +50,10 @@ import {
 } from './table/TableFilterBar'
 import {
   isActiveFilter,
-  passesFilter,
+  passesColumnFilter,
+  type ColumnFilter,
+  type FilterableColumn,
   type FilterMap,
-  type NumericFilter,
 } from './table/tableFilter'
 import {
   ToggleFilterGroup,
@@ -90,10 +102,42 @@ const COL_SIZES: Record<string, number> = {
 // Sized for the half-width matches quadrant beside the track browser.
 const TRACK_SIZE = 260
 
+/** Matches share the track-table row height; drives row virtualization. */
+const ROW_HEIGHT = 33
+
 const SCORE_COLUMN_IDS = Object.keys(COL_SIZES)
 const TOTAL_BASE = Object.values(COL_SIZES).reduce((a, b) => a + b, 0)
 
 const col = createColumnHelper<TransitionMatch>()
+
+/**
+ * Filters on the candidate's own attributes rather than its compatibility
+ * scores. `TransitionMatch` carries only scores, so these read through to the
+ * cached collection track behind `candidate_id`.
+ */
+const TRACK_FILTERS = {
+  track_key: { label: 'Key', kind: 'select' as const },
+  track_bpm: { label: 'BPM', kind: 'numeric' as const },
+  track_genre: { label: 'Genre', kind: 'select' as const },
+}
+
+type TrackFilterId = keyof typeof TRACK_FILTERS
+
+function trackFilterValue(
+  track: Track | undefined,
+  id: TrackFilterId,
+): string | number | null {
+  if (!track) {
+    return null
+  }
+  if (id === 'track_key') {
+    return track.camelot_code ?? null
+  }
+  if (id === 'track_bpm') {
+    return track.bpm ?? null
+  }
+  return track.genre ?? null
+}
 
 /** The value a numeric filter compares against — always in displayed (0–100) scale. */
 function displayScore(m: TransitionMatch, id: string): number | null {
@@ -207,6 +251,11 @@ interface Props {
   onAddToSet?: (candidateId: number) => void
   onAddToPool?: (candidateId: number) => void
   onAddToTracklist?: (candidateId: number) => void
+  /** Loads the dropped track's matches (drag from browse, tracklist or pool). */
+  onTrackDrop?: (trackId: number) => void
+  /** Collection tracks by id — supplies the candidate attributes (key/BPM/genre)
+   *  that `TransitionMatch` itself does not carry. */
+  trackIndex?: Map<number, Track>
 }
 
 export const MatchesPanel = memo(function MatchesPanel({
@@ -225,6 +274,8 @@ export const MatchesPanel = memo(function MatchesPanel({
   onAddToSet,
   onAddToPool,
   onAddToTracklist,
+  onTrackDrop,
+  trackIndex,
 }: Props) {
   const outerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -418,13 +469,20 @@ export const MatchesPanel = memo(function MatchesPanel({
         return false
       }
       for (const [id, f] of activeFilters) {
-        if (!passesFilter(displayScore(m, id), f)) {
+        const value =
+          id in TRACK_FILTERS
+            ? trackFilterValue(
+                trackIndex?.get(m.candidate_id),
+                id as TrackFilterId,
+              )
+            : displayScore(m, id)
+        if (!passesColumnFilter(value, f)) {
           return false
         }
       }
       return true
     })
-  }, [matches, activeBuckets, filters])
+  }, [matches, activeBuckets, filters, trackIndex])
 
   useLayoutEffect(() => {
     const el = outerRef.current
@@ -519,6 +577,25 @@ export const MatchesPanel = memo(function MatchesPanel({
   const totalWidth = table.getTotalSize()
   const isOverflowing = containerWidth > 0 && totalWidth > containerWidth
 
+  // Row virtualization: only the visible window of rows is mounted. A busy
+  // source track can return thousands of matches, and mounting every row made
+  // any re-render of this table (a column-preference change, a resize) block
+  // the main thread — each score cell also computes a gradient background.
+  const matchRows = table.getRowModel().rows
+  const rowVirtualizer = useVirtualizer({
+    count: matchRows.length,
+    getScrollElement: () => wrapperRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 12,
+  })
+  const virtualRows = rowVirtualizer.getVirtualItems()
+  const virtualTotal = rowVirtualizer.getTotalSize()
+  const padTop = virtualRows.length > 0 ? virtualRows[0].start : 0
+  const padBottom =
+    virtualRows.length > 0
+      ? virtualTotal - virtualRows[virtualRows.length - 1].end
+      : 0
+
   // Sort/filter control descriptors derived from the visible columns.
   const sortColumns = useMemo(
     () =>
@@ -527,12 +604,43 @@ export const MatchesPanel = memo(function MatchesPanel({
         .map((id) => ({ id, label: registryById.get(id)?.label ?? id })),
     [visibleIds, registryById],
   )
-  const filterColumns = useMemo(
-    () =>
-      visibleIds
+  // Candidate-attribute filters come first; their options are the values that
+  // actually occur in the current match list.
+  const trackFilterColumns = useMemo<FilterableColumn[]>(() => {
+    const optionsFor = (id: TrackFilterId) => {
+      const seen = new Set<string>()
+      for (const m of matches) {
+        const v = trackFilterValue(trackIndex?.get(m.candidate_id), id)
+        if (v != null && v !== '') {
+          seen.add(String(v))
+        }
+      }
+      return [...seen].sort()
+    }
+    return (Object.keys(TRACK_FILTERS) as TrackFilterId[]).map((id) => {
+      const def = TRACK_FILTERS[id]
+      return def.kind === 'select'
+        ? { id, label: def.label, kind: def.kind, options: optionsFor(id) }
+        : { id, label: def.label, kind: def.kind }
+    })
+  }, [matches, trackIndex])
+
+  const filterColumns = useMemo<FilterableColumn[]>(
+    () => [
+      ...trackFilterColumns,
+      // Score columns are compatibility scores, not track attributes — label
+      // them as such so they don't read as a second "Key"/"BPM"/"Genre".
+      ...visibleIds
         .filter((id) => id in SCORE_SCALE)
-        .map((id) => ({ id, label: registryById.get(id)?.label ?? id })),
-    [visibleIds, registryById],
+        .map((id) => {
+          const label = registryById.get(id)?.label ?? id
+          return {
+            id,
+            label: id === 'overall_score' ? label : `${label} score`,
+          }
+        }),
+    ],
+    [trackFilterColumns, visibleIds, registryById],
   )
 
   const bucketOptions: ToggleOption[] = BUCKETS.map((b) => ({
@@ -553,7 +661,7 @@ export const MatchesPanel = memo(function MatchesPanel({
     })
   }, [])
 
-  const setFilter = useCallback((columnId: string, filter: NumericFilter) => {
+  const setFilter = useCallback((columnId: string, filter: ColumnFilter) => {
     setFilters((prev) => ({ ...prev, [columnId]: filter }))
   }, [])
 
@@ -623,9 +731,34 @@ export const MatchesPanel = memo(function MatchesPanel({
     setDraggedColumn(null)
   }, [])
 
+  // Dropping a track anywhere on the panel makes it the match source. Row drags
+  // out of the tracklist/pool set `effectAllowed = 'move'`, so those targets must
+  // answer with a 'move' drop effect or the browser rejects the drop.
+  const dropTargets = useMemo<TrackDropTarget[]>(
+    () =>
+      onTrackDrop
+        ? [
+            { mime: TRACK_DRAG_MIME, onDropTrack: onTrackDrop },
+            {
+              mime: TRACKLIST_ROW_MIME,
+              onDropTrack: onTrackDrop,
+              dropEffect: 'move' as const,
+            },
+            {
+              mime: POOL_ROW_MIME,
+              onDropTrack: onTrackDrop,
+              dropEffect: 'move' as const,
+            },
+          ]
+        : [],
+    [onTrackDrop],
+  )
+  const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
+  const panelClassName = `matches-panel${dropActive ? ' set-drop-active' : ''}`
+
   if (!matchSource) {
     return (
-      <div className="matches-panel">
+      <div className={panelClassName} {...dropHandlers}>
         <p className="matches-empty">Select a track to see matches</p>
       </div>
     )
@@ -633,6 +766,17 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   const header = (
     <TableHeader
+      leading={
+        <button
+          type="button"
+          className="matches-clear-btn"
+          aria-label="Clear matches"
+          title="Clear matches"
+          onClick={onClearMatchSource}
+        >
+          ×
+        </button>
+      }
       title={headerTitle ?? matchSource.title}
       primary={
         <>
@@ -650,17 +794,6 @@ export const MatchesPanel = memo(function MatchesPanel({
             label="Add filter"
           />
         </>
-      }
-      trailing={
-        <button
-          type="button"
-          className="matches-clear-btn"
-          aria-label="Clear matches"
-          title="Clear matches"
-          onClick={onClearMatchSource}
-        >
-          ×
-        </button>
       }
     />
   )
@@ -690,7 +823,7 @@ export const MatchesPanel = memo(function MatchesPanel({
 
   if (visibleIds.length === 0) {
     return (
-      <div className="matches-panel">
+      <div className={panelClassName} {...dropHandlers}>
         {header}
         {controlPanel}
         <TableColumnEmptyRecovery />
@@ -699,7 +832,7 @@ export const MatchesPanel = memo(function MatchesPanel({
   }
 
   return (
-    <div className="matches-panel">
+    <div className={panelClassName} {...dropHandlers}>
       {header}
       {controlPanel}
       <div className="track-table-outer" ref={outerRef}>
@@ -838,49 +971,70 @@ export const MatchesPanel = memo(function MatchesPanel({
                   </td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData(
-                        TRACK_DRAG_MIME,
-                        String(row.original.candidate_id),
-                      )
-                      e.dataTransfer.effectAllowed = 'copy'
-                    }}
-                    style={loading ? { opacity: 0.6 } : undefined}
-                  >
-                    {row.getVisibleCells().map((cell) => {
-                      const scale = SCORE_SCALE[cell.column.id]
-                      const style = scale
-                        ? scoreCellStyle(
-                            normalizeScore(
-                              (
-                                row.original as unknown as Record<
-                                  string,
-                                  number | null
-                                >
-                              )[cell.column.id],
-                              scale,
-                            ),
+                <>
+                  {padTop > 0 && (
+                    <tr aria-hidden="true">
+                      <td
+                        colSpan={table.getVisibleLeafColumns().length}
+                        style={{ height: padTop, padding: 0, border: 'none' }}
+                      />
+                    </tr>
+                  )}
+                  {virtualRows.map((virtualRow) => {
+                    const row = matchRows[virtualRow.index]
+                    return (
+                      <tr
+                        key={row.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData(
+                            TRACK_DRAG_MIME,
+                            String(row.original.candidate_id),
                           )
-                        : undefined
-                      return (
-                        <td
-                          key={cell.id}
-                          className={scale ? 'ds-score-cell' : undefined}
-                          style={style}
-                        >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          )}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))
+                          e.dataTransfer.effectAllowed = 'copy'
+                        }}
+                        style={loading ? { opacity: 0.6 } : undefined}
+                      >
+                        {row.getVisibleCells().map((cell) => {
+                          const scale = SCORE_SCALE[cell.column.id]
+                          const style = scale
+                            ? scoreCellStyle(
+                                normalizeScore(
+                                  (
+                                    row.original as unknown as Record<
+                                      string,
+                                      number | null
+                                    >
+                                  )[cell.column.id],
+                                  scale,
+                                ),
+                              )
+                            : undefined
+                          return (
+                            <td
+                              key={cell.id}
+                              className={scale ? 'ds-score-cell' : undefined}
+                              style={style}
+                            >
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext(),
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                  {padBottom > 0 && (
+                    <tr aria-hidden="true">
+                      <td
+                        colSpan={table.getVisibleLeafColumns().length}
+                        style={{ height: padBottom, padding: 0, border: 'none' }}
+                      />
+                    </tr>
+                  )}
+                </>
               )}
             </tbody>
           </table>

@@ -92,6 +92,37 @@ function defaultProps(
   }
 }
 
+/**
+ * jsdom implements no SVG coordinate mapping, so `toSvgPoint` returns null and
+ * geometry-based features (marquee, drop hit-testing) can't resolve. Stub the
+ * matrix to identity so SVG user-space equals client coordinates.
+ */
+function withSvgMatrixStub<T>(fn: () => T): T {
+  const proto = window.SVGSVGElement.prototype as unknown as {
+    createSVGPoint?: () => {
+      x: number
+      y: number
+      matrixTransform: () => { x: number; y: number }
+    }
+    getScreenCTM?: () => { inverse: () => unknown }
+  }
+  const origPoint = proto.createSVGPoint
+  const origCTM = proto.getScreenCTM
+  proto.createSVGPoint = function () {
+    const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x, y: p.y }) }
+    return p
+  }
+  proto.getScreenCTM = function () {
+    return { inverse: () => ({}) }
+  }
+  try {
+    return fn()
+  } finally {
+    proto.createSVGPoint = origPoint
+    proto.getScreenCTM = origCTM
+  }
+}
+
 describe('SetExplorerCanvas', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -1933,6 +1964,30 @@ describe('SetExplorerCanvas', () => {
       }
     }
 
+    /**
+     * jsdom's synthesized drag events drop clientX/clientY, which the drop
+     * router needs for hit-testing — so build a MouseEvent (which carries
+     * coordinates) named `drop`/`dragover` and attach a stub dataTransfer.
+     */
+    function fireDragAt(
+      el: Element,
+      type: 'drop' | 'dragover',
+      value: string,
+      x: number,
+      y: number,
+    ) {
+      const evt = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+      })
+      Object.defineProperty(evt, 'dataTransfer', {
+        value: dropData(TRACK_DRAG_MIME, value).dataTransfer,
+      })
+      fireEvent(el, evt)
+    }
+
     it('drops a track onto the empty canvas to add a root node', () => {
       const props = defaultProps({ nodes: [] })
       const { container } = render(<SetExplorerCanvas {...props} />)
@@ -1958,23 +2013,45 @@ describe('SetExplorerCanvas', () => {
       expect(props.onAddNode).not.toHaveBeenCalled()
     })
 
-    it('dropping a track onto a specific node adds it as that node’s child', () => {
-      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
-      const props = defaultProps({ nodes })
-      render(<SetExplorerCanvas {...props} />)
-      const nodeGroup = screen.getByTestId('explorer-node')
-      fireEvent.drop(nodeGroup, dropData(TRACK_DRAG_MIME, '77'))
-      // child of n1 at level+1
-      expect(props.onAddNode).toHaveBeenCalledWith(77, 'n1', 1)
+    // A level-0 node occupies SVG x[15,375] y[56,104]; with the identity matrix
+    // stub those are also the client coordinates used for hit-testing.
+    it('dropping a track over a node adds it as that node’s child', () => {
+      withSvgMatrixStub(() => {
+        const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+        const props = defaultProps({ nodes })
+        const { container } = render(<SetExplorerCanvas {...props} />)
+        const viewport = container.querySelector('.set-explorer-viewport')!
+        fireDragAt(viewport, 'drop', '77', 100, 80)
+        expect(props.onAddNode).toHaveBeenCalledWith(77, 'n1', 1)
+        expect(props.onAddNode).toHaveBeenCalledTimes(1)
+      })
     })
 
-    it('a node drop does not also trigger the root (viewport) drop', () => {
-      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
-      const props = defaultProps({ nodes })
-      render(<SetExplorerCanvas {...props} />)
-      const nodeGroup = screen.getByTestId('explorer-node')
-      fireEvent.drop(nodeGroup, dropData(TRACK_DRAG_MIME, '77'))
-      expect(props.onAddNode).toHaveBeenCalledTimes(1)
+    it('dropping a track clear of any node adds a root node', () => {
+      withSvgMatrixStub(() => {
+        const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+        const props = defaultProps({ nodes })
+        const { container } = render(<SetExplorerCanvas {...props} />)
+        const viewport = container.querySelector('.set-explorer-viewport')!
+        fireDragAt(viewport, 'drop', '42', 900, 900)
+        expect(props.onAddNode).toHaveBeenCalledWith(42, undefined, undefined)
+      })
+    })
+
+    it('highlights the node under the cursor during a drag', () => {
+      withSvgMatrixStub(() => {
+        const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+        const { container } = render(
+          <SetExplorerCanvas {...defaultProps({ nodes })} />,
+        )
+        const viewport = container.querySelector('.set-explorer-viewport')!
+        fireDragAt(viewport, 'dragover', '77', 100, 80)
+        expect(
+          container
+            .querySelector('[data-node-id="n1"]')
+            ?.classList.contains('explorer-node-group--drop'),
+        ).toBe(true)
+      })
     })
   })
 
@@ -2058,35 +2135,13 @@ describe('SetExplorerCanvas', () => {
     })
 
     it('marquee (Ctrl/Cmd+drag) selects nodes and Backspace deletes them', async () => {
-      // jsdom lacks SVG coordinate mapping; stub it to identity (svg == client).
-      const proto = window.SVGSVGElement.prototype as unknown as {
-        createSVGPoint?: () => {
-          x: number
-          y: number
-          matrixTransform: () => { x: number; y: number }
-        }
-        getScreenCTM?: () => { inverse: () => unknown }
-      }
-      const origPoint = proto.createSVGPoint
-      const origCTM = proto.getScreenCTM
-      proto.createSVGPoint = function () {
-        const p = {
-          x: 0,
-          y: 0,
-          matrixTransform: () => ({ x: p.x, y: p.y }),
-        }
-        return p
-      }
-      proto.getScreenCTM = function () {
-        return { inverse: () => ({}) }
-      }
-      try {
+      const props = withSvgMatrixStub(() => {
         const nodes = [
           makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
           makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
         ]
-        const props = defaultProps({ nodes })
-        const { container } = render(<SetExplorerCanvas {...props} />)
+        const p = defaultProps({ nodes })
+        const { container } = render(<SetExplorerCanvas {...p} />)
         const svg = container.querySelector('.set-explorer-svg')!
         const viewport = container.querySelector('.set-explorer-viewport')!
 
@@ -2097,13 +2152,9 @@ describe('SetExplorerCanvas', () => {
 
         fireEvent.keyDown(window, { key: 'Backspace' })
         expect(screen.queryByTestId('bulk-delete-modal')).toBeNull()
-        await waitFor(() =>
-          expect(props.onDeleteNode).toHaveBeenCalledTimes(2),
-        )
-      } finally {
-        proto.createSVGPoint = origPoint
-        proto.getScreenCTM = origCTM
-      }
+        return p
+      })
+      await waitFor(() => expect(props.onDeleteNode).toHaveBeenCalledTimes(2))
     })
   })
 })

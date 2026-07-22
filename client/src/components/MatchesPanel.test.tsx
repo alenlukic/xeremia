@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MatchesPanel } from './MatchesPanel'
-import type { TransitionMatch } from '../types'
+import type { Track, TransitionMatch } from '../types'
 import {
   testMatchesPanelTableProps,
   columnHeaderLabel,
@@ -35,6 +35,22 @@ function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
     instrument_similarity_score: 0.55,
     ...overrides,
   }
+}
+
+/** Collection tracks behind the candidate ids used by the filter tests. */
+function makeTrackIndex(): Map<number, Track> {
+  const base = {
+    artist_names: ['A'],
+    key: 'C',
+    genre: 'Electronic',
+    label: 'Label',
+    energy: 0.5,
+    date_added: '2026-01-01T00:00:00Z',
+  }
+  return new Map<number, Track>([
+    [1, { ...base, id: 1, title: 'In 8B', bpm: 128, camelot_code: '8B' }],
+    [2, { ...base, id: 2, title: 'In 9A', bpm: 124, camelot_code: '9A' }],
+  ])
 }
 
 const SCORE_HEADERS = [
@@ -293,6 +309,7 @@ describe('MatchesPanel', () => {
   })
 
   describe('design-system chrome', () => {
+    // Both controls render as icons; their accessible names carry the meaning.
     it('renders Add sort and Add filter controls in the header', () => {
       render(
         <MatchesPanel
@@ -305,7 +322,57 @@ describe('MatchesPanel', () => {
       expect(
         screen.getByRole('button', { name: /add sort tier/i }),
       ).toBeInTheDocument()
-      expect(screen.getByText('Add filter')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Add filter' }),
+      ).toBeInTheDocument()
+    })
+
+    it('offers candidate key/BPM/genre filters alongside the score ranges', async () => {
+      render(
+        <MatchesPanel
+          matchSource={matchSource}
+          matches={[makeMatch()]}
+          loading={false}
+          trackIndex={makeTrackIndex()}
+          {...testMatchesPanelTableProps}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+      const items = [
+        ...document.querySelectorAll('.filter-add-menu-item'),
+      ].map((el) => el.textContent)
+      // Track attributes first, then the compatibility scores — relabelled so
+      // they no longer read as a second Key/BPM/Genre.
+      expect(items.slice(0, 3)).toEqual(['Key', 'BPM', 'Genre'])
+      expect(items).toContain('Key score')
+      expect(items).toContain('Genre score')
+    })
+
+    it('filters matches by the candidate track key', async () => {
+      render(
+        <MatchesPanel
+          matchSource={matchSource}
+          matches={[
+            makeMatch({ candidate_id: 1, title: 'In 8B' }),
+            makeMatch({ candidate_id: 2, title: 'In 9A' }),
+          ]}
+          loading={false}
+          trackIndex={makeTrackIndex()}
+          {...testMatchesPanelTableProps}
+        />,
+      )
+      expect(screen.getByText('In 8B')).toBeInTheDocument()
+      expect(screen.getByText('In 9A')).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Key' }),
+      )
+      const popover = screen.getByRole('dialog', { name: 'Value filter' })
+      await userEvent.click(within(popover).getByLabelText('8B'))
+
+      expect(screen.getByText('In 8B')).toBeInTheDocument()
+      expect(screen.queryByText('In 9A')).not.toBeInTheDocument()
     })
 
     it('tints score cells with an inline gradient background', () => {

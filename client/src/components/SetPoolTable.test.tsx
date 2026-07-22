@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { SetPoolTable } from './SetPoolTable'
 import { TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types'
@@ -755,5 +756,45 @@ describe('SetPoolTable title display', () => {
     expect(container.querySelector('.set-ws-cell-title')?.textContent).toBe(
       '[05A - Cm - 130.00] Pool Song',
     )
+  })
+})
+
+describe('SetPoolTable filtering', () => {
+  function keyedEntries(): PoolEntry[] {
+    const a = makePoolEntry({ id: 1, track_id: 10 })
+    const b = makePoolEntry({ id: 2, track_id: 20 })
+    b.track = { ...b.track!, camelot_code: '9A' }
+    return [a, b]
+  }
+
+  it('offers a Key filter alongside BPM', async () => {
+    renderPool(keyedEntries())
+    await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+    const items = [...document.querySelectorAll('.filter-add-menu-item')].map(
+      (el) => el.textContent,
+    )
+    expect(items).toEqual(['BPM', 'Key'])
+  })
+
+  it('narrows the pool to the selected camelot codes', async () => {
+    const { container } = renderPool(keyedEntries())
+    expect(container.querySelectorAll('.set-ws-cell-title').length).toBe(2)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Key' }))
+    const popover = screen.getByRole('dialog', { name: 'Value filter' })
+    // Options come from the codes actually present in the pool.
+    expect(
+      [...popover.querySelectorAll('.filter-option')].map((el) =>
+        el.textContent?.trim(),
+      ),
+    ).toEqual(['5A', '9A'])
+    await userEvent.click(within(popover).getByLabelText('9A'))
+
+    expect(
+      [...container.querySelectorAll('.set-ws-cell-title')].map(
+        (el) => el.textContent,
+      ),
+    ).toEqual(['Pool Track 20'])
   })
 })

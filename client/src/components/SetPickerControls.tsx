@@ -67,6 +67,15 @@ export function SetPickerControls({
 
   return (
     <div className="set-picker-controls">
+      {activeSetId && (
+        <button
+          className="set-delete-btn"
+          onClick={() => deleteSet(activeSetId)}
+          title="Delete set"
+        >
+          ×
+        </button>
+      )}
       {sets.length > 0 && (
         <select
           className="set-select"
@@ -94,15 +103,6 @@ export function SetPickerControls({
       <button className="set-create-btn" onClick={() => setShowNewInput(true)}>
         + New
       </button>
-      {activeSetId && (
-        <button
-          className="set-delete-btn"
-          onClick={() => deleteSet(activeSetId)}
-          title="Delete set"
-        >
-          ×
-        </button>
-      )}
 
       {showNewInput && (
         <div className="set-new-input-row">
