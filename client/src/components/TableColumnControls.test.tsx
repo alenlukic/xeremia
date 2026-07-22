@@ -185,6 +185,7 @@ describe('SetPoolTable header layout and column controls', () => {
         onAddSubgroupMember={asyncTrue}
         onRemoveSubgroupMember={asyncTrue}
         onDropFromTracklist={noop}
+        onDropTrackToSubgroup={noop}
         {...testPoolTableProps}
         {...extra}
       />,

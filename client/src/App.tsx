@@ -178,6 +178,28 @@ export function App() {
     [handleUseAsSource],
   )
 
+  // Lets the matches quadrant read candidate attributes (key/BPM/genre), which
+  // the match payload itself does not carry.
+  const trackIndex = useMemo(
+    () => new Map(allTracks.map((t) => [t.id, t])),
+    [allTracks],
+  )
+
+  // Dropping a track on the matches quadrant loads its matches outright: this is
+  // a fresh source selection, not a step in the current transition chain.
+  const handleMatchSourceDrop = useCallback(
+    (trackId: number) => {
+      const track = allTracks.find((t) => t.id === trackId)
+      if (!track) {
+        return
+      }
+      setDetailMatch(null)
+      setTransitionChain([])
+      selectMatchSource(track)
+    },
+    [allTracks, selectMatchSource],
+  )
+
   const handleChainNavigate = useCallback(
     (index: number) => {
       const entry = transitionChain[index]
@@ -431,6 +453,8 @@ export function App() {
                 onUseAsSource={handleUseAsSource}
                 onAddToPool={handleAddToPool}
                 onAddToTracklist={handleAddToTracklist}
+                onTrackDrop={handleMatchSourceDrop}
+                trackIndex={trackIndex}
               />
             )}
             {detailMatch && (
@@ -515,6 +539,7 @@ export function App() {
             reorderSubgroups={setBuilder.reorderSubgroups}
             addSubgroupMember={setBuilder.addSubgroupMember}
             removeSubgroupMember={setBuilder.removeSubgroupMember}
+            dropTrackToSubgroup={setBuilder.dropTrackToSubgroup}
             removeFromTracklist={setBuilder.removeFromTracklist}
             moveTracklistToPool={setBuilder.moveTracklistToPool}
             reorderTracklist={setBuilder.reorderTracklist}

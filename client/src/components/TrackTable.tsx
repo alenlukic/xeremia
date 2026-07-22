@@ -212,9 +212,8 @@ export const TrackTable = memo(function TrackTable({
   // Column widths are held locally during an active resize so the drag doesn't
   // round-trip through App state on every mousemove — which re-rendered all four
   // quadrants and made resizing crawl. The final width is flushed on mouse-up.
-  const [resizingSizing, setResizingSizing] = useState<ColumnSizingState | null>(
-    null,
-  )
+  const [resizingSizing, setResizingSizing] =
+    useState<ColumnSizingState | null>(null)
 
   const columnVisibility = tableConfig.columnVisibility
   const columnOrder = tableConfig.columnOrder

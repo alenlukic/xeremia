@@ -51,6 +51,11 @@ interface Props {
     subgroupId: number,
     poolEntryId: number,
   ) => Promise<boolean>
+  dropTrackToSubgroup: (
+    subgroupId: number,
+    trackId: number,
+    source: 'browse' | 'tracklist' | 'pool',
+  ) => Promise<void>
   removeFromTracklist: (trackId: number) => void
   moveTracklistToPool: (trackId: number) => void
   reorderTracklist: (trackId: number, newPosition: number) => void
@@ -108,6 +113,7 @@ export function SetBuilder({
   reorderSubgroups,
   addSubgroupMember,
   removeSubgroupMember,
+  dropTrackToSubgroup,
   removeFromTracklist,
   moveTracklistToPool,
   reorderTracklist,
@@ -266,6 +272,7 @@ export function SetBuilder({
                 onReorderSubgroups={reorderSubgroups}
                 onAddSubgroupMember={addSubgroupMember}
                 onRemoveSubgroupMember={removeSubgroupMember}
+                onDropTrackToSubgroup={dropTrackToSubgroup}
                 onDropFromTracklist={moveTracklistToPool}
               />
             </div>

@@ -24,6 +24,13 @@ vi.mock('../api/http', () => ({
   explorerNodeToTracklist: vi.fn(),
   explorerDeleteEdge: vi.fn(),
   explorerEdgeScores: vi.fn(),
+  subgroupCreate: vi.fn(),
+  subgroupRename: vi.fn(),
+  subgroupDelete: vi.fn(),
+  subgroupReorder: vi.fn(),
+  subgroupAddMember: vi.fn(),
+  subgroupRemoveMember: vi.fn(),
+  subgroupDropTrack: vi.fn(),
 }))
 
 function makeSetSummary(overrides: Partial<SetSummary> = {}): SetSummary {
@@ -235,5 +242,55 @@ describe('useSetBuilder addExplorerNode', () => {
 
     expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 'parent', 1)
     expect(http.explorerAddEdge).not.toHaveBeenCalled()
+  })
+
+  it('surfaces explorer depth constraint detail in the toast', async () => {
+    const http = await import('../api/http')
+    vi.mocked(http.explorerAddNode).mockRejectedValue(
+      new Error('Explorer exceeds maximum depth of 200'),
+    )
+
+    const { result } = renderHook(() => useSetBuilder())
+
+    await act(async () => {
+      result.current.selectSet(1)
+    })
+
+    await waitFor(() => expect(result.current.activeSetId).toBe(1))
+
+    await act(async () => {
+      await result.current.addExplorerNode(99, undefined, 200)
+    })
+
+    expect(result.current.error).toBe('Explorer exceeds maximum depth of 200')
+  })
+})
+
+describe('useSetBuilder dropTrackToSubgroup', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    const http = await import('../api/http')
+    vi.mocked(http.fetchSets).mockResolvedValue([])
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet())
+    vi.mocked(http.subgroupDropTrack).mockResolvedValue(undefined)
+  })
+
+  it('calls subgroupDropTrack and refreshes the active set', async () => {
+    const http = await import('../api/http')
+    const { result } = renderHook(() => useSetBuilder())
+
+    await act(async () => {
+      result.current.selectSet(1)
+    })
+
+    await waitFor(() => expect(result.current.activeSetId).toBe(1))
+
+    await act(async () => {
+      await result.current.dropTrackToSubgroup(5, 42, 'browse')
+    })
+
+    expect(http.subgroupDropTrack).toHaveBeenCalledWith(1, 5, 42, 'browse')
+    expect(http.fetchHydratedSet).toHaveBeenCalled()
   })
 })

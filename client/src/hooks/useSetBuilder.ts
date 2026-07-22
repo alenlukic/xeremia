@@ -15,6 +15,7 @@ import {
   subgroupReorder as apiSubgroupReorder,
   subgroupAddMember as apiSubgroupAddMember,
   subgroupRemoveMember as apiSubgroupRemoveMember,
+  subgroupDropTrack as apiSubgroupDropTrack,
   tracklistAdd,
   tracklistRemove,
   tracklistReorder,
@@ -48,6 +49,9 @@ const ERROR_DISMISS_MS = 4000
 
 function friendlyError(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : String(err)
+  if (/Explorer exceeds maximum/i.test(raw)) {
+    return raw
+  }
   if (/409|already exists|duplicate/i.test(raw)) {
     return 'This track is already in the list.'
   }
@@ -401,6 +405,29 @@ export function useSetBuilder() {
     [runSubgroupMutation],
   )
 
+  const dropTrackToSubgroup = useCallback(
+    async (
+      subgroupId: number,
+      trackId: number,
+      source: 'browse' | 'tracklist' | 'pool',
+    ) => {
+      if (activeSetId === null) {
+        return
+      }
+      try {
+        await apiSubgroupDropTrack(activeSetId, subgroupId, trackId, source)
+        await refreshActive()
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(
+            friendlyError(err, 'Could not add track to group.'),
+          )
+        }
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
   const moveTracklistToPool = useCallback(
     async (trackId: number) => {
       if (activeSetId === null) {
@@ -722,6 +749,7 @@ export function useSetBuilder() {
     reorderSubgroups,
     addSubgroupMember,
     removeSubgroupMember,
+    dropTrackToSubgroup,
     reorderTracklist,
     reorderPool,
     updateTracklistNote,

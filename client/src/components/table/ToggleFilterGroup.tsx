@@ -24,11 +24,7 @@ export function ToggleFilterGroup({
   ariaLabel,
 }: Props) {
   return (
-    <div
-      className="ds-toggle-filters"
-      role="group"
-      aria-label={ariaLabel}
-    >
+    <div className="ds-toggle-filters" role="group" aria-label={ariaLabel}>
       {options.map((opt) => {
         const on = active.has(opt.key)
         return (

@@ -50,8 +50,14 @@ class TestDepth:
     def test_within_cap(self):
         assert check_depth(50) is True
 
+    def test_level_199_within_cap(self):
+        assert check_depth(199) is True
+
     def test_at_cap(self):
         assert check_depth(MAX_DEPTH) is False
+
+    def test_level_200_exceeds_cap(self):
+        assert check_depth(200) is False
 
     def test_zero(self):
         assert check_depth(0) is True

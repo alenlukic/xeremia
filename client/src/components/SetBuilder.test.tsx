@@ -56,6 +56,7 @@ function defaultProps() {
     reorderSubgroups: async () => true,
     addSubgroupMember: async () => true,
     removeSubgroupMember: async () => true,
+    dropTrackToSubgroup: async () => {},
     removeFromTracklist: noop,
     moveTracklistToPool: noop,
     reorderTracklist: noop,

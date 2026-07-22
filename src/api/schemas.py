@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, validator
 
@@ -283,6 +283,11 @@ class SubgroupReorderRequest(BaseModel):
 
 class SubgroupMemberRequest(BaseModel):
     pool_entry_id: int
+
+
+class SubgroupDropRequest(BaseModel):
+    track_id: int
+    source: Literal["browse", "tracklist", "pool"]
 
 
 class ExplorerAddNodeRequest(BaseModel):

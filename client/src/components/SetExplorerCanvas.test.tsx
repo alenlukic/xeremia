@@ -69,6 +69,21 @@ function makeNode(
   }
 }
 
+function makeTrack(id: number, title: string): Track {
+  return {
+    id,
+    title,
+    artist_names: [],
+    bpm: 128,
+    key: 'C',
+    camelot_code: '8B',
+    genre: null,
+    label: null,
+    energy: null,
+    date_added: null,
+  }
+}
+
 function defaultProps(
   overrides: {
     nodes?: ExplorerNode[]
@@ -92,6 +107,37 @@ function defaultProps(
   }
 }
 
+/**
+ * jsdom implements no SVG coordinate mapping, so `toSvgPoint` returns null and
+ * geometry-based features (marquee, drop hit-testing) can't resolve. Stub the
+ * matrix to identity so SVG user-space equals client coordinates.
+ */
+function withSvgMatrixStub<T>(fn: () => T): T {
+  const proto = window.SVGSVGElement.prototype as unknown as {
+    createSVGPoint?: () => {
+      x: number
+      y: number
+      matrixTransform: () => { x: number; y: number }
+    }
+    getScreenCTM?: () => { inverse: () => unknown }
+  }
+  const origPoint = proto.createSVGPoint
+  const origCTM = proto.getScreenCTM
+  proto.createSVGPoint = function () {
+    const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x, y: p.y }) }
+    return p
+  }
+  proto.getScreenCTM = function () {
+    return { inverse: () => ({}) }
+  }
+  try {
+    return fn()
+  } finally {
+    proto.createSVGPoint = origPoint
+    proto.getScreenCTM = origCTM
+  }
+}
+
 describe('SetExplorerCanvas', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -99,6 +145,126 @@ describe('SetExplorerCanvas', () => {
   })
 
   describe('C1: per-level +Add Track control', () => {
+    it('offers every user-facing Explorer level from 1 through 200', () => {
+      render(<SetExplorerCanvas {...defaultProps()} />)
+
+      const select = screen.getByLabelText(
+        'Explorer insertion level',
+      ) as HTMLSelectElement
+      expect(select.options).toHaveLength(200)
+      expect(select.options[0]).toHaveTextContent('Level 1')
+      expect(select.options[199]).toHaveTextContent('Level 200')
+      expect(
+        Array.from(select.options).some(
+          (option) => option.textContent === 'Level 201',
+        ),
+      ).toBe(false)
+    })
+
+    it('adds a track at an arbitrary selected level beyond the current tree depth', async () => {
+      const props = defaultProps({
+        nodes: [makeNode({ node_id: 'n1', track_id: 10, level: 0 })],
+      })
+      render(
+        <SetExplorerCanvas
+          {...props}
+          allTracks={[makeTrack(99, 'Deep Track')]}
+        />,
+      )
+
+      await userEvent.selectOptions(
+        screen.getByLabelText('Explorer insertion level'),
+        '137',
+      )
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Add track at selected level',
+        }),
+      )
+
+      expect(screen.getByText('Add Track to Level 137')).toBeInTheDocument()
+      await userEvent.type(
+        screen.getByTestId('sibling-search-input'),
+        'Deep Track',
+      )
+      await userEvent.click(screen.getByText('Deep Track'))
+
+      expect(props.onAddNode).toHaveBeenCalledWith(99, undefined, 136)
+    })
+
+    it('offers immediate-parent connections at an arbitrarily selected level', async () => {
+      const props = defaultProps({
+        nodes: [makeNode({ node_id: 'n1', track_id: 10, level: 0 })],
+      })
+      render(
+        <SetExplorerCanvas
+          {...props}
+          allTracks={[makeTrack(99, 'Connected Track')]}
+        />,
+      )
+
+      await userEvent.selectOptions(
+        screen.getByLabelText('Explorer insertion level'),
+        '2',
+      )
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Add track at selected level',
+        }),
+      )
+
+      const modal = within(screen.getByTestId('sibling-add-modal'))
+      const parentChoice = modal.getByRole('checkbox')
+      expect(modal.getByText('Track 10')).toBeInTheDocument()
+      await userEvent.click(parentChoice)
+      await userEvent.type(
+        modal.getByTestId('sibling-search-input'),
+        'Connected Track',
+      )
+      await userEvent.click(modal.getByText('Connected Track'))
+
+      expect(props.onAddSibling).toHaveBeenCalledWith(99, ['n1'], 1)
+      expect(props.onAddNode).not.toHaveBeenCalled()
+    })
+
+    it('maps user-facing level 200 to the deepest valid internal level', async () => {
+      const props = defaultProps()
+      render(
+        <SetExplorerCanvas
+          {...props}
+          allTracks={[makeTrack(99, 'Deepest Track')]}
+        />,
+      )
+
+      await userEvent.selectOptions(
+        screen.getByLabelText('Explorer insertion level'),
+        '200',
+      )
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Add track at selected level',
+        }),
+      )
+      await userEvent.type(
+        screen.getByTestId('sibling-search-input'),
+        'Deepest Track',
+      )
+      await userEvent.click(screen.getByText('Deepest Track'))
+
+      expect(props.onAddNode).toHaveBeenCalledWith(99, undefined, 199)
+    })
+
+    it('does not render an invalid next-level add control after level 200', () => {
+      const nodes = [makeNode({ node_id: 'deepest', track_id: 10, level: 199 })]
+      render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+
+      expect(
+        screen
+          .getAllByTestId('level-add-btn')
+          .some((button) => button.getAttribute('data-level') === '200'),
+      ).toBe(false)
+    })
+
     it('does not render per-node +Sibling button', () => {
       const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
       render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
@@ -866,6 +1032,53 @@ describe('SetExplorerCanvas', () => {
     })
   })
 
+  describe('level row labels', () => {
+    it('renders one accessible label per rendered level left of nodes', () => {
+      const nodes = [
+        makeNode({
+          id: 1,
+          node_id: 'n1',
+          track_id: 10,
+          level: 0,
+          col_index: 0,
+        }),
+        makeNode({
+          id: 2,
+          node_id: 'n2',
+          track_id: 11,
+          level: 1,
+          col_index: 0,
+        }),
+      ]
+      const edges: ExplorerEdge[] = [
+        { id: 1, set_id: 1, parent_node_id: 'n1', child_node_id: 'n2' },
+      ]
+      const { container } = render(
+        <SetExplorerCanvas {...defaultProps({ nodes, edges })} />,
+      )
+      const labels = screen.getAllByTestId('explorer-level-label')
+      expect(labels.length).toBe(3)
+      expect(labels[0]).toHaveAttribute('data-level', '0')
+      expect(labels[1]).toHaveAttribute('data-level', '1')
+      expect(labels[2]).toHaveAttribute('data-level', '2')
+      const firstNode = container.querySelector(
+        '[data-testid="explorer-node"]',
+      )!
+      const labelX = Number(labels[0].getAttribute('x'))
+      const nodeX = Number(
+        firstNode.getAttribute('transform')?.match(/translate\(([^,]+)/)?.[1],
+      )
+      expect(labelX).toBeLessThan(nodeX)
+    })
+
+    it('renders a level-0 label in the empty explorer state', () => {
+      render(<SetExplorerCanvas {...defaultProps()} />)
+      const label = screen.getByTestId('explorer-level-label')
+      expect(label).toHaveAttribute('data-level', '0')
+      expect(label).toHaveAttribute('aria-label', 'Level 1')
+    })
+  })
+
   describe('empty state', () => {
     it('shows empty message when no nodes exist', () => {
       render(<SetExplorerCanvas {...defaultProps()} />)
@@ -1130,9 +1343,10 @@ describe('SetExplorerCanvas', () => {
     const HALF_SLOT_SPAN = NODE_W / 2 / EDGE_SLOTS
     const LANE_STUB = 10
     const LANE_S = 6
+    const LEVEL_LABEL_GUTTER = 56
 
     function parentX(col: number) {
-      return col * SLOT_W + (SLOT_W - NODE_W) / 2
+      return LEVEL_LABEL_GUTTER + col * SLOT_W + (SLOT_W - NODE_W) / 2
     }
     function parentBottom(level: number) {
       return TOP_PAD + level * (NODE_H + V_GAP) + NODE_H
@@ -1933,6 +2147,30 @@ describe('SetExplorerCanvas', () => {
       }
     }
 
+    /**
+     * jsdom's synthesized drag events drop clientX/clientY, which the drop
+     * router needs for hit-testing — so build a MouseEvent (which carries
+     * coordinates) named `drop`/`dragover` and attach a stub dataTransfer.
+     */
+    function fireDragAt(
+      el: Element,
+      type: 'drop' | 'dragover',
+      value: string,
+      x: number,
+      y: number,
+    ) {
+      const evt = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+      })
+      Object.defineProperty(evt, 'dataTransfer', {
+        value: dropData(TRACK_DRAG_MIME, value).dataTransfer,
+      })
+      fireEvent(el, evt)
+    }
+
     it('drops a track onto the empty canvas to add a root node', () => {
       const props = defaultProps({ nodes: [] })
       const { container } = render(<SetExplorerCanvas {...props} />)
@@ -1958,23 +2196,45 @@ describe('SetExplorerCanvas', () => {
       expect(props.onAddNode).not.toHaveBeenCalled()
     })
 
-    it('dropping a track onto a specific node adds it as that node’s child', () => {
-      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
-      const props = defaultProps({ nodes })
-      render(<SetExplorerCanvas {...props} />)
-      const nodeGroup = screen.getByTestId('explorer-node')
-      fireEvent.drop(nodeGroup, dropData(TRACK_DRAG_MIME, '77'))
-      // child of n1 at level+1
-      expect(props.onAddNode).toHaveBeenCalledWith(77, 'n1', 1)
+    // A level-0 node occupies SVG x[15,375] y[56,104]; with the identity matrix
+    // stub those are also the client coordinates used for hit-testing.
+    it('dropping a track over a node adds it as that node’s child', () => {
+      withSvgMatrixStub(() => {
+        const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+        const props = defaultProps({ nodes })
+        const { container } = render(<SetExplorerCanvas {...props} />)
+        const viewport = container.querySelector('.set-explorer-viewport')!
+        fireDragAt(viewport, 'drop', '77', 100, 80)
+        expect(props.onAddNode).toHaveBeenCalledWith(77, 'n1', 1)
+        expect(props.onAddNode).toHaveBeenCalledTimes(1)
+      })
     })
 
-    it('a node drop does not also trigger the root (viewport) drop', () => {
-      const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
-      const props = defaultProps({ nodes })
-      render(<SetExplorerCanvas {...props} />)
-      const nodeGroup = screen.getByTestId('explorer-node')
-      fireEvent.drop(nodeGroup, dropData(TRACK_DRAG_MIME, '77'))
-      expect(props.onAddNode).toHaveBeenCalledTimes(1)
+    it('dropping a track clear of any node adds a root node', () => {
+      withSvgMatrixStub(() => {
+        const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+        const props = defaultProps({ nodes })
+        const { container } = render(<SetExplorerCanvas {...props} />)
+        const viewport = container.querySelector('.set-explorer-viewport')!
+        fireDragAt(viewport, 'drop', '42', 900, 900)
+        expect(props.onAddNode).toHaveBeenCalledWith(42, undefined, undefined)
+      })
+    })
+
+    it('highlights the node under the cursor during a drag', () => {
+      withSvgMatrixStub(() => {
+        const nodes = [makeNode({ node_id: 'n1', track_id: 10, level: 0 })]
+        const { container } = render(
+          <SetExplorerCanvas {...defaultProps({ nodes })} />,
+        )
+        const viewport = container.querySelector('.set-explorer-viewport')!
+        fireDragAt(viewport, 'dragover', '77', 100, 80)
+        expect(
+          container
+            .querySelector('[data-node-id="n1"]')
+            ?.classList.contains('explorer-node-group--drop'),
+        ).toBe(true)
+      })
     })
   })
 
@@ -2006,9 +2266,7 @@ describe('SetExplorerCanvas', () => {
 
       await userEvent.click(screen.getByTestId('explorer-node'))
       fireEvent.keyDown(window, { key: 'Backspace' })
-      await waitFor(() =>
-        expect(props.onDeleteNode).toHaveBeenCalledWith('n1'),
-      )
+      await waitFor(() => expect(props.onDeleteNode).toHaveBeenCalledWith('n1'))
 
       fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
       await waitFor(() =>
@@ -2031,9 +2289,7 @@ describe('SetExplorerCanvas', () => {
       fireEvent.keyDown(window, { key: 'Delete' })
 
       expect(screen.queryByTestId('bulk-delete-modal')).toBeNull()
-      await waitFor(() =>
-        expect(props.onDeleteNode).toHaveBeenCalledTimes(2),
-      )
+      await waitFor(() => expect(props.onDeleteNode).toHaveBeenCalledTimes(2))
       expect(props.onDeleteNode).toHaveBeenCalledWith('n1')
       expect(props.onDeleteNode).toHaveBeenCalledWith('n2')
     })
@@ -2058,35 +2314,13 @@ describe('SetExplorerCanvas', () => {
     })
 
     it('marquee (Ctrl/Cmd+drag) selects nodes and Backspace deletes them', async () => {
-      // jsdom lacks SVG coordinate mapping; stub it to identity (svg == client).
-      const proto = window.SVGSVGElement.prototype as unknown as {
-        createSVGPoint?: () => {
-          x: number
-          y: number
-          matrixTransform: () => { x: number; y: number }
-        }
-        getScreenCTM?: () => { inverse: () => unknown }
-      }
-      const origPoint = proto.createSVGPoint
-      const origCTM = proto.getScreenCTM
-      proto.createSVGPoint = function () {
-        const p = {
-          x: 0,
-          y: 0,
-          matrixTransform: () => ({ x: p.x, y: p.y }),
-        }
-        return p
-      }
-      proto.getScreenCTM = function () {
-        return { inverse: () => ({}) }
-      }
-      try {
+      const props = withSvgMatrixStub(() => {
         const nodes = [
           makeNode({ id: 1, node_id: 'n1', track_id: 10, level: 0 }),
           makeNode({ id: 2, node_id: 'n2', track_id: 11, level: 1 }),
         ]
-        const props = defaultProps({ nodes })
-        const { container } = render(<SetExplorerCanvas {...props} />)
+        const p = defaultProps({ nodes })
+        const { container } = render(<SetExplorerCanvas {...p} />)
         const svg = container.querySelector('.set-explorer-svg')!
         const viewport = container.querySelector('.set-explorer-viewport')!
 
@@ -2097,13 +2331,9 @@ describe('SetExplorerCanvas', () => {
 
         fireEvent.keyDown(window, { key: 'Backspace' })
         expect(screen.queryByTestId('bulk-delete-modal')).toBeNull()
-        await waitFor(() =>
-          expect(props.onDeleteNode).toHaveBeenCalledTimes(2),
-        )
-      } finally {
-        proto.createSVGPoint = origPoint
-        proto.getScreenCTM = origCTM
-      }
+        return p
+      })
+      await waitFor(() => expect(props.onDeleteNode).toHaveBeenCalledTimes(2))
     })
   })
 })

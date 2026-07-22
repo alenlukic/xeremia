@@ -597,6 +597,25 @@ body,
   background: var(--accent-dim);
 }
 
+/* Sort/filter header controls are icon-only — centre the glyph and square up
+   the padding that was sized for text labels. */
+.filter-add-btn,
+.ds-header-btn,
+.sort-tier-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.filter-add-btn,
+.ds-header-btn {
+  padding: 4px 8px;
+}
+
+.sort-tier-add-btn {
+  padding: 3px 7px;
+}
+
 /* The Add filter button sits near the quadrant's right edge, so its menu
    and popover anchor right to stay inside the quadrant (pill popovers,
    opening from the left-aligned pills row, keep the default left anchor). */
@@ -664,6 +683,37 @@ body,
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* Checkbox list backing a 'select'-kind column filter (key, genre). */
+.filter-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  min-width: 140px;
+  overflow-y: auto;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-option:hover {
+  background: var(--surface-2);
+}
+
+.filter-popover-empty {
+  margin: 0;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
@@ -1127,6 +1177,14 @@ body,
   flex-shrink: 0;
 }
 
+/* Pinned to the header's left edge, ahead of the title. Never shrinks, so it
+   holds position when the title area scrolls (e.g. a long transition chain). */
+.ds-table-header-leading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .ds-table-header-title {
   font-size: 13px;
   font-weight: 600;
@@ -1235,10 +1293,13 @@ body,
   text-overflow: ellipsis;
   flex-shrink: 0;
 }
+/* Set controls sit to the right of the tracklist title; the extra 8px keeps the
+   leading delete button off the title text. */
 .ds-header-setcontrols {
   display: inline-flex;
   align-items: center;
   min-width: 0;
+  margin-left: 8px;
 }
 
 /* Search bar hosted in the header title slot (browse quadrant). Let the title
@@ -2490,7 +2551,7 @@ body,
   background: none;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-muted);
+  color: var(--danger);
   width: 24px;
   height: 24px;
   display: flex;
@@ -2502,7 +2563,7 @@ body,
 }
 
 .set-delete-btn:hover {
-  color: var(--danger);
+  color: var(--danger-bright, var(--danger));
   border-color: var(--danger);
 }
 
@@ -3204,13 +3265,6 @@ body,
   stroke-width: 2.5;
 }
 
-.set-explorer-hint {
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .set-explorer-controls {
   display: flex;
   align-items: center;
@@ -3664,8 +3718,22 @@ body,
   background: var(--surface);
 }
 .subgroup-section--drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+.subgroup-section--track-drop-target,
+.pool-tab-wrapper--track-drop-target {
   outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline-offset: 2px;
+}
+
+.explorer-level-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--text-muted);
+  pointer-events: none;
+  user-select: none;
 }
 
 .subgroup-section-header {

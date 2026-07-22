@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { SetTracklist } from './SetTracklist'
-import { TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
+import { TRACKLIST_ROW_MIME, POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 import type { TracklistEntry } from '../types'
 import {
   testTracklistTableProps,
@@ -267,6 +267,62 @@ describe('SetTracklist cross-panel drag-and-drop', () => {
     fireEvent.drop(panel, crossDragData(TRACKLIST_ROW_MIME, 10))
     expect(onDropFromPool).not.toHaveBeenCalled()
     expect(onAddTrack).not.toHaveBeenCalled()
+  })
+
+  it('does not let a stale row-drag steal an external browse drop', () => {
+    const onReorder = vi.fn()
+    const onAddTrack = vi.fn()
+    const { container } = renderTracklist(
+      [
+        makeEntry({ id: 1, track_id: 10, position: 0 }),
+        makeEntry({ id: 2, track_id: 20, position: 1 }),
+      ],
+      { onReorder, onAddTrack },
+    )
+    const rows = container.querySelectorAll('tbody tr')
+
+    // Start an internal reorder, then abandon it without dragEnd (stale state).
+    fireEvent.dragStart(rows[0], dragData())
+    expect(rows[0].classList.contains('set-row-dragging')).toBe(true)
+
+    // External browse drop on a row must bubble to the panel, not reorder.
+    fireEvent.drop(rows[1], crossDragData(TRACK_DRAG_MIME, 99))
+
+    expect(onReorder).not.toHaveBeenCalled()
+    expect(onAddTrack).toHaveBeenCalledWith(99, undefined)
+    expect(rows[0].classList.contains('set-row-dragging')).toBe(false)
+  })
+
+  it('clears the dragging class when the tracklist entries change', () => {
+    const initial = [
+      makeEntry({ id: 1, track_id: 10, position: 0 }),
+      makeEntry({ id: 2, track_id: 20, position: 1 }),
+    ]
+    const { container, rerender } = renderTracklist(initial)
+    const rows = container.querySelectorAll('tbody tr')
+    fireEvent.dragStart(rows[0], dragData())
+    expect(rows[0].classList.contains('set-row-dragging')).toBe(true)
+
+    rerender(
+      <SetTracklist
+        allTracks={[]}
+        tracklist={[
+          ...initial,
+          makeEntry({ id: 3, track_id: 30, position: 2 }),
+        ]}
+        onRemove={noop}
+        onMoveToPool={noop}
+        onReorder={noop}
+        onUpdateNote={noop}
+        onAddTrack={noop}
+        onDropFromPool={noop}
+        onExportM3u8={noop}
+        {...testTracklistTableProps}
+      />,
+    )
+
+    const nextRows = container.querySelectorAll('tbody tr')
+    expect(nextRows[0].classList.contains('set-row-dragging')).toBe(false)
   })
 })
 

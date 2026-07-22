@@ -3,7 +3,7 @@
 from typing import Dict, List, Optional, Set, Tuple
 
 MAX_NODES_PER_LEVEL = 5
-MAX_DEPTH = 100
+MAX_DEPTH = 200
 MAX_TOTAL_NODES = 500
 
 

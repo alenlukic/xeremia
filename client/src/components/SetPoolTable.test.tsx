@@ -6,8 +6,9 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { SetPoolTable } from './SetPoolTable'
-import { TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
+import { TRACKLIST_ROW_MIME, POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types'
 import {
   testPoolTableProps,
@@ -66,6 +67,7 @@ function renderPool(
       onReorderSubgroups={asyncTrue}
       onAddSubgroupMember={asyncTrue}
       onRemoveSubgroupMember={asyncTrue}
+      onDropTrackToSubgroup={noop}
       onDropFromTracklist={noop}
       {...testPoolTableProps}
       {...extra}
@@ -474,8 +476,8 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     // Each dot carries a color (assigned from the group palette).
     expect(
       Array.from(pills).every(
-        (p) => (p.querySelector('.subgroup-dot') as HTMLElement).style
-          .background,
+        (p) =>
+          (p.querySelector('.subgroup-dot') as HTMLElement).style.background,
       ),
     ).toBe(true)
   })
@@ -747,6 +749,97 @@ describe('SetPoolTable cross-panel drag-and-drop', () => {
   })
 })
 
+describe('SetPoolTable subgroup track drops', () => {
+  const subgroups: PoolSubgroup[] = [
+    { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+  ]
+
+  const crossDragData = (mime: string, trackId: number) => ({
+    dataTransfer: {
+      types: [mime],
+      getData: (m: string) => (m === mime ? String(trackId) : ''),
+      setData: noop,
+      effectAllowed: '',
+      dropEffect: '',
+    },
+  })
+
+  it('maps browse drag onto a subgroup tab to source browse', () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup },
+    )
+    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    fireEvent.drop(tabWrapper, crossDragData(TRACK_DRAG_MIME, 42))
+    expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 42, 'browse')
+  })
+
+  it('maps tracklist drag onto a subgroup tab to source tracklist', () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup },
+    )
+    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    fireEvent.drop(tabWrapper, crossDragData(TRACKLIST_ROW_MIME, 55))
+    expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 55, 'tracklist')
+  })
+
+  it('maps pool row drag onto a subgroup tab to source pool', () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup },
+    )
+    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    fireEvent.drop(tabWrapper, crossDragData(POOL_ROW_MIME, 10))
+    expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 10, 'pool')
+  })
+
+  it('marks subgroup tab as track-drop target while hovering', () => {
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup: noop },
+    )
+    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    fireEvent.dragOver(tabWrapper, crossDragData(TRACK_DRAG_MIME, 42))
+    expect(
+      tabWrapper.classList.contains('pool-tab-wrapper--track-drop-target'),
+    ).toBe(true)
+  })
+
+  it('still reorders tabs when dragging text/plain without track MIME', () => {
+    const onReorderSubgroups = vi.fn()
+    const twoGroups: PoolSubgroup[] = [
+      { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+      { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
+    ]
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      twoGroups,
+      [],
+      { onReorderSubgroups },
+    )
+    const wrappers = container.querySelectorAll('.pool-tab-wrapper')
+    fireEvent.dragStart(wrappers[0], {
+      dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
+    })
+    fireEvent.drop(wrappers[1], {
+      dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
+    })
+    expect(onReorderSubgroups).toHaveBeenCalledWith([2, 1])
+  })
+})
+
 describe('SetPoolTable title display', () => {
   it('shows the metadata prefix verbatim, matching the track browser', () => {
     const entry = makePoolEntry({ id: 1, track_id: 10 })
@@ -755,5 +848,45 @@ describe('SetPoolTable title display', () => {
     expect(container.querySelector('.set-ws-cell-title')?.textContent).toBe(
       '[05A - Cm - 130.00] Pool Song',
     )
+  })
+})
+
+describe('SetPoolTable filtering', () => {
+  function keyedEntries(): PoolEntry[] {
+    const a = makePoolEntry({ id: 1, track_id: 10 })
+    const b = makePoolEntry({ id: 2, track_id: 20 })
+    b.track = { ...b.track!, camelot_code: '9A' }
+    return [a, b]
+  }
+
+  it('offers a Key filter alongside BPM', async () => {
+    renderPool(keyedEntries())
+    await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+    const items = [...document.querySelectorAll('.filter-add-menu-item')].map(
+      (el) => el.textContent,
+    )
+    expect(items).toEqual(['BPM', 'Key'])
+  })
+
+  it('narrows the pool to the selected camelot codes', async () => {
+    const { container } = renderPool(keyedEntries())
+    expect(container.querySelectorAll('.set-ws-cell-title').length).toBe(2)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Key' }))
+    const popover = screen.getByRole('dialog', { name: 'Value filter' })
+    // Options come from the codes actually present in the pool.
+    expect(
+      [...popover.querySelectorAll('.filter-option')].map((el) =>
+        el.textContent?.trim(),
+      ),
+    ).toEqual(['5A', '9A'])
+    await userEvent.click(within(popover).getByLabelText('9A'))
+
+    expect(
+      [...container.querySelectorAll('.set-ws-cell-title')].map(
+        (el) => el.textContent,
+      ),
+    ).toEqual(['Pool Track 20'])
   })
 })

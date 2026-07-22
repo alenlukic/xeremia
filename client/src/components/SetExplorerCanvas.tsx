@@ -98,6 +98,12 @@ const TOP_PAD = ACTION_H + ACTION_ROW_MARGIN
 const LEVEL_ADD_W = 70
 const LEVEL_ADD_H = 28
 const LEVEL_ADD_GAP = 16
+const LEVEL_LABEL_GUTTER = 56
+const EXPLORER_LEVEL_COUNT = 200
+const EXPLORER_LEVELS = Array.from(
+  { length: EXPLORER_LEVEL_COUNT },
+  (_, level) => level,
+)
 const EDGE_SLOTS = 5
 // Departure slots (left half) and arrival slots (right half) of a node's
 // width never share an x-coordinate, even though `nodeX` itself repeats
@@ -181,7 +187,6 @@ interface ExplorerNodeItemProps {
   onSetSwapSource: (nodeId: string) => void
   openChildAdd: (nodeId: string) => void
   onNodeToTracklist: (nodeId: string) => void
-  onAddNode: (trackId: number, parentNodeId: string, level: number) => void
 }
 
 const ExplorerNodeItem = memo(function ExplorerNodeItem({
@@ -203,7 +208,6 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   onSetSwapSource,
   openChildAdd,
   onNodeToTracklist,
-  onAddNode,
 }: ExplorerNodeItemProps) {
   const color = colorForColumn(colIndex)
   const fullTitle = trackTitle ?? String(trackId)
@@ -274,32 +278,8 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
       }}
       onMouseDown={(e) => onNodeMouseDown(e, nodeId, level, x, y)}
       onMouseUp={() => onNodeMouseUp(nodeId, level)}
-      onDragOver={(e) => {
-        // A track dropped anywhere on a node becomes that node's child.
-        e.preventDefault()
-        e.stopPropagation()
-        e.dataTransfer.dropEffect = 'copy'
-        e.currentTarget.classList.add('explorer-node-group--drop')
-      }}
-      onDragLeave={(e) => {
-        e.currentTarget.classList.remove('explorer-node-group--drop')
-      }}
-      onDrop={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        e.currentTarget.classList.remove('explorer-node-group--drop')
-        const raw =
-          e.dataTransfer.getData(TRACK_DRAG_MIME) ||
-          e.dataTransfer.getData('text/plain')
-        if (raw.trim() === '') {
-          return
-        }
-        const trackId = Number(raw)
-        if (Number.isInteger(trackId)) {
-          onAddNode(trackId, nodeId, level + 1)
-        }
-      }}
       data-testid="explorer-node"
+      data-node-id={nodeId}
       data-level={level}
       data-col-index={colIndex}
     >
@@ -543,6 +523,7 @@ export function SetExplorerCanvas({
   const [swapSource, setSwapSource] = useState<string | null>(null)
   const [siblingAdd, setSiblingAdd] = useState<SiblingAddState | null>(null)
   const [childAdd, setChildAdd] = useState<ChildAddState | null>(null)
+  const [selectedInsertLevel, setSelectedInsertLevel] = useState(0)
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -660,15 +641,16 @@ export function SetExplorerCanvas({
   }, [])
 
   const zoomBy = useCallback(
-    (delta: number) => setZoom((prev) => {
-      const next = Math.max(0.2, Math.min(3, prev + delta))
-      try {
-        localStorage.setItem(ZOOM_STORAGE_KEY, String(next))
-      } catch {
-        /* storage unavailable */
-      }
-      return next
-    }),
+    (delta: number) =>
+      setZoom((prev) => {
+        const next = Math.max(0.2, Math.min(3, prev + delta))
+        try {
+          localStorage.setItem(ZOOM_STORAGE_KEY, String(next))
+        } catch {
+          /* storage unavailable */
+        }
+        return next
+      }),
     [],
   )
 
@@ -686,22 +668,33 @@ export function SetExplorerCanvas({
   )
 
   // Map a client (screen) coordinate to the SVG user-space, accounting for the
-  // CSS pan/zoom transform on the <svg>. Returns null if the SVG is unavailable.
+  // CSS pan/zoom transform on the <svg>. Returns null when the SVG or the SVG
+  // geometry APIs are unavailable (e.g. jsdom), so callers fall back safely.
   const toSvgPoint = useCallback(
     (clientX: number, clientY: number): { x: number; y: number } | null => {
       const svg = svgRef.current
-      if (!svg) {
+      if (
+        !svg ||
+        !Number.isFinite(clientX) ||
+        !Number.isFinite(clientY) ||
+        typeof svg.createSVGPoint !== 'function' ||
+        typeof svg.getScreenCTM !== 'function'
+      ) {
         return null
       }
-      const pt = svg.createSVGPoint()
-      pt.x = clientX
-      pt.y = clientY
-      const ctm = svg.getScreenCTM()
-      if (!ctm) {
+      try {
+        const pt = svg.createSVGPoint()
+        pt.x = clientX
+        pt.y = clientY
+        const ctm = svg.getScreenCTM()
+        if (!ctm) {
+          return null
+        }
+        const p = pt.matrixTransform(ctm.inverse())
+        return { x: p.x, y: p.y }
+      } catch {
         return null
       }
-      const p = pt.matrixTransform(ctm.inverse())
-      return { x: p.x, y: p.y }
     },
     [],
   )
@@ -864,7 +857,9 @@ export function SetExplorerCanvas({
           }
           colIndices.set(lvNodes[i].node.node_id, col)
           lvNodes[i].x =
-            Math.min(col, MAX_COLS - 1) * SLOT_W + (SLOT_W - NODE_W) / 2
+            LEVEL_LABEL_GUTTER +
+            Math.min(col, MAX_COLS - 1) * SLOT_W +
+            (SLOT_W - NODE_W) / 2
           lvNodes[i].y = TOP_PAD + lv * (NODE_H + V_GAP)
         }
       }
@@ -875,7 +870,7 @@ export function SetExplorerCanvas({
       const usedCols = byLevel.size > 0 ? maxColIndex + 1 : 1
       return {
         allFlat: flat,
-        totalWidth: Math.max(usedCols, MAX_COLS) * SLOT_W,
+        totalWidth: LEVEL_LABEL_GUTTER + Math.max(usedCols, MAX_COLS) * SLOT_W,
         totalHeight: TOP_PAD + (maxLv + 2) * (NODE_H + V_GAP) + 40,
         columnIndices: colIndices,
         byLevelMap: byLevel,
@@ -893,7 +888,8 @@ export function SetExplorerCanvas({
   const levelEntries = useMemo(() => {
     const entries: { level: number; nodesAtLevel: LayoutNode[] }[] = []
     const maxLevel = byLevelMap.size > 0 ? Math.max(...byLevelMap.keys()) : -1
-    for (let lv = 0; lv <= maxLevel + 1; lv++) {
+    const maxRenderedLevel = Math.min(maxLevel + 1, EXPLORER_LEVEL_COUNT - 1)
+    for (let lv = 0; lv <= maxRenderedLevel; lv++) {
       entries.push({ level: lv, nodesAtLevel: byLevelMap.get(lv) ?? [] })
     }
     return entries
@@ -1409,34 +1405,91 @@ export function SetExplorerCanvas({
     undoDeleteRef.current = undoDelete
   })
 
-  // Drop a track from a top quadrant onto empty canvas to seed a root node.
-  // Drops that land on a node are handled there (child add) and stop
-  // propagation, so they never reach here.
-  const handleViewportDragOver = useCallback((e: React.DragEvent) => {
-    if (
-      e.dataTransfer.types.includes(TRACK_DRAG_MIME) ||
-      e.dataTransfer.types.includes('text/plain')
-    ) {
-      e.preventDefault()
-      e.dataTransfer.dropEffect = 'copy'
+  // Track drops are routed here (viewport level) and resolved by hit-testing the
+  // drop point against node rects in SVG user-space. Drag events dispatched on
+  // SVG <g> children are unreliable across browsers, so the geometry decides:
+  // over a node ⇒ add as that node's child, otherwise ⇒ add a root node.
+  const nodeAtClientPoint = useCallback(
+    (clientX: number, clientY: number): LayoutNode | null => {
+      const pt = toSvgPoint(clientX, clientY)
+      if (!pt) {
+        return null
+      }
+      for (const ln of allFlatRef.current) {
+        if (
+          pt.x >= ln.x &&
+          pt.x <= ln.x + NODE_W &&
+          pt.y >= ln.y &&
+          pt.y <= ln.y + NODE_H
+        ) {
+          return ln
+        }
+      }
+      return null
+    },
+    [toSvgPoint],
+  )
+
+  /** Imperatively mark the hovered node (no re-render during a drag). */
+  const highlightDropNode = useCallback((nodeId: string | null) => {
+    const root = viewportRef.current
+    if (!root) {
+      return
+    }
+    for (const el of root.querySelectorAll('.explorer-node-group--drop')) {
+      if (el.getAttribute('data-node-id') !== nodeId) {
+        el.classList.remove('explorer-node-group--drop')
+      }
+    }
+    if (nodeId) {
+      root
+        .querySelector(`[data-node-id="${nodeId}"]`)
+        ?.classList.add('explorer-node-group--drop')
     }
   }, [])
+
+  const handleViewportDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (
+        !e.dataTransfer.types.includes(TRACK_DRAG_MIME) &&
+        !e.dataTransfer.types.includes('text/plain')
+      ) {
+        return
+      }
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      const hit = nodeAtClientPoint(e.clientX, e.clientY)
+      highlightDropNode(hit ? hit.node.node_id : null)
+    },
+    [nodeAtClientPoint, highlightDropNode],
+  )
+
+  const handleViewportDragLeave = useCallback(() => {
+    highlightDropNode(null)
+  }, [highlightDropNode])
 
   const handleViewportDrop = useCallback(
     (e: React.DragEvent) => {
       const raw =
         e.dataTransfer.getData(TRACK_DRAG_MIME) ||
         e.dataTransfer.getData('text/plain')
+      highlightDropNode(null)
       if (raw.trim() === '') {
         return
       }
       e.preventDefault()
       const trackId = Number(raw)
-      if (Number.isInteger(trackId)) {
+      if (!Number.isInteger(trackId)) {
+        return
+      }
+      const hit = nodeAtClientPoint(e.clientX, e.clientY)
+      if (hit) {
+        stableOnAddNode(trackId, hit.node.node_id, hit.node.level + 1)
+      } else {
         stableOnAddNode(trackId)
       }
     },
-    [stableOnAddNode],
+    [stableOnAddNode, nodeAtClientPoint, highlightDropNode],
   )
 
   const nodeMap = useMemo(() => {
@@ -1460,9 +1513,37 @@ export function SetExplorerCanvas({
             ←
           </button>
         )}
-        <span className="set-explorer-hint text-muted">
-          Drag a track here to add a root node · drop on a node to add a child
-        </span>
+        <div className="set-picker-controls">
+          <label className="text-muted" htmlFor="explorer-insertion-level">
+            Insert at level
+          </label>
+          <select
+            id="explorer-insertion-level"
+            className="set-select"
+            aria-label="Explorer insertion level"
+            value={selectedInsertLevel + 1}
+            onChange={(e) => setSelectedInsertLevel(Number(e.target.value) - 1)}
+          >
+            {EXPLORER_LEVELS.map((level) => (
+              <option key={level} value={level + 1}>
+                Level {level + 1}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="set-action-btn"
+            aria-label="Add track at selected level"
+            onClick={() =>
+              openLevelAdd(
+                selectedInsertLevel,
+                byLevelMap.get(selectedInsertLevel) ?? [],
+              )
+            }
+          >
+            Add track
+          </button>
+        </div>
         {swapSource && (
           <span className="set-explorer-swap-hint">
             Click another node to swap
@@ -1516,6 +1597,7 @@ export function SetExplorerCanvas({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onDragOver={handleViewportDragOver}
+        onDragLeave={handleViewportDragLeave}
         onDrop={handleViewportDrop}
       >
         {nodes.length === 0 ? (
@@ -1528,10 +1610,22 @@ export function SetExplorerCanvas({
               className="set-explorer-svg"
               width={200}
               height={80}
-              viewBox="0 0 200 80"
+              viewBox={`0 0 ${Math.max(200, LEVEL_LABEL_GUTTER + 200)} 80`}
             >
+              <text
+                x={LEVEL_LABEL_GUTTER / 2}
+                y={40}
+                textAnchor="middle"
+                dominantBaseline="central"
+                className="explorer-level-label"
+                data-testid="explorer-level-label"
+                data-level="0"
+                aria-label="Level 1"
+              >
+                L1
+              </text>
               <g
-                transform={`translate(${(200 - LEVEL_ADD_W) / 2}, ${(80 - LEVEL_ADD_H) / 2})`}
+                transform={`translate(${LEVEL_LABEL_GUTTER + (200 - LEVEL_ADD_W) / 2}, ${(80 - LEVEL_ADD_H) / 2})`}
                 className="explorer-level-add-btn"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -1539,7 +1633,7 @@ export function SetExplorerCanvas({
                 }}
                 role="button"
                 tabIndex={0}
-                aria-label="Add track to level 0"
+                aria-label="Add track to level 1"
                 data-testid="level-add-btn"
                 data-level="0"
                 style={{ cursor: 'pointer' }}
@@ -1580,6 +1674,26 @@ export function SetExplorerCanvas({
             }}
             onClick={handleSvgClick}
           >
+            {/* Level row labels */}
+            {levelEntries.map(({ level }) => {
+              const rowY = TOP_PAD + level * (NODE_H + V_GAP) + NODE_H / 2
+              return (
+                <text
+                  key={`level-label-${level}`}
+                  x={LEVEL_LABEL_GUTTER / 2}
+                  y={rowY}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  className="explorer-level-label"
+                  data-testid="explorer-level-label"
+                  data-level={level}
+                  aria-label={`Level ${level + 1}`}
+                >
+                  {`L${level + 1}`}
+                </text>
+              )
+            })}
+
             {/* Edges */}
             {edges.map((edge) => {
               const parent = nodeMap.get(edge.parent_node_id)
@@ -1665,7 +1779,6 @@ export function SetExplorerCanvas({
                 onSetSwapSource={onSetSwapSource}
                 openChildAdd={openChildAdd}
                 onNodeToTracklist={stableOnNodeToTracklist}
-                onAddNode={stableOnAddNode}
               />
             ))}
 
@@ -1679,7 +1792,7 @@ export function SetExplorerCanvas({
                   : null
               const addX = lastNode
                 ? lastNode.x + NODE_W + LEVEL_ADD_GAP
-                : (SLOT_W - NODE_W) / 2
+                : LEVEL_LABEL_GUTTER + (SLOT_W - NODE_W) / 2
               const addY =
                 TOP_PAD + level * (NODE_H + V_GAP) + (NODE_H - LEVEL_ADD_H) / 2
               return (
@@ -1693,7 +1806,7 @@ export function SetExplorerCanvas({
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Add track to level ${level}`}
+                  aria-label={`Add track to level ${level + 1}`}
                   data-testid="level-add-btn"
                   data-level={level}
                   style={{ cursor: 'pointer' }}
@@ -1735,9 +1848,9 @@ export function SetExplorerCanvas({
             onClick={(e) => e.stopPropagation()}
             data-testid="sibling-add-modal"
           >
-            <h3>Add Track to Level {siblingAdd.targetLevel}</h3>
+            <h3>Add Track to Level {siblingAdd.targetLevel + 1}</h3>
             <p className="text-muted">
-              Add a track at level {siblingAdd.targetLevel}
+              Add a track at level {siblingAdd.targetLevel + 1}
             </p>
 
             {siblingAdd.parentIds.length > 0 && (
