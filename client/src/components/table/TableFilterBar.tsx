@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDismissOnOutsideClick } from '../../hooks/useDismissOnOutsideClick'
+import { FilterIcon } from './icons'
 import {
   filterLabel,
   isActiveFilter,
+  isSelectFilter,
   parseNum,
+  type ColumnFilter,
   type FilterableColumn,
   type FilterMap,
   type NumericFilter,
+  type SelectFilter,
 } from './tableFilter'
 
 function NumericPopover({
@@ -44,10 +48,76 @@ function NumericPopover({
   )
 }
 
+function SelectPopover({
+  column,
+  value,
+  onChange,
+}: {
+  column: FilterableColumn
+  value: SelectFilter
+  onChange: (f: SelectFilter) => void
+}) {
+  const options = column.options ?? []
+  const toggle = (option: string) => {
+    const next = value.values.includes(option)
+      ? value.values.filter((v) => v !== option)
+      : [...value.values, option]
+    onChange({ values: next })
+  }
+
+  return (
+    <div className="filter-popover" role="dialog" aria-label="Value filter">
+      {options.length === 0 ? (
+        <p className="filter-popover-empty">No values available</p>
+      ) : (
+        <div className="filter-option-list">
+          {options.map((option) => (
+            <label key={option} className="filter-option">
+              <input
+                type="checkbox"
+                checked={value.values.includes(option)}
+                onChange={() => toggle(option)}
+              />
+              <span className="mono">{option}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Renders whichever popover kind the column declares. */
+function FilterPopover({
+  column,
+  value,
+  onChange,
+}: {
+  column: FilterableColumn
+  value: ColumnFilter | undefined
+  onChange: (f: ColumnFilter) => void
+}) {
+  if (column.kind === 'select') {
+    return (
+      <SelectPopover
+        column={column}
+        value={isSelectFilter(value) ? value : { values: [] }}
+        onChange={onChange}
+      />
+    )
+  }
+  return (
+    <NumericPopover
+      value={value != null && !isSelectFilter(value) ? value : {}}
+      onChange={onChange}
+    />
+  )
+}
+
 interface AddButtonProps {
   columns: FilterableColumn[]
   filters: FilterMap
-  onFilterChange: (columnId: string, filter: NumericFilter) => void
+  onFilterChange: (columnId: string, filter: ColumnFilter) => void
   label?: string
 }
 
@@ -92,18 +162,22 @@ export function TableFilterAddButton({
     }
   }, [anyOpen])
 
+  const openColumnDef = columns.find((c) => c.id === openColumn)
+
   return (
     <div className="filter-add-group" ref={ref}>
       <button
         className="filter-add-btn"
         aria-haspopup="true"
         aria-expanded={anyOpen}
+        aria-label={label}
+        title={label}
         onClick={() => {
           setOpenColumn(null)
           setMenuOpen((prev) => !prev)
         }}
       >
-        {label}
+        <FilterIcon />
       </button>
       {menuOpen && (
         <div className="filter-add-menu">
@@ -121,10 +195,11 @@ export function TableFilterAddButton({
           ))}
         </div>
       )}
-      {openColumn !== null && (
-        <NumericPopover
-          value={filters[openColumn] ?? {}}
-          onChange={(f) => onFilterChange(openColumn, f)}
+      {openColumnDef && (
+        <FilterPopover
+          column={openColumnDef}
+          value={filters[openColumnDef.id]}
+          onChange={(f) => onFilterChange(openColumnDef.id, f)}
         />
       )}
     </div>
@@ -134,11 +209,11 @@ export function TableFilterAddButton({
 interface PillsProps {
   columns: FilterableColumn[]
   filters: FilterMap
-  onFilterChange: (columnId: string, filter: NumericFilter) => void
+  onFilterChange: (columnId: string, filter: ColumnFilter) => void
   onRemove: (columnId: string) => void
 }
 
-/** Active numeric-filter pills for the control panel: editable and removable. */
+/** Active filter pills for the control panel: editable and removable. */
 export function TableFilterPills({
   columns,
   filters,
@@ -183,8 +258,9 @@ export function TableFilterPills({
             </button>
           </span>
           {editColumn === c.id && (
-            <NumericPopover
-              value={filters[c.id] ?? {}}
+            <FilterPopover
+              column={c}
+              value={filters[c.id]}
               onChange={(f) => onFilterChange(c.id, f)}
             />
           )}

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
+import { SortIcon } from './table/icons'
 
 export interface SortDescriptor {
   id: string
@@ -59,11 +60,11 @@ export function SortAddButton({
       <button
         className={className}
         onClick={() => setMenuOpen((o) => !o)}
-        title="Add sort tier"
+        title={label}
         aria-label="Add sort tier"
         aria-expanded={menuOpen}
       >
-        {label}
+        <SortIcon />
       </button>
       {menuOpen && (
         <ul className="sort-tier-menu">

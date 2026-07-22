@@ -341,7 +341,7 @@ export const TrackTable = memo(function TrackTable({
     () =>
       col.display({
         id: 'play',
-        header: '',
+        header: 'Pre.',
         size: PLAY_COL_PX,
         minSize: 28,
         enableSorting: false,

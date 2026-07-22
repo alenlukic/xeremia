@@ -33,9 +33,10 @@ import { TableControlPanel } from './table/TableControlPanel'
 import { TableFilterAddButton, TableFilterPills } from './table/TableFilterBar'
 import {
   isActiveFilter,
-  passesFilter,
+  passesColumnFilter,
+  type ColumnFilter,
+  type FilterableColumn,
   type FilterMap,
-  type NumericFilter,
 } from './table/tableFilter'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 
@@ -90,8 +91,16 @@ const DEFAULT_POOL_SORTING: SortDescriptor[] = [
   { id: 'insertion_order', desc: false },
 ]
 
-/** Filterable pool columns for the design-system Add-filter control. */
-const POOL_FILTER_COLUMNS = [{ id: 'bpm', label: 'BPM' }]
+/** Camelot codes present in the pool, ascending — the Key filter's choices. */
+function poolKeyOptions(pool: PoolEntry[]): string[] {
+  const seen = new Set<string>()
+  for (const e of pool) {
+    if (e.track?.camelot_code) {
+      seen.add(e.track.camelot_code)
+    }
+  }
+  return [...seen].sort()
+}
 
 type SubgroupDropSource = 'browse' | 'tracklist' | 'pool'
 
@@ -546,7 +555,11 @@ function PoolTableHead({
           : 'set-ws-th'
 
     if (colId === 'play') {
-      return <th key={colId} className={thClass} />
+      return (
+        <th key={colId} className={thClass}>
+          <div className="th-content th-content--play">Pre.</div>
+        </th>
+      )
     }
 
     return (
@@ -1114,12 +1127,9 @@ export function SetPoolTable({
   // Numeric column filters (design-system Add filter), applied on top of the
   // active tab/scope. Keyed by column id (currently BPM).
   const [poolFilters, setPoolFilters] = useState<FilterMap>({})
-  const setPoolFilter = useCallback(
-    (columnId: string, filter: NumericFilter) => {
-      setPoolFilters((prev) => ({ ...prev, [columnId]: filter }))
-    },
-    [],
-  )
+  const setPoolFilter = useCallback((columnId: string, filter: ColumnFilter) => {
+    setPoolFilters((prev) => ({ ...prev, [columnId]: filter }))
+  }, [])
   const removePoolFilter = useCallback((columnId: string) => {
     setPoolFilters((prev) => {
       const next = { ...prev }
@@ -1127,17 +1137,36 @@ export function SetPoolTable({
       return next
     })
   }, [])
+  const poolFilterColumns = useMemo<FilterableColumn[]>(
+    () => [
+      { id: 'bpm', label: 'BPM' },
+      { id: 'key', label: 'Key', kind: 'select', options: poolKeyOptions(pool) },
+    ],
+    [pool],
+  )
   const bpmFilter = poolFilters.bpm
+  const keyFilter = poolFilters.key
   const filterEntries = useCallback(
     (entries: PoolEntry[]) => {
-      if (!isActiveFilter(bpmFilter)) {
+      const bpmActive = isActiveFilter(bpmFilter)
+      const keyActive = isActiveFilter(keyFilter)
+      if (!bpmActive && !keyActive) {
         return entries
       }
-      return entries.filter((e) =>
-        passesFilter(e.track?.bpm ?? null, bpmFilter),
-      )
+      return entries.filter((e) => {
+        if (bpmActive && !passesColumnFilter(e.track?.bpm ?? null, bpmFilter)) {
+          return false
+        }
+        if (
+          keyActive &&
+          !passesColumnFilter(e.track?.camelot_code ?? null, keyFilter)
+        ) {
+          return false
+        }
+        return true
+      })
     },
-    [bpmFilter],
+    [bpmFilter, keyFilter],
   )
 
   const handleColumnDragStart = useCallback(
@@ -1477,7 +1506,7 @@ export function SetPoolTable({
               />
             )}
             <TableFilterAddButton
-              columns={POOL_FILTER_COLUMNS}
+              columns={poolFilterColumns}
               filters={poolFilters}
               onFilterChange={setPoolFilter}
               label="Add filter"
@@ -1496,9 +1525,9 @@ export function SetPoolTable({
             hideAddButton
           />
         )}
-        {isActiveFilter(poolFilters.bpm) && (
+        {(isActiveFilter(poolFilters.bpm) || isActiveFilter(poolFilters.key)) && (
           <TableFilterPills
-            columns={POOL_FILTER_COLUMNS}
+            columns={poolFilterColumns}
             filters={poolFilters}
             onFilterChange={setPoolFilter}
             onRemove={removePoolFilter}

@@ -1,4 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { FilterIcon } from './table/icons'
 import {
   FILTER_KIND_LABELS,
   isActiveCondition,
@@ -389,10 +391,13 @@ function FilterAddControl({
   target,
   label,
   className,
+  icon,
 }: BrowseFilterProps & {
   target: AddTarget
   label: string
   className: string
+  /** When set, renders in place of the label text (label becomes the a11y name). */
+  icon?: ReactNode
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [draftKind, setDraftKind] = useState<FilterKind | null>(null)
@@ -410,12 +415,14 @@ function FilterAddControl({
         className={className}
         aria-haspopup="menu"
         aria-expanded={anyOpen}
+        aria-label={label}
+        title={label}
         onClick={() => {
           setDraftKind(null)
           setMenuOpen((prev) => !prev)
         }}
       >
-        {label}
+        {icon ?? label}
       </button>
       {menuOpen && (
         <div className="filter-add-menu" role="menu">
@@ -514,6 +521,7 @@ export function BrowseFilterAddButton(props: BrowseFilterProps) {
       target={{ mode: 'firstGroup' }}
       label="Add filter"
       className="filter-add-btn"
+      icon={<FilterIcon />}
     />
   )
 }

@@ -597,6 +597,25 @@ body,
   background: var(--accent-dim);
 }
 
+/* Sort/filter header controls are icon-only — centre the glyph and square up
+   the padding that was sized for text labels. */
+.filter-add-btn,
+.ds-header-btn,
+.sort-tier-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.filter-add-btn,
+.ds-header-btn {
+  padding: 4px 8px;
+}
+
+.sort-tier-add-btn {
+  padding: 3px 7px;
+}
+
 /* The Add filter button sits near the quadrant's right edge, so its menu
    and popover anchor right to stay inside the quadrant (pill popovers,
    opening from the left-aligned pills row, keep the default left anchor). */
@@ -664,6 +683,37 @@ body,
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* Checkbox list backing a 'select'-kind column filter (key, genre). */
+.filter-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  min-width: 140px;
+  overflow-y: auto;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-option:hover {
+  background: var(--surface-2);
+}
+
+.filter-popover-empty {
+  margin: 0;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
@@ -1127,6 +1177,14 @@ body,
   flex-shrink: 0;
 }
 
+/* Pinned to the header's left edge, ahead of the title. Never shrinks, so it
+   holds position when the title area scrolls (e.g. a long transition chain). */
+.ds-table-header-leading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .ds-table-header-title {
   font-size: 13px;
   font-weight: 600;
@@ -1235,10 +1293,13 @@ body,
   text-overflow: ellipsis;
   flex-shrink: 0;
 }
+/* Set controls sit to the right of the tracklist title; the extra 8px keeps the
+   leading delete button off the title text. */
 .ds-header-setcontrols {
   display: inline-flex;
   align-items: center;
   min-width: 0;
+  margin-left: 8px;
 }
 
 /* Search bar hosted in the header title slot (browse quadrant). Let the title
@@ -2490,7 +2551,7 @@ body,
   background: none;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-muted);
+  color: var(--danger);
   width: 24px;
   height: 24px;
   display: flex;
@@ -2502,7 +2563,7 @@ body,
 }
 
 .set-delete-btn:hover {
-  color: var(--danger);
+  color: var(--danger-bright, var(--danger));
   border-color: var(--danger);
 }
 
@@ -3146,6 +3207,62 @@ body,
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  position: relative;
+}
+
+/* Zoom controls floating in the Explorer's top-right corner. */
+.explorer-zoom-controls {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.explorer-zoom-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.explorer-zoom-btn:hover {
+  background: var(--surface-active, rgba(255, 255, 255, 0.08));
+}
+
+.explorer-zoom-reset {
+  font-size: 14px;
+}
+
+.explorer-zoom-level {
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, var(--text));
+  padding: 1px 0;
+  user-select: none;
+}
+
+/* Drop-target highlight while dragging a track onto a node (add as child). */
+.explorer-node-group--drop .explorer-node-body {
+  stroke: var(--accent);
+  stroke-width: 2.5;
 }
 
 .set-explorer-controls {
@@ -3204,6 +3321,13 @@ body,
 
 .set-explorer-svg {
   display: block;
+}
+
+.explorer-marquee {
+  fill: color-mix(in srgb, var(--accent) 12%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
 }
 
 .explorer-node-group {
