@@ -15,6 +15,7 @@ import {
   flexRender,
   createColumnHelper,
   type ColumnSizingState,
+  type SortingFn,
   type SortingState,
   type Updater,
 } from '@tanstack/react-table'
@@ -142,11 +143,26 @@ function displayScore(m: TransitionMatch, id: string): number | null {
   return id === 'overall_score' ? raw : raw * 100
 }
 
+/**
+ * Sort score columns by the whole-number value rendered in the table. This
+ * makes visually equal scores true ties so later sort tiers remain meaningful.
+ */
+const displayedScoreSortingFn: SortingFn<TransitionMatch> = (
+  rowA,
+  rowB,
+  columnId,
+) => {
+  const scoreA = displayScore(rowA.original, columnId)
+  const scoreB = displayScore(rowB.original, columnId)
+  return Math.round(scoreA ?? -Infinity) - Math.round(scoreB ?? -Infinity)
+}
+
 const scoreColumns = [
   col.accessor('overall_score', {
     header: 'SCORE',
     size: COL_SIZES.overall_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatOverallScore(info.getValue())}</span>
     ),
@@ -155,6 +171,7 @@ const scoreColumns = [
     header: 'Spectral',
     size: COL_SIZES.similarity_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -163,6 +180,7 @@ const scoreColumns = [
     header: 'Key',
     size: COL_SIZES.camelot_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -171,6 +189,7 @@ const scoreColumns = [
     header: 'BPM',
     size: COL_SIZES.bpm_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -179,6 +198,7 @@ const scoreColumns = [
     header: 'Genre',
     size: COL_SIZES.genre_similarity_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -187,6 +207,7 @@ const scoreColumns = [
     header: 'Recency',
     size: COL_SIZES.freshness_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -195,6 +216,7 @@ const scoreColumns = [
     header: 'Energy (MIK)',
     size: COL_SIZES.energy_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -203,6 +225,7 @@ const scoreColumns = [
     header: 'Mood',
     size: COL_SIZES.mood_continuity_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -211,6 +234,7 @@ const scoreColumns = [
     header: 'Instruments',
     size: COL_SIZES.instrument_similarity_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -219,6 +243,7 @@ const scoreColumns = [
     header: 'Vocals',
     size: COL_SIZES.vocal_clash_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -1023,7 +1048,11 @@ export const MatchesPanel = memo(function MatchesPanel({
                     <tr aria-hidden="true">
                       <td
                         colSpan={table.getVisibleLeafColumns().length}
-                        style={{ height: padBottom, padding: 0, border: 'none' }}
+                        style={{
+                          height: padBottom,
+                          padding: 0,
+                          border: 'none',
+                        }}
                       />
                     </tr>
                   )}

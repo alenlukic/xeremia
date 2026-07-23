@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MatchesPanel } from './MatchesPanel'
 import type { Track, TransitionMatch } from '../types'
@@ -72,6 +72,23 @@ function headerLabels(): string[] {
   return screen
     .getAllByRole('columnheader')
     .map((h) => columnHeaderLabel(h as HTMLElement))
+}
+
+function rowTitles(): string[] {
+  return Array.from(document.querySelectorAll('.match-track-link')).map(
+    (link) => link.textContent ?? '',
+  )
+}
+
+function sortHeader(label: string): Element {
+  const header = screen.getByRole('columnheader', {
+    name: new RegExp(label, 'i'),
+  })
+  const content = header.querySelector('.th-content')
+  if (!content) {
+    throw new Error(`Missing sortable header content for ${label}`)
+  }
+  return content
 }
 
 const matchSource = {
@@ -244,6 +261,43 @@ describe('MatchesPanel', () => {
     })
   })
 
+  describe('score sorting', () => {
+    it('uses rounded displayed scores so later tiers break visual ties', () => {
+      render(
+        <MatchesPanel
+          matchSource={matchSource}
+          matches={[
+            makeMatch({
+              candidate_id: 1,
+              title: 'Below half',
+              overall_score: 83.49,
+              similarity_score: 0.51,
+            }),
+            makeMatch({
+              candidate_id: 2,
+              title: 'Half point',
+              overall_score: 82.5,
+              similarity_score: 0.6,
+            }),
+            makeMatch({
+              candidate_id: 3,
+              title: 'Higher score',
+              overall_score: 84.1,
+              similarity_score: 0.4,
+            }),
+          ]}
+          loading={false}
+          {...testMatchesPanelTableProps}
+        />,
+      )
+
+      fireEvent.click(sortHeader('SCORE'))
+      fireEvent.click(sortHeader('Spectral'), { shiftKey: true })
+
+      expect(rowTitles()).toEqual(['Higher score', 'Half point', 'Below half'])
+    })
+  })
+
   describe('same/higher/lower toggles', () => {
     it('renders three persistent toggle filters, all on by default', () => {
       render(
@@ -338,9 +392,9 @@ describe('MatchesPanel', () => {
         />,
       )
       await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
-      const items = [
-        ...document.querySelectorAll('.filter-add-menu-item'),
-      ].map((el) => el.textContent)
+      const items = [...document.querySelectorAll('.filter-add-menu-item')].map(
+        (el) => el.textContent,
+      )
       // Track attributes first, then the compatibility scores — relabelled so
       // they no longer read as a second Key/BPM/Genre.
       expect(items.slice(0, 3)).toEqual(['Key', 'BPM', 'Genre'])
@@ -365,9 +419,7 @@ describe('MatchesPanel', () => {
       expect(screen.getByText('In 9A')).toBeInTheDocument()
 
       await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Key' }),
-      )
+      await userEvent.click(screen.getByRole('button', { name: 'Key' }))
       const popover = screen.getByRole('dialog', { name: 'Value filter' })
       await userEvent.click(within(popover).getByLabelText('8B'))
 
