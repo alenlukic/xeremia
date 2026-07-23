@@ -231,6 +231,7 @@ CREATE TABLE IF NOT EXISTS public.scoring_weight_override (
 --
 
 CREATE TABLE IF NOT EXISTS public.table_preference (
+    device_hash character varying(64) DEFAULT '__global__'::character varying NOT NULL,
     table_id character varying(32) NOT NULL,
     column_order jsonb NOT NULL,
     column_visibility jsonb NOT NULL,
@@ -709,7 +710,7 @@ ALTER TABLE ONLY public.scoring_weight_override
 --
 
 ALTER TABLE ONLY public.table_preference
-    ADD CONSTRAINT table_preference_pkey PRIMARY KEY (table_id);
+    ADD CONSTRAINT table_preference_pkey PRIMARY KEY (device_hash, table_id);
 
 
 --

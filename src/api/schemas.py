@@ -189,6 +189,7 @@ class PoolEntryResponse(BaseModel):
     set_id: int
     track_id: int
     insertion_order: int
+    highlight_color: Optional[str] = None
     track: Optional[TrackResponse] = None
 
 
@@ -254,6 +255,11 @@ class PoolAddRequest(BaseModel):
 class PoolReorderRequest(BaseModel):
     track_id: int
     new_position: int
+
+
+class PoolHighlightRequest(BaseModel):
+    # #RRGGBB, or null/empty to clear the highlight.
+    highlight_color: Optional[str] = None
 
 
 class TracklistAddRequest(BaseModel):

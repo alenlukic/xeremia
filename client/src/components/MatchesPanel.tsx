@@ -15,6 +15,7 @@ import {
   flexRender,
   createColumnHelper,
   type ColumnSizingState,
+  type SortingFn,
   type SortingState,
   type Updater,
 } from '@tanstack/react-table'
@@ -31,6 +32,7 @@ import {
   useExternalTrackDrop,
   type TrackDropTarget,
 } from '../hooks/useExternalTrackDrop'
+import { useColumnResizeGuard } from '../hooks/useColumnResizeGuard'
 import { PlayButton } from './PlayButton'
 import {
   TableColumnControls,
@@ -52,6 +54,13 @@ import {
   type FilterableColumn,
   type FilterMap,
 } from './table/tableFilter'
+import { BrowseFilterAddButton, BrowseFilterGroups } from './FilterBar'
+import { SlidersIcon } from './table/icons'
+import {
+  matchesModel,
+  isActiveModel,
+  type FilterModel,
+} from '../hooks/useTrackFilters'
 import { ToggleFilterGroup, type ToggleOption } from './table/ToggleFilterGroup'
 import { normalizeScore, scoreCellStyle } from './table/scoreGradient'
 
@@ -78,7 +87,7 @@ const SCORE_SCALE: Record<string, '0-1' | '0-100'> = {
 }
 
 /** Columns that cannot be sorted (display/action columns). */
-const NON_SORTABLE = new Set(['play', 'add_to_set', 'details'])
+const NON_SORTABLE = new Set(['play', 'details'])
 
 const COL_SIZES: Record<string, number> = {
   overall_score: 70,
@@ -104,35 +113,6 @@ const TOTAL_BASE = Object.values(COL_SIZES).reduce((a, b) => a + b, 0)
 
 const col = createColumnHelper<TransitionMatch>()
 
-/**
- * Filters on the candidate's own attributes rather than its compatibility
- * scores. `TransitionMatch` carries only scores, so these read through to the
- * cached collection track behind `candidate_id`.
- */
-const TRACK_FILTERS = {
-  track_key: { label: 'Key', kind: 'select' as const },
-  track_bpm: { label: 'BPM', kind: 'numeric' as const },
-  track_genre: { label: 'Genre', kind: 'select' as const },
-}
-
-type TrackFilterId = keyof typeof TRACK_FILTERS
-
-function trackFilterValue(
-  track: Track | undefined,
-  id: TrackFilterId,
-): string | number | null {
-  if (!track) {
-    return null
-  }
-  if (id === 'track_key') {
-    return track.camelot_code ?? null
-  }
-  if (id === 'track_bpm') {
-    return track.bpm ?? null
-  }
-  return track.genre ?? null
-}
-
 /** The value a numeric filter compares against — always in displayed (0–100) scale. */
 function displayScore(m: TransitionMatch, id: string): number | null {
   const raw = (m as unknown as Record<string, number | null | undefined>)[id]
@@ -142,11 +122,26 @@ function displayScore(m: TransitionMatch, id: string): number | null {
   return id === 'overall_score' ? raw : raw * 100
 }
 
+/**
+ * Sort score columns by the whole-number value rendered in the table. This
+ * makes visually equal scores true ties so later sort tiers remain meaningful.
+ */
+const displayedScoreSortingFn: SortingFn<TransitionMatch> = (
+  rowA,
+  rowB,
+  columnId,
+) => {
+  const scoreA = displayScore(rowA.original, columnId)
+  const scoreB = displayScore(rowB.original, columnId)
+  return Math.round(scoreA ?? -Infinity) - Math.round(scoreB ?? -Infinity)
+}
+
 const scoreColumns = [
   col.accessor('overall_score', {
     header: 'SCORE',
     size: COL_SIZES.overall_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatOverallScore(info.getValue())}</span>
     ),
@@ -155,6 +150,7 @@ const scoreColumns = [
     header: 'Spectral',
     size: COL_SIZES.similarity_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -163,6 +159,7 @@ const scoreColumns = [
     header: 'Key',
     size: COL_SIZES.camelot_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -171,6 +168,7 @@ const scoreColumns = [
     header: 'BPM',
     size: COL_SIZES.bpm_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -179,6 +177,7 @@ const scoreColumns = [
     header: 'Genre',
     size: COL_SIZES.genre_similarity_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -187,6 +186,7 @@ const scoreColumns = [
     header: 'Recency',
     size: COL_SIZES.freshness_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -195,6 +195,7 @@ const scoreColumns = [
     header: 'Energy (MIK)',
     size: COL_SIZES.energy_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -203,6 +204,7 @@ const scoreColumns = [
     header: 'Mood',
     size: COL_SIZES.mood_continuity_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -211,6 +213,7 @@ const scoreColumns = [
     header: 'Instruments',
     size: COL_SIZES.instrument_similarity_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -219,6 +222,7 @@ const scoreColumns = [
     header: 'Vocals',
     size: COL_SIZES.vocal_clash_score,
     minSize: 50,
+    sortingFn: displayedScoreSortingFn,
     cell: (info) => (
       <span className="mono">{formatScore(info.getValue())}</span>
     ),
@@ -242,14 +246,15 @@ interface Props {
   onColumnWidthFlush: (columnId: string, width: number) => void
   onViewDetail?: (match: TransitionMatch) => void
   onUseAsSource?: (candidateId: number) => void
-  onAddToSet?: (candidateId: number) => void
-  onAddToPool?: (candidateId: number) => void
-  onAddToTracklist?: (candidateId: number) => void
   /** Loads the dropped track's matches (drag from browse, tracklist or pool). */
   onTrackDrop?: (trackId: number) => void
   /** Collection tracks by id — supplies the candidate attributes (key/BPM/genre)
    *  that `TransitionMatch` itself does not carry. */
   trackIndex?: Map<number, Track>
+  /** Collection-wide genre / label value lists for the candidate-attribute
+   *  filter editors (mirrors the browse quadrant's filter). */
+  genres?: string[]
+  labels?: string[]
 }
 
 export const MatchesPanel = memo(function MatchesPanel({
@@ -265,12 +270,12 @@ export const MatchesPanel = memo(function MatchesPanel({
   onColumnWidthFlush,
   onViewDetail,
   onUseAsSource,
-  onAddToSet,
-  onAddToPool,
-  onAddToTracklist,
   onTrackDrop,
   trackIndex,
+  genres = [],
+  labels = [],
 }: Props) {
+  const { onResizeStart, shouldIgnoreSortClick } = useColumnResizeGuard()
   const outerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const topScrollRef = useRef<HTMLDivElement>(null)
@@ -292,8 +297,13 @@ export const MatchesPanel = memo(function MatchesPanel({
   const [activeBuckets, setActiveBuckets] = useState<Set<string>>(
     () => new Set(BUCKETS.map((b) => b.key)),
   )
-  // Active numeric column filters, keyed by column id, in displayed (0–100) scale.
+  // Active numeric score-column filters, keyed by column id, in displayed
+  // (0–100) scale.
   const [filters, setFilters] = useState<FilterMap>({})
+  // Candidate-attribute filter (Key/BPM/Genre/…) — the same grouped model the
+  // browse quadrant uses, applied to the collection track behind each candidate.
+  const [filterModel, setFilterModel] = useState<FilterModel>([])
+  const filterModelActive = isActiveModel(filterModel)
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null)
   const hasTrack = matchSource != null
@@ -319,53 +329,6 @@ export const MatchesPanel = memo(function MatchesPanel({
           />
         ),
       }),
-      col.display({
-        id: 'add_to_set',
-        header: 'Actions',
-        size: 92,
-        minSize: 60,
-        enableSorting: false,
-        cell: ({ row }) =>
-          onAddToPool || onAddToTracklist ? (
-            <div className="set-dual-actions">
-              {onAddToPool && (
-                <button
-                  className="match-action-btn match-action-btn--small"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onAddToPool(row.original.candidate_id)
-                  }}
-                  title="Add to Pool"
-                >
-                  + Pool
-                </button>
-              )}
-              {onAddToTracklist && (
-                <button
-                  className="match-action-btn match-action-btn--small"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onAddToTracklist(row.original.candidate_id)
-                  }}
-                  title="Add to Tracklist"
-                >
-                  + TL
-                </button>
-              )}
-            </div>
-          ) : onAddToSet ? (
-            <button
-              className="match-action-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                onAddToSet(row.original.candidate_id)
-              }}
-              title="Add to set"
-            >
-              + Set
-            </button>
-          ) : null,
-      }),
       col.accessor('title', {
         id: 'track_title',
         header: 'Track',
@@ -390,6 +353,7 @@ export const MatchesPanel = memo(function MatchesPanel({
         size: 70,
         minSize: 50,
         enableSorting: false,
+        enableResizing: false,
         cell: (info) => (
           <div className="match-actions-cell">
             <button
@@ -429,7 +393,7 @@ export const MatchesPanel = memo(function MatchesPanel({
     ]
 
     return cols
-  }, [onViewDetail, onUseAsSource, onAddToSet, onAddToPool, onAddToTracklist])
+  }, [onViewDetail, onUseAsSource])
 
   // The play ("Pre.") column is a fixed leading column (as in the other
   // quadrants), independent of the persisted/reorderable order of the rest.
@@ -451,8 +415,8 @@ export const MatchesPanel = memo(function MatchesPanel({
     return counts
   }, [matches])
 
-  // All matches in one table, narrowed by the persistent bucket toggles and any
-  // active numeric column filters.
+  // All matches in one table, narrowed by the persistent bucket toggles, the
+  // candidate-attribute filter model, and any active numeric score filters.
   const visibleMatches = useMemo(() => {
     const activeFilters = Object.entries(filters).filter(([, f]) =>
       isActiveFilter(f),
@@ -461,21 +425,29 @@ export const MatchesPanel = memo(function MatchesPanel({
       if (!activeBuckets.has(m.bucket)) {
         return false
       }
+      // Candidate-attribute filter reads through to the cached collection track.
+      // With an active model, a candidate whose track is not cached fails.
+      const candidate = trackIndex?.get(m.candidate_id)
+      if (
+        candidate ? !matchesModel(candidate, filterModel) : filterModelActive
+      ) {
+        return false
+      }
       for (const [id, f] of activeFilters) {
-        const value =
-          id in TRACK_FILTERS
-            ? trackFilterValue(
-                trackIndex?.get(m.candidate_id),
-                id as TrackFilterId,
-              )
-            : displayScore(m, id)
-        if (!passesColumnFilter(value, f)) {
+        if (!passesColumnFilter(displayScore(m, id), f)) {
           return false
         }
       }
       return true
     })
-  }, [matches, activeBuckets, filters, trackIndex])
+  }, [
+    matches,
+    activeBuckets,
+    filters,
+    filterModel,
+    filterModelActive,
+    trackIndex,
+  ])
 
   useLayoutEffect(() => {
     const el = outerRef.current
@@ -597,33 +569,13 @@ export const MatchesPanel = memo(function MatchesPanel({
         .map((id) => ({ id, label: registryById.get(id)?.label ?? id })),
     [visibleIds, registryById],
   )
-  // Candidate-attribute filters come first; their options are the values that
-  // actually occur in the current match list.
-  const trackFilterColumns = useMemo<FilterableColumn[]>(() => {
-    const optionsFor = (id: TrackFilterId) => {
-      const seen = new Set<string>()
-      for (const m of matches) {
-        const v = trackFilterValue(trackIndex?.get(m.candidate_id), id)
-        if (v != null && v !== '') {
-          seen.add(String(v))
-        }
-      }
-      return [...seen].sort()
-    }
-    return (Object.keys(TRACK_FILTERS) as TrackFilterId[]).map((id) => {
-      const def = TRACK_FILTERS[id]
-      return def.kind === 'select'
-        ? { id, label: def.label, kind: def.kind, options: optionsFor(id) }
-        : { id, label: def.label, kind: def.kind }
-    })
-  }, [matches, trackIndex])
-
+  // Score-column filters only — compatibility scores, not track attributes.
+  // Candidate attributes (Key/BPM/Genre/…) are handled by the grouped filter
+  // model shared with the browse quadrant. Labelled "… score" so they don't
+  // read as a second "Key"/"BPM"/"Genre".
   const filterColumns = useMemo<FilterableColumn[]>(
-    () => [
-      ...trackFilterColumns,
-      // Score columns are compatibility scores, not track attributes — label
-      // them as such so they don't read as a second "Key"/"BPM"/"Genre".
-      ...visibleIds
+    () =>
+      visibleIds
         .filter((id) => id in SCORE_SCALE)
         .map((id) => {
           const label = registryById.get(id)?.label ?? id
@@ -632,8 +584,7 @@ export const MatchesPanel = memo(function MatchesPanel({
             label: id === 'overall_score' ? label : `${label} score`,
           }
         }),
-    ],
-    [trackFilterColumns, visibleIds, registryById],
+    [visibleIds, registryById],
   )
 
   const bucketOptions: ToggleOption[] = BUCKETS.map((b) => ({
@@ -780,11 +731,18 @@ export const MatchesPanel = memo(function MatchesPanel({
             label="Add sort"
             className="ds-header-btn"
           />
+          <BrowseFilterAddButton
+            model={filterModel}
+            setModel={setFilterModel}
+            genres={genres}
+            labels={labels}
+          />
           <TableFilterAddButton
             columns={filterColumns}
             filters={filters}
             onFilterChange={setFilter}
-            label="Add filter"
+            label="Add score filter"
+            icon={<SlidersIcon />}
           />
         </>
       }
@@ -805,6 +763,14 @@ export const MatchesPanel = memo(function MatchesPanel({
         onSortingChange={setSorting}
         hideAddButton
       />
+      {filterModelActive && (
+        <BrowseFilterGroups
+          model={filterModel}
+          setModel={setFilterModel}
+          genres={genres}
+          labels={labels}
+        />
+      )}
       <TableFilterPills
         columns={filterColumns}
         filters={filters}
@@ -859,6 +825,12 @@ export const MatchesPanel = memo(function MatchesPanel({
                     return (
                       <th
                         key={header.id}
+                        aria-label={
+                          registryById.get(header.column.id)?.label ??
+                          String(
+                            header.column.columnDef.header ?? header.column.id,
+                          )
+                        }
                         style={{ width: header.getSize() }}
                         className={`${
                           draggedColumn === header.column.id
@@ -886,7 +858,12 @@ export const MatchesPanel = memo(function MatchesPanel({
                           onDragEnd={handleDragEnd}
                           onClick={
                             canSort
-                              ? header.column.getToggleSortingHandler()
+                              ? (e) => {
+                                  if (shouldIgnoreSortClick()) {
+                                    return
+                                  }
+                                  header.column.getToggleSortingHandler()?.(e)
+                                }
                               : undefined
                           }
                         >
@@ -900,6 +877,10 @@ export const MatchesPanel = memo(function MatchesPanel({
                               label={
                                 registryById.get(header.column.id)?.label ??
                                 String(header.column.columnDef.header ?? '')
+                              }
+                              removable={
+                                registryById.get(header.column.id)
+                                  ?.removable !== false
                               }
                               onRemove={() =>
                                 onToggleColumnVisibility(header.column.id)
@@ -925,8 +906,14 @@ export const MatchesPanel = memo(function MatchesPanel({
                         {header.column.getCanResize() && (
                           <div
                             className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
-                            onMouseDown={header.getResizeHandler()}
-                            onTouchStart={header.getResizeHandler()}
+                            onMouseDown={(e) => {
+                              onResizeStart()
+                              header.getResizeHandler()(e)
+                            }}
+                            onTouchStart={(e) => {
+                              onResizeStart()
+                              header.getResizeHandler()(e)
+                            }}
                           />
                         )}
                       </th>
@@ -1023,7 +1010,11 @@ export const MatchesPanel = memo(function MatchesPanel({
                     <tr aria-hidden="true">
                       <td
                         colSpan={table.getVisibleLeafColumns().length}
-                        style={{ height: padBottom, padding: 0, border: 'none' }}
+                        style={{
+                          height: padBottom,
+                          padding: 0,
+                          border: 'none',
+                        }}
                       />
                     </tr>
                   )}

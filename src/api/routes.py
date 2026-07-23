@@ -5,7 +5,7 @@ import os
 from collections import Counter
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from src.api.schemas import (
@@ -21,6 +21,7 @@ from src.api.schemas import (
     MatchDetailResponse,
     MoveRequest,
     PoolAddRequest,
+    PoolHighlightRequest,
     PoolReorderRequest,
     PoolSubgroupResponse,
     SearchSuggestion,
@@ -616,6 +617,7 @@ def _serialize_hydrated(hydration, session) -> dict:
                 "set_id": e.set_id,
                 "track_id": e.track_id,
                 "insertion_order": e.insertion_order,
+                "highlight_color": e.highlight_color,
                 "track": track_map.get(e.track_id),
             }
             for e in hydration["pool"]
@@ -829,6 +831,29 @@ def api_pool_reorder(set_id: int, body: PoolReorderRequest):
         session.rollback()
         logger.exception("Pool reorder failed")
         raise HTTPException(status_code=500, detail="Reorder failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/pool/{track_id}/highlight")
+def api_pool_set_highlight(set_id: int, track_id: int, body: PoolHighlightRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.pool_set_highlight(set_id, track_id, body.highlight_color)
+        if not ok:
+            status = 404 if error == "Track not found in pool" else 400
+            raise HTTPException(status_code=status, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Pool highlight failed")
+        raise HTTPException(status_code=500, detail="Highlight failed")
     finally:
         session.close()
 
@@ -1380,6 +1405,29 @@ def api_explorer_edge_scores(set_id: int, body: ExplorerEdgeScoreRequest):
 
 _VALID_TABLE_IDS = {item.value for item in TableId}
 
+# Device hashes are client-generated hex digests; cap the length defensively and
+# keep the input to a safe identifier charset before it reaches the database.
+_MAX_DEVICE_HASH_LEN = 64
+_DEVICE_HASH_ALLOWED = set(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+)
+
+
+def _resolve_device_hash(raw: Optional[str]) -> str:
+    """Normalize the ``X-Device-Id`` header to a stored device hash.
+
+    Missing, blank, or malformed values fall back to the legacy global bucket so
+    older clients keep working during and after the device-scoped migration.
+    """
+    from src.models.table_preference import GLOBAL_DEVICE_HASH
+
+    if not raw:
+        return GLOBAL_DEVICE_HASH
+    candidate = raw.strip()[:_MAX_DEVICE_HASH_LEN]
+    if not candidate or any(ch not in _DEVICE_HASH_ALLOWED for ch in candidate):
+        return GLOBAL_DEVICE_HASH
+    return candidate
+
 
 def _serialize_table_preference(row) -> dict:
     updated = row.updated_at.isoformat() if row.updated_at else None
@@ -1396,14 +1444,27 @@ def _serialize_table_preference(row) -> dict:
     "/admin/table-preferences",
     response_model=TablePreferencesListResponse,
 )
-def api_get_table_preferences():
+def api_get_table_preferences(x_device_id: Optional[str] = Header(default=None)):
     from sqlalchemy.exc import ProgrammingError
 
-    from src.models.table_preference import TablePreference
+    from src.models.table_preference import GLOBAL_DEVICE_HASH, TablePreference
 
+    device_hash = _resolve_device_hash(x_device_id)
     session = _get_session()
     try:
-        rows = session.query(TablePreference).all()
+        rows = (
+            session.query(TablePreference)
+            .filter_by(device_hash=device_hash)
+            .all()
+        )
+        # A device with no saved rows inherits the legacy installation-global
+        # configuration so the device-scoped migration is seamless.
+        if not rows and device_hash != GLOBAL_DEVICE_HASH:
+            rows = (
+                session.query(TablePreference)
+                .filter_by(device_hash=GLOBAL_DEVICE_HASH)
+                .all()
+            )
         return {
             "preferences": [_serialize_table_preference(row) for row in rows],
         }
@@ -1429,7 +1490,11 @@ def api_get_table_preferences():
     "/admin/table-preferences/{table_id}",
     response_model=TablePreferenceResponse,
 )
-def api_update_table_preferences(table_id: str, body: TablePreferenceConfig):
+def api_update_table_preferences(
+    table_id: str,
+    body: TablePreferenceConfig,
+    x_device_id: Optional[str] = Header(default=None),
+):
     from sqlalchemy.exc import ProgrammingError
 
     from src.models.table_preference import TablePreference
@@ -1437,16 +1502,23 @@ def api_update_table_preferences(table_id: str, body: TablePreferenceConfig):
     if table_id not in _VALID_TABLE_IDS:
         raise HTTPException(status_code=400, detail="Unknown table_id")
 
+    device_hash = _resolve_device_hash(x_device_id)
     session = _get_session()
     try:
-        row = session.query(TablePreference).filter_by(table_id=table_id).first()
+        row = (
+            session.query(TablePreference)
+            .filter_by(device_hash=device_hash, table_id=table_id)
+            .first()
+        )
         payload = {
             "column_order": body.column_order,
             "column_visibility": body.column_visibility,
             "column_widths": body.column_widths,
         }
         if row is None:
-            row = TablePreference(table_id=table_id, **payload)
+            row = TablePreference(
+                device_hash=device_hash, table_id=table_id, **payload
+            )
             session.add(row)
         else:
             row.column_order = payload["column_order"]

@@ -46,7 +46,6 @@ function renderTracklist(
       allTracks={[]}
       tracklist={entries}
       onRemove={noop}
-      onMoveToPool={noop}
       onReorder={noop}
       onUpdateNote={noop}
       onAddTrack={noop}
@@ -105,16 +104,18 @@ describe('SetTracklist', () => {
     expect(bpmCell?.textContent).toBe('128')
   })
 
-  it('uses fixed-width actions column via colgroup', () => {
-    const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })])
-    const col = container.querySelector('col.set-ws-col-actions-tracklist')
-    expect(col).toBeTruthy()
-  })
-
-  it('renders Actions header with set-ws-th-actions class', () => {
-    renderTracklist([makeEntry({ id: 1, track_id: 10 })])
-    const actionsHeader = screen.getByRole('columnheader', { name: /actions/i })
-    expect(actionsHeader.classList.contains('set-ws-th-actions')).toBe(true)
+  it('renders a left-side row remove control', () => {
+    const onRemove = vi.fn()
+    const { container } = renderTracklist(
+      [makeEntry({ id: 1, track_id: 10 })],
+      {
+        onRemove,
+      },
+    )
+    expect(container.querySelector('col.set-ws-col-remove')).toBeTruthy()
+    const btn = screen.getByRole('button', { name: 'Remove from tracklist' })
+    fireEvent.click(btn)
+    expect(onRemove).toHaveBeenCalledWith(10)
   })
 
   it('shows em-dash when key/bpm are missing', () => {
@@ -140,14 +141,17 @@ describe('SetTracklist', () => {
     expect(screen.getByText(/tracklist is empty/i)).toBeTruthy()
   })
 
-  it('does not render move up/down buttons (reordering is drag-and-drop)', () => {
+  it('does not render move up/down or move-to-pool buttons (reordering is drag-and-drop)', () => {
     renderTracklist([
       makeEntry({ id: 1, track_id: 10, position: 0 }),
       makeEntry({ id: 2, track_id: 20, position: 1 }),
     ])
     expect(screen.queryByTitle('Move up')).toBeNull()
     expect(screen.queryByTitle('Move down')).toBeNull()
-    expect(screen.getAllByTitle('Move to pool')).toHaveLength(2)
+    expect(screen.queryByTitle('Move to pool')).toBeNull()
+    expect(
+      screen.getAllByRole('button', { name: 'Remove from tracklist' }),
+    ).toHaveLength(2)
   })
 })
 
@@ -160,8 +164,8 @@ describe('SetTracklist column resizing', () => {
     const { container } = renderTracklist([makeEntry({ id: 1, track_id: 10 })])
     const titleTh = screen.getByRole('columnheader', { name: /title/i })
     expect(titleTh.querySelector('.col-resizer')).toBeTruthy()
-    // num, title, key, bpm, note, actions — Actions is now resizable too.
-    expect(container.querySelectorAll('.col-resizer')).toHaveLength(6)
+    // num, title, key, bpm, note — remove chrome is not a preference column.
+    expect(container.querySelectorAll('.col-resizer')).toHaveLength(5)
   })
 
   it('drag on a resize handle flushes the column width via callback', () => {
@@ -311,7 +315,6 @@ describe('SetTracklist cross-panel drag-and-drop', () => {
           makeEntry({ id: 3, track_id: 30, position: 2 }),
         ]}
         onRemove={noop}
-        onMoveToPool={noop}
         onReorder={noop}
         onUpdateNote={noop}
         onAddTrack={noop}

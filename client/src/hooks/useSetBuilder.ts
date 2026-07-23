@@ -8,6 +8,7 @@ import {
   poolAdd,
   poolRemove,
   poolReorder,
+  poolSetHighlight,
   poolMoveToTracklist,
   subgroupCreate as apiSubgroupCreate,
   subgroupRename as apiSubgroupRename,
@@ -483,6 +484,37 @@ export function useSetBuilder() {
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
+  const setPoolHighlight = useCallback(
+    async (trackId: number, color: string | null) => {
+      if (activeSetId === null) {
+        return
+      }
+      // Optimistic: the highlight bar should appear immediately.
+      setActiveSet((prev) =>
+        prev
+          ? {
+              ...prev,
+              pool: prev.pool.map((e) =>
+                e.track_id === trackId ? { ...e, highlight_color: color } : e,
+              ),
+            }
+          : prev,
+      )
+      try {
+        await poolSetHighlight(activeSetId, trackId, color)
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(
+            friendlyError(err, 'Could not update highlight.'),
+          )
+          // Reconcile with the server on failure so the UI can't drift.
+          await refreshActive()
+        }
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
   const updateTracklistNote = useCallback(
     async (trackId: number, note: string) => {
       if (activeSetId === null) {
@@ -752,6 +784,7 @@ export function useSetBuilder() {
     dropTrackToSubgroup,
     reorderTracklist,
     reorderPool,
+    setPoolHighlight,
     updateTracklistNote,
     addExplorerNode,
     deleteExplorerNode,

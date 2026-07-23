@@ -4,6 +4,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Sequence,
+    String,
     UniqueConstraint,
     func,
 )
@@ -39,4 +40,6 @@ class SetPoolEntry(Base):
         index=True,
     )
     insertion_order = Column("insertion_order", Integer, nullable=False, default=0)
+    # Optional per-track highlight color (#RRGGBB) rendered as a bar in the pool.
+    highlight_color = Column("highlight_color", String(9), nullable=True)
     added_at = Column("added_at", DateTime, server_default=func.now(), nullable=False)

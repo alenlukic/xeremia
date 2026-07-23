@@ -144,6 +144,8 @@ export interface PoolEntry {
   set_id: number
   track_id: number
   insertion_order: number
+  /** Optional per-track highlight color (#RRGGBB); null when not highlighted. */
+  highlight_color: string | null
   track: Track | null
 }
 

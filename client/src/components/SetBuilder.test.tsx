@@ -49,6 +49,7 @@ function defaultProps() {
     removeFromPool: noop,
     movePoolToTracklist: noop,
     reorderPool: noop,
+    setPoolHighlight: noop,
     addToPool: noop,
     createSubgroup: asyncNoop as (name: string) => Promise<PoolSubgroup | null>,
     renameSubgroup: async () => true,
@@ -205,9 +206,9 @@ describe('SetBuilder', () => {
     })
   })
 
-  describe('pool and tracklist move actions', () => {
-    it('calls movePoolToTracklist when pool row action is clicked', async () => {
-      const movePoolToTracklist = vi.fn()
+  describe('pool and tracklist row remove', () => {
+    it('calls removeFromPool when the pool row × is clicked', async () => {
+      const removeFromPool = vi.fn()
       const hydrated = makeHydratedSet({
         pool: [
           {
@@ -215,6 +216,7 @@ describe('SetBuilder', () => {
             set_id: 1,
             track_id: 10,
             insertion_order: 0,
+            highlight_color: null,
             track: {
               id: 10,
               title: 'Pool Track',
@@ -234,15 +236,17 @@ describe('SetBuilder', () => {
         <SetBuilder
           {...defaultProps()}
           activeSet={hydrated}
-          movePoolToTracklist={movePoolToTracklist}
+          removeFromPool={removeFromPool}
         />,
       )
-      await userEvent.click(screen.getByTitle('Move to tracklist'))
-      expect(movePoolToTracklist).toHaveBeenCalledWith(10)
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Remove from pool' }),
+      )
+      expect(removeFromPool).toHaveBeenCalledWith(10)
     })
 
-    it('calls moveTracklistToPool when tracklist row action is clicked', async () => {
-      const moveTracklistToPool = vi.fn()
+    it('calls removeFromTracklist when the tracklist row × is clicked', async () => {
+      const removeFromTracklist = vi.fn()
       const hydrated = makeHydratedSet({
         tracklist: [
           {
@@ -269,11 +273,13 @@ describe('SetBuilder', () => {
         <SetBuilder
           {...defaultProps()}
           activeSet={hydrated}
-          moveTracklistToPool={moveTracklistToPool}
+          removeFromTracklist={removeFromTracklist}
         />,
       )
-      await userEvent.click(screen.getByTitle('Move to pool'))
-      expect(moveTracklistToPool).toHaveBeenCalledWith(20)
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Remove from tracklist' }),
+      )
+      expect(removeFromTracklist).toHaveBeenCalledWith(20)
     })
   })
 
@@ -354,7 +360,7 @@ describe('SetBuilder', () => {
   })
 
   describe('tracklist column headers', () => {
-    it('renders #, Title, Note, Actions headers when tracklist has entries', () => {
+    it('renders #, Title, Note headers when tracklist has entries', () => {
       const hydrated = makeHydratedSet({
         tracklist: [
           {
@@ -383,7 +389,7 @@ describe('SetBuilder', () => {
       expect(within(tracklist).getByText('#')).toBeInTheDocument()
       expect(within(tracklist).getByText('Title')).toBeInTheDocument()
       expect(within(tracklist).getByText('Note')).toBeInTheDocument()
-      expect(within(tracklist).getByText('Actions')).toBeInTheDocument()
+      expect(within(tracklist).queryByText('Actions')).not.toBeInTheDocument()
     })
   })
 
@@ -532,6 +538,7 @@ describe('SetBuilder', () => {
             set_id: 1,
             track_id: 42,
             insertion_order: 0,
+            highlight_color: null,
             track: {
               id: 42,
               title: 'Drag Me',

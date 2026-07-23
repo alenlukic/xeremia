@@ -14,6 +14,7 @@ import type {
   TablePreferenceResponse,
   TablePreferencesListResponse,
 } from '../types'
+import { getDeviceHash } from '../deviceId'
 
 export async function fetchTracks(params: {
   camelot_code?: string
@@ -253,6 +254,22 @@ export async function poolMoveToTracklist(
   })
   if (!res.ok) {
     throw new Error(`Pool move to tracklist failed: ${res.status}`)
+  }
+}
+
+/** Set (color = #RRGGBB) or clear (color = null) a pool track's highlight. */
+export async function poolSetHighlight(
+  setId: number,
+  trackId: number,
+  color: string | null,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/pool/${trackId}/highlight`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ highlight_color: color }),
+  })
+  if (!res.ok) {
+    throw new Error(`Pool highlight failed: ${res.status}`)
   }
 }
 
@@ -552,7 +569,9 @@ export async function explorerEdgeScores(
 }
 
 export async function fetchTablePreferences(): Promise<TablePreferencesListResponse> {
-  const res = await fetch('/api/admin/table-preferences')
+  const res = await fetch('/api/admin/table-preferences', {
+    headers: { 'X-Device-Id': getDeviceHash() },
+  })
   if (!res.ok) {
     throw new Error(`Failed to fetch table preferences: ${res.status}`)
   }
@@ -565,7 +584,10 @@ export async function updateTablePreferences(
 ): Promise<TablePreferenceResponse> {
   const res = await fetch(`/api/admin/table-preferences/${tableId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Device-Id': getDeviceHash(),
+    },
     body: JSON.stringify(config),
   })
   if (!res.ok) {

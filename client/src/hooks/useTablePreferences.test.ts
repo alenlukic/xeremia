@@ -70,6 +70,31 @@ describe('useTablePreferences', () => {
     vi.useRealTimers()
   })
 
+  it('persists the most recent change (regression: last toggle was dropped)', async () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() => useTablePreferences())
+    await vi.waitFor(() => expect(result.current.loading).toBe(false))
+
+    // A single isolated toggle used to be lost: the pending save payload was
+    // read before React committed the new config, so the debounced save wrote
+    // the pre-toggle state and the column reverted after reload.
+    act(() => {
+      result.current.toggleVisibility('matches', 'track_title')
+    })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
+    await vi.waitFor(() =>
+      expect(http.updateTablePreferences).toHaveBeenCalledWith(
+        'matches',
+        expect.objectContaining({
+          column_visibility: expect.objectContaining({ track_title: false }),
+        }),
+      ),
+    )
+    vi.useRealTimers()
+  })
+
   it('surfaces retryable save errors without discarding local state', async () => {
     vi.mocked(http.updateTablePreferences).mockRejectedValue(
       new Error('save failed'),
