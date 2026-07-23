@@ -713,7 +713,9 @@ describe('Blob URL lifecycle (leak prevention)', () => {
 
   beforeEach(() => {
     revokeSpy = vi.fn()
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeSpy)
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(
+      revokeSpy as (url: string) => void,
+    )
   })
 
   it('revokes an evicted blob URL but not native endpoint URLs', () => {

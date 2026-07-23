@@ -21,6 +21,12 @@ export interface ColumnRegistryEntry {
   defaultVisible?: boolean
   defaultWidth?: number
   resizable?: boolean
+  /**
+   * Whether the inline hover-× can hide this column. Identity columns (e.g. the
+   * matches "Track" column) set this false so an accidental click can never
+   * remove them — they stay adjustable only in Admin → Preferences.
+   */
+  removable?: boolean
 }
 
 export interface NormalizedTableConfig {
@@ -52,29 +58,17 @@ const SEARCH_REGISTRY: ColumnRegistryEntry[] = [
   { id: 'title', label: 'Title', defaultVisible: true, defaultWidth: 220 },
   { id: 'label', label: 'Label', defaultVisible: true, defaultWidth: 90 },
   { id: 'genre', label: 'Genre', defaultVisible: true, defaultWidth: 90 },
-  {
-    id: 'add_to_set',
-    label: 'Actions',
-    defaultVisible: true,
-    defaultWidth: 92,
-    resizable: false,
-  },
 ]
 
 const MATCHES_REGISTRY: ColumnRegistryEntry[] = [
   { id: 'play', label: 'Pre.', defaultVisible: true, resizable: false },
   {
-    id: 'add_to_set',
-    label: 'Actions',
-    defaultVisible: true,
-    defaultWidth: 92,
-    resizable: false,
-  },
-  {
     id: 'track_title',
     label: 'Track',
     defaultVisible: true,
     defaultWidth: 260,
+    // Identity column: never removable inline so it can't vanish by accident.
+    removable: false,
   },
   {
     id: 'overall_score',
@@ -142,7 +136,6 @@ const TRACKLIST_REGISTRY: ColumnRegistryEntry[] = [
   { id: 'key', label: 'Key', defaultVisible: true, defaultWidth: 62 },
   { id: 'bpm', label: 'BPM', defaultVisible: true, defaultWidth: 62 },
   { id: 'note', label: 'Note', defaultVisible: true, defaultWidth: 160 },
-  { id: 'actions', label: 'Actions', defaultVisible: true, defaultWidth: 120 },
 ]
 
 const POOL_REGISTRY: ColumnRegistryEntry[] = [
@@ -157,7 +150,6 @@ const POOL_REGISTRY: ColumnRegistryEntry[] = [
     defaultVisible: true,
     defaultWidth: 140,
   },
-  { id: 'actions', label: 'Actions', defaultVisible: true, defaultWidth: 120 },
 ]
 
 export const TABLE_REGISTRIES: Record<TableId, ColumnRegistryEntry[]> = {

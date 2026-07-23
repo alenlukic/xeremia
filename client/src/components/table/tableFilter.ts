@@ -24,9 +24,7 @@ export interface FilterableColumn {
   options?: string[]
 }
 
-export function isSelectFilter(
-  f: ColumnFilter | undefined,
-): f is SelectFilter {
+export function isSelectFilter(f: ColumnFilter | undefined): f is SelectFilter {
   return f != null && Array.isArray((f as SelectFilter).values)
 }
 

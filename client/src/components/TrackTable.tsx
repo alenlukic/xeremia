@@ -21,6 +21,7 @@ import {
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Track, SearchSuggestion } from '../types'
+import { useColumnResizeGuard } from '../hooks/useColumnResizeGuard'
 import {
   formatFloat,
   formatBpm,
@@ -55,17 +56,16 @@ const FIXED_WIDTHS: Record<string, number> = {
   date_added: DATE_ADDED_PX,
 }
 const PLAY_COL_PX = 32
-const ACTION_COL_PX = 92
-const ALWAYS_VISIBLE_FIXED_PX = PLAY_COL_PX + ACTION_COL_PX
+const ALWAYS_VISIBLE_FIXED_PX = PLAY_COL_PX
 const FLEX_MINS = [220, 90, 90]
 const TOTAL_FLEX = FLEX_MINS.reduce((a, b) => a + b, 0)
 
 /**
  * Fixed-width reservation must reflect only the currently visible fixed data
- * columns (key/energy can be hidden) plus the always-present play/action
- * columns — reserving space for hidden columns, or omitting the play/action
- * columns, would leave the table narrower or wider than its container,
- * producing a stray gap or an unwanted horizontal scrollbar.
+ * columns (key/energy can be hidden) plus the always-present play column —
+ * reserving space for hidden columns, or omitting the play column, would leave
+ * the table narrower or wider than its container, producing a stray gap or an
+ * unwanted horizontal scrollbar.
  */
 function computeColWidths(
   container: number,
@@ -176,9 +176,6 @@ interface Props {
   sorting?: SortingState
   onSortingChange?: OnChangeFn<SortingState>
   scrollRestorationKey?: string
-  onAddToSet?: (trackId: number) => void
-  onAddToPool?: (trackId: number) => void
-  onAddToTracklist?: (trackId: number) => void
 }
 
 export const TrackTable = memo(function TrackTable({
@@ -194,10 +191,8 @@ export const TrackTable = memo(function TrackTable({
   sorting: sortingProp,
   onSortingChange: onSortingChangeProp,
   scrollRestorationKey,
-  onAddToSet,
-  onAddToPool,
-  onAddToTracklist,
 }: Props) {
+  const { onResizeStart, shouldIgnoreSortClick } = useColumnResizeGuard()
   const outerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const topScrollRef = useRef<HTMLDivElement>(null)
@@ -285,58 +280,6 @@ export const TrackTable = memo(function TrackTable({
     [],
   )
 
-  const addToSetColumn = useMemo(
-    () =>
-      col.display({
-        id: 'add_to_set',
-        header: 'Actions',
-        size: ACTION_COL_PX,
-        minSize: 60,
-        enableSorting: false,
-        cell: ({ row }) =>
-          onAddToPool || onAddToTracklist ? (
-            <div className="set-dual-actions">
-              {onAddToPool && (
-                <button
-                  className="match-action-btn match-action-btn--small"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onAddToPool(row.original.id)
-                  }}
-                  title="Add to Pool"
-                >
-                  + Pool
-                </button>
-              )}
-              {onAddToTracklist && (
-                <button
-                  className="match-action-btn match-action-btn--small"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onAddToTracklist(row.original.id)
-                  }}
-                  title="Add to Tracklist"
-                >
-                  + TL
-                </button>
-              )}
-            </div>
-          ) : onAddToSet ? (
-            <button
-              className="match-action-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                onAddToSet(row.original.id)
-              }}
-              title="Add to set"
-            >
-              + Set
-            </button>
-          ) : null,
-      }),
-    [onAddToSet, onAddToPool, onAddToTracklist],
-  )
-
   const playColumn = useMemo(
     () =>
       col.display({
@@ -352,10 +295,7 @@ export const TrackTable = memo(function TrackTable({
     [],
   )
 
-  const allColumns = useMemo(
-    () => [playColumn, ...dataColumns, addToSetColumn],
-    [playColumn, addToSetColumn],
-  )
+  const allColumns = useMemo(() => [playColumn, ...dataColumns], [playColumn])
 
   const fullColumnOrder = columnOrder
 
@@ -549,6 +489,12 @@ export const TrackTable = memo(function TrackTable({
                       }
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDrop(e, header.column.id)}
+                      aria-label={
+                        registryById.get(header.column.id)?.label ??
+                        String(
+                          header.column.columnDef.header ?? header.column.id,
+                        )
+                      }
                     >
                       <div
                         className={`th-content${canSort ? ' th-sortable' : ''}`}
@@ -559,7 +505,12 @@ export const TrackTable = memo(function TrackTable({
                         onDragEnd={handleDragEnd}
                         onClick={
                           canSort
-                            ? header.column.getToggleSortingHandler()
+                            ? (e) => {
+                                if (shouldIgnoreSortClick()) {
+                                  return
+                                }
+                                header.column.getToggleSortingHandler()?.(e)
+                              }
                             : undefined
                         }
                       >
@@ -598,8 +549,14 @@ export const TrackTable = memo(function TrackTable({
                       {header.column.getCanResize() && (
                         <div
                           className={`col-resizer${header.column.getIsResizing() ? ' col-resizer--active' : ''}`}
-                          onMouseDown={header.getResizeHandler()}
-                          onTouchStart={header.getResizeHandler()}
+                          onMouseDown={(e) => {
+                            onResizeStart()
+                            header.getResizeHandler()(e)
+                          }}
+                          onTouchStart={(e) => {
+                            onResizeStart()
+                            header.getResizeHandler()(e)
+                          }}
                         />
                       )}
                     </th>

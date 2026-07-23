@@ -25,6 +25,7 @@ function makePoolEntry(
   return {
     set_id: 1,
     insertion_order: 0,
+    highlight_color: null,
     track: {
       id: overrides.track_id,
       title: `Pool Track ${overrides.track_id}`,
@@ -58,8 +59,8 @@ function renderPool(
       subgroups={subgroups}
       subgroupMemberships={memberships}
       onRemove={noop}
-      onMoveToTracklist={noop}
       onReorder={noop}
+      onSetHighlight={noop}
       onAddTrack={noop}
       onCreateSubgroup={asyncNull}
       onRenameSubgroup={asyncTrue}
@@ -96,18 +97,22 @@ describe('SetPoolTable', () => {
     expect(row.querySelector('.set-ws-cell-bpm')?.textContent).toBe('130')
   })
 
-  it('uses colgroup for column widths', () => {
-    const { container } = renderPool([makePoolEntry({ id: 1, track_id: 10 })])
+  it('uses colgroup for column widths and a left-side row remove control', () => {
+    const onRemove = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      [],
+      [],
+      { onRemove },
+    )
+    expect(container.querySelector('col.set-ws-col-remove')).toBeTruthy()
     expect(container.querySelector('col.set-ws-col-num')).toBeTruthy()
     expect(container.querySelector('col.set-ws-col-title')).toBeTruthy()
     expect(container.querySelector('col.set-ws-col-key')).toBeTruthy()
     expect(container.querySelector('col.set-ws-col-bpm')).toBeTruthy()
-    expect(container.querySelector('col.set-ws-col-actions-pool')).toBeTruthy()
-  })
-
-  it('renders actions with shared set-ws-actions-group class', () => {
-    const { container } = renderPool([makePoolEntry({ id: 1, track_id: 10 })])
-    expect(container.querySelector('.set-ws-actions-group')).toBeTruthy()
+    expect(container.querySelector('col.set-ws-col-actions-pool')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from pool' }))
+    expect(onRemove).toHaveBeenCalledWith(10)
   })
 
   it('shows empty message when pool is empty', () => {
@@ -482,11 +487,12 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     ).toBe(true)
   })
 
-  it('shows no dots but offers the "+" editor when a row has no memberships', () => {
+  it('shows a blank clickable cell when a row has no memberships', () => {
     const { container } = renderPool(makeEntries(), subgroups, [])
     const cell = container.querySelector('td.set-ws-cell-subgroups')!
     expect(cell.querySelectorAll('.subgroup-dot-pill').length).toBe(0)
-    expect(cell.querySelector('.subgroup-add-inline')).toBeTruthy()
+    expect(cell.querySelector('.subgroup-assign-input')).toBeNull()
+    expect(cell.querySelector('.subgroup-cell-trigger--empty')).toBeTruthy()
   })
 
   it('clicking subgroup tab shows only filtered tracks', () => {
@@ -540,7 +546,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     const { container } = renderPool(makeEntries(), subgroups, [], {
       onCreateSubgroup,
     })
-    fireEvent.click(container.querySelector('.subgroup-add-btn')!)
+    fireEvent.click(container.querySelector('.pool-tab-create')!)
     const input = container.querySelector('.subgroup-new-input')!
     fireEvent.change(input, { target: { value: 'Cooldown' } })
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -594,7 +600,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     }
   })
 
-  it('toggling membership via the "+" modal calls add or remove', () => {
+  it('toggling membership via the groups checklist calls add or remove', () => {
     const onAddSubgroupMember = vi.fn().mockResolvedValue(true)
     const onRemoveSubgroupMember = vi.fn().mockResolvedValue(true)
     const memberships: PoolSubgroupMembership[] = [
@@ -605,12 +611,65 @@ describe('SetPoolTable tab bar and subgroup features', () => {
       onRemoveSubgroupMember,
     })
     const firstRow = container.querySelector('tbody tr')!
-    fireEvent.click(firstRow.querySelector('.subgroup-add-inline')!)
+    fireEvent.click(firstRow.querySelector('.subgroup-cell-trigger')!)
     const items = firstRow.querySelectorAll('.subgroup-modal-item')
     fireEvent.click(items[0]) // Warmup active → remove
     expect(onRemoveSubgroupMember).toHaveBeenCalledWith(1, 10)
     fireEvent.click(items[1]) // Peak inactive → add
     expect(onAddSubgroupMember).toHaveBeenCalledWith(2, 10)
+  })
+
+  it('opens the filter popup from a filled cell without showing an inline input', () => {
+    const memberships: PoolSubgroupMembership[] = [
+      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
+    ]
+    const { container } = renderPool(makeEntries(), subgroups, memberships)
+    const cell = container.querySelector('td.set-ws-cell-subgroups')!
+    expect(cell.querySelector('.subgroup-dot-pill')).toBeTruthy()
+    expect(cell.querySelector('.subgroup-assign-input')).toBeNull()
+    fireEvent.click(cell.querySelector('.subgroup-cell-trigger')!)
+    expect(
+      cell.querySelector('.subgroup-modal .subgroup-assign-input'),
+    ).toBeTruthy()
+    expect(
+      (cell.querySelector('.subgroup-assign-input') as HTMLInputElement)
+        .placeholder,
+    ).toBe('')
+  })
+
+  it('filters groups and offers Create new group for non-exact input', async () => {
+    const onCreateSubgroup = vi.fn().mockResolvedValue({
+      id: 9,
+      set_id: 1,
+      name: 'Warm',
+      display_order: 2,
+    })
+    const onAddSubgroupMember = vi.fn().mockResolvedValue(true)
+    const { container } = renderPool(makeEntries(), subgroups, [], {
+      onCreateSubgroup,
+      onAddSubgroupMember,
+    })
+    fireEvent.click(container.querySelector('.subgroup-cell-trigger')!)
+    const input = container.querySelector('.subgroup-assign-input')!
+    expect(
+      container.querySelector('.subgroup-modal-create')?.textContent,
+    ).toMatch(/Create new group/)
+    fireEvent.change(input, { target: { value: 'Warm' } })
+    const items = container.querySelectorAll('.subgroup-modal-item')
+    expect(Array.from(items).map((el) => el.textContent)).toEqual(['Warmup'])
+    fireEvent.click(container.querySelector('.subgroup-modal-create')!)
+    await waitFor(() => {
+      expect(onCreateSubgroup).toHaveBeenCalledWith('Warm')
+      expect(onAddSubgroupMember).toHaveBeenCalledWith(9, 10)
+    })
+  })
+
+  it('hides Create new group when input exactly matches an existing name', () => {
+    const { container } = renderPool(makeEntries(), subgroups, [])
+    fireEvent.click(container.querySelector('.subgroup-cell-trigger')!)
+    const input = container.querySelector('.subgroup-assign-input')!
+    fireEvent.change(input, { target: { value: 'Warmup' } })
+    expect(container.querySelector('.subgroup-modal-create')).toBeNull()
   })
 })
 

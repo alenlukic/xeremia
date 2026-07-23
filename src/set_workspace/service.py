@@ -1,10 +1,12 @@
 """Set workspace orchestration service.
 
-Handles set CRUD, pool/tracklist mutations with mutual exclusivity,
-and explorer graph mutations with constraint validation.
+Handles set CRUD, pool/tracklist mutations, and explorer graph mutations
+with constraint validation. A track MAY belong to the pool and the tracklist
+at the same time; the two memberships are independent.
 """
 
 import logging
+import re
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,6 +20,18 @@ from src.models.set_explorer_edge import SetExplorerEdge
 from src.set_workspace.explorer_rules import validate_add_node
 
 logger = logging.getLogger(__name__)
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _normalize_hex_color(value: Optional[str]) -> Optional[str]:
+    """Return a normalized #rrggbb string, or None for empty/invalid input."""
+    if value is None:
+        return None
+    candidate = value.strip().lower()
+    if candidate == "":
+        return None
+    return candidate if _HEX_COLOR_RE.match(candidate) else None
 
 
 class SetWorkspaceService:
@@ -149,14 +163,6 @@ class SetWorkspaceService:
         if existing:
             return existing, None
 
-        in_tracklist = (
-            self.session.query(SetTracklistEntry)
-            .filter_by(set_id=set_id, track_id=track_id)
-            .first()
-        )
-        if in_tracklist:
-            return None, "Track is already in the tracklist for this set"
-
         next_order = self._next_order(SetPoolEntry.insertion_order, set_id)
         entry = SetPoolEntry(
             set_id=set_id, track_id=track_id, insertion_order=next_order
@@ -207,6 +213,24 @@ class SetWorkspaceService:
         # Reassign densely: insertion_order may have gaps after removals.
         for idx, e in enumerate(entries):
             e.insertion_order = idx
+        self.session.flush()
+        return True, None
+
+    def pool_set_highlight(
+        self, set_id: int, track_id: int, highlight_color: Optional[str]
+    ) -> Tuple[bool, Optional[str]]:
+        """Set (or clear, when None) a pool entry's highlight color."""
+        color = _normalize_hex_color(highlight_color)
+        if highlight_color is not None and color is None:
+            return False, "Invalid highlight color"
+        entry = (
+            self.session.query(SetPoolEntry)
+            .filter_by(set_id=set_id, track_id=track_id)
+            .first()
+        )
+        if entry is None:
+            return False, "Track not found in pool"
+        entry.highlight_color = color
         self.session.flush()
         return True, None
 
@@ -404,14 +428,6 @@ class SetWorkspaceService:
         )
         if existing:
             return existing, None
-
-        in_pool = (
-            self.session.query(SetPoolEntry)
-            .filter_by(set_id=set_id, track_id=track_id)
-            .first()
-        )
-        if in_pool:
-            return None, "Track is already in the pool for this set"
 
         next_pos = self._next_order(SetTracklistEntry.position, set_id)
         entry = SetTracklistEntry(set_id=set_id, track_id=track_id, position=next_pos)
@@ -746,14 +762,6 @@ class SetWorkspaceService:
         )
         if existing:
             return True, None
-
-        in_pool = (
-            self.session.query(SetPoolEntry)
-            .filter_by(set_id=set_id, track_id=node.track_id)
-            .first()
-        )
-        if in_pool:
-            self.session.delete(in_pool)
 
         next_pos = self._next_order(SetTracklistEntry.position, set_id)
         entry = SetTracklistEntry(

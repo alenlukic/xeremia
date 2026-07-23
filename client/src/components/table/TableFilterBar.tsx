@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useDismissOnOutsideClick } from '../../hooks/useDismissOnOutsideClick'
 import { FilterIcon } from './icons'
 import {
@@ -119,6 +120,8 @@ interface AddButtonProps {
   filters: FilterMap
   onFilterChange: (columnId: string, filter: ColumnFilter) => void
   label?: string
+  /** Glyph in place of the default funnel (label stays the accessible name). */
+  icon?: ReactNode
 }
 
 /**
@@ -132,6 +135,7 @@ export function TableFilterAddButton({
   filters,
   onFilterChange,
   label = 'Add filter',
+  icon,
 }: AddButtonProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [openColumn, setOpenColumn] = useState<string | null>(null)
@@ -177,7 +181,7 @@ export function TableFilterAddButton({
           setMenuOpen((prev) => !prev)
         }}
       >
-        <FilterIcon />
+        {icon ?? <FilterIcon />}
       </button>
       {menuOpen && (
         <div className="filter-add-menu">

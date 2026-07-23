@@ -38,6 +38,7 @@ interface Props {
   removeFromPool: (trackId: number) => void
   movePoolToTracklist: (trackId: number) => void
   reorderPool: (trackId: number, newPosition: number) => void
+  setPoolHighlight: (trackId: number, color: string | null) => void
   addToPool: (trackId: number, title?: string) => void
   createSubgroup: (name: string) => Promise<PoolSubgroup | null>
   renameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
@@ -106,6 +107,7 @@ export function SetBuilder({
   removeFromPool,
   movePoolToTracklist,
   reorderPool,
+  setPoolHighlight,
   addToPool,
   createSubgroup,
   renameSubgroup,
@@ -223,7 +225,6 @@ export function SetBuilder({
               onColumnWidthFlush={onTracklistColumnWidthFlush}
               onOpenExplorer={openExplorer}
               onRemove={removeFromTracklist}
-              onMoveToPool={moveTracklistToPool}
               onReorder={reorderTracklist}
               onUpdateNote={updateTracklistNote}
               onAddTrack={handleTracklistAddTrack}
@@ -263,8 +264,8 @@ export function SetBuilder({
                 onColumnWidthChange={onPoolColumnWidthChange}
                 onColumnWidthFlush={onPoolColumnWidthFlush}
                 onRemove={removeFromPool}
-                onMoveToTracklist={movePoolToTracklist}
                 onReorder={reorderPool}
+                onSetHighlight={setPoolHighlight}
                 onAddTrack={handlePoolAddTrack}
                 onCreateSubgroup={createSubgroup}
                 onRenameSubgroup={renameSubgroup}

@@ -1,4 +1,12 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+  createContext,
+  useContext,
+} from 'react'
 import {
   DndContext,
   closestCenter,
@@ -6,6 +14,7 @@ import {
   useDroppable,
 } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { createPortal } from 'react-dom'
 import type {
   PoolEntry,
   PoolSubgroup,
@@ -29,7 +38,6 @@ import {
   TableColumnEmptyRecovery,
 } from './TableColumnControls'
 import { TableHeader } from './table/TableHeader'
-import { TableControlPanel } from './table/TableControlPanel'
 import { TableFilterAddButton, TableFilterPills } from './table/TableFilterBar'
 import {
   isActiveFilter,
@@ -39,6 +47,7 @@ import {
   type FilterMap,
 } from './table/tableFilter'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
+import { useColumnResizeGuard } from '../hooks/useColumnResizeGuard'
 
 const POOL_COL_CLASS: Record<string, string> = {
   play: 'set-ws-col-play',
@@ -47,7 +56,6 @@ const POOL_COL_CLASS: Record<string, string> = {
   key: 'set-ws-col-key',
   bpm: 'set-ws-col-bpm',
   subgroups: 'set-ws-col-subgroups',
-  actions: 'set-ws-col-actions-pool',
 }
 
 const POOL_HEADER_LABEL: Record<string, string> = {
@@ -56,7 +64,6 @@ const POOL_HEADER_LABEL: Record<string, string> = {
   key: 'Key',
   bpm: 'BPM',
   subgroups: 'Groups',
-  actions: 'Actions',
 }
 
 const POOL_SORT_ID: Record<string, string> = {
@@ -177,8 +184,8 @@ interface Props {
   onColumnWidthChange: (columnId: string, width: number) => void
   onColumnWidthFlush: (columnId: string, width: number) => void
   onRemove: (trackId: number) => void
-  onMoveToTracklist: (trackId: number) => void
   onReorder: (trackId: number, newPosition: number) => void
+  onSetHighlight: (trackId: number, color: string | null) => void
   onAddTrack: (trackId: number, title?: string) => void
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
   onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
@@ -243,10 +250,17 @@ function groupMembershipIds(
   return map
 }
 
+function namesMatchExact(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase()
+}
+
 /**
- * Groups cell: shows only the groups the track is actually in, each with a
- * colored dot, plus a "+" that opens a multi-select modal to toggle membership
- * across all groups (replacing the old always-expanded chip list).
+ * Notion-style multi-select cell for pool groups.
+ *
+ * Closed: blank when empty, selected pills when filled. Clicking the cell
+ * (empty or filled) opens the same popup — filter input, checklist, and
+ * conditional "Create new group". The filter lives in the popup only; it is
+ * never shown side-by-side with the selected values in the cell.
  */
 function SubgroupCell({
   entry,
@@ -255,6 +269,7 @@ function SubgroupCell({
   memberSubgroupIds,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
+  onCreateSubgroup,
 }: {
   entry: PoolEntry
   subgroups: PoolSubgroup[]
@@ -262,22 +277,37 @@ function SubgroupCell({
   memberSubgroupIds: Set<number>
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
+  onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
 }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [creating, setCreating] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useDismissOnOutsideClick(ref, open, () => setOpen(false))
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const close = useCallback(() => {
+    setOpen(false)
+    setQuery('')
+  }, [])
+
+  const openMenu = useCallback(() => {
+    setOpen(true)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [])
+
+  useDismissOnOutsideClick(ref, open, close)
   useEffect(() => {
     if (!open) {
       return
     }
     function onEsc(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        setOpen(false)
+        close()
       }
     }
     document.addEventListener('keydown', onEsc)
     return () => document.removeEventListener('keydown', onEsc)
-  }, [open])
+  }, [open, close])
 
   const handleToggle = useCallback(
     (sgId: number) => {
@@ -290,65 +320,264 @@ function SubgroupCell({
     [memberSubgroupIds, entry.id, onAddSubgroupMember, onRemoveSubgroupMember],
   )
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase()
+    if (!q) {
+      return subgroups
+    }
+    return subgroups.filter((sg) => sg.name.toLocaleLowerCase().includes(q))
+  }, [subgroups, query])
+
+  const hasExactMatch = useMemo(
+    () =>
+      query.trim().length > 0 &&
+      subgroups.some((sg) => namesMatchExact(sg.name, query)),
+    [subgroups, query],
+  )
+
+  // Create is offered when the filter is empty, or when the typed name is not
+  // an exact match for an existing group (even if partial matches remain).
+  const showCreate = open && (query.trim().length === 0 || !hasExactMatch)
+
+  const handleCreate = useCallback(async () => {
+    const trimmed = query.trim()
+    if (!trimmed || creating) {
+      return
+    }
+    setCreating(true)
+    try {
+      const created = await onCreateSubgroup(trimmed)
+      if (created) {
+        await onAddSubgroupMember(created.id, entry.id)
+      }
+      setQuery('')
+      inputRef.current?.focus()
+    } finally {
+      setCreating(false)
+    }
+  }, [query, creating, onCreateSubgroup, onAddSubgroupMember, entry.id])
+
   const members = subgroups.filter((sg) => memberSubgroupIds.has(sg.id))
+  const trackLabel = entry.track?.title ?? 'track'
 
   return (
     <div className="subgroup-cell" ref={ref}>
-      <div className="subgroup-dots">
-        {members.map((sg) => (
-          <span key={sg.id} className="subgroup-dot-pill" title={sg.name}>
-            <span
-              className="subgroup-dot"
-              style={{ background: colorByIndex.get(sg.id) }}
-              aria-hidden="true"
-            />
-            <span className="subgroup-dot-name">{sg.name}</span>
-          </span>
-        ))}
-      </div>
-      {subgroups.length > 0 && (
-        <button
-          className="subgroup-add-inline"
-          aria-label="Edit groups"
-          aria-haspopup="true"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-        >
-          +
-        </button>
-      )}
-      {open && (
-        <div
-          className="subgroup-modal"
-          role="menu"
-          aria-label={`Assign groups for ${entry.track?.title ?? 'track'}`}
-        >
-          {subgroups.map((sg) => {
-            const active = memberSubgroupIds.has(sg.id)
-            return (
-              <button
-                key={sg.id}
-                role="menuitemcheckbox"
-                aria-checked={active}
-                className={`subgroup-modal-item${active ? ' active' : ''}`}
-                onClick={() => handleToggle(sg.id)}
-              >
+      <button
+        type="button"
+        className={`subgroup-cell-trigger${members.length === 0 ? ' subgroup-cell-trigger--empty' : ''}`}
+        aria-label={`Assign groups for ${trackLabel}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          if (open) {
+            close()
+          } else {
+            openMenu()
+          }
+        }}
+      >
+        {members.length > 0 && (
+          <div className="subgroup-dots">
+            {members.map((sg) => (
+              <span key={sg.id} className="subgroup-dot-pill" title={sg.name}>
                 <span
                   className="subgroup-dot"
                   style={{ background: colorByIndex.get(sg.id) }}
                   aria-hidden="true"
                 />
-                <span className="subgroup-modal-name">{sg.name}</span>
-                {active && (
-                  <span className="subgroup-modal-check" aria-hidden="true">
-                    ✓
-                  </span>
-                )}
-              </button>
-            )
-          })}
+                <span className="subgroup-dot-name">{sg.name}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </button>
+      {open && (
+        <div
+          className="subgroup-modal"
+          role="listbox"
+          aria-label={`Assign groups for ${trackLabel}`}
+        >
+          <input
+            ref={inputRef}
+            className="subgroup-assign-input"
+            type="text"
+            value={query}
+            aria-label={`Filter or create groups for ${trackLabel}`}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && showCreate && query.trim()) {
+                e.preventDefault()
+                void handleCreate()
+              }
+              e.stopPropagation()
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          {subgroups.length > 0 &&
+            filtered.map((sg) => {
+              const active = memberSubgroupIds.has(sg.id)
+              return (
+                <button
+                  key={sg.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  className={`subgroup-modal-item${active ? ' active' : ''}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleToggle(sg.id)}
+                >
+                  <span
+                    className="subgroup-dot"
+                    style={{ background: colorByIndex.get(sg.id) }}
+                    aria-hidden="true"
+                  />
+                  <span className="subgroup-modal-name">{sg.name}</span>
+                  {active && (
+                    <span className="subgroup-modal-check" aria-hidden="true">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          {subgroups.length > 0 && filtered.length === 0 && (
+            <div className="subgroup-modal-empty">No matching groups</div>
+          )}
+          {showCreate && (
+            <button
+              type="button"
+              className="subgroup-modal-create"
+              disabled={creating || query.trim().length === 0}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void handleCreate()}
+            >
+              {query.trim()
+                ? `Create new group “${query.trim()}”`
+                : 'Create new group'}
+            </button>
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** Default custom color offered before any highlight exists (terracotta). */
+const DEFAULT_HIGHLIGHT = '#e2725b'
+
+/**
+ * Preset highlight swatches — the same 8-color palette the group dots cycle
+ * (`--dot-1..8`), kept in sync here as concrete hex so the stored value and the
+ * quick-pick swatches share one vocabulary.
+ */
+const PRESET_HIGHLIGHTS = [
+  '#6c8cff',
+  '#43a047',
+  '#e0a53a',
+  '#d9534f',
+  '#b06cff',
+  '#38b2ac',
+  '#ec6ea8',
+  '#7f8c99',
+]
+
+interface PoolHighlightContextValue {
+  /** Distinct highlight colors already used in this set's pool. */
+  usedColors: string[]
+  onSetHighlight: (trackId: number, color: string | null) => void
+}
+
+const PoolHighlightContext = createContext<PoolHighlightContextValue | null>(
+  null,
+)
+
+/**
+ * Right-click highlight palette for a pool row — a single-step swatch grid (like
+ * Notion / Docs highlight pickers): a "None" tile to clear, the preset palette
+ * plus any colors already used in this set, and a rainbow "custom" tile that
+ * opens the native OS color picker directly. Rendered fixed at the cursor;
+ * dismisses on outside click / Escape.
+ */
+function HighlightPalette({
+  x,
+  y,
+  current,
+  usedColors,
+  onPick,
+  onClear,
+  onClose,
+}: {
+  x: number
+  y: number
+  current: string | null
+  usedColors: string[]
+  onPick: (color: string) => void
+  onClear: () => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useDismissOnOutsideClick(ref, true, onClose)
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', onEsc)
+    return () => document.removeEventListener('keydown', onEsc)
+  }, [onClose])
+
+  // Preset palette first, then any set-used colors not already covered.
+  const swatches = [
+    ...PRESET_HIGHLIGHTS,
+    ...usedColors.filter((c) => !PRESET_HIGHLIGHTS.includes(c)),
+  ]
+  const isCustom = current != null && !swatches.includes(current)
+
+  return (
+    <div
+      ref={ref}
+      className="pool-highlight-palette"
+      style={{ top: y, left: x }}
+      role="menu"
+      aria-label="Highlight track"
+    >
+      <div className="pool-highlight-grid">
+        <button
+          type="button"
+          role="menuitemradio"
+          aria-checked={current == null}
+          className={`pool-highlight-tile pool-highlight-tile--none${current == null ? ' selected' : ''}`}
+          title="No highlight"
+          aria-label="No highlight"
+          onClick={onClear}
+        />
+        {swatches.map((c) => (
+          <button
+            key={c}
+            type="button"
+            role="menuitemradio"
+            aria-checked={c === current}
+            className={`pool-highlight-tile${c === current ? ' selected' : ''}`}
+            style={{ background: c }}
+            title={c}
+            aria-label={`Highlight ${c}`}
+            onClick={() => onPick(c)}
+          />
+        ))}
+        <label
+          className={`pool-highlight-tile pool-highlight-tile--custom${isCustom ? ' selected' : ''}`}
+          title="Custom color"
+          style={isCustom ? { background: current } : undefined}
+        >
+          <input
+            type="color"
+            aria-label="Custom highlight color"
+            value={current ?? DEFAULT_HIGHLIGHT}
+            onChange={(e) => onPick(e.target.value)}
+          />
+        </label>
+      </div>
     </div>
   )
 }
@@ -357,26 +586,28 @@ function PoolRow({
   entry,
   visibleColumnIds: columnIds,
   onRemove,
-  onMoveToTracklist,
   subgroups,
   colorByIndex,
   memberSubgroupIds,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
+  onCreateSubgroup,
   reorder,
 }: {
   entry: PoolEntry
   visibleColumnIds: string[]
   onRemove: (trackId: number) => void
-  onMoveToTracklist: (trackId: number) => void
   subgroups: PoolSubgroup[]
   colorByIndex: Map<number, string>
   memberSubgroupIds: Set<number>
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
+  onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
   reorder?: RowReorderProps
 }) {
   const title = displayTitle(entry.track, entry.track_id)
+  const highlight = useContext(PoolHighlightContext)
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
 
   const renderCell = (colId: string) => {
     switch (colId) {
@@ -398,6 +629,13 @@ function PoolRow({
       case 'title':
         return (
           <td key={colId} className="set-ws-cell-title">
+            {entry.highlight_color && (
+              <span
+                className="pool-highlight-bar"
+                style={{ background: entry.highlight_color }}
+                aria-hidden="true"
+              />
+            )}
             {title}
           </td>
         )
@@ -423,28 +661,8 @@ function PoolRow({
               memberSubgroupIds={memberSubgroupIds}
               onAddSubgroupMember={onAddSubgroupMember}
               onRemoveSubgroupMember={onRemoveSubgroupMember}
+              onCreateSubgroup={onCreateSubgroup}
             />
-          </td>
-        )
-      case 'actions':
-        return (
-          <td key={colId} className="set-ws-cell-actions">
-            <div className="set-ws-actions-group">
-              <button
-                className="set-action-btn"
-                onClick={() => onMoveToTracklist(entry.track_id)}
-                title="Move to tracklist"
-              >
-                To Tracklist
-              </button>
-              <button
-                className="set-action-btn set-action-btn--danger"
-                onClick={() => onRemove(entry.track_id)}
-                title="Remove from pool"
-              >
-                ×
-              </button>
-            </div>
           </td>
         )
       default:
@@ -477,8 +695,47 @@ function PoolRow({
       }
       onDrop={reorder ? (e) => reorder.onDrop(reorder.index, e) : undefined}
       onDragEnd={reorder ? () => reorder.onDragEnd() : undefined}
+      onContextMenu={
+        highlight
+          ? (e) => {
+              e.preventDefault()
+              setMenuPos({ x: e.clientX, y: e.clientY })
+            }
+          : undefined
+      }
     >
+      <td className="set-ws-cell-remove">
+        <button
+          type="button"
+          className="set-row-remove-btn"
+          aria-label="Remove from pool"
+          title="Remove from pool"
+          onClick={() => onRemove(entry.track_id)}
+        >
+          ×
+        </button>
+      </td>
       {columnIds.map((colId) => renderCell(colId))}
+      {highlight &&
+        menuPos &&
+        createPortal(
+          <HighlightPalette
+            x={menuPos.x}
+            y={menuPos.y}
+            current={entry.highlight_color}
+            usedColors={highlight.usedColors}
+            onPick={(color) => {
+              highlight.onSetHighlight(entry.track_id, color)
+              setMenuPos(null)
+            }}
+            onClear={() => {
+              highlight.onSetHighlight(entry.track_id, null)
+              setMenuPos(null)
+            }}
+            onClose={() => setMenuPos(null)}
+          />,
+          document.body,
+        )}
     </tr>
   )
 }
@@ -510,6 +767,7 @@ function PoolTableHead({
   onColumnDrop: (e: React.DragEvent, targetId: string) => void
   onColumnDragEnd: () => void
 }) {
+  const { onResizeStart, shouldIgnoreSortClick } = useColumnResizeGuard()
   const colStyle = (id: string) =>
     colWidths?.[id] != null ? { width: colWidths[id] } : undefined
 
@@ -517,7 +775,10 @@ function PoolTableHead({
     beginResize ? (
       <div
         className="col-resizer"
-        onMouseDown={(e) => beginResize(id, e)}
+        onMouseDown={(e) => {
+          onResizeStart()
+          beginResize(id, e)
+        }}
         onClick={(e) => e.stopPropagation()}
       />
     ) : null
@@ -547,12 +808,7 @@ function PoolTableHead({
     const resizable = registry?.resizable !== false
     const sortCol = POOL_SORT_ID[colId]
     const sortable = sortCol != null && onHeaderSort != null
-    const thClass =
-      colId === 'actions'
-        ? 'set-ws-th set-ws-th-actions'
-        : sortable
-          ? 'set-ws-th set-ws-th-sortable'
-          : 'set-ws-th'
+    const thClass = sortable ? 'set-ws-th set-ws-th-sortable' : 'set-ws-th'
 
     if (colId === 'play') {
       return (
@@ -565,12 +821,16 @@ function PoolTableHead({
     return (
       <th
         key={colId}
+        aria-label={registry?.label ?? label}
         className={`${thClass}${draggedColumn === colId ? ' th-dragging' : ''}`}
         onDragOver={onColumnDragOver}
         onDrop={(e) => onColumnDrop(e, colId)}
         onClick={
           sortable
             ? (e: React.MouseEvent) => {
+                if (shouldIgnoreSortClick()) {
+                  return
+                }
                 const target = e.target as HTMLElement
                 if (
                   target.closest('.table-col-remove') ||
@@ -595,8 +855,8 @@ function PoolTableHead({
             onRemove={() => onToggleColumn(colId)}
           >
             {label}
-            {sortCol ? sortIndicator(sortCol) : null}
           </TableColumnControls>
+          {sortCol ? sortIndicator(sortCol) : null}
         </div>
         {resizable ? resizer(colId) : null}
       </th>
@@ -606,6 +866,7 @@ function PoolTableHead({
   return (
     <>
       <colgroup>
+        <col className="set-ws-col-remove" />
         {columnIds.map((colId) => (
           <col
             key={colId}
@@ -615,7 +876,10 @@ function PoolTableHead({
         ))}
       </colgroup>
       <thead>
-        <tr>{columnIds.map((colId) => renderHeaderCell(colId))}</tr>
+        <tr>
+          <th className="set-ws-th set-ws-th-remove" aria-label="Remove" />
+          {columnIds.map((colId) => renderHeaderCell(colId))}
+        </tr>
       </thead>
     </>
   )
@@ -703,7 +967,12 @@ function PoolTabBar({
   )
 
   return (
-    <div className="pool-tab-bar" role="tablist" aria-label="Pool view">
+    <div
+      className="pool-tab-bar"
+      role="tablist"
+      aria-orientation="vertical"
+      aria-label="Pool view"
+    >
       <button
         role="tab"
         className={`pool-tab pool-tab--default${activeTab === 'all' ? ' pool-tab--active' : ''}`}
@@ -887,12 +1156,12 @@ function PoolTabBar({
         </span>
       ) : (
         <button
-          className="subgroup-add-btn"
+          className="pool-tab-create"
           onClick={() => setShowNewInput(true)}
           title="Create group"
           aria-label="Create group"
         >
-          +
+          Create new group
         </button>
       )}
     </div>
@@ -909,9 +1178,9 @@ function SubgroupSection({
   onSortingChange,
   index,
   onRemove,
-  onMoveToTracklist,
   onAddSubgroupMember,
   onRemoveSubgroupMember,
+  onCreateSubgroup,
   visibleColumnIds: columnIds,
   poolHeadProps,
   onDropTrackToSubgroup,
@@ -927,9 +1196,9 @@ function SubgroupSection({
   onSortingChange: (next: SortDescriptor[]) => void
   index: number
   onRemove: (trackId: number) => void
-  onMoveToTracklist: (trackId: number) => void
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
+  onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
   visibleColumnIds: string[]
   poolHeadProps: Omit<
     React.ComponentProps<typeof PoolTableHead>,
@@ -1052,7 +1321,6 @@ function SubgroupSection({
                   entry={entry}
                   visibleColumnIds={columnIds}
                   onRemove={onRemove}
-                  onMoveToTracklist={onMoveToTracklist}
                   subgroups={subgroups}
                   colorByIndex={colorByIndex}
                   memberSubgroupIds={
@@ -1060,6 +1328,7 @@ function SubgroupSection({
                   }
                   onAddSubgroupMember={onAddSubgroupMember}
                   onRemoveSubgroupMember={onRemoveSubgroupMember}
+                  onCreateSubgroup={onCreateSubgroup}
                 />
               ))}
             </tbody>
@@ -1080,8 +1349,8 @@ export function SetPoolTable({
   onReorderColumn,
   onColumnWidthFlush,
   onRemove,
-  onMoveToTracklist,
   onReorder,
+  onSetHighlight,
   onAddTrack,
   onCreateSubgroup,
   onRenameSubgroup,
@@ -1127,9 +1396,12 @@ export function SetPoolTable({
   // Numeric column filters (design-system Add filter), applied on top of the
   // active tab/scope. Keyed by column id (currently BPM).
   const [poolFilters, setPoolFilters] = useState<FilterMap>({})
-  const setPoolFilter = useCallback((columnId: string, filter: ColumnFilter) => {
-    setPoolFilters((prev) => ({ ...prev, [columnId]: filter }))
-  }, [])
+  const setPoolFilter = useCallback(
+    (columnId: string, filter: ColumnFilter) => {
+      setPoolFilters((prev) => ({ ...prev, [columnId]: filter }))
+    },
+    [],
+  )
   const removePoolFilter = useCallback((columnId: string) => {
     setPoolFilters((prev) => {
       const next = { ...prev }
@@ -1140,7 +1412,12 @@ export function SetPoolTable({
   const poolFilterColumns = useMemo<FilterableColumn[]>(
     () => [
       { id: 'bpm', label: 'BPM' },
-      { id: 'key', label: 'Key', kind: 'select', options: poolKeyOptions(pool) },
+      {
+        id: 'key',
+        label: 'Key',
+        kind: 'select',
+        options: poolKeyOptions(pool),
+      },
     ],
     [pool],
   )
@@ -1276,6 +1553,40 @@ export function SetPoolTable({
     Record<string, SortDescriptor[]>
   >({})
   const [selectedTab, setSelectedTab] = useState<PoolTab>('all')
+  // The group navigation lives in a rail pinned to the right of the table; it
+  // collapses to a slim spine so the table can reclaim the width, and its
+  // expanded width is drag-resizable.
+  const [railCollapsed, setRailCollapsed] = useState(false)
+  const [railWidth, setRailWidth] = useState(160)
+  const railResizeRef = useRef<{ startX: number; startWidth: number } | null>(
+    null,
+  )
+  const startRailResize = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      railResizeRef.current = { startX: e.clientX, startWidth: railWidth }
+      const onMove = (ev: MouseEvent) => {
+        const s = railResizeRef.current
+        if (!s) {
+          return
+        }
+        // The rail sits on the right edge, so dragging the handle left widens it.
+        const next = Math.min(
+          420,
+          Math.max(120, s.startWidth + (s.startX - ev.clientX)),
+        )
+        setRailWidth(next)
+      }
+      const onUp = () => {
+        railResizeRef.current = null
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
+    [railWidth],
+  )
   const [trackDropSubgroupId, setTrackDropSubgroupId] = useState<number | null>(
     null,
   )
@@ -1469,16 +1780,211 @@ export function SetPoolTable({
     setRowDropIndex(null)
   }, [])
 
+  // Distinct highlight colors already used in this set's pool, offered as
+  // quick-pick swatches in the row Highlighter menu.
+  const usedHighlightColors = useMemo(() => {
+    const seen = new Set<string>()
+    for (const e of pool) {
+      if (e.highlight_color) {
+        seen.add(e.highlight_color)
+      }
+    }
+    return [...seen]
+  }, [pool])
+
+  const highlightContext = useMemo<PoolHighlightContextValue>(
+    () => ({ usedColors: usedHighlightColors, onSetHighlight }),
+    [usedHighlightColors, onSetHighlight],
+  )
+
   return (
-    <div
-      className={`set-pool${dropActive ? ' set-drop-active' : ''}`}
-      {...dropHandlers}
-    >
-      <TableHeader
-        title={`Pool (${pool.length})`}
-        primary={
-          <>
-            <div className="set-pool-header-tabs">
+    <PoolHighlightContext.Provider value={highlightContext}>
+      <div
+        className={`set-pool${dropActive ? ' set-drop-active' : ''}`}
+        {...dropHandlers}
+      >
+        {/* Groups moved to the right rail, so the pool's active sort tiers and
+          filter pills share the title row rather than a separate control-panel
+          row — reclaiming the vertical space. */}
+        <TableHeader
+          title={`Pool (${pool.length})`}
+          primary={
+            <div className="set-pool-header-controls">
+              {activeSortScope !== null && activeSorting.length > 0 && (
+                <SortTierBar
+                  sorting={activeSorting}
+                  columns={POOL_SORT_COLUMNS}
+                  onSortingChange={(next) =>
+                    setSortingForScope(activeSortScope, next)
+                  }
+                  hideAddButton
+                />
+              )}
+              {(isActiveFilter(poolFilters.bpm) ||
+                isActiveFilter(poolFilters.key)) && (
+                <TableFilterPills
+                  columns={poolFilterColumns}
+                  filters={poolFilters}
+                  onFilterChange={setPoolFilter}
+                  onRemove={removePoolFilter}
+                />
+              )}
+              {activeSortScope !== null && (
+                <SortAddButton
+                  sorting={activeSorting}
+                  columns={POOL_SORT_COLUMNS}
+                  onSortingChange={(next) =>
+                    setSortingForScope(activeSortScope, next)
+                  }
+                  label="Add sort"
+                  className="ds-header-btn"
+                />
+              )}
+              <TableFilterAddButton
+                columns={poolFilterColumns}
+                filters={poolFilters}
+                onFilterChange={setPoolFilter}
+                label="Add filter"
+              />
+            </div>
+          }
+        />
+        <div className="set-pool-body">
+          <div className="set-pool-content">
+            {activeTab === 'groups' ? (
+              subgroups.length === 0 ? (
+                <p className="set-empty-tracks">
+                  No groups yet. Create one using the + button above.
+                </p>
+              ) : (
+                <DndContext
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSectionDragEnd}
+                  modifiers={[restrictToVerticalAxis]}
+                >
+                  <div className="subgroup-sections">
+                    {subgroups.map((sg, idx) => {
+                      const entryIds = memberEntriesBySubgroup.get(sg.id)
+                      const entries = filterEntries(
+                        entryIds ? pool.filter((e) => entryIds.has(e.id)) : [],
+                      )
+                      return (
+                        <SubgroupSection
+                          key={sg.id}
+                          subgroup={sg}
+                          entries={entries}
+                          subgroups={subgroups}
+                          colorByIndex={subgroupColorById}
+                          membershipByEntry={membershipByEntry}
+                          sorting={
+                            sortingByScope[String(sg.id)] ??
+                            DEFAULT_POOL_SORTING
+                          }
+                          onSortingChange={(next) =>
+                            setSortingForScope(String(sg.id), next)
+                          }
+                          index={idx}
+                          onRemove={onRemove}
+                          onAddSubgroupMember={onAddSubgroupMember}
+                          onRemoveSubgroupMember={onRemoveSubgroupMember}
+                          onCreateSubgroup={onCreateSubgroup}
+                          visibleColumnIds={displayColumns}
+                          poolHeadProps={poolHeadBaseProps}
+                          onDropTrackToSubgroup={onDropTrackToSubgroup}
+                          trackDropSubgroupId={trackDropSubgroupId}
+                          onTrackDropSubgroupChange={setTrackDropSubgroupId}
+                        />
+                      )
+                    })}
+                  </div>
+                </DndContext>
+              )
+            ) : pool.length === 0 ? (
+              <p className="set-empty-tracks">
+                Pool is empty. Drag tracks from the Search table above.
+              </p>
+            ) : sorted.length === 0 && typeof activeTab === 'number' ? (
+              <p className="set-empty-tracks">
+                No tracks in this group yet. Search above to add one, or assign
+                the group from the Groups column on the All tab.
+              </p>
+            ) : displayColumns.length === 0 ? (
+              <TableColumnEmptyRecovery />
+            ) : (
+              <div className="track-table-outer">
+                <div className="track-table-wrapper">
+                  <table className="set-pool-table">
+                    <PoolTableHead
+                      {...poolHeadBaseProps}
+                      sorting={activeSorting}
+                      onHeaderSort={handleHeaderSort}
+                    />
+                    <tbody>
+                      {sorted.map((entry, i) => (
+                        <PoolRow
+                          key={entry.id}
+                          entry={entry}
+                          visibleColumnIds={displayColumns}
+                          onRemove={onRemove}
+                          subgroups={subgroups}
+                          colorByIndex={subgroupColorById}
+                          memberSubgroupIds={
+                            membershipByEntry.get(entry.id) ?? new Set()
+                          }
+                          onAddSubgroupMember={onAddSubgroupMember}
+                          onRemoveSubgroupMember={onRemoveSubgroupMember}
+                          onCreateSubgroup={onCreateSubgroup}
+                          reorder={
+                            rowReorderEnabled
+                              ? {
+                                  index: i,
+                                  isDragging: rowDragIndex === i,
+                                  isDropTarget:
+                                    rowDropIndex === i &&
+                                    rowDragIndex !== null &&
+                                    rowDragIndex !== i,
+                                  onDragStart: handleRowDragStart,
+                                  onDragOver: handleRowDragOver,
+                                  onDragLeave: handleRowDragLeave,
+                                  onDrop: handleRowDrop,
+                                  onDragEnd: handleRowDragEnd,
+                                }
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+          {railCollapsed ? (
+            // Collapsed: the whole spine is the expand affordance (no chevron);
+            // a hover "wibble" signals it is interactive.
+            <button
+              type="button"
+              className="pool-group-rail pool-group-rail--collapsed"
+              aria-expanded={false}
+              aria-label="Expand groups"
+              title="Expand groups"
+              onClick={() => setRailCollapsed(false)}
+            >
+              <span className="pool-group-rail-spine-label">Groups</span>
+            </button>
+          ) : (
+            <aside
+              className="pool-group-rail"
+              style={{ width: railWidth }}
+              aria-label="Pool groups"
+            >
+              <div
+                className="pool-group-rail-resizer"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize groups"
+                onMouseDown={startRailResize}
+              />
               <PoolTabBar
                 subgroups={subgroups}
                 colorByIndex={subgroupColorById}
@@ -1493,153 +1999,22 @@ export function SetPoolTable({
                 trackDropSubgroupId={trackDropSubgroupId}
                 onTrackDropSubgroupChange={setTrackDropSubgroupId}
               />
-            </div>
-            {activeSortScope !== null && (
-              <SortAddButton
-                sorting={activeSorting}
-                columns={POOL_SORT_COLUMNS}
-                onSortingChange={(next) =>
-                  setSortingForScope(activeSortScope, next)
-                }
-                label="Add sort"
-                className="ds-header-btn"
-              />
-            )}
-            <TableFilterAddButton
-              columns={poolFilterColumns}
-              filters={poolFilters}
-              onFilterChange={setPoolFilter}
-              label="Add filter"
-            />
-          </>
-        }
-      />
-      <TableControlPanel>
-        {activeSortScope !== null && (
-          <SortTierBar
-            sorting={activeSorting}
-            columns={POOL_SORT_COLUMNS}
-            onSortingChange={(next) =>
-              setSortingForScope(activeSortScope, next)
-            }
-            hideAddButton
-          />
-        )}
-        {(isActiveFilter(poolFilters.bpm) || isActiveFilter(poolFilters.key)) && (
-          <TableFilterPills
-            columns={poolFilterColumns}
-            filters={poolFilters}
-            onFilterChange={setPoolFilter}
-            onRemove={removePoolFilter}
-          />
-        )}
-      </TableControlPanel>
-      {activeTab === 'groups' ? (
-        subgroups.length === 0 ? (
-          <p className="set-empty-tracks">
-            No groups yet. Create one using the + button above.
-          </p>
-        ) : (
-          <DndContext
-            collisionDetection={closestCenter}
-            onDragEnd={handleSectionDragEnd}
-            modifiers={[restrictToVerticalAxis]}
-          >
-            <div className="subgroup-sections">
-              {subgroups.map((sg, idx) => {
-                const entryIds = memberEntriesBySubgroup.get(sg.id)
-                const entries = filterEntries(
-                  entryIds ? pool.filter((e) => entryIds.has(e.id)) : [],
-                )
-                return (
-                  <SubgroupSection
-                    key={sg.id}
-                    subgroup={sg}
-                    entries={entries}
-                    subgroups={subgroups}
-                    colorByIndex={subgroupColorById}
-                    membershipByEntry={membershipByEntry}
-                    sorting={
-                      sortingByScope[String(sg.id)] ?? DEFAULT_POOL_SORTING
-                    }
-                    onSortingChange={(next) =>
-                      setSortingForScope(String(sg.id), next)
-                    }
-                    index={idx}
-                    onRemove={onRemove}
-                    onMoveToTracklist={onMoveToTracklist}
-                    onAddSubgroupMember={onAddSubgroupMember}
-                    onRemoveSubgroupMember={onRemoveSubgroupMember}
-                    visibleColumnIds={displayColumns}
-                    poolHeadProps={poolHeadBaseProps}
-                    onDropTrackToSubgroup={onDropTrackToSubgroup}
-                    trackDropSubgroupId={trackDropSubgroupId}
-                    onTrackDropSubgroupChange={setTrackDropSubgroupId}
-                  />
-                )
-              })}
-            </div>
-          </DndContext>
-        )
-      ) : pool.length === 0 ? (
-        <p className="set-empty-tracks">
-          Pool is empty. Drag tracks from the Search table above.
-        </p>
-      ) : sorted.length === 0 && typeof activeTab === 'number' ? (
-        <p className="set-empty-tracks">
-          No tracks in this group yet. Search above to add one, or use the + in
-          the Groups column on the All tab.
-        </p>
-      ) : displayColumns.length === 0 ? (
-        <TableColumnEmptyRecovery />
-      ) : (
-        <div className="track-table-outer">
-          <div className="track-table-wrapper">
-            <table className="set-pool-table">
-              <PoolTableHead
-                {...poolHeadBaseProps}
-                sorting={activeSorting}
-                onHeaderSort={handleHeaderSort}
-              />
-              <tbody>
-                {sorted.map((entry, i) => (
-                  <PoolRow
-                    key={entry.id}
-                    entry={entry}
-                    visibleColumnIds={displayColumns}
-                    onRemove={onRemove}
-                    onMoveToTracklist={onMoveToTracklist}
-                    subgroups={subgroups}
-                    colorByIndex={subgroupColorById}
-                    memberSubgroupIds={
-                      membershipByEntry.get(entry.id) ?? new Set()
-                    }
-                    onAddSubgroupMember={onAddSubgroupMember}
-                    onRemoveSubgroupMember={onRemoveSubgroupMember}
-                    reorder={
-                      rowReorderEnabled
-                        ? {
-                            index: i,
-                            isDragging: rowDragIndex === i,
-                            isDropTarget:
-                              rowDropIndex === i &&
-                              rowDragIndex !== null &&
-                              rowDragIndex !== i,
-                            onDragStart: handleRowDragStart,
-                            onDragOver: handleRowDragOver,
-                            onDragLeave: handleRowDragLeave,
-                            onDrop: handleRowDrop,
-                            onDragEnd: handleRowDragEnd,
-                          }
-                        : undefined
-                    }
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+              <button
+                type="button"
+                className="pool-group-rail-toggle"
+                aria-expanded
+                aria-label="Collapse groups"
+                title="Collapse groups"
+                onClick={() => setRailCollapsed(true)}
+              >
+                <span className="pool-group-rail-chevron" aria-hidden="true">
+                  ›
+                </span>
+              </button>
+            </aside>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    </PoolHighlightContext.Provider>
   )
 }

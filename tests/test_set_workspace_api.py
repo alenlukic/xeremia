@@ -1,6 +1,6 @@
 """Service-level tests for set workspace operations.
 
-Covers: set CRUD, pool/tracklist mutual exclusivity, tracklist reorder,
+Covers: set CRUD, pool/tracklist coexistence, tracklist reorder,
 delete-node resolution, and edge-score request shape.
 """
 
@@ -115,7 +115,7 @@ class TestSetCRUD:
         assert session.query(SetExplorerNode).filter_by(set_id=sid).count() == 0
 
 
-class TestPoolTracklistExclusivity:
+class TestPoolTracklistCoexistence:
     def test_pool_add_basic(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
         session.commit()
@@ -132,27 +132,74 @@ class TestPoolTracklistExclusivity:
         assert err2 is None
         assert entry2.track_id == 10
 
-    def test_pool_blocked_by_tracklist(
+    def test_pool_add_allowed_when_in_tracklist(
         self, svc: SetWorkspaceService, session: Session
     ):
         s = svc.create_set("S")
         session.commit()
         svc.tracklist_add(s.id, 10)
         entry, err = svc.pool_add(s.id, 10)
-        assert entry is None
-        assert err is not None
-        assert "tracklist" in err.lower()
+        assert err is None
+        assert entry is not None
+        assert entry.track_id == 10
+        assert (
+            session.query(SetTracklistEntry)
+            .filter_by(set_id=s.id, track_id=10)
+            .count()
+            == 1
+        )
 
-    def test_tracklist_blocked_by_pool(
+    def test_tracklist_add_allowed_when_in_pool(
         self, svc: SetWorkspaceService, session: Session
     ):
         s = svc.create_set("S")
         session.commit()
         svc.pool_add(s.id, 20)
         entry, err = svc.tracklist_add(s.id, 20)
-        assert entry is None
-        assert err is not None
-        assert "pool" in err.lower()
+        assert err is None
+        assert entry is not None
+        assert entry.track_id == 20
+        assert (
+            session.query(SetPoolEntry).filter_by(set_id=s.id, track_id=20).count() == 1
+        )
+
+    def test_pool_set_highlight(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        entry, _ = svc.pool_add(s.id, 10)
+        session.commit()
+
+        ok, err = svc.pool_set_highlight(s.id, 10, "#E2725B")
+        assert ok is True
+        assert err is None
+        session.refresh(entry)
+        assert entry.highlight_color == "#e2725b"  # normalized lowercase
+
+        # Clearing via None resets the color.
+        ok, err = svc.pool_set_highlight(s.id, 10, None)
+        assert ok is True
+        session.refresh(entry)
+        assert entry.highlight_color is None
+
+    def test_pool_set_highlight_rejects_bad_color(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        session.commit()
+        svc.pool_add(s.id, 10)
+        session.commit()
+        ok, err = svc.pool_set_highlight(s.id, 10, "red")
+        assert ok is False
+        assert err == "Invalid highlight color"
+
+    def test_pool_set_highlight_missing_track(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.pool_set_highlight(s.id, 999, "#ffffff")
+        assert ok is False
+        assert err == "Track not found in pool"
 
     def test_pool_move_to_tracklist(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")

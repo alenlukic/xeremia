@@ -265,7 +265,7 @@ export function App() {
   // to the design-system Add-sort control and control-panel sort tiers.
   const searchSortColumns = useMemo(() => {
     const reg = new Map(TABLE_REGISTRIES.search.map((e) => [e.id, e]))
-    const nonSortable = new Set(['play', 'add_to_set'])
+    const nonSortable = new Set(['play'])
     return visibleColumnIds(searchConfig)
       .filter((id) => !nonSortable.has(id))
       .map((id) => ({ id, label: reg.get(id)?.label ?? id }))
@@ -379,8 +379,6 @@ export function App() {
                 tablePrefs.flushColumnWidth('search', id, width)
               }
               scrollRestorationKey={`${topSplit}:${rowSplit}`}
-              onAddToPool={handleAddToPool}
-              onAddToTracklist={handleAddToTracklist}
             />
           </section>
           {topSplit === 'split' && (
@@ -451,10 +449,10 @@ export function App() {
                 }
                 onViewDetail={setDetailMatch}
                 onUseAsSource={handleUseAsSource}
-                onAddToPool={handleAddToPool}
-                onAddToTracklist={handleAddToTracklist}
                 onTrackDrop={handleMatchSourceDrop}
                 trackIndex={trackIndex}
+                genres={filterGenres}
+                labels={filterLabels}
               />
             )}
             {detailMatch && (
@@ -532,6 +530,7 @@ export function App() {
             removeFromPool={setBuilder.removeFromPool}
             movePoolToTracklist={setBuilder.movePoolToTracklist}
             reorderPool={setBuilder.reorderPool}
+            setPoolHighlight={setBuilder.setPoolHighlight}
             addToPool={setBuilder.addToPool}
             createSubgroup={setBuilder.createSubgroup}
             renameSubgroup={setBuilder.renameSubgroup}

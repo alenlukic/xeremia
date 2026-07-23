@@ -48,8 +48,8 @@ function makeTrackIndex(): Map<number, Track> {
     date_added: '2026-01-01T00:00:00Z',
   }
   return new Map<number, Track>([
-    [1, { ...base, id: 1, title: 'In 8B', bpm: 128, camelot_code: '8B' }],
-    [2, { ...base, id: 2, title: 'In 9A', bpm: 124, camelot_code: '9A' }],
+    [1, { ...base, id: 1, title: 'In 8B', bpm: 128, camelot_code: '08B' }],
+    [2, { ...base, id: 2, title: 'In 9A', bpm: 124, camelot_code: '09A' }],
   ])
 }
 
@@ -66,7 +66,7 @@ const SCORE_HEADERS = [
   'Vocals',
 ]
 
-const ALL_HEADERS = ['Pre.', 'Actions', 'Track', ...SCORE_HEADERS, 'DETAILS']
+const ALL_HEADERS = ['Pre.', 'Track', ...SCORE_HEADERS, 'DETAILS']
 
 function headerLabels(): string[] {
   return screen
@@ -102,7 +102,7 @@ const matchSource = {
 
 describe('MatchesPanel', () => {
   describe('column headers', () => {
-    it('renders all column headers regardless of onAddToSet', () => {
+    it('renders the default column headers without an Actions column', () => {
       render(
         <MatchesPanel
           matchSource={matchSource}
@@ -115,22 +115,7 @@ describe('MatchesPanel', () => {
       expect(headers.map((h) => columnHeaderLabel(h as HTMLElement))).toEqual(
         ALL_HEADERS,
       )
-    })
-
-    it('renders same column headers when onAddToSet is provided', () => {
-      render(
-        <MatchesPanel
-          matchSource={matchSource}
-          matches={[makeMatch()]}
-          loading={false}
-          onAddToSet={vi.fn()}
-          {...testMatchesPanelTableProps}
-        />,
-      )
-      const headers = screen.getAllByRole('columnheader')
-      expect(headers.map((h) => columnHeaderLabel(h as HTMLElement))).toEqual(
-        ALL_HEADERS,
-      )
+      expect(ALL_HEADERS).not.toContain('Actions')
     })
 
     it('includes Track, SCORE, and score sub-columns', () => {
@@ -162,17 +147,17 @@ describe('MatchesPanel', () => {
       const headers = screen.getAllByRole('columnheader')
       const widths = headers.map((h) => (h as HTMLElement).style.width)
       expect(widths[0]).toBe('40px') // play (Pre.)
-      expect(widths[1]).toBe('92px') // add_to_set
-      expect(widths[3]).toBe('70px') // SCORE
-      expect(widths[4]).toBe('60px') // Spectral
-      expect(widths[5]).toBe('60px') // Key
-      expect(widths[6]).toBe('60px') // BPM
-      expect(widths[7]).toBe('60px') // Genre
-      expect(widths[8]).toBe('60px') // Recency
-      expect(widths[9]).toBe('73px') // Energy (MIK)
-      expect(widths[10]).toBe('60px') // Mood
-      expect(widths[11]).toBe('73px') // Instruments
-      expect(widths[12]).toBe('60px') // Vocals
+      expect(widths[1]).toBe('260px') // Track
+      expect(widths[2]).toBe('70px') // SCORE
+      expect(widths[3]).toBe('60px') // Spectral
+      expect(widths[4]).toBe('60px') // Key
+      expect(widths[5]).toBe('60px') // BPM
+      expect(widths[6]).toBe('60px') // Genre
+      expect(widths[7]).toBe('60px') // Recency
+      expect(widths[8]).toBe('73px') // Energy (MIK)
+      expect(widths[9]).toBe('60px') // Mood
+      expect(widths[10]).toBe('73px') // Instruments
+      expect(widths[11]).toBe('60px') // Vocals
     })
 
     it('track column renders at its compact 260px default', () => {
@@ -185,26 +170,24 @@ describe('MatchesPanel', () => {
         />,
       )
       const headers = screen.getAllByRole('columnheader')
-      expect((headers[2] as HTMLElement).style.width).toBe('260px')
+      expect((headers[1] as HTMLElement).style.width).toBe('260px')
     })
 
-    it('add_to_set column is 92px and details column is 50px', () => {
+    it('details column is 50px', () => {
       render(
         <MatchesPanel
           matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
-          onAddToSet={vi.fn()}
           {...testMatchesPanelTableProps}
         />,
       )
       const headers = screen.getAllByRole('columnheader')
       expect((headers[0] as HTMLElement).style.width).toBe('40px') // play (Pre.)
-      expect((headers[1] as HTMLElement).style.width).toBe('92px') // add_to_set
-      expect((headers[2] as HTMLElement).style.width).toBe('260px') // Track
-      expect((headers[9] as HTMLElement).style.width).toBe('73px') // Energy (MIK)
-      expect((headers[11] as HTMLElement).style.width).toBe('73px') // Instruments
-      expect((headers[13] as HTMLElement).style.width).toBe('50px') // DETAILS
+      expect((headers[1] as HTMLElement).style.width).toBe('260px') // Track
+      expect((headers[8] as HTMLElement).style.width).toBe('73px') // Energy (MIK)
+      expect((headers[10] as HTMLElement).style.width).toBe('73px') // Instruments
+      expect((headers[12] as HTMLElement).style.width).toBe('50px') // DETAILS
     })
   })
 
@@ -215,16 +198,15 @@ describe('MatchesPanel', () => {
           matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
-          onAddToSet={vi.fn()}
           {...testMatchesPanelTableProps}
         />,
       )
       const resizers = document.querySelectorAll('.col-resizer')
-      // play (Pre.) is non-resizable; add_to_set + Track + score columns + details resize.
-      expect(resizers.length).toBe(SCORE_HEADERS.length + 3)
+      // play (Pre.) and details are non-resizable; Track + score columns resize.
+      expect(resizers.length).toBe(SCORE_HEADERS.length + 1)
 
       const headers = document.querySelectorAll('.matches-table thead th')
-      const trackTh = headers[2]
+      const trackTh = headers[1]
       expect(trackTh.querySelector('.col-resizer')).toBeTruthy()
     })
 
@@ -381,7 +363,7 @@ describe('MatchesPanel', () => {
       ).toBeInTheDocument()
     })
 
-    it('offers candidate key/BPM/genre filters alongside the score ranges', async () => {
+    it('offers browse-style candidate filters and separate score-range filters', async () => {
       render(
         <MatchesPanel
           matchSource={matchSource}
@@ -391,18 +373,31 @@ describe('MatchesPanel', () => {
           {...testMatchesPanelTableProps}
         />,
       )
+      // Candidate attributes share the browse quadrant's filter (grid + groups).
       await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
-      const items = [...document.querySelectorAll('.filter-add-menu-item')].map(
-        (el) => el.textContent,
+      const candidateItems = [
+        ...document.querySelectorAll('.filter-add-menu-item'),
+      ].map((el) => el.textContent)
+      expect(candidateItems).toEqual([
+        'Key',
+        'BPM',
+        'Genre',
+        'Label',
+        'Date Added',
+      ])
+
+      // Compatibility scores are a separate, numeric-only filter control.
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add score filter' }),
       )
-      // Track attributes first, then the compatibility scores — relabelled so
-      // they no longer read as a second Key/BPM/Genre.
-      expect(items.slice(0, 3)).toEqual(['Key', 'BPM', 'Genre'])
-      expect(items).toContain('Key score')
-      expect(items).toContain('Genre score')
+      const scoreItems = [
+        ...document.querySelectorAll('.filter-add-menu-item'),
+      ].map((el) => el.textContent)
+      expect(scoreItems).toContain('Key score')
+      expect(scoreItems).toContain('Genre score')
     })
 
-    it('filters matches by the candidate track key', async () => {
+    it('filters matches by the candidate track key via the Camelot grid', async () => {
       render(
         <MatchesPanel
           matchSource={matchSource}
@@ -419,9 +414,13 @@ describe('MatchesPanel', () => {
       expect(screen.getByText('In 9A')).toBeInTheDocument()
 
       await userEvent.click(screen.getByRole('button', { name: 'Add filter' }))
-      await userEvent.click(screen.getByRole('button', { name: 'Key' }))
-      const popover = screen.getByRole('dialog', { name: 'Value filter' })
-      await userEvent.click(within(popover).getByLabelText('8B'))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Key' }))
+      const popover = screen.getByRole('dialog', { name: 'Key filter' })
+      await userEvent.click(
+        within(popover).getByRole('button', { name: '08B' }),
+      )
+      // The browse popover stages its draft and commits on dismissal.
+      await userEvent.keyboard('{Escape}')
 
       expect(screen.getByText('In 8B')).toBeInTheDocument()
       expect(screen.queryByText('In 9A')).not.toBeInTheDocument()
@@ -605,13 +604,12 @@ describe('MatchesPanel', () => {
       expect(onUseAsSource).toHaveBeenCalledWith(42)
     })
 
-    it('does not render a Use as source button in the actions column', () => {
+    it('does not render a Use as source button in the details cell', () => {
       render(
         <MatchesPanel
           matchSource={matchSource}
           matches={[makeMatch()]}
           loading={false}
-          onAddToSet={vi.fn()}
           {...testMatchesPanelTableProps}
         />,
       )
@@ -621,21 +619,8 @@ describe('MatchesPanel', () => {
     })
   })
 
-  describe('add to set action', () => {
-    it('renders Add to Set button when onAddToSet is provided', () => {
-      render(
-        <MatchesPanel
-          matchSource={matchSource}
-          matches={[makeMatch()]}
-          loading={false}
-          onAddToSet={vi.fn()}
-          {...testMatchesPanelTableProps}
-        />,
-      )
-      expect(screen.getByTitle('Add to set')).toBeInTheDocument()
-    })
-
-    it('does not render Add to set button when onAddToSet is not provided', () => {
+  describe('row actions removed', () => {
+    it('does not render Add to set / Pool / Tracklist action buttons', () => {
       render(
         <MatchesPanel
           matchSource={matchSource}
@@ -645,71 +630,9 @@ describe('MatchesPanel', () => {
         />,
       )
       expect(screen.queryByTitle('Add to set')).not.toBeInTheDocument()
+      expect(screen.queryByTitle('Add to Pool')).not.toBeInTheDocument()
+      expect(screen.queryByTitle('Add to Tracklist')).not.toBeInTheDocument()
       expect(document.querySelectorAll('.match-action-btn').length).toBe(0)
-    })
-
-    it('calls onAddToSet with candidate_id when clicked', async () => {
-      const onAddToSet = vi.fn()
-      render(
-        <MatchesPanel
-          matchSource={matchSource}
-          matches={[makeMatch({ candidate_id: 99 })]}
-          loading={false}
-          onAddToSet={onAddToSet}
-          {...testMatchesPanelTableProps}
-        />,
-      )
-      await userEvent.click(screen.getByTitle('Add to set'))
-      expect(onAddToSet).toHaveBeenCalledWith(99)
-    })
-  })
-
-  describe('dual add-to-pool/tracklist actions', () => {
-    it('renders dual buttons when onAddToPool and onAddToTracklist are provided', () => {
-      render(
-        <MatchesPanel
-          matchSource={matchSource}
-          matches={[makeMatch()]}
-          loading={false}
-          onAddToPool={vi.fn()}
-          onAddToTracklist={vi.fn()}
-          {...testMatchesPanelTableProps}
-        />,
-      )
-      expect(screen.getByTitle('Add to Pool')).toBeInTheDocument()
-      expect(screen.getByTitle('Add to Tracklist')).toBeInTheDocument()
-    })
-
-    it('calls onAddToPool with candidate_id when clicked', async () => {
-      const onAddToPool = vi.fn()
-      render(
-        <MatchesPanel
-          matchSource={matchSource}
-          matches={[makeMatch({ candidate_id: 42 })]}
-          loading={false}
-          onAddToPool={onAddToPool}
-          onAddToTracklist={vi.fn()}
-          {...testMatchesPanelTableProps}
-        />,
-      )
-      await userEvent.click(screen.getByTitle('Add to Pool'))
-      expect(onAddToPool).toHaveBeenCalledWith(42)
-    })
-
-    it('calls onAddToTracklist with candidate_id when clicked', async () => {
-      const onAddToTracklist = vi.fn()
-      render(
-        <MatchesPanel
-          matchSource={matchSource}
-          matches={[makeMatch({ candidate_id: 42 })]}
-          loading={false}
-          onAddToPool={vi.fn()}
-          onAddToTracklist={onAddToTracklist}
-          {...testMatchesPanelTableProps}
-        />,
-      )
-      await userEvent.click(screen.getByTitle('Add to Tracklist'))
-      expect(onAddToTracklist).toHaveBeenCalledWith(42)
     })
   })
 })

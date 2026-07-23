@@ -2938,15 +2938,32 @@ body,
   overflow: hidden;
 }
 
+/* Below the header/control zones, the pool splits into the scrolling table
+   content and a group-navigation rail pinned to its right edge. */
+.set-pool-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+}
+.set-pool-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Non-table body content (empty states, group sections) keeps the old inset. */
-.set-pool > .set-empty-tracks,
+.set-pool-content > .set-empty-tracks,
 .set-tracklist > .set-empty-tracks,
-.set-pool > .subgroup-sections,
-.set-pool > .table-col-empty-recovery,
+.set-pool-content > .subgroup-sections,
+.set-pool-content > .table-col-empty-recovery,
 .set-tracklist > .table-col-empty-recovery {
   margin: 8px;
 }
-.set-pool > .subgroup-sections {
+.set-pool-content > .subgroup-sections {
   overflow: auto;
   min-height: 0;
 }
@@ -3654,35 +3671,266 @@ body,
 
 /* === Pool Tab Bar & Subgroup Styles === */
 
-.pool-tab-bar {
+/* === Pool track Highlighter === */
+
+/* Colored bar beneath the top border of the title cell for a highlighted row. */
+.set-ws-cell-title {
+  position: relative;
+}
+.pool-highlight-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  pointer-events: none;
+}
+
+/* Single-step swatch palette (Notion/Docs-style highlight picker). */
+.pool-highlight-palette {
+  position: fixed;
+  z-index: 200;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.pool-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 26px);
+  gap: 6px;
+}
+.pool-highlight-tile {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  background-clip: padding-box;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition);
+}
+.pool-highlight-tile:hover {
+  transform: scale(1.12);
+}
+.pool-highlight-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.pool-highlight-tile.selected {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent);
+}
+/* "No highlight" tile: a diagonal strike on a neutral field. */
+.pool-highlight-tile--none {
+  background:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 1px),
+      var(--danger, #d9534f) calc(50% - 1px),
+      var(--danger, #d9534f) calc(50% + 1px),
+      transparent calc(50% + 1px)
+    ),
+    var(--surface-2, rgba(255, 255, 255, 0.06));
+}
+/* Custom tile: a conic rainbow signals "pick any color"; the native input
+   overlays it so a click opens the OS picker directly. */
+.pool-highlight-tile--custom {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: conic-gradient(red, #ff0, lime, aqua, blue, magenta, red);
+}
+.pool-highlight-tile--custom input[type='color'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pool-highlight-tile {
+    transition: none;
+  }
+  .pool-highlight-tile:hover {
+    transform: none;
+  }
+}
+
+/* === Group navigation rail (pinned to the right of the pool table) === */
+
+.pool-group-rail {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: 160px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+/* Collapsed: the whole spine is a single expand button (no chevron), with a
+   hover "wibble" to signal it is interactive. */
+.pool-group-rail--collapsed {
+  width: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.pool-group-rail--collapsed:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.pool-group-rail--collapsed:hover .pool-group-rail-spine-label {
+  animation: pool-rail-wibble 0.5s ease-in-out;
+}
+.pool-group-rail--collapsed:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@keyframes pool-rail-wibble {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-3px) rotate(-2deg);
+  }
+  75% {
+    transform: translateY(3px) rotate(2deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pool-group-rail--collapsed:hover .pool-group-rail-spine-label {
+    animation: none;
+  }
+}
+
+/* Left-edge drag handle: widens/narrows the expanded rail. */
+.pool-group-rail-resizer {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 6px;
+  height: 100%;
+  z-index: 2;
+  cursor: col-resize;
+}
+.pool-group-rail-resizer:hover {
+  background: var(--accent-dim);
+}
+
+/* Collapse/expand control: pinned to the bottom of the rail, centered. */
+.pool-group-rail-toggle {
+  flex: 0 0 auto;
+  order: 2;
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.pool-group-rail-toggle:hover {
+  color: var(--text);
+}
+.pool-group-rail-chevron {
+  font-size: 20px;
+  line-height: 1;
+}
+/* Vertical "Groups" caption shown on the collapsed spine, above the toggle. */
+.pool-group-rail-spine-label {
+  flex: 1 1 auto;
+  order: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.pool-tab-bar {
+  order: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 2px;
-  padding: 0 8px;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--border);
-  min-height: 32px;
+  padding: 6px 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* "Create new group" affordance in the rail, mirroring the group dropdown's
+   create item (see .subgroup-modal-create) rather than a bare +. */
+.pool-tab-create {
+  order: 1;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color var(--transition),
+    border-color var(--transition);
+}
+.pool-tab-create:hover {
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  border-color: var(--accent);
 }
 
 .pool-tab {
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: 0 4px 4px 0;
   color: var(--text-muted);
   font-size: 11px;
-  padding: 6px 10px 4px;
+  padding: 5px 8px;
   cursor: pointer;
+  text-align: left;
   transition:
     color var(--transition),
-    border-color var(--transition);
+    border-color var(--transition),
+    background-color var(--transition);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pool-tab:hover {
   color: var(--text);
+  background: var(--surface-hover);
 }
 .pool-tab--active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--accent-dim);
 }
 .pool-tab--default {
   font-weight: 600;
@@ -3705,10 +3953,14 @@ body,
 }
 
 .pool-tab-wrapper {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 1px;
   position: relative;
+}
+.pool-tab-wrapper .pool-tab {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .pool-tab-wrapper:hover .pool-tab-controls {
   opacity: 1;
@@ -3718,6 +3970,7 @@ body,
 .pool-tab-controls {
   display: flex;
   gap: 1px;
+  flex: 0 0 auto;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -3727,7 +3980,7 @@ body,
   opacity: 0.4;
 }
 .pool-tab-wrapper--drop-target {
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 /* === Row drag reordering (tracklist + pool) === */
@@ -3892,7 +4145,7 @@ body,
   padding: 2px 4px;
 }
 
-/* --- Groups cell (design-system): member dots + "+" multi-select modal --- */
+/* --- Groups cell: member dots + Notion-style searchable multi-select --- */
 /* A colored dot keyed to each subgroup's stable index (shared with the tabs). */
 .subgroup-dot {
   display: inline-block;
@@ -3910,9 +4163,31 @@ body,
 
 .subgroup-cell {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  display: block;
+  min-height: 22px;
+  width: 100%;
+}
+/* Closed cell: blank when empty, pills when filled. Click opens the popup. */
+.subgroup-cell-trigger {
+  display: block;
+  width: 100%;
+  min-height: 22px;
+  margin: 0;
+  padding: 1px 2px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.subgroup-cell-trigger:hover,
+.subgroup-cell-trigger[aria-expanded='true'] {
+  border-color: var(--border);
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+}
+.subgroup-cell-trigger--empty {
+  min-height: 22px;
 }
 .subgroup-dots {
   display: flex;
@@ -3933,44 +4208,69 @@ body,
   text-overflow: ellipsis;
   max-width: 84px;
 }
-.subgroup-add-inline {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  border: 1px dashed var(--border-strong);
+/* Filter input lives only inside the open popup (Notion multi-select). */
+.subgroup-modal .subgroup-assign-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 26px;
+  margin-bottom: 2px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    color var(--transition),
-    border-color var(--transition);
-}
-.subgroup-add-inline:hover,
-.subgroup-add-inline[aria-expanded='true'] {
+  background: var(--bg, transparent);
   color: var(--text);
-  border-color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+.subgroup-modal .subgroup-assign-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 .subgroup-modal {
   position: absolute;
   top: 100%;
-  left: 0;
+  /* The pool is the right-most quadrant, so a left-anchored menu overflows the
+     viewport edge. Anchor to the cell's right edge and grow leftward instead. */
+  right: 0;
+  left: auto;
   z-index: 60;
   margin-top: 4px;
-  min-width: 150px;
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px;
+  padding: 6px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.subgroup-modal-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.subgroup-modal-create {
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 4px 4px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.subgroup-modal-create:hover:not(:disabled) {
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+}
+.subgroup-modal-create:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .subgroup-modal-item {
   display: flex;
@@ -4337,33 +4637,6 @@ body,
   flex: 0 0 auto;
 }
 
-.set-pool-header-tabs {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-/* The pool's group tabs live in the design-system header's primary slot; let
-   that slot grow so the tabs get room and scroll horizontally when crowded. */
-.ds-table-header:has(.set-pool-header-tabs) .ds-table-header-primary {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin-left: 12px;
-}
-/* Keep "Pool (N)" fully visible; the tab bar (not the title) absorbs crowding. */
-.ds-table-header:has(.set-pool-header-tabs) .ds-table-header-title {
-  flex: 0 0 auto;
-}
-
-.set-pool-header-tabs .pool-tab-bar {
-  padding: 0;
-  border-bottom: none;
-  min-height: unset;
-  flex-wrap: nowrap;
-  width: max-content;
-  max-width: none;
-}
-
 .set-pool-header-sort {
   flex: 0 1 auto;
   margin-left: auto;
@@ -4379,15 +4652,65 @@ body,
   min-height: unset;
 }
 
+/* Pool active sort tiers + filter pills share the header row with the add
+   controls (groups moved to the rail), so the control-panel row is gone. */
+.set-pool-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.set-pool-header-controls .sort-tier-bar,
+.set-pool-header-controls .filter-pills {
+  border-bottom: none;
+  padding: 0;
+  min-height: unset;
+}
+
 .table-col-controls {
   position: static;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   max-width: 100%;
+  min-width: 0;
 }
 
-.table-col-remove,
+.table-col-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hover × sits left of the title. Collapsed to zero width until hover/focus so
+   its appearance temporarily widens the header (and thus the column) instead of
+   competing with the title or the right-side sort indicator. */
+.table-col-remove {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition:
+    width 120ms ease,
+    max-width 120ms ease,
+    margin 120ms ease,
+    opacity 120ms ease;
+}
+
 .table-col-recovery-btn {
   opacity: 0;
   border: none;
@@ -4418,9 +4741,53 @@ body,
     border-color var(--transition);
 }
 
-.table-col-controls:hover .table-col-remove,
+/* Reveal only when the pointer is on the left side of the column header, or
+   when the remove control itself has focus (keyboard). Mid/right header hover
+   must not surface the ×. */
+.table-col-controls--left-hot .table-col-remove,
 .table-col-controls:focus-within .table-col-remove {
+  width: 14px;
+  max-width: 14px;
+  margin-right: 4px;
   opacity: 1;
+}
+
+/* Row-removal × on the left of pool/tracklist rows (not a preference column). */
+.set-ws-col-remove {
+  width: 22px;
+}
+.set-ws-th-remove,
+.set-ws-cell-remove {
+  width: 22px;
+  padding: 0 2px;
+  text-align: center;
+  vertical-align: middle;
+}
+.set-row-remove-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition:
+    opacity var(--transition),
+    color var(--transition),
+    background-color var(--transition);
+}
+.set-row-remove-btn:hover,
+.set-row-remove-btn:focus-visible {
+  opacity: 1;
+  color: var(--text);
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+}
+tr:hover .set-row-remove-btn {
+  opacity: 0.85;
 }
 
 .table-col-insert-zone:hover .table-col-insert-btn,

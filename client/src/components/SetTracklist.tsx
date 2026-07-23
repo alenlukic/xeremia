@@ -24,7 +24,6 @@ const TRACKLIST_COL_CLASS: Record<string, string> = {
   key: 'set-ws-col-key',
   bpm: 'set-ws-col-bpm',
   note: 'set-ws-col-note',
-  actions: 'set-ws-col-actions-tracklist',
 }
 
 const TRACKLIST_HEADER_LABEL: Record<string, string> = {
@@ -33,7 +32,6 @@ const TRACKLIST_HEADER_LABEL: Record<string, string> = {
   key: 'Key',
   bpm: 'BPM',
   note: 'Note',
-  actions: 'Actions',
 }
 
 interface Props {
@@ -50,7 +48,6 @@ interface Props {
   /** When provided, the header menu offers switching to the Explorer view. */
   onOpenExplorer?: () => void
   onRemove: (trackId: number) => void
-  onMoveToPool: (trackId: number) => void
   onReorder: (trackId: number, newPosition: number) => void
   onUpdateNote: (trackId: number, note: string) => void
   onAddTrack: (trackId: number, title?: string) => void
@@ -118,7 +115,6 @@ export function SetTracklist({
   headerControls,
   onOpenExplorer,
   onRemove,
-  onMoveToPool,
   onReorder,
   onUpdateNote,
   onAddTrack,
@@ -305,12 +301,10 @@ export function SetTracklist({
     const label = TRACKLIST_HEADER_LABEL[colId] ?? colId
     const registry = registryById.get(colId)
     const resizable = registry?.resizable !== false
-    const thClass =
-      colId === 'actions' ? 'set-ws-th set-ws-th-actions' : 'set-ws-th'
 
     if (colId === 'play') {
       return (
-        <th key={colId} className={thClass}>
+        <th key={colId} className="set-ws-th">
           <div className="th-content th-content--play">Pre.</div>
         </th>
       )
@@ -319,7 +313,8 @@ export function SetTracklist({
     return (
       <th
         key={colId}
-        className={`${thClass}${draggedColumn === colId ? ' th-dragging' : ''}`}
+        aria-label={registry?.label ?? label}
+        className={`set-ws-th${draggedColumn === colId ? ' th-dragging' : ''}`}
         onDragOver={handleColumnDragOver}
         onDrop={(e) => handleColumnDrop(e, colId)}
       >
@@ -391,27 +386,6 @@ export function SetTracklist({
             />
           </td>
         )
-      case 'actions':
-        return (
-          <td key={colId} className="set-ws-cell-actions">
-            <div className="set-ws-actions-group">
-              <button
-                className="set-action-btn"
-                onClick={() => onMoveToPool(entry.track_id)}
-                title="Move to pool"
-              >
-                To Pool
-              </button>
-              <button
-                className="set-action-btn set-action-btn--danger"
-                onClick={() => onRemove(entry.track_id)}
-                title="Delete from tracklist"
-              >
-                ×
-              </button>
-            </div>
-          </td>
-        )
       default:
         return null
     }
@@ -467,6 +441,7 @@ export function SetTracklist({
           <div className="track-table-wrapper">
             <table className="set-tracklist-table">
               <colgroup>
+                <col className="set-ws-col-remove" />
                 {visibleIds.map((colId) => (
                   <col
                     key={colId}
@@ -476,7 +451,13 @@ export function SetTracklist({
                 ))}
               </colgroup>
               <thead>
-                <tr>{visibleIds.map((colId) => renderHeaderCell(colId))}</tr>
+                <tr>
+                  <th
+                    className="set-ws-th set-ws-th-remove"
+                    aria-label="Remove"
+                  />
+                  {visibleIds.map((colId) => renderHeaderCell(colId))}
+                </tr>
               </thead>
               <tbody>
                 {tracklist.map((entry, i) => (
@@ -545,6 +526,17 @@ export function SetTracklist({
                       clearRowDragState()
                     }}
                   >
+                    <td className="set-ws-cell-remove">
+                      <button
+                        type="button"
+                        className="set-row-remove-btn"
+                        aria-label="Remove from tracklist"
+                        title="Remove from tracklist"
+                        onClick={() => onRemove(entry.track_id)}
+                      >
+                        ×
+                      </button>
+                    </td>
                     {visibleIds.map((colId) => renderBodyCell(colId, entry, i))}
                   </tr>
                 ))}

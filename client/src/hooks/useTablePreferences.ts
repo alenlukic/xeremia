@@ -89,7 +89,6 @@ export function useTablePreferences(): TablePreferencesState {
       if (existing) {
         clearTimeout(existing)
       }
-      pendingRef.current[tableId] = configsRef.current[tableId]
       if (immediate) {
         void persistTable(tableId)
         return
@@ -149,12 +148,17 @@ export function useTablePreferences(): TablePreferencesState {
       updater: (prev: NormalizedTableConfig) => NormalizedTableConfig,
       immediate = false,
     ) => {
-      setConfigs((prev) => {
-        const nextConfig = updater(prev[tableId])
-        const merged = { ...prev, [tableId]: nextConfig }
-        configsRef.current = merged
-        return merged
-      })
+      // Compute the next config synchronously from the ref so both the pending
+      // save payload and an immediate flush see the post-change value. Putting
+      // this only inside a setState updater raced with scheduleSave(immediate),
+      // while reading the ref after setState (without writing it first) used to
+      // drop the latest toggle on debounced save.
+      const prevConfigs = configsRef.current
+      const nextConfig = updater(prevConfigs[tableId])
+      const merged = { ...prevConfigs, [tableId]: nextConfig }
+      configsRef.current = merged
+      pendingRef.current[tableId] = nextConfig
+      setConfigs(merged)
       scheduleSave(tableId, immediate)
     },
     [scheduleSave],

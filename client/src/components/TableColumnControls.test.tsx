@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   TableColumnControls,
@@ -61,6 +61,7 @@ function makePoolEntry(
   return {
     set_id: 1,
     insertion_order: 0,
+    highlight_color: null,
     track: {
       id: overrides.track_id,
       title: `Pool Track ${overrides.track_id}`,
@@ -89,6 +90,129 @@ describe('TableColumnControls', () => {
       </TableColumnControls>,
     )
     expect(screen.getByText('BPM')).toBeTruthy()
+  })
+
+  it('places the remove control to the left of the column title', () => {
+    const { container } = render(
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <TableColumnControls label="BPM" onRemove={vi.fn()}>
+                BPM
+              </TableColumnControls>
+            </th>
+          </tr>
+        </thead>
+      </table>,
+    )
+    const controls = container.querySelector('.table-col-controls')!
+    const children = Array.from(controls.children).map((el) => el.className)
+    expect(children[0]).toContain('table-col-remove')
+    expect(children[1]).toContain('table-col-label')
+  })
+
+  it('surfaces the remove control only after the pointer dwells on the left of the header', () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: 200 }}>
+                <TableColumnControls label="BPM" onRemove={vi.fn()}>
+                  BPM
+                </TableColumnControls>
+              </th>
+            </tr>
+          </thead>
+        </table>,
+      )
+      const th = container.querySelector('th')!
+      const controls = container.querySelector('.table-col-controls')!
+      Object.defineProperty(th, 'getBoundingClientRect', {
+        value: () => ({
+          left: 0,
+          top: 0,
+          right: 200,
+          bottom: 24,
+          width: 200,
+          height: 24,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }),
+      })
+
+      // Right side: never reveals, no matter how long.
+      fireEvent.mouseMove(th, { clientX: 160, clientY: 12 })
+      act(() => vi.advanceTimersByTime(1000))
+      expect(controls.classList.contains('table-col-controls--left-hot')).toBe(
+        false,
+      )
+
+      // Left side: hidden until the dwell delay elapses, then revealed.
+      fireEvent.mouseMove(th, { clientX: 12, clientY: 12 })
+      expect(controls.classList.contains('table-col-controls--left-hot')).toBe(
+        false,
+      )
+      act(() => vi.advanceTimersByTime(600))
+      expect(controls.classList.contains('table-col-controls--left-hot')).toBe(
+        true,
+      )
+
+      fireEvent.mouseLeave(th)
+      expect(controls.classList.contains('table-col-controls--left-hot')).toBe(
+        false,
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels the pending reveal if the pointer leaves the left zone early', () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: 200 }}>
+                <TableColumnControls label="BPM" onRemove={vi.fn()}>
+                  BPM
+                </TableColumnControls>
+              </th>
+            </tr>
+          </thead>
+        </table>,
+      )
+      const th = container.querySelector('th')!
+      const controls = container.querySelector('.table-col-controls')!
+      Object.defineProperty(th, 'getBoundingClientRect', {
+        value: () => ({
+          left: 0,
+          top: 0,
+          right: 200,
+          bottom: 24,
+          width: 200,
+          height: 24,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }),
+      })
+
+      fireEvent.mouseMove(th, { clientX: 12, clientY: 12 })
+      act(() => vi.advanceTimersByTime(300))
+      // Move back to the right before the dwell completes: reveal is cancelled.
+      fireEvent.mouseMove(th, { clientX: 160, clientY: 12 })
+      act(() => vi.advanceTimersByTime(600))
+      expect(controls.classList.contains('table-col-controls--left-hot')).toBe(
+        false,
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('removes the column when the remove control is clicked', async () => {
@@ -175,8 +299,8 @@ describe('SetPoolTable header layout and column controls', () => {
         subgroups={subgroups}
         subgroupMemberships={[]}
         onRemove={noop}
-        onMoveToTracklist={noop}
         onReorder={noop}
+        onSetHighlight={noop}
         onAddTrack={noop}
         onCreateSubgroup={asyncNull}
         onRenameSubgroup={asyncTrue}
@@ -192,7 +316,7 @@ describe('SetPoolTable header layout and column controls', () => {
     )
   }
 
-  it('renders the Pool title in the design-system header with tabs and controls beside it', () => {
+  it('keeps the Pool title and filter control in the header, with group tabs in the right rail', () => {
     const { container } = renderPool()
     const header = container.querySelector('.ds-table-header')!
     expect(header.querySelector('.ds-table-header-title')?.textContent).toMatch(
@@ -201,10 +325,34 @@ describe('SetPoolTable header layout and column controls', () => {
     const primary = header.querySelector<HTMLElement>(
       '.ds-table-header-primary',
     )!
-    expect(within(primary).getByRole('tablist')).toBeTruthy()
+    // The group enumeration moved out of the header into the collapsible rail.
+    expect(within(primary).queryByRole('tablist')).toBeNull()
     expect(
       within(primary).getByRole('button', { name: 'Add filter' }),
     ).toBeTruthy()
+
+    const rail = container.querySelector<HTMLElement>('.pool-group-rail')!
+    expect(rail).toBeTruthy()
+    expect(within(rail).getByRole('tablist')).toBeTruthy()
+  })
+
+  it('collapses and expands the group rail', async () => {
+    const { container } = renderPool()
+    // Re-query each time: the rail swaps between an expanded <aside> and a
+    // collapsed <button> spine, so a cached reference goes stale.
+    const rail = () => container.querySelector('.pool-group-rail')!
+    expect(within(rail() as HTMLElement).getByRole('tablist')).toBeTruthy()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Collapse groups' }),
+    )
+    expect(rail().classList.contains('pool-group-rail--collapsed')).toBe(true)
+    // Collapsed spine hides the tab list.
+    expect(within(rail() as HTMLElement).queryByRole('tablist')).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand groups' }))
+    expect(rail().classList.contains('pool-group-rail--collapsed')).toBe(false)
+    expect(within(rail() as HTMLElement).getByRole('tablist')).toBeTruthy()
   })
 
   it('moves the add-column control off the headers (no inline per-column +)', () => {
