@@ -107,6 +107,8 @@ def serialize_explorer_node(node, track=None):
         "set_id": node.set_id,
         "node_id": node.node_id,
         "track_id": node.track_id,
+        "x": node.x,
+        "y": node.y,
         "level": node.level,
         "col_index": node.col_index,
         "track": track,

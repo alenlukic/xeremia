@@ -24,6 +24,8 @@ import {
   tracklistMoveToPool,
   updateTracklistNote as apiUpdateTracklistNote,
   explorerAddNode,
+  explorerMoveNode,
+  explorerSetPositions,
   explorerDeleteNode,
   explorerAddEdge,
   explorerDeleteEdge,
@@ -577,36 +579,17 @@ export function useSetBuilder() {
   )
 
   const addExplorerNode = useCallback(
-    async (trackId: number, parentNodeId?: string, level: number = 0) => {
+    async (trackId: number, x: number = 0, y: number = 0, parentNodeId?: string) => {
       if (activeSetId === null) {
         return null
       }
       try {
-        if (parentNodeId && activeSet) {
-          const parentNode = activeSet.explorer_nodes.find(
-            (n) => n.node_id === parentNodeId,
-          )
-          if (parentNode) {
-            const targetLevel = parentNode.level + 1
-            const existing = activeSet.explorer_nodes.find(
-              (n) => n.track_id === trackId && n.level === targetLevel,
-            )
-            if (existing) {
-              await explorerAddEdge(activeSetId, parentNodeId, existing.node_id)
-              await refreshActive()
-              return {
-                node_id: existing.node_id,
-                track_id: trackId,
-                level: targetLevel,
-              }
-            }
-          }
-        }
         const result = await explorerAddNode(
           activeSetId,
           trackId,
+          x,
+          y,
           parentNodeId,
-          level,
         )
         await refreshActive()
         return result
@@ -617,7 +600,45 @@ export function useSetBuilder() {
         return null
       }
     },
-    [activeSetId, activeSet, refreshActive, setErrorWithAutoClear],
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  // Persist a single node's new position after a drag. No refresh: the canvas
+  // already holds the optimistic position, and a round-trip would only cause a
+  // redundant re-render (a failed write self-corrects on the next hydration).
+  const moveExplorerNode = useCallback(
+    async (nodeId: string, x: number, y: number) => {
+      if (activeSetId === null) {
+        return
+      }
+      try {
+        await explorerMoveNode(activeSetId, nodeId, x, y)
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not move node.'))
+        }
+      }
+    },
+    [activeSetId, setErrorWithAutoClear],
+  )
+
+  // Batch-persist positions produced by auto-layout, then re-hydrate so the
+  // stored graph and the canvas agree.
+  const setExplorerPositions = useCallback(
+    async (positions: { node_id: string; x: number; y: number }[]) => {
+      if (activeSetId === null) {
+        return
+      }
+      try {
+        await explorerSetPositions(activeSetId, positions)
+        await refreshActive()
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not save layout.'))
+        }
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
   const deleteExplorerNode = useCallback(
@@ -683,34 +704,38 @@ export function useSetBuilder() {
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
-  const addSiblingNode = useCallback(
-    async (trackId: number, inheritParentIds: string[], level: number) => {
+  // Add a node at (x, y) wired to one or more parents. Used by undo to
+  // reconstruct a deleted node together with its incoming edges.
+  const addNodeWithParents = useCallback(
+    async (
+      trackId: number,
+      parentIds: string[],
+      x: number,
+      y: number,
+    ) => {
       if (activeSetId === null) {
         return null
       }
       try {
-        const firstParent = inheritParentIds[0]
+        const firstParent = parentIds[0]
         const result = await explorerAddNode(
           activeSetId,
           trackId,
+          x,
+          y,
           firstParent,
-          level,
         )
         if (!result) {
           return null
         }
-        for (let i = 1; i < inheritParentIds.length; i++) {
-          await explorerAddEdge(
-            activeSetId,
-            inheritParentIds[i],
-            result.node_id,
-          )
+        for (let i = 1; i < parentIds.length; i++) {
+          await explorerAddEdge(activeSetId, parentIds[i], result.node_id)
         }
         await refreshActive()
         return result
       } catch (err) {
         if (mountedRef.current) {
-          setErrorWithAutoClear(friendlyError(err, 'Could not add sibling.'))
+          setErrorWithAutoClear(friendlyError(err, 'Could not add node.'))
         }
         return null
       }
@@ -820,10 +845,12 @@ export function useSetBuilder() {
     setPoolHighlight,
     updateTracklistNote,
     addExplorerNode,
+    moveExplorerNode,
+    setExplorerPositions,
     deleteExplorerNode,
     addExplorerEdge,
     deleteExplorerEdge: deleteExplorerEdgeAction,
-    addSiblingNode,
+    addNodeWithParents,
     swapExplorerNodes,
     explorerNodeAddToTracklist,
     fetchEdgeScores,

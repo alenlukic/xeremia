@@ -163,6 +163,10 @@ export interface ExplorerNode {
   set_id: number
   node_id: string
   track_id: number
+  /** Free-canvas position (grid-snapped SVG user-space coordinates). */
+  x: number
+  y: number
+  /** Legacy tree-layout fields, retained for backward compatibility. */
   level: number
   col_index: number
   track: Track | null

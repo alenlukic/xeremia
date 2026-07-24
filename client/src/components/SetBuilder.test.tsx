@@ -66,9 +66,14 @@ function defaultProps() {
     addToTracklist: noop,
     addExplorerNode: asyncNoop as unknown as (
       trackId: number,
+      x?: number,
+      y?: number,
       parentNodeId?: string,
-      level?: number,
     ) => Promise<{ node_id: string } | null>,
+    moveExplorerNode: noop as (nodeId: string, x: number, y: number) => void,
+    setExplorerPositions: asyncNoop as unknown as (
+      positions: { node_id: string; x: number; y: number }[],
+    ) => Promise<void>,
     deleteExplorerNode: noop as (
       nodeId: string,
       rewireEdges?: { parent_node_id: string; child_node_id: string }[],
@@ -82,10 +87,11 @@ function defaultProps() {
     ) => Promise<void>,
     swapExplorerNodes: noop,
     explorerNodeAddToTracklist: noop,
-    addSiblingNode: asyncNoop as unknown as (
+    addNodeWithParents: asyncNoop as unknown as (
       trackId: number,
-      inheritParentIds: string[],
-      level: number,
+      parentIds: string[],
+      x: number,
+      y: number,
     ) => Promise<{ node_id: string } | null>,
     fetchEdgeScores: async () => ({ scores: [] as (number | null)[] }),
     clearError: noop,
@@ -187,7 +193,7 @@ describe('SetBuilder', () => {
     it('opens the Explorer view via the tracklist header and returns with the back arrow', async () => {
       render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
-      expect(screen.getByText(/Explorer is empty/)).toBeInTheDocument()
+      expect(screen.getByText(/Canvas is empty/)).toBeInTheDocument()
 
       await userEvent.click(screen.getByLabelText('Back to tracklist and pool'))
       expect(screen.getByText('Tracklist (0)')).toBeInTheDocument()
@@ -630,37 +636,19 @@ describe('SetBuilder', () => {
     })
   })
 
-  describe('explorer per-level add', () => {
-    it('shows per-level +Add Track button on explorer', async () => {
-      const hydrated = makeHydratedSet({
-        explorer_nodes: [
-          {
-            id: 1,
-            set_id: 1,
-            node_id: 'n1',
-            track_id: 10,
-            level: 0,
-            col_index: 0,
-            track: {
-              id: 10,
-              title: 'Root',
-              artist_names: [],
-              bpm: 128,
-              key: 'C',
-              camelot_code: '8B',
-              genre: null,
-              label: null,
-              energy: null,
-              date_added: null,
-            },
-          },
-        ],
-        explorer_edges: [],
-      })
-      render(<SetBuilder {...defaultProps()} activeSet={hydrated} />)
+  describe('explorer canvas controls', () => {
+    it('exposes the add-track search and auto-layout controls', async () => {
+      render(<SetBuilder {...defaultProps()} activeSet={makeHydratedSet()} />)
       await userEvent.click(screen.getByRole('button', { name: 'Explorer' }))
-      const addBtns = screen.getAllByTestId('level-add-btn')
-      expect(addBtns.length).toBeGreaterThan(0)
+      expect(
+        screen.getByTestId('explorer-add-search-input'),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByTestId('explorer-auto-layout-btn'),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByTestId('explorer-edge-style-toggle'),
+      ).toBeInTheDocument()
     })
   })
 

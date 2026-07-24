@@ -2,14 +2,19 @@ import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react'
 import type {
   ExplorerNode,
   ExplorerEdge,
-  SearchSuggestion,
   Track,
   TransitionMatch,
 } from '../types'
 import { colorForColumn, ACTION_FILL } from '../utils/explorer'
+import { forceDirectedLayout } from '../utils/graphLayout'
 import { fetchMatches } from '../api/http'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { formatOverallScore, TRACK_DRAG_MIME } from '../utils'
+
+export type ExplorerAddResult = { node_id: string } | null
+
+/** Straight lines, smooth cubic curves, or right-angle elbows. */
+export type EdgeStyle = 'curved' | 'straight' | 'orthogonal'
 
 interface Props {
   allTracks: Track[]
@@ -19,9 +24,14 @@ interface Props {
   onBack?: () => void
   onAddNode: (
     trackId: number,
+    x?: number,
+    y?: number,
     parentNodeId?: string,
-    level?: number,
   ) => void | Promise<ExplorerAddResult>
+  onMoveNode: (nodeId: string, x: number, y: number) => void
+  onSetPositions: (
+    positions: { node_id: string; x: number; y: number }[],
+  ) => Promise<void>
   onDeleteNode: (
     nodeId: string,
     rewireEdges?: { parent_node_id: string; child_node_id: string }[],
@@ -30,10 +40,11 @@ interface Props {
   onDeleteEdge: (edgeId: number) => Promise<void>
   onSwap: (nodeAId: string, nodeBId: string) => void
   onNodeToTracklist: (nodeId: string) => void
-  onAddSibling: (
+  onAddNodeWithParents: (
     trackId: number,
-    inheritParentIds: string[],
-    level: number,
+    parentIds: string[],
+    x: number,
+    y: number,
   ) => Promise<ExplorerAddResult>
   tracklistTrackIds: Set<number>
   fetchEdgeScores: (
@@ -41,11 +52,17 @@ interface Props {
   ) => Promise<{ scores: (number | null)[] }>
 }
 
-interface SiblingAddState {
-  targetLevel: number
-  parentIds: string[]
-  selectedParents: Set<string>
-  searchQuery: string
+interface Point {
+  x: number
+  y: number
+}
+
+interface ConnectDragState {
+  sourceNodeId: string
+  startX: number
+  startY: number
+  cursorX: number
+  cursorY: number
 }
 
 interface ChildAddState {
@@ -54,67 +71,33 @@ interface ChildAddState {
   loading: boolean
 }
 
-interface ConnectDragState {
-  sourceNodeId: string
-  sourceLevel: number
-  sourceCX: number
-  sourceCY: number
-  cursorX: number
-  cursorY: number
-}
-
-interface LayoutNode {
-  node: ExplorerNode
-  x: number
-  y: number
-  children: LayoutNode[]
-}
-
 /** Snapshot of a deleted node + its connections, used to reconstruct it on undo. */
 interface DeletedNode {
   node_id: string
   track_id: number
-  level: number
+  x: number
+  y: number
   /** node_ids of incoming-edge parents at deletion time. */
   parentIds: string[]
   /** node_ids of outgoing-edge children at deletion time. */
   childIds: string[]
 }
 
-export type ExplorerAddResult = { node_id: string } | null
-
-const NODE_W = 360
+const NODE_W = 210
 const NODE_H = 48
-const V_GAP = 176
-const MAX_COLS = 5
-const SLOT_W = 390
+const GRID = 20
+const HANDLE_R = 6
 const ACTION_H = 48
 const ACTION_LABEL_SIZE = 20
 const ACTION_GAP = 8
 const ACTION_ROW_MARGIN = 8
-// The click-controls (delete/swap/+child/→TL row) render at 75% scale.
 const ACTION_SCALE = 0.75
-const TOP_PAD = ACTION_H + ACTION_ROW_MARGIN
-const LEVEL_ADD_W = 70
-const LEVEL_ADD_H = 28
-const LEVEL_ADD_GAP = 16
-const LEVEL_LABEL_GUTTER = 56
-const EXPLORER_LEVEL_COUNT = 200
-const EXPLORER_LEVELS = Array.from(
-  { length: EXPLORER_LEVEL_COUNT },
-  (_, level) => level,
-)
-const EDGE_SLOTS = 5
-// Departure slots (left half) and arrival slots (right half) of a node's
-// width never share an x-coordinate, even though `nodeX` itself repeats
-// across levels whenever a parent and an unrelated child land in the same
-// column — without this split, a departure stub on one node and an arrival
-// stub on a same-column node at a different level could compute the same
-// absolute x and their vertical runs could genuinely overlap.
-const HALF_SLOT_SPAN = NODE_W / 2 / EDGE_SLOTS
-const LANE_STUB = 10
-const LANE_S = 6
+const MIN_CANVAS_W = 2400
+const MIN_CANVAS_H = 1600
+const CANVAS_PAD = 400
 const ZOOM_STORAGE_KEY = 'explorer-zoom'
+const EDGE_STYLE_STORAGE_KEY = 'explorer-edge-style'
+const DRAG_THRESHOLD = 5
 
 function readStoredZoom(): number {
   try {
@@ -132,34 +115,128 @@ function readStoredZoom(): number {
   }
 }
 
-// Each node has 5 departure slots (left half of its width) and 5 arrival
-// slots (right half). A parent emits a line to a given child from the
-// departure slot matching that CHILD's column index; a child receives a
-// line from the arrival slot matching that PARENT's column index. A node
-// can have at most one edge per distinct partner column, so within each
-// half every edge gets a unique x-offset — and the left/right split keeps
-// departures and arrivals from colliding with each other across levels.
-function departureSlotX(nodeX: number, slotIdx: number): number {
-  return nodeX + HALF_SLOT_SPAN * (slotIdx + 0.5)
+function readStoredEdgeStyle(): EdgeStyle {
+  try {
+    const raw = localStorage.getItem(EDGE_STYLE_STORAGE_KEY)
+    if (raw === 'curved' || raw === 'straight' || raw === 'orthogonal') {
+      return raw
+    }
+  } catch {
+    /* storage unavailable */
+  }
+  return 'curved'
 }
 
-function arrivalSlotX(nodeX: number, slotIdx: number): number {
-  return nodeX + NODE_W / 2 + HALF_SLOT_SPAN * (slotIdx + 0.5)
+function snapToGrid(v: number): number {
+  return Math.round(v / GRID) * GRID
 }
 
-function truncateForSvg(text: string, max = 56): string {
+// Stable per-node color derived from its id, so a node keeps its color across
+// re-layouts (there are no columns to key off of any more).
+function colorForNodeId(nodeId: string): string {
+  let h = 0
+  for (let i = 0; i < nodeId.length; i++) {
+    h = (h * 31 + nodeId.charCodeAt(i)) % 997
+  }
+  return colorForColumn(h)
+}
+
+function truncateForSvg(text: string, max = 30): string {
   if (text.length <= max) {
     return text
   }
   return text.slice(0, max - 1) + '…'
 }
 
+// Point on a node's rectangle border along the ray from its center toward
+// (towardX, towardY). Used to anchor edges at the node's edge, not its center.
+function borderPoint(
+  cx: number,
+  cy: number,
+  towardX: number,
+  towardY: number,
+): Point {
+  const dx = towardX - cx
+  const dy = towardY - cy
+  if (dx === 0 && dy === 0) {
+    return { x: cx, y: cy }
+  }
+  const halfW = NODE_W / 2
+  const halfH = NODE_H / 2
+  const scaleX = dx !== 0 ? halfW / Math.abs(dx) : Infinity
+  const scaleY = dy !== 0 ? halfH / Math.abs(dy) : Infinity
+  const scale = Math.min(scaleX, scaleY)
+  return { x: cx + dx * scale, y: cy + dy * scale }
+}
+
+interface EdgeGeometry {
+  path: string
+  end: Point
+  /** Unit direction of the final path segment (for the arrowhead). */
+  angle: number
+  labelX: number
+  labelY: number
+}
+
+function computeEdgeGeometry(
+  source: Point,
+  target: Point,
+  style: EdgeStyle,
+): EdgeGeometry {
+  const sc = { x: source.x + NODE_W / 2, y: source.y + NODE_H / 2 }
+  const tc = { x: target.x + NODE_W / 2, y: target.y + NODE_H / 2 }
+  const start = borderPoint(sc.x, sc.y, tc.x, tc.y)
+  const end = borderPoint(tc.x, tc.y, sc.x, sc.y)
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+
+  let path: string
+  let approach: Point // point the arrow is coming *from*
+
+  if (style === 'straight') {
+    path = `M ${start.x} ${start.y} L ${end.x} ${end.y}`
+    approach = start
+  } else if (style === 'orthogonal') {
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      const midX = (start.x + end.x) / 2
+      path = `M ${start.x} ${start.y} L ${midX} ${start.y} L ${midX} ${end.y} L ${end.x} ${end.y}`
+      approach = { x: midX, y: end.y }
+    } else {
+      const midY = (start.y + end.y) / 2
+      path = `M ${start.x} ${start.y} L ${start.x} ${midY} L ${end.x} ${midY} L ${end.x} ${end.y}`
+      approach = { x: end.x, y: midY }
+    }
+  } else {
+    // Curved: cubic bezier with tangents along the dominant axis.
+    const horizontal = Math.abs(dx) >= Math.abs(dy)
+    const off = Math.max(
+      40,
+      Math.min(200, (horizontal ? Math.abs(dx) : Math.abs(dy)) * 0.5),
+    )
+    const sgnX = Math.sign(dx) || 1
+    const sgnY = Math.sign(dy) || 1
+    const c1 = horizontal
+      ? { x: start.x + sgnX * off, y: start.y }
+      : { x: start.x, y: start.y + sgnY * off }
+    const c2 = horizontal
+      ? { x: end.x - sgnX * off, y: end.y }
+      : { x: end.x, y: end.y - sgnY * off }
+    path = `M ${start.x} ${start.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${end.x} ${end.y}`
+    approach = c2
+  }
+
+  const angle = Math.atan2(end.y - approach.y, end.x - approach.x)
+  return {
+    path,
+    end,
+    angle,
+    labelX: (start.x + end.x) / 2,
+    labelY: (start.y + end.y) / 2 - 6,
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Memoized sub-components
-// Props use primitives (number, boolean, string) and stable object references
-// from the parent's props — never freshly-created objects derived inside render.
-// React.memo compares primitives by value, so layout recomputation that produces
-// the same numbers does not cause re-renders of unaffected items.
+// Memoized node
 // ---------------------------------------------------------------------------
 
 interface ExplorerNodeItemProps {
@@ -167,22 +244,17 @@ interface ExplorerNodeItemProps {
   y: number
   nodeId: string
   trackId: number
-  level: number
-  colIndex: number
   trackTitle: string | undefined
+  color: string
   isSelected: boolean
   showActions: boolean
   isSwapSource: boolean
+  isDragging: boolean
   inTracklist: boolean
   onNodeClick: (nodeId: string, additive: boolean) => void
-  onNodeMouseDown: (
-    e: React.MouseEvent,
-    nodeId: string,
-    level: number,
-    x: number,
-    y: number,
-  ) => void
-  onNodeMouseUp: (nodeId: string, level: number) => void
+  onNodeMouseDown: (e: React.MouseEvent, nodeId: string) => void
+  onNodeMouseUp: (nodeId: string) => void
+  onHandleMouseDown: (e: React.MouseEvent, nodeId: string) => void
   onSetDeleteTarget: (nodeId: string) => void
   onSetSwapSource: (nodeId: string) => void
   openChildAdd: (nodeId: string) => void
@@ -194,22 +266,22 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   y,
   nodeId,
   trackId,
-  level,
-  colIndex,
   trackTitle,
+  color,
   isSelected,
   showActions,
   isSwapSource,
+  isDragging,
   inTracklist,
   onNodeClick,
   onNodeMouseDown,
   onNodeMouseUp,
+  onHandleMouseDown,
   onSetDeleteTarget,
   onSetSwapSource,
   openChildAdd,
   onNodeToTracklist,
 }: ExplorerNodeItemProps) {
-  const color = colorForColumn(colIndex)
   const fullTitle = trackTitle ?? String(trackId)
   const title = truncateForSvg(fullTitle)
 
@@ -271,17 +343,15 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   return (
     <g
       transform={`translate(${x}, ${y})`}
-      className="explorer-node-group"
+      className={`explorer-node-group${isDragging ? ' explorer-node-group--dragging' : ''}`}
       onClick={(e) => {
         e.stopPropagation()
         onNodeClick(nodeId, e.shiftKey || e.metaKey || e.ctrlKey)
       }}
-      onMouseDown={(e) => onNodeMouseDown(e, nodeId, level, x, y)}
-      onMouseUp={() => onNodeMouseUp(nodeId, level)}
+      onMouseDown={(e) => onNodeMouseDown(e, nodeId)}
+      onMouseUp={() => onNodeMouseUp(nodeId)}
       data-testid="explorer-node"
       data-node-id={nodeId}
-      data-level={level}
-      data-col-index={colIndex}
     >
       <g
         transform={`translate(${NODE_W / 2}, ${-(ACTION_SCALE * ACTION_H + ACTION_ROW_MARGIN)}) scale(${ACTION_SCALE}) translate(${-totalActionsW / 2}, 0)`}
@@ -293,11 +363,6 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
           {actions.map((a, i) => (
             <g
               key={a.key}
-              ref={(el) => {
-                if (el) {
-                  el.setAttribute('title', a.ariaLabel)
-                }
-              }}
               transform={`translate(${actionXs[i]}, 0)`}
               className="explorer-action-btn"
               onClick={(e) => {
@@ -326,9 +391,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
                 fill="var(--surface)"
                 stroke="var(--border)"
                 strokeWidth={1}
-              >
-                <title>{a.ariaLabel}</title>
-              </rect>
+              />
               <text
                 x={a.w / 2}
                 y={ACTION_H / 2}
@@ -362,23 +425,41 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
         textAnchor="middle"
         dominantBaseline="central"
         fill="#fff"
-        fontSize={9}
+        fontSize={11}
         className="explorer-node-title"
       >
         {title}
       </text>
+
+      {/* Outgoing-edge connect port (drag from here to another node). */}
+      <circle
+        className="explorer-connect-handle"
+        cx={NODE_W}
+        cy={NODE_H / 2}
+        r={HANDLE_R}
+        fill="var(--surface)"
+        stroke={color}
+        strokeWidth={2}
+        onMouseDown={(e) => onHandleMouseDown(e, nodeId)}
+        onClick={(e) => e.stopPropagation()}
+        data-testid="explorer-connect-handle"
+      />
     </g>
   )
 })
 
+// ---------------------------------------------------------------------------
+// Memoized edge
+// ---------------------------------------------------------------------------
+
 interface ExplorerEdgeItemProps {
   edgeId: number
-  parentX: number
-  parentY: number
-  childX: number
-  childY: number
-  parentColIdx: number
-  childColIdx: number
+  sourceX: number
+  sourceY: number
+  targetX: number
+  targetY: number
+  color: string
+  style: EdgeStyle
   isSelected: boolean
   score: number | null | undefined
   isLoading: boolean
@@ -388,61 +469,68 @@ interface ExplorerEdgeItemProps {
 
 const ExplorerEdgeItem = memo(function ExplorerEdgeItem({
   edgeId,
-  parentX,
-  parentY,
-  childX,
-  childY,
-  parentColIdx,
-  childColIdx,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  color,
+  style,
   isSelected,
   score,
   isLoading,
   onEdgeClick,
   onDeleteEdge,
 }: ExplorerEdgeItemProps) {
-  const parentBottom = parentY + NODE_H
-  const childTop = childY
-  const strokeColor = colorForColumn(parentColIdx)
-  const laneIndex = parentColIdx * EDGE_SLOTS + childColIdx
-  // Parent emits from the departure slot matching the child's column; child
-  // receives into the arrival slot matching the parent's column (see
-  // departureSlotX/arrivalSlotX above).
-  const startX = departureSlotX(parentX, childColIdx)
-  const endX = arrivalSlotX(childX, parentColIdx)
-  const laneY = parentBottom + LANE_STUB + laneIndex * LANE_S
-  const pathD = `M ${startX} ${parentBottom} L ${startX} ${laneY} L ${endX} ${laneY} L ${endX} ${childTop}`
-  const labelX = endX - 10
-  const labelY = childTop - 8
-  const edgeMidX = (startX + endX) / 2
+  const geo = computeEdgeGeometry(
+    { x: sourceX, y: sourceY },
+    { x: targetX, y: targetY },
+    style,
+  )
+  // Arrowhead triangle at the target anchor.
+  const ah = 9
+  const a1 = geo.angle + Math.PI - 0.4
+  const a2 = geo.angle + Math.PI + 0.4
+  const arrow = [
+    `${geo.end.x},${geo.end.y}`,
+    `${geo.end.x + ah * Math.cos(a1)},${geo.end.y + ah * Math.sin(a1)}`,
+    `${geo.end.x + ah * Math.cos(a2)},${geo.end.y + ah * Math.sin(a2)}`,
+  ].join(' ')
 
   return (
-    <g key={`edge-${edgeId}`}>
+    <g>
       <path
-        d={pathD}
+        d={geo.path}
         fill="none"
         stroke="transparent"
-        strokeWidth={12}
+        strokeWidth={14}
         style={{ cursor: 'pointer' }}
         onClick={(e) => onEdgeClick(e, edgeId)}
         data-testid="explorer-edge-hitbox"
       />
       <path
-        d={pathD}
+        d={geo.path}
         fill="none"
-        stroke={isSelected ? 'var(--accent)' : strokeColor}
+        stroke={isSelected ? 'var(--accent)' : color}
         strokeWidth={isSelected ? 2.5 : 1.5}
         pointerEvents="none"
+        data-testid="explorer-edge-path"
+      />
+      <polygon
+        points={arrow}
+        fill={isSelected ? 'var(--accent)' : color}
+        pointerEvents="none"
+        data-testid="explorer-edge-arrow"
       />
       {isLoading && score === undefined ? (
         <g
           className="explorer-score-spinner"
           data-testid="explorer-score-spinner"
-          transform={`translate(${labelX}, ${labelY})`}
+          transform={`translate(${geo.labelX}, ${geo.labelY})`}
         >
           <circle
             r={5}
             fill="none"
-            stroke={strokeColor}
+            stroke={color}
             strokeWidth={1.5}
             strokeDasharray="10 5"
             opacity={0.7}
@@ -450,12 +538,12 @@ const ExplorerEdgeItem = memo(function ExplorerEdgeItem({
         </g>
       ) : score !== undefined ? (
         <text
-          x={labelX}
-          y={labelY}
-          textAnchor="end"
+          x={geo.labelX}
+          y={geo.labelY}
+          textAnchor="middle"
           dominantBaseline="auto"
           className="explorer-edge-label"
-          fill={strokeColor}
+          fill={color}
           data-testid="explorer-edge-label"
         >
           {score !== null ? formatOverallScore(score) : '—'}
@@ -463,7 +551,7 @@ const ExplorerEdgeItem = memo(function ExplorerEdgeItem({
       ) : null}
       {isSelected && (
         <g
-          transform={`translate(${edgeMidX}, ${laneY})`}
+          transform={`translate(${geo.labelX}, ${geo.labelY + 12})`}
           className="explorer-edge-delete"
           onClick={(e) => {
             e.stopPropagation()
@@ -496,35 +584,38 @@ const ExplorerEdgeItem = memo(function ExplorerEdgeItem({
   )
 })
 
+// ---------------------------------------------------------------------------
+
 export function SetExplorerCanvas({
   allTracks,
   nodes,
   edges,
   onBack,
   onAddNode,
+  onMoveNode,
+  onSetPositions,
   onDeleteNode,
   onAddEdge,
   onDeleteEdge,
   onSwap,
   onNodeToTracklist,
-  onAddSibling,
+  onAddNodeWithParents,
   tracklistTrackIds,
   fetchEdgeScores,
 }: Props) {
   const {
-    suggestions: siblingSuggestions,
-    search: siblingSearch,
-    clear: siblingClear,
+    suggestions: addSuggestions,
+    search: addSearch,
+    clear: addClear,
   } = useTrackSearch(allTracks)
+
   const [edgeScores, setEdgeScores] = useState<Map<string, number | null>>(
     new Map(),
   )
   const [loadingEdgeKeys, setLoadingEdgeKeys] = useState<Set<string>>(new Set())
   const [swapSource, setSwapSource] = useState<string | null>(null)
-  const [siblingAdd, setSiblingAdd] = useState<SiblingAddState | null>(null)
   const [childAdd, setChildAdd] = useState<ChildAddState | null>(null)
-  const [jumpLevelInput, setJumpLevelInput] = useState('1')
-  const [jumpLevelError, setJumpLevelError] = useState<string | null>(null)
+  const [addQuery, setAddQuery] = useState('')
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -536,100 +627,166 @@ export function SetExplorerCanvas({
     y1: number
   } | null>(null)
   const [connectDrag, setConnectDrag] = useState<ConnectDragState | null>(null)
+  const [pan, setPan] = useState({ x: 40, y: 40 })
+  const [zoom, setZoom] = useState(readStoredZoom)
+  const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>(readStoredEdgeStyle)
+  // Local position overrides: hold live drag positions and auto-layout results
+  // that the server has not echoed back yet. Rendering reads these first.
+  const [posOverride, setPosOverride] = useState<Map<string, Point>>(
+    () => new Map(),
+  )
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
+
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const scoreCacheRef = useRef(new Map<string, number | null>())
-  // Always-current refs so scoring effect can read latest nodes/edges without
-  // taking array references as dependencies (array identity changes every render).
+
   const nodesRef = useRef(nodes)
   const edgesRef = useRef(edges)
-  const byLevelMapRef = useRef<Map<number, LayoutNode[]>>(new Map())
-  // Layout positions + current node selection, read from event-handler
-  // callbacks (marquee finalize / backspace) without taking them as deps.
-  const allFlatRef = useRef<LayoutNode[]>([])
-  const selectedNodeIdsRef = useRef(selectedNodeIds)
-  // Rubber-band (marquee) drag-select origin in SVG user-space; non-null only
-  // while a Shift+background drag is in progress.
-  const marqueeOriginRef = useRef<{ x: number; y: number } | null>(null)
-  const marqueeEndRef = useRef<{ x: number; y: number } | null>(null)
-  const marqueeMovedRef = useRef(false)
-  // Suppress the click that fires right after a marquee/pan drag so it does not
-  // immediately clear the selection the drag just made.
-  const suppressSvgClickRef = useRef(false)
-  // Undo stack of deletion batches; Ctrl/Cmd+Z pops and reconstructs the last one.
-  const undoStackRef = useRef<DeletedNode[][]>([])
-  // Stable indirection so the keydown effect can call delete/undo without
-  // listing them as deps (they are defined later in the component body).
-  const deleteNodesRef = useRef<(ids: string[]) => void | Promise<void>>(
-    () => {},
-  )
-  const undoDeleteRef = useRef<() => void | Promise<void>>(() => {})
-  // Refs for volatile UI state consumed by stable callbacks — prevents callbacks
-  // from changing identity on every render, which would defeat React.memo on sub-components.
+  const posOverrideRef = useRef(posOverride)
   const connectDragRef = useRef<ConnectDragState | null>(null)
   const swapSourceRef = useRef<string | null>(null)
+  const selectedNodeIdsRef = useRef(selectedNodeIds)
   const fetchEdgeScoresRef = useRef(fetchEdgeScores)
 
-  // Stable refs for ALL external callbacks from the parent.
-  // Many of these (onAddNode, onSwap, onAddEdge, etc.) come from useSetBuilder
-  // hooks where `activeSet` is a dep — so they get new references on every data
-  // refresh. Without refs, every ExplorerNodeItem/ExplorerEdgeItem would see a
-  // new callback prop and re-render, defeating React.memo entirely.
+  // Stable refs for all parent callbacks (they change identity on every data
+  // refresh; refs keep the memoized sub-components from re-rendering).
   const onAddNodeRef = useRef(onAddNode)
+  const onMoveNodeRef = useRef(onMoveNode)
+  const onSetPositionsRef = useRef(onSetPositions)
   const onDeleteNodeRef = useRef(onDeleteNode)
   const onAddEdgeRef = useRef(onAddEdge)
   const onDeleteEdgeRef = useRef(onDeleteEdge)
   const onSwapRef = useRef(onSwap)
   const onNodeToTracklistRef = useRef(onNodeToTracklist)
-  const onAddSiblingRef = useRef(onAddSibling)
+  const onAddNodeWithParentsRef = useRef(onAddNodeWithParents)
 
-  // Sync render-time values into refs after commit. The refs are only read from
-  // event-handler callbacks / effects (never during render), so a one-render lag
-  // is safe and avoids the react-hooks/refs render-mutation warning.
+  // Pan / node-drag / marquee gesture refs.
+  const panningRef = useRef(false)
+  const lastMouseRef = useRef({ x: 0, y: 0 })
+  const nodeDragRef = useRef<{
+    nodeId: string
+    startClientX: number
+    startClientY: number
+    originX: number
+    originY: number
+    moved: boolean
+  } | null>(null)
+  const marqueeOriginRef = useRef<Point | null>(null)
+  const marqueeEndRef = useRef<Point | null>(null)
+  const marqueeMovedRef = useRef(false)
+  const suppressSvgClickRef = useRef(false)
+  const undoStackRef = useRef<DeletedNode[][]>([])
+  const deleteNodesRef = useRef<(ids: string[]) => void | Promise<void>>(
+    () => {},
+  )
+  const undoDeleteRef = useRef<() => void | Promise<void>>(() => {})
+
   useEffect(() => {
     nodesRef.current = nodes
     edgesRef.current = edges
+    posOverrideRef.current = posOverride
     connectDragRef.current = connectDrag
     swapSourceRef.current = swapSource
+    selectedNodeIdsRef.current = selectedNodeIds
     fetchEdgeScoresRef.current = fetchEdgeScores
     onAddNodeRef.current = onAddNode
+    onMoveNodeRef.current = onMoveNode
+    onSetPositionsRef.current = onSetPositions
     onDeleteNodeRef.current = onDeleteNode
     onAddEdgeRef.current = onAddEdge
     onDeleteEdgeRef.current = onDeleteEdge
     onSwapRef.current = onSwap
     onNodeToTracklistRef.current = onNodeToTracklist
-    onAddSiblingRef.current = onAddSibling
-    selectedNodeIdsRef.current = selectedNodeIds
+    onAddNodeWithParentsRef.current = onAddNodeWithParents
   })
 
-  // Stable wrapper callbacks — identity never changes, body reads via ref.
-  const stableOnAddNode = useCallback(
-    (trackId: number, parentNodeId?: string, level?: number) =>
-      onAddNodeRef.current(trackId, parentNodeId, level),
-    [],
-  )
-  const stableOnNodeToTracklist = useCallback(
-    (nodeId: string) => onNodeToTracklistRef.current(nodeId),
-    [],
-  )
-  const stableOnDeleteEdge = useCallback(
-    (id: number) => onDeleteEdgeRef.current(id),
+  // Prune overrides once the server echoes a matching position, or the node is
+  // gone. During a plain move (no re-hydration) the prop stays stale, so the
+  // override persists and keeps holding the true position.
+  useEffect(() => {
+    setPosOverride((prev) => {
+      if (prev.size === 0) {
+        return prev
+      }
+      const byId = new Map(nodes.map((n) => [n.node_id, n]))
+      let changed = false
+      const next = new Map(prev)
+      for (const [id, p] of prev) {
+        const node = byId.get(id)
+        if (!node || (node.x === p.x && node.y === p.y)) {
+          next.delete(id)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [nodes])
+
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, { node: ExplorerNode; pos: Point }>()
+    for (const n of nodes) {
+      map.set(n.node_id, {
+        node: n,
+        pos: posOverride.get(n.node_id) ?? { x: n.x, y: n.y },
+      })
+    }
+    return map
+  }, [nodes, posOverride])
+
+  const canvasSize = useMemo(() => {
+    let maxX = 0
+    let maxY = 0
+    for (const { pos } of nodeMap.values()) {
+      maxX = Math.max(maxX, pos.x + NODE_W)
+      maxY = Math.max(maxY, pos.y + NODE_H)
+    }
+    return {
+      w: Math.max(MIN_CANVAS_W, maxX + CANVAS_PAD),
+      h: Math.max(MIN_CANVAS_H, maxY + CANVAS_PAD),
+    }
+  }, [nodeMap])
+
+  // --- Coordinate helpers ---------------------------------------------------
+
+  const toSvgPoint = useCallback(
+    (clientX: number, clientY: number): Point | null => {
+      const svg = svgRef.current
+      if (
+        !svg ||
+        typeof svg.createSVGPoint !== 'function' ||
+        typeof svg.getScreenCTM !== 'function'
+      ) {
+        return null
+      }
+      try {
+        const pt = svg.createSVGPoint()
+        pt.x = clientX
+        pt.y = clientY
+        const ctm = svg.getScreenCTM()
+        if (!ctm) {
+          return null
+        }
+        const p = pt.matrixTransform(ctm.inverse())
+        return { x: p.x, y: p.y }
+      } catch {
+        return null
+      }
+    },
     [],
   )
 
-  const [pan, setPan] = useState({ x: 20, y: 20 })
-  const [zoom, setZoom] = useState(readStoredZoom)
-  const draggingRef = useRef(false)
-  const lastMouseRef = useRef({ x: 0, y: 0 })
-  const pendingDragRef = useRef<{
-    sourceNodeId: string
-    sourceLevel: number
-    sourceCX: number
-    sourceCY: number
-    startClientX: number
-    startClientY: number
-  } | null>(null)
-  const DRAG_THRESHOLD = 5
+  const viewportCenterSvg = useCallback((): Point => {
+    const vp = viewportRef.current
+    const w = vp?.clientWidth ?? 800
+    const h = vp?.clientHeight ?? 600
+    return {
+      x: (w / 2 - pan.x) / zoom,
+      y: (h / 2 - pan.y) / zoom,
+    }
+  }, [pan.x, pan.y, zoom])
+
+  // --- Zoom -----------------------------------------------------------------
 
   const setZoomValue = useCallback((next: number) => {
     const clamped = Math.max(0.2, Math.min(3, next))
@@ -666,51 +823,30 @@ export function SetExplorerCanvas({
     [zoomBy],
   )
 
-  // Map a client (screen) coordinate to the SVG user-space, accounting for the
-  // CSS pan/zoom transform on the <svg>. Returns null when the SVG or the SVG
-  // geometry APIs are unavailable (e.g. jsdom), so callers fall back safely.
-  const toSvgPoint = useCallback(
-    (clientX: number, clientY: number): { x: number; y: number } | null => {
-      const svg = svgRef.current
-      if (
-        !svg ||
-        !Number.isFinite(clientX) ||
-        !Number.isFinite(clientY) ||
-        typeof svg.createSVGPoint !== 'function' ||
-        typeof svg.getScreenCTM !== 'function'
-      ) {
-        return null
-      }
-      try {
-        const pt = svg.createSVGPoint()
-        pt.x = clientX
-        pt.y = clientY
-        const ctm = svg.getScreenCTM()
-        if (!ctm) {
-          return null
-        }
-        const p = pt.matrixTransform(ctm.inverse())
-        return { x: p.x, y: p.y }
-      } catch {
-        return null
-      }
-    },
-    [],
-  )
+  const changeEdgeStyle = useCallback((style: EdgeStyle) => {
+    setEdgeStyle(style)
+    try {
+      localStorage.setItem(EDGE_STYLE_STORAGE_KEY, style)
+    } catch {
+      /* storage unavailable */
+    }
+  }, [])
+
+  // --- Background gestures (pan + marquee) ----------------------------------
 
   const handleBgMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (connectDragRef.current) {
+      if (connectDragRef.current || nodeDragRef.current) {
         return
       }
-      pendingDragRef.current = null
+      const target = e.target as Element
       const onBackground =
-        e.target === svgRef.current || (e.target as Element).tagName === 'svg'
+        target === svgRef.current ||
+        target.classList.contains('set-explorer-svg') ||
+        target.classList.contains('explorer-grid-bg')
       if (!onBackground) {
         return
       }
-      // Ctrl/Cmd+drag on the background draws a marquee to multi-select nodes;
-      // a plain drag pans the canvas.
       if (e.metaKey || e.ctrlKey) {
         const origin = toSvgPoint(e.clientX, e.clientY)
         if (origin) {
@@ -720,60 +856,15 @@ export function SetExplorerCanvas({
           return
         }
       }
-      draggingRef.current = true
+      panningRef.current = true
       lastMouseRef.current = { x: e.clientX, y: e.clientY }
     },
     [toSvgPoint],
   )
 
-  const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
-    const cd = connectDragRef.current
-    if (pendingDragRef.current && !cd) {
-      const pd = pendingDragRef.current
-      const dx = e.clientX - pd.startClientX
-      const dy = e.clientY - pd.startClientY
-      if (Math.abs(dx) + Math.abs(dy) >= DRAG_THRESHOLD) {
-        setConnectDrag({
-          sourceNodeId: pd.sourceNodeId,
-          sourceLevel: pd.sourceLevel,
-          sourceCX: pd.sourceCX,
-          sourceCY: pd.sourceCY,
-          cursorX: pd.sourceCX,
-          cursorY: pd.sourceCY,
-        })
-        pendingDragRef.current = null
-      }
-      return
-    }
-    if (cd) {
-      const svg = svgRef.current
-      if (!svg) {
-        return
-      }
-      const pt = svg.createSVGPoint()
-      pt.x = e.clientX
-      pt.y = e.clientY
-      const ctm = svg.getScreenCTM()
-      if (!ctm) {
-        return
-      }
-      const svgPt = pt.matrixTransform(ctm.inverse())
-      setConnectDrag((prev) =>
-        prev ? { ...prev, cursorX: svgPt.x, cursorY: svgPt.y } : prev,
-      )
-      return
-    }
-    if (!draggingRef.current) {
-      return
-    }
-    const dx = e.clientX - lastMouseRef.current.x
-    const dy = e.clientY - lastMouseRef.current.y
-    lastMouseRef.current = { x: e.clientX, y: e.clientY }
-    setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }))
-  }, [])
-
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
+      // Marquee in progress.
       const o = marqueeOriginRef.current
       if (o) {
         const p = toSvgPoint(e.clientX, e.clientY)
@@ -786,113 +877,388 @@ export function SetExplorerCanvas({
         }
         return
       }
-      handleCanvasMouseMove(e)
+
+      // Connect-drag preview.
+      const cd = connectDragRef.current
+      if (cd) {
+        const p = toSvgPoint(e.clientX, e.clientY)
+        if (p) {
+          setConnectDrag((prev) =>
+            prev ? { ...prev, cursorX: p.x, cursorY: p.y } : prev,
+          )
+        }
+        return
+      }
+
+      // Node reposition drag.
+      const nd = nodeDragRef.current
+      if (nd) {
+        const dxc = e.clientX - nd.startClientX
+        const dyc = e.clientY - nd.startClientY
+        if (
+          !nd.moved &&
+          Math.abs(dxc) + Math.abs(dyc) < DRAG_THRESHOLD
+        ) {
+          return
+        }
+        if (!nd.moved) {
+          nd.moved = true
+          setDraggingNodeId(nd.nodeId)
+        }
+        const nx = Math.max(0, nd.originX + dxc / zoom)
+        const ny = Math.max(0, nd.originY + dyc / zoom)
+        setPosOverride((prev) => {
+          const next = new Map(prev)
+          next.set(nd.nodeId, { x: nx, y: ny })
+          return next
+        })
+        return
+      }
+
+      // Plain pan.
+      if (!panningRef.current) {
+        return
+      }
+      const dx = e.clientX - lastMouseRef.current.x
+      const dy = e.clientY - lastMouseRef.current.y
+      lastMouseRef.current = { x: e.clientX, y: e.clientY }
+      setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }))
     },
-    [toSvgPoint, handleCanvasMouseMove],
+    [toSvgPoint, zoom],
   )
 
-  const handleMouseUp = useCallback(() => {
+  const finishMarquee = useCallback(() => {
     const origin = marqueeOriginRef.current
-    if (origin) {
-      const end = marqueeEndRef.current ?? origin
-      marqueeOriginRef.current = null
-      marqueeEndRef.current = null
-      setMarquee(null)
-      if (marqueeMovedRef.current) {
-        // Select every node whose box intersects the marquee rect.
-        const minX = Math.min(origin.x, end.x)
-        const maxX = Math.max(origin.x, end.x)
-        const minY = Math.min(origin.y, end.y)
-        const maxY = Math.max(origin.y, end.y)
-        const hits = new Set<string>()
-        for (const ln of allFlatRef.current) {
-          if (
-            ln.x <= maxX &&
-            ln.x + NODE_W >= minX &&
-            ln.y <= maxY &&
-            ln.y + NODE_H >= minY
-          ) {
-            hits.add(ln.node.node_id)
-          }
+    if (!origin) {
+      return false
+    }
+    const end = marqueeEndRef.current ?? origin
+    marqueeOriginRef.current = null
+    marqueeEndRef.current = null
+    setMarquee(null)
+    if (marqueeMovedRef.current) {
+      const minX = Math.min(origin.x, end.x)
+      const maxX = Math.max(origin.x, end.x)
+      const minY = Math.min(origin.y, end.y)
+      const maxY = Math.max(origin.y, end.y)
+      const hits = new Set<string>()
+      for (const { node, pos } of nodeMap.values()) {
+        if (
+          pos.x <= maxX &&
+          pos.x + NODE_W >= minX &&
+          pos.y <= maxY &&
+          pos.y + NODE_H >= minY
+        ) {
+          hits.add(node.node_id)
         }
-        setSelectedNodeIds(hits)
-        setSelectedEdgeId(null)
-        suppressSvgClickRef.current = true
       }
+      setSelectedNodeIds(hits)
+      setSelectedEdgeId(null)
+      suppressSvgClickRef.current = true
+    }
+    return true
+  }, [nodeMap])
+
+  const handleMouseUp = useCallback(() => {
+    if (finishMarquee()) {
       return
     }
-    draggingRef.current = false
-    pendingDragRef.current = null
+    // Finish a node reposition: snap + persist.
+    const nd = nodeDragRef.current
+    if (nd) {
+      nodeDragRef.current = null
+      if (nd.moved) {
+        const cur = posOverrideRef.current.get(nd.nodeId)
+        const sx = snapToGrid(cur?.x ?? nd.originX)
+        const sy = snapToGrid(cur?.y ?? nd.originY)
+        setPosOverride((prev) => {
+          const next = new Map(prev)
+          next.set(nd.nodeId, { x: sx, y: sy })
+          return next
+        })
+        onMoveNodeRef.current(nd.nodeId, sx, sy)
+        suppressSvgClickRef.current = true
+      }
+      setDraggingNodeId(null)
+    }
+    panningRef.current = false
     if (connectDragRef.current) {
       setConnectDrag(null)
     }
+  }, [finishMarquee])
+
+  // --- Node gestures --------------------------------------------------------
+
+  const handleNodeMouseDown = useCallback(
+    (e: React.MouseEvent, nodeId: string) => {
+      if (e.button !== 0 || swapSourceRef.current) {
+        return
+      }
+      const target = e.target as Element
+      if (
+        target.closest('.explorer-action-row') ||
+        target.closest('.explorer-connect-handle')
+      ) {
+        return
+      }
+      e.stopPropagation()
+      const entry = nodeMap.get(nodeId)
+      if (!entry) {
+        return
+      }
+      nodeDragRef.current = {
+        nodeId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        originX: entry.pos.x,
+        originY: entry.pos.y,
+        moved: false,
+      }
+    },
+    [nodeMap],
+  )
+
+  const handleHandleMouseDown = useCallback(
+    (e: React.MouseEvent, nodeId: string) => {
+      if (e.button !== 0 || swapSourceRef.current) {
+        return
+      }
+      e.stopPropagation()
+      const entry = nodeMap.get(nodeId)
+      if (!entry) {
+        return
+      }
+      const startX = entry.pos.x + NODE_W
+      const startY = entry.pos.y + NODE_H / 2
+      setConnectDrag({
+        sourceNodeId: nodeId,
+        startX,
+        startY,
+        cursorX: startX,
+        cursorY: startY,
+      })
+    },
+    [nodeMap],
+  )
+
+  const handleNodeMouseUp = useCallback((nodeId: string) => {
+    const cd = connectDragRef.current
+    if (!cd) {
+      return
+    }
+    if (cd.sourceNodeId !== nodeId) {
+      const already = edgesRef.current.some(
+        (e) =>
+          e.parent_node_id === cd.sourceNodeId && e.child_node_id === nodeId,
+      )
+      if (!already) {
+        void onAddEdgeRef.current(cd.sourceNodeId, nodeId)
+      }
+    }
+    setConnectDrag(null)
   }, [])
 
-  const { allFlat, totalWidth, totalHeight, columnIndices, byLevelMap } =
-    useMemo(() => {
-      const byLevel = new Map<number, LayoutNode[]>()
-      for (const n of nodes) {
-        const lv = n.level
-        const layoutNode = { node: n, x: 0, y: 0, children: [] }
-        const levelNodes = byLevel.get(lv)
-        if (levelNodes === undefined) {
-          byLevel.set(lv, [layoutNode])
+  // --- Selection / click ----------------------------------------------------
+
+  const handleSvgClick = useCallback((e: React.MouseEvent) => {
+    if (suppressSvgClickRef.current) {
+      suppressSvgClickRef.current = false
+      return
+    }
+    const target = e.target as Element
+    if (
+      target === svgRef.current ||
+      target.classList.contains('set-explorer-svg') ||
+      target.classList.contains('explorer-grid-bg')
+    ) {
+      setSelectedNodeIds(new Set())
+      setSelectedEdgeId(null)
+      setSwapSource(null)
+    }
+  }, [])
+
+  const handleNodeClick = useCallback((nodeId: string, additive: boolean) => {
+    const ss = swapSourceRef.current
+    if (ss) {
+      if (ss !== nodeId) {
+        onSwapRef.current(ss, nodeId)
+      }
+      setSwapSource(null)
+      return
+    }
+    setSelectedNodeIds((prev) => {
+      if (additive) {
+        const next = new Set(prev)
+        if (next.has(nodeId)) {
+          next.delete(nodeId)
         } else {
-          levelNodes.push(layoutNode)
+          next.add(nodeId)
+        }
+        return next
+      }
+      if (prev.size === 1 && prev.has(nodeId)) {
+        return new Set()
+      }
+      return new Set([nodeId])
+    })
+    setSelectedEdgeId(null)
+  }, [])
+
+  const onSetSwapSource = useCallback((nodeId: string) => {
+    setSwapSource(nodeId)
+    setSelectedEdgeId(null)
+  }, [])
+
+  const handleEdgeClick = useCallback((e: React.MouseEvent, edgeId: number) => {
+    e.stopPropagation()
+    setSelectedEdgeId((prev) => (prev === edgeId ? null : edgeId))
+    setSelectedNodeIds(new Set())
+    setSwapSource(null)
+  }, [])
+
+  const handleDeleteEdge = useCallback((edgeId: number) => {
+    void onDeleteEdgeRef.current(edgeId)
+    setSelectedEdgeId(null)
+  }, [])
+
+  // --- Delete / undo --------------------------------------------------------
+
+  const captureNode = useCallback((nodeId: string): DeletedNode | null => {
+    const node = nodesRef.current.find((n) => n.node_id === nodeId)
+    if (!node) {
+      return null
+    }
+    const pos = posOverrideRef.current.get(nodeId) ?? { x: node.x, y: node.y }
+    return {
+      node_id: nodeId,
+      track_id: node.track_id,
+      x: pos.x,
+      y: pos.y,
+      parentIds: edgesRef.current
+        .filter((e) => e.child_node_id === nodeId)
+        .map((e) => e.parent_node_id),
+      childIds: edgesRef.current
+        .filter((e) => e.parent_node_id === nodeId)
+        .map((e) => e.child_node_id),
+    }
+  }, [])
+
+  const deleteNodes = useCallback(
+    async (ids: string[]) => {
+      const batch = ids
+        .map(captureNode)
+        .filter((d): d is DeletedNode => d !== null)
+      if (batch.length === 0) {
+        return
+      }
+      undoStackRef.current.push(batch)
+      setSelectedNodeIds(new Set())
+      for (const d of batch) {
+        await onDeleteNodeRef.current(d.node_id)
+      }
+    },
+    [captureNode],
+  )
+
+  // Reconstruct the last deletion: recreate every node (no edges), then relink
+  // every edge via the old→new id map. Creating nodes first, edges second,
+  // sidesteps ordering and the newly-allowed indirect cycles.
+  const undoDelete = useCallback(async () => {
+    const batch = undoStackRef.current.pop()
+    if (!batch || batch.length === 0) {
+      return
+    }
+    const deletedSet = new Set(batch.map((d) => d.node_id))
+    const idMap = new Map<string, string>()
+    for (const d of batch) {
+      const r = await onAddNodeWithParentsRef.current(d.track_id, [], d.x, d.y)
+      if (r?.node_id) {
+        idMap.set(d.node_id, r.node_id)
+      }
+    }
+    // Incoming edges (from survivors or restored parents).
+    for (const d of batch) {
+      const newChild = idMap.get(d.node_id)
+      if (!newChild) {
+        continue
+      }
+      for (const pOld of d.parentIds) {
+        const parent = deletedSet.has(pOld) ? idMap.get(pOld) : pOld
+        if (parent) {
+          await onAddEdgeRef.current(parent, newChild)
         }
       }
-      const colIndices = new Map<string, number>()
-      let maxColIndex = 0
-      for (const [lv, lvNodes] of byLevel) {
-        lvNodes.sort((a, b) => a.node.col_index - b.node.col_index)
-        for (let i = 0; i < lvNodes.length; i++) {
-          const col = lvNodes[i].node.col_index
-          if (col > maxColIndex) {
-            maxColIndex = col
-          }
-          colIndices.set(lvNodes[i].node.node_id, col)
-          lvNodes[i].x =
-            LEVEL_LABEL_GUTTER +
-            Math.min(col, MAX_COLS - 1) * SLOT_W +
-            (SLOT_W - NODE_W) / 2
-          lvNodes[i].y = TOP_PAD + lv * (NODE_H + V_GAP)
+    }
+    // Outgoing edges to survivors (internal edges already added above).
+    for (const d of batch) {
+      const newParent = idMap.get(d.node_id)
+      if (!newParent) {
+        continue
+      }
+      for (const cOld of d.childIds) {
+        if (deletedSet.has(cOld)) {
+          continue
         }
+        await onAddEdgeRef.current(newParent, cOld)
       }
-      const flat: LayoutNode[] = []
-      for (const ns of byLevel.values()) {
-        flat.push(...ns)
-      }
-      const usedCols = byLevel.size > 0 ? maxColIndex + 1 : 1
-      return {
-        allFlat: flat,
-        totalWidth: LEVEL_LABEL_GUTTER + Math.max(usedCols, MAX_COLS) * SLOT_W,
-        totalHeight: TOP_PAD + EXPLORER_LEVEL_COUNT * (NODE_H + V_GAP) + 40,
-        columnIndices: colIndices,
-        byLevelMap: byLevel,
-      }
-    }, [nodes])
+    }
+  }, [])
+
+  const handleSetDeleteTarget = useCallback(
+    (nodeId: string) => {
+      void deleteNodes([nodeId])
+    },
+    [deleteNodes],
+  )
 
   useEffect(() => {
-    byLevelMapRef.current = byLevelMap
-  }, [byLevelMap])
+    deleteNodesRef.current = deleteNodes
+    undoDeleteRef.current = undoDelete
+  })
+
+  // --- Keyboard -------------------------------------------------------------
 
   useEffect(() => {
-    allFlatRef.current = allFlat
-  }, [allFlat])
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'
+      if (isUndo) {
+        e.preventDefault()
+        void undoDeleteRef.current()
+        return
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedEdgeId !== null) {
+          e.preventDefault()
+          void onDeleteEdgeRef.current(selectedEdgeId)
+          setSelectedEdgeId(null)
+          return
+        }
+        const ids = Array.from(selectedNodeIdsRef.current)
+        if (ids.length === 0) {
+          return
+        }
+        e.preventDefault()
+        void deleteNodesRef.current(ids)
+        return
+      }
+      if (e.key === 'Escape') {
+        setSwapSource(null)
+        setSelectedEdgeId(null)
+        setSelectedNodeIds(new Set())
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedEdgeId])
 
-  const levelEntries = useMemo(() => {
-    return EXPLORER_LEVELS.map((level) => ({
-      level,
-      nodesAtLevel: byLevelMap.get(level) ?? [],
-    }))
-  }, [byLevelMap])
+  // --- Edge scores ----------------------------------------------------------
 
-  const svgW = Math.max(totalWidth, 600)
-  const svgH = Math.max(totalHeight, 400)
-
-  // Stable primitive that changes only when edges are actually added or removed.
-  // Using this instead of the `edges` array as a dependency prevents the scoring
-  // effect from re-firing on every parent render (new array reference ≠ new content).
   const edgePairKey = useMemo(
     () =>
       edges
@@ -902,11 +1268,9 @@ export function SetExplorerCanvas({
     [edges],
   )
 
-  // Fetch edge compatibility scores for newly-added edges (cached ones are
-  // merged in synchronously). This is a data-fetch effect: the synchronous
-  // setState calls mark loading state / merge cached scores before the async
-  // fetch resolves. react-hooks/set-state-in-effect is a false positive for
-  // fetch effects, so it is scoped-and-documented rather than refactored.
+  // Data-fetch effect: the synchronous setState calls mark loading state / merge
+  // cached scores before the async fetch resolves — a documented false positive
+  // for react-hooks/set-state-in-effect.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const currentNodes = nodesRef.current
@@ -937,10 +1301,6 @@ export function SetExplorerCanvas({
       }
     }
 
-    // Additive-only update: do not rebuild the whole map.
-    // Deleted edges leave stale entries in the map but they are never rendered
-    // because the edge is gone from the JSX loop. This avoids spurious state
-    // updates (and re-renders) on every edge deletion.
     if (newPairs.length === 0) {
       if (fromCacheEntries.length > 0) {
         setEdgeScores((prev) => {
@@ -1016,249 +1376,36 @@ export function SetExplorerCanvas({
   }, [edgePairKey])
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  useEffect(() => {
-    if (selectedEdgeId === null) {
-      return
-    }
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return
-      }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault()
-        onDeleteEdge(selectedEdgeId)
-        setSelectedEdgeId(null)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedEdgeId, onDeleteEdge])
+  // --- Add track / child ----------------------------------------------------
 
-  // Delete selected node(s) immediately on Backspace/Delete — no confirmation;
-  // children are orphaned. Ctrl/Cmd+Z reconstructs the last deletion.
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return
-      }
-      const isUndo = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z'
-      if (isUndo) {
-        e.preventDefault()
-        void undoDeleteRef.current()
-        return
-      }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        const ids = Array.from(selectedNodeIdsRef.current)
-        if (ids.length === 0) {
-          return
-        }
-        e.preventDefault()
-        void deleteNodesRef.current(ids)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setSwapSource(null)
-        setSelectedEdgeId(null)
-        setSelectedNodeIds(new Set())
-      }
-    }
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [])
-
-  const handleSvgClick = useCallback((e: React.MouseEvent) => {
-    // Ignore the click synthesized at the end of a marquee drag so it does not
-    // wipe the just-made selection.
-    if (suppressSvgClickRef.current) {
-      suppressSvgClickRef.current = false
-      return
-    }
-    if (
-      e.target === svgRef.current ||
-      (e.target as Element).classList.contains('set-explorer-svg')
-    ) {
-      setSelectedNodeIds(new Set())
-      setSelectedEdgeId(null)
-      setSwapSource(null)
-    }
-  }, [])
-
-  const handleNodeClick = useCallback((nodeId: string, additive: boolean) => {
-    const ss = swapSourceRef.current
-    if (ss) {
-      if (ss !== nodeId) {
-        onSwapRef.current(ss, nodeId)
-      }
-      setSwapSource(null)
-      return
-    }
-    setSelectedNodeIds((prev) => {
-      if (additive) {
-        const next = new Set(prev)
-        if (next.has(nodeId)) {
-          next.delete(nodeId)
-        } else {
-          next.add(nodeId)
-        }
-        return next
-      }
-      // Plain click: toggle a sole selection off, otherwise select just this one.
-      if (prev.size === 1 && prev.has(nodeId)) {
-        return new Set()
-      }
-      return new Set([nodeId])
-    })
-    setSelectedEdgeId(null)
-  }, [])
-
-  const handleNodeMouseDown = useCallback(
-    (
-      e: React.MouseEvent,
-      nodeId: string,
-      level: number,
-      x: number,
-      y: number,
-    ) => {
-      if (e.button !== 0) {
-        return
-      }
-      if (swapSourceRef.current) {
-        return
-      }
-      const target = e.target as Element
-      if (
-        target.closest('.explorer-action-row') ||
-        target.closest('.explorer-edge-delete')
-      ) {
-        return
-      }
-      e.stopPropagation()
-      const cx = x + NODE_W / 2
-      const cy = y + NODE_H / 2
-      pendingDragRef.current = {
-        sourceNodeId: nodeId,
-        sourceLevel: level,
-        sourceCX: cx,
-        sourceCY: cy,
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-      }
-    },
+  const stableOnAddNode = useCallback(
+    (trackId: number, x?: number, y?: number, parentNodeId?: string) =>
+      onAddNodeRef.current(trackId, x, y, parentNodeId),
     [],
   )
 
-  const handleNodeMouseUp = useCallback((nodeId: string, level: number) => {
-    const cd = connectDragRef.current
-    if (!cd) {
-      return
-    }
-    if (cd.sourceNodeId === nodeId) {
-      setConnectDrag(null)
-      return
-    }
-    const srcLevel = cd.sourceLevel
-    const tgtLevel = level
-    if (Math.abs(srcLevel - tgtLevel) === 1) {
-      const parentId = srcLevel < tgtLevel ? cd.sourceNodeId : nodeId
-      const childId = srcLevel < tgtLevel ? nodeId : cd.sourceNodeId
-      const alreadyConnected = edgesRef.current.some(
-        (e) => e.parent_node_id === parentId && e.child_node_id === childId,
-      )
-      if (!alreadyConnected) {
-        onAddEdgeRef.current(parentId, childId)
-      }
-    }
-    setConnectDrag(null)
-  }, [])
-
-  const openLevelAdd = useCallback(
-    (level: number, nodesAtLevel: LayoutNode[]) => {
-      // Every node at the parent level is a candidate connection, not just
-      // the ones already wired to the rightmost sibling — otherwise parents
-      // added after the rightmost sibling never appear as options.
-      const parentLevelNodes = byLevelMapRef.current.get(level - 1) ?? []
-      const parentIds = parentLevelNodes.map((n) => n.node.node_id)
-      const rightmost =
-        nodesAtLevel.length > 0
-          ? nodesAtLevel.reduce((a, b) =>
-              a.node.col_index >= b.node.col_index ? a : b,
-            )
-          : null
-      const inheritedParentIds = rightmost
-        ? edgesRef.current
-            .filter((e) => e.child_node_id === rightmost.node.node_id)
-            .map((e) => e.parent_node_id)
-        : []
-      setSwapSource(null)
-      setSelectedEdgeId(null)
-      siblingClear()
-      setSiblingAdd({
-        targetLevel: level,
-        parentIds,
-        selectedParents: new Set(inheritedParentIds),
-        searchQuery: '',
-      })
-    },
-    [siblingClear],
+  const stableOnNodeToTracklist = useCallback(
+    (nodeId: string) => onNodeToTracklistRef.current(nodeId),
+    [],
   )
 
-  const resolveJumpLevel = useCallback((): number | null => {
-    const userLevel = Number(jumpLevelInput)
-    if (
-      !Number.isInteger(userLevel) ||
-      userLevel < 1 ||
-      userLevel > EXPLORER_LEVEL_COUNT
-    ) {
-      setJumpLevelError('Level must be a whole number from 1 to 200.')
-      return null
-    }
-    setJumpLevelError(null)
-    return userLevel - 1
-  }, [jumpLevelInput])
-
-  const scrollToLevel = useCallback(
-    (level: number) => {
-      const viewport = viewportRef.current
-      if (!viewport) {
-        return
-      }
-      const rowTop = pan.y + (TOP_PAD + level * (NODE_H + V_GAP)) * zoom
-      viewport.scrollTop = Math.max(0, rowTop - 16)
+  const handleAddSearch = useCallback(
+    (q: string) => {
+      setAddQuery(q)
+      addSearch(q)
     },
-    [pan.y, zoom],
+    [addSearch],
   )
 
-  const handleJumpToLevel = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-      const level = resolveJumpLevel()
-      if (level !== null) {
-        scrollToLevel(level)
-      }
+  const handleAddSelect = useCallback(
+    (trackId: number) => {
+      const c = viewportCenterSvg()
+      stableOnAddNode(trackId, snapToGrid(c.x), snapToGrid(c.y))
+      setAddQuery('')
+      addClear()
     },
-    [resolveJumpLevel, scrollToLevel],
+    [viewportCenterSvg, stableOnAddNode, addClear],
   )
-
-  const handleAddAtJumpLevel = useCallback(() => {
-    const level = resolveJumpLevel()
-    if (level === null) {
-      return
-    }
-    scrollToLevel(level)
-    openLevelAdd(level, byLevelMap.get(level) ?? [])
-  }, [resolveJumpLevel, scrollToLevel, openLevelAdd, byLevelMap])
 
   const openChildAdd = useCallback(async (nodeId: string) => {
     const node = nodesRef.current.find((n) => n.node_id === nodeId)
@@ -1281,237 +1428,69 @@ export function SetExplorerCanvas({
       if (!childAdd) {
         return
       }
+      const src = posOverrideRef.current.get(childAdd.parentNode.node_id) ?? {
+        x: childAdd.parentNode.x,
+        y: childAdd.parentNode.y,
+      }
+      // Place the child a little below-right of its parent, snapped to grid.
       stableOnAddNode(
         m.candidate_id,
+        snapToGrid(src.x + NODE_W + 60),
+        snapToGrid(src.y + NODE_H + 60),
         childAdd.parentNode.node_id,
-        childAdd.parentNode.level + 1,
       )
       setChildAdd(null)
     },
     [childAdd, stableOnAddNode],
   )
 
-  const handleSiblingSearch = useCallback(
-    (q: string) => {
-      setSiblingAdd((prev) => (prev ? { ...prev, searchQuery: q } : prev))
-      siblingSearch(q)
-    },
-    [siblingSearch],
-  )
+  // --- Auto-layout ----------------------------------------------------------
 
-  const toggleSiblingParent = useCallback((parentId: string) => {
-    setSiblingAdd((prev) => {
-      if (!prev) {
-        return prev
+  const handleAutoLayout = useCallback(() => {
+    const layout = forceDirectedLayout(
+      nodesRef.current.map((n) => ({ id: n.node_id })),
+      edgesRef.current.map((e) => ({
+        source: e.parent_node_id,
+        target: e.child_node_id,
+      })),
+    )
+    if (layout.size === 0) {
+      return
+    }
+    setPosOverride(() => {
+      const next = new Map<string, Point>()
+      for (const [id, p] of layout) {
+        next.set(id, p)
       }
-      const next = new Set(prev.selectedParents)
-      if (next.has(parentId)) {
-        next.delete(parentId)
-      } else {
-        next.add(parentId)
-      }
-      return { ...prev, selectedParents: next }
+      return next
     })
+    void onSetPositionsRef.current(
+      [...layout.entries()].map(([id, p]) => ({
+        node_id: id,
+        x: p.x,
+        y: p.y,
+      })),
+    )
   }, [])
 
-  const handleSiblingSelect = useCallback(
-    async (s: SearchSuggestion) => {
-      if (!siblingAdd) {
-        return
-      }
-      const parentIds = Array.from(siblingAdd.selectedParents)
-      if (parentIds.length > 0) {
-        await onAddSiblingRef.current(s.id, parentIds, siblingAdd.targetLevel)
-      } else {
-        await stableOnAddNode(s.id, undefined, siblingAdd.targetLevel)
-      }
-      siblingClear()
-      setSiblingAdd(null)
-    },
-    [siblingAdd, stableOnAddNode, siblingClear],
-  )
+  // --- Drag-and-drop from track lists ---------------------------------------
 
-  const handleEdgeClick = useCallback((e: React.MouseEvent, edgeId: number) => {
-    e.stopPropagation()
-    setSelectedEdgeId((prev) => (prev === edgeId ? null : edgeId))
-    setSelectedNodeIds(new Set())
-    setSwapSource(null)
-  }, [])
-
-  const handleDeleteEdge = useCallback(
-    (edgeId: number) => {
-      stableOnDeleteEdge(edgeId)
-      setSelectedEdgeId(null)
-    },
-    [stableOnDeleteEdge],
-  )
-
-  const onSetSwapSource = useCallback((nodeId: string) => {
-    setSwapSource(nodeId)
-    setSelectedEdgeId(null)
-  }, [])
-
-  // Snapshot a node's identity + connections so a delete can be undone.
-  const captureNode = useCallback((nodeId: string): DeletedNode | null => {
-    const node = nodesRef.current.find((n) => n.node_id === nodeId)
-    if (!node) {
-      return null
-    }
-    const parentIds = edgesRef.current
-      .filter((e) => e.child_node_id === nodeId)
-      .map((e) => e.parent_node_id)
-    const childIds = edgesRef.current
-      .filter((e) => e.parent_node_id === nodeId)
-      .map((e) => e.child_node_id)
-    return {
-      node_id: nodeId,
-      track_id: node.track_id,
-      level: node.level,
-      parentIds,
-      childIds,
-    }
-  }, [])
-
-  // Delete node(s) immediately (children are orphaned — no confirmation), pushing
-  // an undo batch so Ctrl/Cmd+Z can reconstruct them.
-  const deleteNodes = useCallback(
-    async (ids: string[]) => {
-      const batch = ids
-        .map(captureNode)
-        .filter((d): d is DeletedNode => d !== null)
-      if (batch.length === 0) {
-        return
-      }
-      undoStackRef.current.push(batch)
-      setSelectedNodeIds(new Set())
-      // Sequential so each set-refresh settles before the next removal.
-      for (const d of batch) {
-        await onDeleteNodeRef.current(d.node_id)
-      }
-    },
-    [captureNode],
-  )
-
-  // Reconstruct the most recently deleted batch: recreate nodes parent-first
-  // (mapping old ids to freshly-minted ones), then relink surviving children.
-  const undoDelete = useCallback(async () => {
-    const batch = undoStackRef.current.pop()
-    if (!batch || batch.length === 0) {
+  const handleViewportDragOver = useCallback((e: React.DragEvent) => {
+    if (
+      !e.dataTransfer.types.includes(TRACK_DRAG_MIME) &&
+      !e.dataTransfer.types.includes('text/plain')
+    ) {
       return
     }
-    const ordered = [...batch].sort((a, b) => a.level - b.level)
-    const deletedSet = new Set(batch.map((d) => d.node_id))
-    const idMap = new Map<string, string>()
-    for (const d of ordered) {
-      const parentIds = d.parentIds.map((pid) => idMap.get(pid) ?? pid)
-      let result: ExplorerAddResult = null
-      if (parentIds.length > 0) {
-        result = await onAddSiblingRef.current(d.track_id, parentIds, d.level)
-      } else {
-        const r = await onAddNodeRef.current(d.track_id, undefined, d.level)
-        result = r ?? null
-      }
-      if (result?.node_id) {
-        idMap.set(d.node_id, result.node_id)
-      }
-    }
-    // Relink edges to children that survived (edges among restored nodes were
-    // recreated via their parent lists above).
-    for (const d of ordered) {
-      const newId = idMap.get(d.node_id)
-      if (!newId) {
-        continue
-      }
-      for (const childOld of d.childIds) {
-        if (deletedSet.has(childOld)) {
-          continue
-        }
-        await onAddEdgeRef.current(newId, childOld)
-      }
-    }
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
   }, [])
-
-  const handleSetDeleteTarget = useCallback(
-    (nodeId: string) => {
-      void deleteNodes([nodeId])
-    },
-    [deleteNodes],
-  )
-
-  useEffect(() => {
-    deleteNodesRef.current = deleteNodes
-    undoDeleteRef.current = undoDelete
-  })
-
-  // Track drops are routed here (viewport level) and resolved by hit-testing the
-  // drop point against node rects in SVG user-space. Drag events dispatched on
-  // SVG <g> children are unreliable across browsers, so the geometry decides:
-  // over a node ⇒ add as that node's child, otherwise ⇒ add a root node.
-  const nodeAtClientPoint = useCallback(
-    (clientX: number, clientY: number): LayoutNode | null => {
-      const pt = toSvgPoint(clientX, clientY)
-      if (!pt) {
-        return null
-      }
-      for (const ln of allFlatRef.current) {
-        if (
-          pt.x >= ln.x &&
-          pt.x <= ln.x + NODE_W &&
-          pt.y >= ln.y &&
-          pt.y <= ln.y + NODE_H
-        ) {
-          return ln
-        }
-      }
-      return null
-    },
-    [toSvgPoint],
-  )
-
-  /** Imperatively mark the hovered node (no re-render during a drag). */
-  const highlightDropNode = useCallback((nodeId: string | null) => {
-    const root = viewportRef.current
-    if (!root) {
-      return
-    }
-    for (const el of root.querySelectorAll('.explorer-node-group--drop')) {
-      if (el.getAttribute('data-node-id') !== nodeId) {
-        el.classList.remove('explorer-node-group--drop')
-      }
-    }
-    if (nodeId) {
-      root
-        .querySelector(`[data-node-id="${nodeId}"]`)
-        ?.classList.add('explorer-node-group--drop')
-    }
-  }, [])
-
-  const handleViewportDragOver = useCallback(
-    (e: React.DragEvent) => {
-      if (
-        !e.dataTransfer.types.includes(TRACK_DRAG_MIME) &&
-        !e.dataTransfer.types.includes('text/plain')
-      ) {
-        return
-      }
-      e.preventDefault()
-      e.dataTransfer.dropEffect = 'copy'
-      const hit = nodeAtClientPoint(e.clientX, e.clientY)
-      highlightDropNode(hit ? hit.node.node_id : null)
-    },
-    [nodeAtClientPoint, highlightDropNode],
-  )
-
-  const handleViewportDragLeave = useCallback(() => {
-    highlightDropNode(null)
-  }, [highlightDropNode])
 
   const handleViewportDrop = useCallback(
     (e: React.DragEvent) => {
       const raw =
         e.dataTransfer.getData(TRACK_DRAG_MIME) ||
         e.dataTransfer.getData('text/plain')
-      highlightDropNode(null)
       if (raw.trim() === '') {
         return
       }
@@ -1520,23 +1499,18 @@ export function SetExplorerCanvas({
       if (!Number.isInteger(trackId)) {
         return
       }
-      const hit = nodeAtClientPoint(e.clientX, e.clientY)
-      if (hit) {
-        stableOnAddNode(trackId, hit.node.node_id, hit.node.level + 1)
-      } else {
-        stableOnAddNode(trackId)
-      }
+      const pt = toSvgPoint(e.clientX, e.clientY) ?? viewportCenterSvg()
+      stableOnAddNode(
+        trackId,
+        Math.max(0, snapToGrid(pt.x - NODE_W / 2)),
+        Math.max(0, snapToGrid(pt.y - NODE_H / 2)),
+      )
     },
-    [stableOnAddNode, nodeAtClientPoint, highlightDropNode],
+    [toSvgPoint, viewportCenterSvg, stableOnAddNode],
   )
 
-  const nodeMap = useMemo(() => {
-    const map = new Map<string, LayoutNode>()
-    for (const n of allFlat) {
-      map.set(n.node.node_id, n)
-    }
-    return map
-  }, [allFlat])
+  const singleSelected =
+    selectedNodeIds.size === 1 ? [...selectedNodeIds][0] : null
 
   return (
     <div className="set-explorer">
@@ -1551,53 +1525,70 @@ export function SetExplorerCanvas({
             ←
           </button>
         )}
-        <form
-          className="set-picker-controls"
-          noValidate
-          onSubmit={handleJumpToLevel}
-        >
-          <label className="text-muted" htmlFor="explorer-jump-level">
-            Jump to level
-          </label>
+
+        <div className="set-explorer-search-wrapper explorer-add-search">
           <input
-            id="explorer-jump-level"
-            className={`explorer-level-jump-input${jumpLevelError ? ' explorer-level-jump-input--invalid' : ''}`}
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={EXPLORER_LEVEL_COUNT}
-            step={1}
-            value={jumpLevelInput}
-            onChange={(e) => {
-              setJumpLevelInput(e.target.value)
-              setJumpLevelError(null)
-            }}
-            aria-invalid={jumpLevelError !== null}
-            aria-describedby={
-              jumpLevelError ? 'explorer-jump-level-error' : undefined
-            }
+            className="set-explorer-search"
+            placeholder="Add track to canvas…"
+            value={addQuery}
+            onChange={(e) => handleAddSearch(e.target.value)}
+            data-testid="explorer-add-search-input"
           />
-          <button type="submit" className="set-action-btn">
-            Jump
-          </button>
-          <button
-            type="button"
-            className="set-action-btn"
-            aria-label="Add track at entered level"
-            onClick={handleAddAtJumpLevel}
-          >
-            Add track
-          </button>
-          {jumpLevelError && (
-            <span
-              id="explorer-jump-level-error"
-              className="explorer-level-jump-error"
-              role="alert"
-            >
-              {jumpLevelError}
-            </span>
+          {addQuery.trim() !== '' && addSuggestions.length > 0 && (
+            <ul className="set-explorer-search-dropdown">
+              {addSuggestions.map((s) => (
+                <li
+                  key={s.id}
+                  className="set-explorer-search-item"
+                  onMouseDown={() => handleAddSelect(s.id)}
+                  data-testid="explorer-add-search-item"
+                >
+                  <span>{s.title}</span>
+                  <span className="text-muted">
+                    {s.camelot_code && (
+                      <span className="mono"> {s.camelot_code}</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
-        </form>
+        </div>
+
+        <button
+          type="button"
+          className="set-action-btn"
+          onClick={handleAutoLayout}
+          aria-label="Auto-layout graph"
+          data-testid="explorer-auto-layout-btn"
+        >
+          Auto-layout
+        </button>
+
+        <div
+          className="explorer-edge-style-toggle"
+          role="group"
+          aria-label="Edge style"
+          data-testid="explorer-edge-style-toggle"
+        >
+          {(['curved', 'straight', 'orthogonal'] as EdgeStyle[]).map((style) => (
+            <button
+              key={style}
+              type="button"
+              className={`explorer-edge-style-btn${edgeStyle === style ? ' explorer-edge-style-btn--active' : ''}`}
+              aria-pressed={edgeStyle === style}
+              onClick={() => changeEdgeStyle(style)}
+              data-testid={`explorer-edge-style-${style}`}
+            >
+              {style === 'curved'
+                ? 'Curved'
+                : style === 'straight'
+                  ? 'Straight'
+                  : 'Right-angle'}
+            </button>
+          ))}
+        </div>
+
         {swapSource && (
           <span className="set-explorer-swap-hint">
             Click another node to swap
@@ -1651,46 +1642,44 @@ export function SetExplorerCanvas({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onDragOver={handleViewportDragOver}
-        onDragLeave={handleViewportDragLeave}
         onDrop={handleViewportDrop}
       >
         {nodes.length === 0 && (
           <p className="set-empty-tracks set-explorer-empty-message">
-            Explorer is empty. Drag a track here, or use “+ Add Track”, to add a
-            root node.
+            Canvas is empty. Drag a track here, or use “Add track to canvas”, to
+            place a node.
           </p>
         )}
         <svg
           ref={svgRef}
           className="set-explorer-svg"
-          width={svgW}
-          height={svgH}
-          viewBox={`0 0 ${svgW} ${svgH}`}
+          width={canvasSize.w}
+          height={canvasSize.h}
+          viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`}
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: '0 0',
           }}
           onClick={handleSvgClick}
         >
-          {/* Level row labels */}
-          {levelEntries.map(({ level }) => {
-            const rowY = TOP_PAD + level * (NODE_H + V_GAP) + NODE_H / 2
-            return (
-              <text
-                key={`level-label-${level}`}
-                x={LEVEL_LABEL_GUTTER / 2}
-                y={rowY}
-                textAnchor="middle"
-                dominantBaseline="central"
-                className="explorer-level-label"
-                data-testid="explorer-level-label"
-                data-level={level}
-                aria-label={`Level ${level + 1}`}
-              >
-                {`L${level + 1}`}
-              </text>
-            )
-          })}
+          <defs>
+            <pattern
+              id="explorer-grid-dots"
+              width={GRID}
+              height={GRID}
+              patternUnits="userSpaceOnUse"
+            >
+              <circle cx={1} cy={1} r={1} className="explorer-grid-dot" />
+            </pattern>
+          </defs>
+          <rect
+            className="explorer-grid-bg"
+            x={0}
+            y={0}
+            width={canvasSize.w}
+            height={canvasSize.h}
+            fill="url(#explorer-grid-dots)"
+          />
 
           {/* Edges */}
           {edges.map((edge) => {
@@ -1699,24 +1688,19 @@ export function SetExplorerCanvas({
             if (!parent || !child) {
               return null
             }
-            const parentColIdx =
-              (columnIndices.get(edge.parent_node_id) ?? 0) % EDGE_SLOTS
-            const childColIdx =
-              (columnIndices.get(edge.child_node_id) ?? 0) % EDGE_SLOTS
             const nodeKey = `${edge.parent_node_id}-${edge.child_node_id}`
-            const score = edgeScores.get(nodeKey)
             return (
               <ExplorerEdgeItem
                 key={`edge-${edge.id}`}
                 edgeId={edge.id}
-                parentX={parent.x}
-                parentY={parent.y}
-                childX={child.x}
-                childY={child.y}
-                parentColIdx={parentColIdx}
-                childColIdx={childColIdx}
+                sourceX={parent.pos.x}
+                sourceY={parent.pos.y}
+                targetX={child.pos.x}
+                targetY={child.pos.y}
+                color={colorForNodeId(edge.parent_node_id)}
+                style={edgeStyle}
                 isSelected={selectedEdgeId === edge.id}
-                score={score}
+                score={edgeScores.get(nodeKey)}
                 isLoading={loadingEdgeKeys.has(nodeKey)}
                 onEdgeClick={handleEdgeClick}
                 onDeleteEdge={handleDeleteEdge}
@@ -1727,8 +1711,8 @@ export function SetExplorerCanvas({
           {/* Connect-drag preview line */}
           {connectDrag && (
             <line
-              x1={connectDrag.sourceCX}
-              y1={connectDrag.sourceCY}
+              x1={connectDrag.startX}
+              y1={connectDrag.startY}
               x2={connectDrag.cursorX}
               y2={connectDrag.cursorY}
               stroke="var(--accent)"
@@ -1739,7 +1723,7 @@ export function SetExplorerCanvas({
             />
           )}
 
-          {/* Marquee (drag-select) rectangle */}
+          {/* Marquee */}
           {marquee && (
             <rect
               className="explorer-marquee"
@@ -1753,168 +1737,32 @@ export function SetExplorerCanvas({
           )}
 
           {/* Nodes */}
-          {allFlat.map((ln) => (
+          {[...nodeMap.values()].map(({ node, pos }) => (
             <ExplorerNodeItem
-              key={ln.node.node_id}
-              nodeId={ln.node.node_id}
-              trackId={ln.node.track_id}
-              level={ln.node.level}
-              colIndex={ln.node.col_index}
-              trackTitle={ln.node.track?.title}
-              x={ln.x}
-              y={ln.y}
-              isSelected={selectedNodeIds.has(ln.node.node_id)}
-              showActions={
-                selectedNodeIds.size === 1 &&
-                selectedNodeIds.has(ln.node.node_id)
-              }
-              isSwapSource={swapSource === ln.node.node_id}
-              inTracklist={tracklistTrackIds.has(ln.node.track_id)}
+              key={node.node_id}
+              nodeId={node.node_id}
+              trackId={node.track_id}
+              trackTitle={node.track?.title}
+              color={colorForNodeId(node.node_id)}
+              x={pos.x}
+              y={pos.y}
+              isSelected={selectedNodeIds.has(node.node_id)}
+              showActions={singleSelected === node.node_id}
+              isSwapSource={swapSource === node.node_id}
+              isDragging={draggingNodeId === node.node_id}
+              inTracklist={tracklistTrackIds.has(node.track_id)}
               onNodeClick={handleNodeClick}
               onNodeMouseDown={handleNodeMouseDown}
               onNodeMouseUp={handleNodeMouseUp}
+              onHandleMouseDown={handleHandleMouseDown}
               onSetDeleteTarget={handleSetDeleteTarget}
               onSetSwapSource={onSetSwapSource}
               openChildAdd={openChildAdd}
               onNodeToTracklist={stableOnNodeToTracklist}
             />
           ))}
-
-          {/* Per-level +Add Track controls */}
-          {levelEntries.map(({ level, nodesAtLevel }) => {
-            const lastNode =
-              nodesAtLevel.length > 0
-                ? nodesAtLevel.reduce((a, b) =>
-                    a.node.col_index >= b.node.col_index ? a : b,
-                  )
-                : null
-            const addX = lastNode
-              ? lastNode.x + NODE_W + LEVEL_ADD_GAP
-              : LEVEL_LABEL_GUTTER + (SLOT_W - NODE_W) / 2
-            const addY =
-              TOP_PAD + level * (NODE_H + V_GAP) + (NODE_H - LEVEL_ADD_H) / 2
-            return (
-              <g
-                key={`level-add-${level}`}
-                transform={`translate(${addX}, ${addY})`}
-                className="explorer-level-add-btn"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  openLevelAdd(level, nodesAtLevel)
-                }}
-                role="button"
-                tabIndex={0}
-                aria-label={`Add track to level ${level + 1}`}
-                data-testid="level-add-btn"
-                data-level={level}
-                style={{ cursor: 'pointer' }}
-              >
-                <rect
-                  width={LEVEL_ADD_W}
-                  height={LEVEL_ADD_H}
-                  rx={4}
-                  fill="var(--surface)"
-                  stroke="var(--border)"
-                  strokeWidth={1}
-                  strokeDasharray="4 2"
-                />
-                <text
-                  x={LEVEL_ADD_W / 2}
-                  y={LEVEL_ADD_H / 2}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fill="var(--success)"
-                  fontSize={10}
-                  fontWeight="600"
-                >
-                  + Add Track
-                </text>
-              </g>
-            )
-          })}
         </svg>
       </div>
-
-      {siblingAdd && (
-        <div
-          className="explorer-delete-overlay"
-          onClick={() => setSiblingAdd(null)}
-        >
-          <div
-            className="explorer-delete-modal"
-            onClick={(e) => e.stopPropagation()}
-            data-testid="sibling-add-modal"
-          >
-            <h3>Add Track to Level {siblingAdd.targetLevel + 1}</h3>
-            <p className="text-muted">
-              Add a track at level {siblingAdd.targetLevel + 1}
-            </p>
-
-            {siblingAdd.parentIds.length > 0 && (
-              <div className="explorer-delete-section">
-                <p className="text-muted" style={{ marginBottom: 4 }}>
-                  Inherit parent connections:
-                </p>
-                {siblingAdd.parentIds.map((pid) => {
-                  const pNode = nodes.find((n) => n.node_id === pid)
-                  return (
-                    <label key={pid} style={{ display: 'block' }}>
-                      <input
-                        type="checkbox"
-                        checked={siblingAdd.selectedParents.has(pid)}
-                        onChange={() => toggleSiblingParent(pid)}
-                      />{' '}
-                      {pNode?.track?.title ?? pid}
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-
-            <div
-              className="set-explorer-search-wrapper"
-              style={{ marginTop: 8 }}
-            >
-              <input
-                className="set-explorer-search"
-                placeholder="Search for track…"
-                value={siblingAdd.searchQuery}
-                onChange={(e) => handleSiblingSearch(e.target.value)}
-                autoFocus
-                data-testid="sibling-search-input"
-              />
-              {siblingAdd.searchQuery.trim() !== '' &&
-                siblingSuggestions.length > 0 && (
-                  <ul className="set-explorer-search-dropdown">
-                    {siblingSuggestions.map((s) => (
-                      <li
-                        key={s.id}
-                        className="set-explorer-search-item"
-                        onMouseDown={() => handleSiblingSelect(s)}
-                      >
-                        <span>{s.title}</span>
-                        <span className="text-muted">
-                          {s.camelot_code && (
-                            <span className="mono"> {s.camelot_code}</span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-            </div>
-
-            <div className="explorer-delete-buttons" style={{ marginTop: 12 }}>
-              <button
-                className="set-action-btn"
-                onClick={() => setSiblingAdd(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {childAdd && (
         <div

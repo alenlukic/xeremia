@@ -1,6 +1,7 @@
 from sqlalchemy import (
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     Sequence,
@@ -40,6 +41,12 @@ class SetExplorerNode(Base):
         nullable=False,
         index=True,
     )
+    # Free-canvas position (grid-snapped coordinates in SVG user-space). The
+    # Explorer is a graph on an infinite canvas: `x`/`y` are the source of truth
+    # for placement. `level`/`col_index` are retained for backward compatibility
+    # with existing rows but are no longer used for layout.
+    x = Column("x", Float, nullable=False, default=0.0)
+    y = Column("y", Float, nullable=False, default=0.0)
     level = Column("level", Integer, nullable=False, default=0)
     col_index = Column("col_index", Integer, nullable=False, default=0)
     added_at = Column("added_at", DateTime, server_default=func.now(), nullable=False)

@@ -1,66 +1,35 @@
 """Tests for explorer graph rules and validation."""
 
 from src.set_workspace.explorer_rules import (
-    detect_cycle,
-    check_level_width,
-    check_depth,
+    is_direct_cycle,
     check_total_nodes,
     validate_add_node,
-    validate_swap,
-    MAX_NODES_PER_LEVEL,
-    MAX_DEPTH,
+    validate_add_edge,
     MAX_TOTAL_NODES,
 )
 
 
-class TestDetectCycle:
-    def test_no_cycle_in_simple_chain(self):
+class TestDirectCycle:
+    def test_self_loop_is_direct_cycle(self):
+        assert is_direct_cycle([], "a", "a") is True
+
+    def test_reciprocal_edge_is_direct_cycle(self):
+        edges = [("b", "a")]
+        assert is_direct_cycle(edges, "a", "b") is True
+
+    def test_forward_edge_is_not_a_cycle(self):
+        edges = [("a", "b")]
+        assert is_direct_cycle(edges, "b", "c") is False
+
+    def test_indirect_cycle_is_allowed(self):
+        # a -> b -> c already exists; closing the loop with c -> a is an
+        # *indirect* cycle and is explicitly permitted.
         edges = [("a", "b"), ("b", "c")]
-        assert detect_cycle(edges, "c", "d") is False
+        assert is_direct_cycle(edges, "c", "a") is False
 
-    def test_cycle_detected_back_to_root(self):
-        edges = [("a", "b"), ("b", "c")]
-        assert detect_cycle(edges, "c", "a") is True
-
-    def test_cycle_detected_self_loop(self):
-        edges = []
-        assert detect_cycle(edges, "a", "a") is True
-
-    def test_no_cycle_in_forest(self):
+    def test_unrelated_nodes(self):
         edges = [("a", "b"), ("c", "d")]
-        assert detect_cycle(edges, "b", "e") is False
-
-    def test_cycle_in_diamond(self):
-        edges = [("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")]
-        assert detect_cycle(edges, "d", "a") is True
-
-
-class TestLevelWidth:
-    def test_within_cap(self):
-        assert check_level_width({0: 3}, 0) is True
-
-    def test_at_cap(self):
-        assert check_level_width({0: MAX_NODES_PER_LEVEL}, 0) is False
-
-    def test_empty_level(self):
-        assert check_level_width({}, 5) is True
-
-
-class TestDepth:
-    def test_within_cap(self):
-        assert check_depth(50) is True
-
-    def test_level_199_within_cap(self):
-        assert check_depth(199) is True
-
-    def test_at_cap(self):
-        assert check_depth(MAX_DEPTH) is False
-
-    def test_level_200_exceeds_cap(self):
-        assert check_depth(200) is False
-
-    def test_zero(self):
-        assert check_depth(0) is True
+        assert is_direct_cycle(edges, "b", "e") is False
 
 
 class TestTotalNodes:
@@ -73,46 +42,39 @@ class TestTotalNodes:
 
 class TestValidateAddNode:
     def test_valid_root_add(self):
-        result = validate_add_node([], {}, 0, None, "n1", 0)
-        assert result is None
+        assert validate_add_node([], 0, None, "n1") is None
 
     def test_exceeds_total_cap(self):
-        result = validate_add_node([], {}, MAX_TOTAL_NODES, None, "n1", 0)
+        result = validate_add_node([], MAX_TOTAL_NODES, None, "n1")
         assert result is not None
         assert "500" in result
 
-    def test_exceeds_depth(self):
-        result = validate_add_node([], {}, 0, None, "n1", MAX_DEPTH)
-        assert result is not None
-        assert "depth" in result.lower()
-
-    def test_exceeds_level_width(self):
-        result = validate_add_node([], {0: MAX_NODES_PER_LEVEL}, 0, None, "n1", 0)
-        assert result is not None
-        assert "level" in result.lower()
-
-    def test_cycle_detected(self):
+    def test_direct_cycle_rejected(self):
         edges = [("b", "a")]
-        result = validate_add_node(edges, {}, 0, "a", "b", 1)
+        result = validate_add_node(edges, 0, "a", "b")
         assert result is not None
-        assert "cycle" in result.lower()
+        assert "loop" in result.lower()
+
+    def test_indirect_cycle_allowed(self):
+        edges = [("a", "b"), ("b", "c")]
+        # Adding node c' under c that also points back at a is fine.
+        assert validate_add_node(edges, 3, "c", "a") is None
 
 
-class TestValidateSwap:
-    def test_valid_swap(self):
-        edges = [("a", "b")]
-        assert validate_swap(edges, "a", "b") is None
+class TestValidateAddEdge:
+    def test_forward_edge_allowed(self):
+        assert validate_add_edge([("a", "b")], "b", "c") is None
 
-    def test_valid_swap_reversed(self):
-        edges = [("a", "b")]
-        assert validate_swap(edges, "b", "a") is None
-
-    def test_not_connected(self):
-        edges = [("a", "b"), ("c", "d")]
-        result = validate_swap(edges, "a", "d")
+    def test_self_loop_rejected(self):
+        result = validate_add_edge([], "a", "a")
         assert result is not None
-        assert "directly connected" in result.lower()
+        assert "loop" in result.lower()
 
-    def test_empty_edges(self):
-        result = validate_swap([], "a", "b")
+    def test_reciprocal_edge_rejected(self):
+        result = validate_add_edge([("a", "b")], "b", "a")
         assert result is not None
+        assert "loop" in result.lower()
+
+    def test_indirect_cycle_allowed(self):
+        edges = [("a", "b"), ("b", "c")]
+        assert validate_add_edge(edges, "c", "a") is None

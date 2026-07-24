@@ -103,18 +103,20 @@ describe('useSetBuilder addExplorerNode', () => {
       ok: true,
       node_id: 'created',
       track_id: 999,
-      level: 1,
+      x: 0,
+      y: 0,
     })
     vi.mocked(http.explorerAddEdge).mockResolvedValue(undefined)
     vi.mocked(http.explorerEdgeScores).mockResolvedValue({ scores: [] })
   })
 
-  it('reuses an existing target-level node by adding an edge instead of a duplicate node', async () => {
+  it('adds a node at the given canvas position, allowing duplicate tracks', async () => {
+    // The graph canvas has no "levels": dropping a track that already exists
+    // creates a new node at the drop point rather than reusing the old one.
     const http = await import('../api/http')
     const hydrated = makeHydratedSet({
       explorer_nodes: [
-        makeExplorerNode({ node_id: 'parent', track_id: 10, level: 0 }),
-        makeExplorerNode({ node_id: 'existing', track_id: 99, level: 1 }),
+        makeExplorerNode({ node_id: 'existing', track_id: 99, level: 0 }),
       ],
     })
     vi.mocked(http.fetchHydratedSet).mockResolvedValue(hydrated)
@@ -128,11 +130,11 @@ describe('useSetBuilder addExplorerNode', () => {
     await waitFor(() => expect(result.current.activeSetId).toBe(1))
 
     await act(async () => {
-      await result.current.addExplorerNode(99, 'parent', 1)
+      await result.current.addExplorerNode(99, 300, 200)
     })
 
-    expect(http.explorerAddEdge).toHaveBeenCalledWith(1, 'parent', 'existing')
-    expect(http.explorerAddNode).not.toHaveBeenCalled()
+    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 300, 200, undefined)
+    expect(http.explorerAddEdge).not.toHaveBeenCalled()
   })
 
   it('deleteExplorerEdge calls explorerDeleteEdge and refreshes the active set', async () => {
@@ -219,12 +221,11 @@ describe('useSetBuilder addExplorerNode', () => {
     expect(http.explorerAddEdge).toHaveBeenCalledWith(1, 'n1', 'n2')
   })
 
-  it('creates a new node when no matching target-level node exists', async () => {
+  it('creates a node wired to a parent when a parent id is supplied', async () => {
     const http = await import('../api/http')
     const hydrated = makeHydratedSet({
       explorer_nodes: [
         makeExplorerNode({ node_id: 'parent', track_id: 10, level: 0 }),
-        makeExplorerNode({ node_id: 'other', track_id: 99, level: 2 }),
       ],
     })
     vi.mocked(http.fetchHydratedSet).mockResolvedValue(hydrated)
@@ -238,17 +239,16 @@ describe('useSetBuilder addExplorerNode', () => {
     await waitFor(() => expect(result.current.activeSetId).toBe(1))
 
     await act(async () => {
-      await result.current.addExplorerNode(99, 'parent', 1)
+      await result.current.addExplorerNode(99, 300, 200, 'parent')
     })
 
-    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 'parent', 1)
-    expect(http.explorerAddEdge).not.toHaveBeenCalled()
+    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 300, 200, 'parent')
   })
 
-  it('surfaces explorer depth constraint detail in the toast', async () => {
+  it('surfaces explorer node-cap constraint detail in the toast', async () => {
     const http = await import('../api/http')
     vi.mocked(http.explorerAddNode).mockRejectedValue(
-      new Error('Explorer exceeds maximum depth of 200'),
+      new Error('Explorer exceeds maximum of 500 nodes per set'),
     )
 
     const { result } = renderHook(() => useSetBuilder())
@@ -260,10 +260,12 @@ describe('useSetBuilder addExplorerNode', () => {
     await waitFor(() => expect(result.current.activeSetId).toBe(1))
 
     await act(async () => {
-      await result.current.addExplorerNode(99, undefined, 200)
+      await result.current.addExplorerNode(99, 300, 200)
     })
 
-    expect(result.current.error).toBe('Explorer exceeds maximum depth of 200')
+    expect(result.current.error).toBe(
+      'Explorer exceeds maximum of 500 nodes per set',
+    )
   })
 })
 

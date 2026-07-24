@@ -69,9 +69,14 @@ interface Props {
   addToTracklist: (trackId: number, title?: string) => void
   addExplorerNode: (
     trackId: number,
+    x?: number,
+    y?: number,
     parentNodeId?: string,
-    level?: number,
   ) => Promise<ExplorerAddResult>
+  moveExplorerNode: (nodeId: string, x: number, y: number) => void
+  setExplorerPositions: (
+    positions: { node_id: string; x: number; y: number }[],
+  ) => Promise<void>
   deleteExplorerNode: (
     nodeId: string,
     rewireEdges?: { parent_node_id: string; child_node_id: string }[],
@@ -80,10 +85,11 @@ interface Props {
   deleteExplorerEdge: (edgeId: number) => Promise<void>
   swapExplorerNodes: (nodeAId: string, nodeBId: string) => void
   explorerNodeAddToTracklist: (nodeId: string) => void
-  addSiblingNode: (
+  addNodeWithParents: (
     trackId: number,
-    inheritParentIds: string[],
-    level: number,
+    parentIds: string[],
+    x: number,
+    y: number,
   ) => Promise<ExplorerAddResult>
   fetchEdgeScores: (
     pairs: [number, number][],
@@ -128,12 +134,14 @@ export function SetBuilder({
   updateTracklistNote,
   addToTracklist,
   addExplorerNode,
+  moveExplorerNode,
+  setExplorerPositions,
   deleteExplorerNode,
   addExplorerEdge,
   deleteExplorerEdge,
   swapExplorerNodes,
   explorerNodeAddToTracklist,
-  addSiblingNode,
+  addNodeWithParents,
   fetchEdgeScores,
   clearError,
 }: Props) {
@@ -295,12 +303,14 @@ export function SetBuilder({
           edges={activeSet.explorer_edges}
           onBack={closeExplorer}
           onAddNode={addExplorerNode}
+          onMoveNode={moveExplorerNode}
+          onSetPositions={setExplorerPositions}
           onDeleteNode={deleteExplorerNode}
           onAddEdge={addExplorerEdge}
           onDeleteEdge={deleteExplorerEdge}
           onSwap={swapExplorerNodes}
           onNodeToTracklist={explorerNodeAddToTracklist}
-          onAddSibling={addSiblingNode}
+          onAddNodeWithParents={addNodeWithParents}
           tracklistTrackIds={tracklistTrackIds}
           fetchEdgeScores={fetchEdgeScores}
         />
