@@ -631,8 +631,8 @@ function PoolRow({
           <td key={colId} className="set-ws-cell-title">
             {entry.highlight_color && (
               <span
-                className="pool-highlight-bar"
-                style={{ background: entry.highlight_color }}
+                className="pool-highlight-flag"
+                style={{ backgroundColor: entry.highlight_color }}
                 aria-hidden="true"
               />
             )}
