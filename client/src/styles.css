@@ -3282,6 +3282,82 @@ body,
   stroke-width: 2.5;
 }
 
+/* Infinite-canvas dot grid. */
+.explorer-grid-dot {
+  fill: var(--border);
+  opacity: 0.55;
+}
+
+/* Node reposition affordances. */
+.explorer-node-body {
+  cursor: grab;
+}
+
+.explorer-node-group--dragging {
+  cursor: grabbing;
+}
+
+.explorer-node-group--dragging .explorer-node-body {
+  opacity: 1;
+}
+
+/* Outgoing-edge connect port. */
+.explorer-connect-handle {
+  cursor: crosshair;
+  opacity: 0.55;
+  transition: opacity var(--transition);
+}
+
+.explorer-node-group:hover .explorer-connect-handle,
+.explorer-connect-handle:hover {
+  opacity: 1;
+}
+
+/* Edge-style toggle (curved / straight / right-angle). */
+.explorer-edge-style-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.explorer-edge-style-btn {
+  padding: 3px 9px;
+  font-size: 12px;
+  line-height: 1.3;
+  background: var(--surface);
+  color: var(--text-muted);
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.explorer-edge-style-btn:last-child {
+  border-right: none;
+}
+
+.explorer-edge-style-btn:hover {
+  color: var(--text);
+}
+
+.explorer-edge-style-btn--active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.explorer-edge-style-btn--active:hover {
+  color: #fff;
+}
+
+/* Add-track search box in the Explorer controls. */
+.explorer-add-search {
+  position: relative;
+  width: 240px;
+}
+
 .set-explorer-controls {
   display: flex;
   align-items: center;

@@ -304,7 +304,9 @@ CREATE TABLE IF NOT EXISTS public.set_explorer_node (
     track_id integer NOT NULL,
     level integer DEFAULT 0 NOT NULL,
     added_at timestamp without time zone DEFAULT now() NOT NULL,
-    col_index integer DEFAULT 0 NOT NULL
+    col_index integer DEFAULT 0 NOT NULL,
+    x double precision DEFAULT 0 NOT NULL,
+    y double precision DEFAULT 0 NOT NULL
 );
 
 

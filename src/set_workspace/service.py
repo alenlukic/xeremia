@@ -17,7 +17,7 @@ from src.models.set_pool_subgroup_member import SetPoolSubgroupMember
 from src.models.set_tracklist_entry import SetTracklistEntry
 from src.models.set_explorer_node import SetExplorerNode
 from src.models.set_explorer_edge import SetExplorerEdge
-from src.set_workspace.explorer_rules import validate_add_node
+from src.set_workspace.explorer_rules import validate_add_node, validate_add_edge
 
 logger = logging.getLogger(__name__)
 
@@ -631,41 +631,34 @@ class SetWorkspaceService:
         nodes = self.session.query(SetExplorerNode).filter_by(set_id=set_id).all()
         edges = self.session.query(SetExplorerEdge).filter_by(set_id=set_id).all()
         edge_tuples = [(e.parent_node_id, e.child_node_id) for e in edges]
-        nodes_by_level: Dict[int, int] = {}
-        for n in nodes:
-            nodes_by_level[n.level] = nodes_by_level.get(n.level, 0) + 1
-        return nodes, edges, edge_tuples, nodes_by_level
+        return nodes, edges, edge_tuples
 
     def explorer_add_node(
         self,
         set_id: int,
         track_id: int,
+        x: float = 0.0,
+        y: float = 0.0,
         parent_node_id: Optional[str] = None,
-        level: int = 0,
     ) -> Tuple[Optional[SetExplorerNode], Optional[str]]:
-        nodes, edges, edge_tuples, nodes_by_level = self._get_explorer_state(set_id)
+        nodes, edges, edge_tuples = self._get_explorer_state(set_id)
         node_id = str(uuid.uuid4())[:8]
 
         error = validate_add_node(
             edge_tuples,
-            nodes_by_level,
             len(nodes),
             parent_node_id,
             node_id,
-            level,
         )
         if error:
             return None, error
-
-        occupied = {n.col_index for n in nodes if n.level == level}
-        col_index = next(i for i in range(len(occupied) + 1) if i not in occupied)
 
         node = SetExplorerNode(
             set_id=set_id,
             node_id=node_id,
             track_id=track_id,
-            level=level,
-            col_index=col_index,
+            x=x,
+            y=y,
         )
         self.session.add(node)
 
@@ -680,18 +673,57 @@ class SetWorkspaceService:
         self.session.flush()
         return node, None
 
+    def explorer_move_node(
+        self,
+        set_id: int,
+        node_id: str,
+        x: float,
+        y: float,
+    ) -> Tuple[bool, Optional[str]]:
+        node = (
+            self.session.query(SetExplorerNode)
+            .filter_by(set_id=set_id, node_id=node_id)
+            .first()
+        )
+        if node is None:
+            return False, "Node not found"
+        node.x = x
+        node.y = y
+        self.session.flush()
+        return True, None
+
+    def explorer_set_positions(
+        self,
+        set_id: int,
+        positions: List[Dict[str, object]],
+    ) -> Tuple[bool, Optional[str]]:
+        """Batch-update node coordinates (used by auto-layout)."""
+        nodes = {
+            n.node_id: n
+            for n in self.session.query(SetExplorerNode)
+            .filter_by(set_id=set_id)
+            .all()
+        }
+        for pos in positions:
+            node = nodes.get(pos["node_id"])
+            if node is None:
+                continue
+            node.x = float(pos["x"])
+            node.y = float(pos["y"])
+        self.session.flush()
+        return True, None
+
     def explorer_add_edge(
         self,
         set_id: int,
         parent_node_id: str,
         child_node_id: str,
     ) -> Tuple[Optional[SetExplorerEdge], Optional[str]]:
-        _, _, edge_tuples, _ = self._get_explorer_state(set_id)
+        _, _, edge_tuples = self._get_explorer_state(set_id)
 
-        from src.set_workspace.explorer_rules import detect_cycle
-
-        if detect_cycle(edge_tuples, parent_node_id, child_node_id):
-            return None, "Adding this edge would create a cycle"
+        error = validate_add_edge(edge_tuples, parent_node_id, child_node_id)
+        if error:
+            return None, error
 
         existing = (
             self.session.query(SetExplorerEdge)

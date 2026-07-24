@@ -15,7 +15,9 @@ from src.api.schemas import (
     ExplorerDeleteNodeRequest,
     ExplorerEdgeScoreRequest,
     ExplorerEdgeScoreResponse,
+    ExplorerMoveNodeRequest,
     ExplorerNodeToTracklistRequest,
+    ExplorerSetPositionsRequest,
     ExplorerSwapRequest,
     HydratedSetResponse,
     MatchDetailResponse,
@@ -1242,8 +1244,9 @@ def api_explorer_add_node(set_id: int, body: ExplorerAddNodeRequest):
         node, error = svc.explorer_add_node(
             set_id,
             body.track_id,
+            body.x,
+            body.y,
             body.parent_node_id,
-            body.level,
         )
         if error:
             raise HTTPException(status_code=400, detail=error)
@@ -1252,7 +1255,8 @@ def api_explorer_add_node(set_id: int, body: ExplorerAddNodeRequest):
             "ok": True,
             "node_id": node.node_id,
             "track_id": node.track_id,
-            "level": node.level,
+            "x": node.x,
+            "y": node.y,
         }
     except HTTPException:
         raise
@@ -1286,6 +1290,53 @@ def api_explorer_add_edge(set_id: int, body: ExplorerAddEdgeRequest):
         session.rollback()
         logger.exception("Explorer add edge failed")
         raise HTTPException(status_code=500, detail="Add edge failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/explorer/move-node")
+def api_explorer_move_node(set_id: int, body: ExplorerMoveNodeRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.explorer_move_node(set_id, body.node_id, body.x, body.y)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer move node failed")
+        raise HTTPException(status_code=500, detail="Move node failed")
+    finally:
+        session.close()
+
+
+@router.post("/sets/{set_id}/explorer/positions")
+def api_explorer_set_positions(set_id: int, body: ExplorerSetPositionsRequest):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        positions = [
+            {"node_id": p.node_id, "x": p.x, "y": p.y} for p in body.positions
+        ]
+        ok, error = svc.explorer_set_positions(set_id, positions)
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Explorer set positions failed")
+        raise HTTPException(status_code=500, detail="Set positions failed")
     finally:
         session.close()
 

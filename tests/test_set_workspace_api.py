@@ -722,12 +722,12 @@ class TestDeleteNodeResolution:
         """Build A -> B -> C chain and return (set_id, node_ids)."""
         s = svc.create_set("S")
         session.commit()
-        node_a, _ = svc.explorer_add_node(s.id, 1, level=0)
+        node_a, _ = svc.explorer_add_node(s.id, 1)
         node_b, _ = svc.explorer_add_node(
-            s.id, 2, parent_node_id=node_a.node_id, level=1
+            s.id, 2, parent_node_id=node_a.node_id
         )
         node_c, _ = svc.explorer_add_node(
-            s.id, 3, parent_node_id=node_b.node_id, level=2
+            s.id, 3, parent_node_id=node_b.node_id
         )
         session.commit()
         return s.id, node_a.node_id, node_b.node_id, node_c.node_id
@@ -795,10 +795,10 @@ class TestDeleteNodeResolution:
         """A -> B, B -> C, B -> D. Delete B, rewire only C to A, orphan D."""
         s = svc.create_set("S")
         session.commit()
-        a, _ = svc.explorer_add_node(s.id, 1, level=0)
-        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id, level=1)
-        c, _ = svc.explorer_add_node(s.id, 3, parent_node_id=b.node_id, level=2)
-        d, _ = svc.explorer_add_node(s.id, 4, parent_node_id=b.node_id, level=2)
+        a, _ = svc.explorer_add_node(s.id, 1)
+        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id)
+        c, _ = svc.explorer_add_node(s.id, 3, parent_node_id=b.node_id)
+        d, _ = svc.explorer_add_node(s.id, 4, parent_node_id=b.node_id)
         session.commit()
 
         rewire = [{"parent_node_id": a.node_id, "child_node_id": c.node_id}]
@@ -824,8 +824,8 @@ class TestDeleteExplorerEdge:
     def test_delete_edge_success(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
         session.commit()
-        a, _ = svc.explorer_add_node(s.id, 1, level=0)
-        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id, level=1)
+        a, _ = svc.explorer_add_node(s.id, 1)
+        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id)
         session.commit()
         edge = (
             session.query(SetExplorerEdge)
@@ -850,8 +850,8 @@ class TestDeleteExplorerEdge:
         s1 = svc.create_set("S1")
         s2 = svc.create_set("S2")
         session.commit()
-        a, _ = svc.explorer_add_node(s1.id, 1, level=0)
-        b, _ = svc.explorer_add_node(s1.id, 2, parent_node_id=a.node_id, level=1)
+        a, _ = svc.explorer_add_node(s1.id, 1)
+        b, _ = svc.explorer_add_node(s1.id, 2, parent_node_id=a.node_id)
         session.commit()
         edge = (
             session.query(SetExplorerEdge)
@@ -872,10 +872,10 @@ class TestExplorerSwap:
     ):
         s = svc.create_set("S")
         session.commit()
-        root, _ = svc.explorer_add_node(s.id, 101, level=0)
-        left, _ = svc.explorer_add_node(s.id, 202, parent_node_id=root.node_id, level=1)
-        right, _ = svc.explorer_add_node(s.id, 303, level=1)
-        leaf, _ = svc.explorer_add_node(s.id, 404, parent_node_id=left.node_id, level=2)
+        root, _ = svc.explorer_add_node(s.id, 101)
+        left, _ = svc.explorer_add_node(s.id, 202, parent_node_id=root.node_id)
+        right, _ = svc.explorer_add_node(s.id, 303)
+        leaf, _ = svc.explorer_add_node(s.id, 404, parent_node_id=left.node_id)
         session.commit()
 
         ok, err = svc.explorer_swap(s.id, root.node_id, leaf.node_id)
@@ -896,8 +896,6 @@ class TestExplorerSwap:
         assert refreshed_leaf is not None
         assert refreshed_root.track_id == 404
         assert refreshed_leaf.track_id == 101
-        assert refreshed_root.level == 0
-        assert refreshed_leaf.level == 2
 
         edges = session.query(SetExplorerEdge).filter_by(set_id=s.id).all()
         edge_pairs = {(edge.parent_node_id, edge.child_node_id) for edge in edges}
@@ -915,7 +913,7 @@ class TestExplorerSwap:
     def test_swap_rejects_same_node(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
         session.commit()
-        node, _ = svc.explorer_add_node(s.id, 101, level=0)
+        node, _ = svc.explorer_add_node(s.id, 101)
         session.commit()
 
         ok, err = svc.explorer_swap(s.id, node.node_id, node.node_id)
@@ -976,8 +974,8 @@ class TestEdgeScoreRequestShape:
     ):
         s = svc.create_set("S")
         session.commit()
-        a, _ = svc.explorer_add_node(s.id, 1, level=0)
-        b, _ = svc.explorer_add_node(s.id, 2, level=0)
+        a, _ = svc.explorer_add_node(s.id, 1)
+        b, _ = svc.explorer_add_node(s.id, 2)
         session.commit()
 
         edge, err = svc.explorer_add_edge(s.id, a.node_id, b.node_id)
@@ -987,8 +985,8 @@ class TestEdgeScoreRequestShape:
     def test_add_edge_dedup(self, svc: SetWorkspaceService, session: Session):
         s = svc.create_set("S")
         session.commit()
-        a, _ = svc.explorer_add_node(s.id, 1, level=0)
-        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id, level=1)
+        a, _ = svc.explorer_add_node(s.id, 1)
+        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id)
         session.commit()
 
         edge, err = svc.explorer_add_edge(s.id, a.node_id, b.node_id)
@@ -1001,14 +999,33 @@ class TestEdgeScoreRequestShape:
             == 1
         )
 
-    def test_add_edge_cycle_rejected(self, svc: SetWorkspaceService, session: Session):
+    def test_add_edge_direct_reciprocal_rejected(
+        self, svc: SetWorkspaceService, session: Session
+    ):
         s = svc.create_set("S")
         session.commit()
-        a, _ = svc.explorer_add_node(s.id, 1, level=0)
-        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id, level=1)
+        a, _ = svc.explorer_add_node(s.id, 1)
+        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id)
         session.commit()
 
+        # a -> b exists; the reciprocal b -> a is a direct loop and is rejected.
         edge, err = svc.explorer_add_edge(s.id, b.node_id, a.node_id)
         assert edge is None
         assert err is not None
-        assert "cycle" in err.lower()
+        assert "loop" in err.lower()
+
+    def test_add_edge_indirect_cycle_allowed(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        session.commit()
+        a, _ = svc.explorer_add_node(s.id, 1)
+        b, _ = svc.explorer_add_node(s.id, 2, parent_node_id=a.node_id)
+        c, _ = svc.explorer_add_node(s.id, 3, parent_node_id=b.node_id)
+        session.commit()
+
+        # a -> b -> c exists; closing the loop c -> a is an indirect cycle,
+        # which the graph model explicitly permits.
+        edge, err = svc.explorer_add_edge(s.id, c.node_id, a.node_id)
+        assert err is None
+        assert edge is not None

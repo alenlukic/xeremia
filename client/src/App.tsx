@@ -558,12 +558,14 @@ export function App() {
             updateTracklistNote={setBuilder.updateTracklistNote}
             addToTracklist={setBuilder.addToTracklist}
             addExplorerNode={setBuilder.addExplorerNode}
+            moveExplorerNode={setBuilder.moveExplorerNode}
+            setExplorerPositions={setBuilder.setExplorerPositions}
             deleteExplorerNode={setBuilder.deleteExplorerNode}
             addExplorerEdge={setBuilder.addExplorerEdge}
             deleteExplorerEdge={setBuilder.deleteExplorerEdge}
             swapExplorerNodes={setBuilder.swapExplorerNodes}
             explorerNodeAddToTracklist={setBuilder.explorerNodeAddToTracklist}
-            addSiblingNode={setBuilder.addSiblingNode}
+            addNodeWithParents={setBuilder.addNodeWithParents}
             fetchEdgeScores={setBuilder.fetchEdgeScores}
             clearError={setBuilder.clearError}
           />

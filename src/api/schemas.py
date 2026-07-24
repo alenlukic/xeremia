@@ -225,6 +225,8 @@ class ExplorerNodeResponse(BaseModel):
     set_id: int
     node_id: str
     track_id: int
+    x: float
+    y: float
     level: int
     col_index: int
     track: Optional[TrackResponse] = None
@@ -304,8 +306,25 @@ class SubgroupDropRequest(BaseModel):
 
 class ExplorerAddNodeRequest(BaseModel):
     track_id: int
+    x: float = 0.0
+    y: float = 0.0
     parent_node_id: Optional[str] = None
-    level: int = 0
+
+
+class ExplorerMoveNodeRequest(BaseModel):
+    node_id: str
+    x: float
+    y: float
+
+
+class ExplorerNodePosition(BaseModel):
+    node_id: str
+    x: float
+    y: float
+
+
+class ExplorerSetPositionsRequest(BaseModel):
+    positions: List[ExplorerNodePosition]
 
 
 class ExplorerAddEdgeRequest(BaseModel):

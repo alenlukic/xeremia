@@ -482,16 +482,18 @@ export async function tracklistMoveToPool(
 export async function explorerAddNode(
   setId: number,
   trackId: number,
+  x: number = 0,
+  y: number = 0,
   parentNodeId?: string,
-  level: number = 0,
-): Promise<{ ok: boolean; node_id: string; track_id: number; level: number }> {
+): Promise<{ ok: boolean; node_id: string; track_id: number; x: number; y: number }> {
   const res = await fetch(`/api/sets/${setId}/explorer/nodes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       track_id: trackId,
+      x,
+      y,
       parent_node_id: parentNodeId,
-      level,
     }),
   })
   if (!res.ok) {
@@ -499,6 +501,36 @@ export async function explorerAddNode(
     throw new Error(data.detail || `Explorer add node failed: ${res.status}`)
   }
   return res.json()
+}
+
+export async function explorerMoveNode(
+  setId: number,
+  nodeId: string,
+  x: number,
+  y: number,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/explorer/move-node`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ node_id: nodeId, x, y }),
+  })
+  if (!res.ok) {
+    throw new Error(`Explorer move node failed: ${res.status}`)
+  }
+}
+
+export async function explorerSetPositions(
+  setId: number,
+  positions: { node_id: string; x: number; y: number }[],
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/explorer/positions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ positions }),
+  })
+  if (!res.ok) {
+    throw new Error(`Explorer set positions failed: ${res.status}`)
+  }
 }
 
 export async function explorerDeleteNode(
