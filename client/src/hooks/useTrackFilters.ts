@@ -197,8 +197,9 @@ interface TrackFiltersResult {
 export function useTrackFilters(
   allTracks: Track[],
   searchText: string = '',
+  initialModel: FilterModel = [],
 ): TrackFiltersResult {
-  const [model, setModel] = useState<FilterModel>([])
+  const [model, setModel] = useState<FilterModel>(initialModel)
 
   const normalizedSearch = searchText.trim().toLowerCase()
 

@@ -60,6 +60,9 @@ export function SearchPanel({
       setQuery('')
       clear()
       setOpen(false)
+    } else if (searchText && searchText !== query) {
+      setQuery(searchText)
+      search(searchText)
     }
   }
 

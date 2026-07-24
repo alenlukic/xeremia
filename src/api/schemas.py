@@ -217,6 +217,7 @@ class PoolSubgroupMemberResponse(BaseModel):
     id: int
     subgroup_id: int
     pool_entry_id: int
+    display_order: int
 
 
 class ExplorerNodeResponse(BaseModel):
@@ -289,6 +290,11 @@ class SubgroupReorderRequest(BaseModel):
 
 class SubgroupMemberRequest(BaseModel):
     pool_entry_id: int
+
+
+class SubgroupMemberReorderRequest(BaseModel):
+    pool_entry_id: int
+    new_position: int
 
 
 class SubgroupDropRequest(BaseModel):

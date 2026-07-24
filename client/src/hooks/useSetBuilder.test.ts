@@ -28,6 +28,7 @@ vi.mock('../api/http', () => ({
   subgroupRename: vi.fn(),
   subgroupDelete: vi.fn(),
   subgroupReorder: vi.fn(),
+  subgroupMemberReorder: vi.fn(),
   subgroupAddMember: vi.fn(),
   subgroupRemoveMember: vi.fn(),
   subgroupDropTrack: vi.fn(),
@@ -291,6 +292,35 @@ describe('useSetBuilder dropTrackToSubgroup', () => {
     })
 
     expect(http.subgroupDropTrack).toHaveBeenCalledWith(1, 5, 42, 'browse')
+    expect(http.fetchHydratedSet).toHaveBeenCalled()
+  })
+})
+
+describe('useSetBuilder reorderSubgroupMember', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    const http = await import('../api/http')
+    vi.mocked(http.fetchSets).mockResolvedValue([])
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet())
+    vi.mocked(http.subgroupMemberReorder).mockResolvedValue(undefined)
+  })
+
+  it('calls subgroupMemberReorder and refreshes the active set', async () => {
+    const http = await import('../api/http')
+    const { result } = renderHook(() => useSetBuilder())
+
+    await act(async () => {
+      result.current.selectSet(1)
+    })
+
+    await waitFor(() => expect(result.current.activeSetId).toBe(1))
+
+    await act(async () => {
+      await result.current.reorderSubgroupMember(5, 42, 1)
+    })
+
+    expect(http.subgroupMemberReorder).toHaveBeenCalledWith(1, 5, 42, 1)
     expect(http.fetchHydratedSet).toHaveBeenCalled()
   })
 })

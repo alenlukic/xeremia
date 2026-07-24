@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import type { SortingState } from '@tanstack/react-table'
 import { SearchPanel } from './components/SearchPanel'
 import {
   QuadrantDivider,
@@ -28,6 +27,7 @@ import { useSetBuilder } from './hooks/useSetBuilder'
 import { useTablePreferences } from './hooks/useTablePreferences'
 import { AudioPlayerProvider } from './hooks/useAudioPlayer'
 import { visibleColumnIds, TABLE_REGISTRIES } from './tablePreferences'
+import { readTableViewState, usePersistTableViewSlice } from './tableViewState'
 import type {
   Track,
   SearchSuggestion,
@@ -69,9 +69,11 @@ export function App() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [adminOpen])
 
+  const initialSearchView = readTableViewState().search
+
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
-  const [searchText, setSearchText] = useState('')
-  const [searchSorting, setSearchSorting] = useState<SortingState>([])
+  const [searchText, setSearchText] = useState(initialSearchView.searchText)
+  const [searchSorting, setSearchSorting] = useState(initialSearchView.sorting)
   const [browseSelection, setBrowseSelection] = useState<
     Track | SearchSuggestion | null
   >(null)
@@ -103,7 +105,17 @@ export function App() {
     isActive: filtersActive,
     genres: filterGenres,
     labels: filterLabels,
-  } = useTrackFilters(allTracks, searchText)
+  } = useTrackFilters(allTracks, searchText, initialSearchView.filterModel)
+
+  const searchViewState = useMemo(
+    () => ({
+      searchText,
+      filterModel,
+      sorting: searchSorting,
+    }),
+    [searchText, filterModel, searchSorting],
+  )
+  usePersistTableViewSlice('search', searchViewState)
 
   const {
     weights,
@@ -536,6 +548,7 @@ export function App() {
             renameSubgroup={setBuilder.renameSubgroup}
             deleteSubgroup={setBuilder.deleteSubgroup}
             reorderSubgroups={setBuilder.reorderSubgroups}
+            reorderSubgroupMember={setBuilder.reorderSubgroupMember}
             addSubgroupMember={setBuilder.addSubgroupMember}
             removeSubgroupMember={setBuilder.removeSubgroupMember}
             dropTrackToSubgroup={setBuilder.dropTrackToSubgroup}

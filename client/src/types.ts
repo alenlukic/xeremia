@@ -186,6 +186,7 @@ export interface PoolSubgroupMembership {
   id: number
   subgroup_id: number
   pool_entry_id: number
+  display_order: number
 }
 
 export interface HydratedSet {

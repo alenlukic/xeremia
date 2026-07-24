@@ -14,6 +14,7 @@ import {
   subgroupRename as apiSubgroupRename,
   subgroupDelete as apiSubgroupDelete,
   subgroupReorder as apiSubgroupReorder,
+  subgroupMemberReorder as apiSubgroupMemberReorder,
   subgroupAddMember as apiSubgroupAddMember,
   subgroupRemoveMember as apiSubgroupRemoveMember,
   subgroupDropTrack as apiSubgroupDropTrack,
@@ -386,6 +387,37 @@ export function useSetBuilder() {
         'Could not reorder groups.',
       ),
     [runSubgroupMutation],
+  )
+
+  const reorderSubgroupMember = useCallback(
+    async (
+      subgroupId: number,
+      poolEntryId: number,
+      newPosition: number,
+    ): Promise<boolean> => {
+      if (activeSetId === null) {
+        return false
+      }
+      try {
+        await apiSubgroupMemberReorder(
+          activeSetId,
+          subgroupId,
+          poolEntryId,
+          newPosition,
+        )
+        await refreshActive()
+        return true
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(
+            friendlyError(err, 'Could not reorder group tracks.'),
+          )
+          await refreshActive()
+        }
+        return false
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
   const addSubgroupMember = useCallback(
@@ -779,6 +811,7 @@ export function useSetBuilder() {
     renameSubgroup,
     deleteSubgroup,
     reorderSubgroups,
+    reorderSubgroupMember,
     addSubgroupMember,
     removeSubgroupMember,
     dropTrackToSubgroup,

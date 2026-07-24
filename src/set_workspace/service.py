@@ -50,6 +50,46 @@ class SetWorkspaceService:
         )
         return (current_max[0] + 1) if current_max else 0
 
+    def _next_member_order(self, subgroup_id: int) -> int:
+        """Next dense display_order for a subgroup's memberships."""
+        current_max = (
+            self.session.query(SetPoolSubgroupMember.display_order)
+            .filter_by(subgroup_id=subgroup_id)
+            .order_by(SetPoolSubgroupMember.display_order.desc())
+            .first()
+        )
+        return (current_max[0] + 1) if current_max else 0
+
+    def _renumber_subgroup_members(self, subgroup_id: int) -> None:
+        members = (
+            self.session.query(SetPoolSubgroupMember)
+            .filter_by(subgroup_id=subgroup_id)
+            .order_by(
+                SetPoolSubgroupMember.display_order,
+                SetPoolSubgroupMember.added_at,
+                SetPoolSubgroupMember.id,
+            )
+            .all()
+        )
+        for idx, member in enumerate(members):
+            member.display_order = idx
+        self.session.flush()
+
+    def _delete_pool_memberships(self, pool_entry_id: int) -> None:
+        subgroup_ids = [
+            row[0]
+            for row in self.session.query(SetPoolSubgroupMember.subgroup_id)
+            .filter_by(pool_entry_id=pool_entry_id)
+            .distinct()
+            .all()
+        ]
+        self.session.query(SetPoolSubgroupMember).filter_by(
+            pool_entry_id=pool_entry_id,
+        ).delete()
+        self.session.flush()
+        for subgroup_id in subgroup_ids:
+            self._renumber_subgroup_members(subgroup_id)
+
     def _get_subgroup(self, set_id: int, subgroup_id: int) -> Optional[SetPoolSubgroup]:
         """Fetch a subgroup only when it belongs to the given set."""
         return (
@@ -137,6 +177,12 @@ class SetWorkspaceService:
             memberships = (
                 self.session.query(SetPoolSubgroupMember)
                 .filter(SetPoolSubgroupMember.subgroup_id.in_(subgroup_ids))
+                .order_by(
+                    SetPoolSubgroupMember.subgroup_id,
+                    SetPoolSubgroupMember.display_order,
+                    SetPoolSubgroupMember.added_at,
+                    SetPoolSubgroupMember.id,
+                )
                 .all()
             )
 
@@ -179,9 +225,7 @@ class SetWorkspaceService:
         )
         if entry is None:
             return False
-        self.session.query(SetPoolSubgroupMember).filter_by(
-            pool_entry_id=entry.id,
-        ).delete()
+        self._delete_pool_memberships(entry.id)
         self.session.delete(entry)
         self.session.flush()
         return True
@@ -246,9 +290,7 @@ class SetWorkspaceService:
             return False, "Track not found in pool"
 
         next_pos = self._next_order(SetTracklistEntry.position, set_id)
-        self.session.query(SetPoolSubgroupMember).filter_by(
-            pool_entry_id=pool_entry.id,
-        ).delete()
+        self._delete_pool_memberships(pool_entry.id)
         self.session.delete(pool_entry)
         tracklist_entry = SetTracklistEntry(
             set_id=set_id, track_id=track_id, position=next_pos
@@ -342,7 +384,9 @@ class SetWorkspaceService:
         if existing:
             return existing, None
         member = SetPoolSubgroupMember(
-            subgroup_id=subgroup_id, pool_entry_id=pool_entry_id
+            subgroup_id=subgroup_id,
+            pool_entry_id=pool_entry_id,
+            display_order=self._next_member_order(subgroup_id),
         )
         self.session.add(member)
         self.session.flush()
@@ -363,6 +407,43 @@ class SetWorkspaceService:
         if member is None:
             return False, "Membership not found"
         self.session.delete(member)
+        self.session.flush()
+        self._renumber_subgroup_members(subgroup_id)
+        return True, None
+
+    def subgroup_member_reorder(
+        self,
+        set_id: int,
+        subgroup_id: int,
+        pool_entry_id: int,
+        new_position: int,
+    ) -> Tuple[bool, Optional[str]]:
+        sg = self._get_subgroup(set_id, subgroup_id)
+        if sg is None:
+            return False, "Subgroup does not belong to this set"
+
+        members = (
+            self.session.query(SetPoolSubgroupMember)
+            .filter_by(subgroup_id=subgroup_id)
+            .order_by(
+                SetPoolSubgroupMember.display_order,
+                SetPoolSubgroupMember.added_at,
+                SetPoolSubgroupMember.id,
+            )
+            .all()
+        )
+        member = next(
+            (m for m in members if m.pool_entry_id == pool_entry_id),
+            None,
+        )
+        if member is None:
+            return False, "Membership not found"
+
+        new_position = max(0, min(new_position, len(members) - 1))
+        members.remove(member)
+        members.insert(new_position, member)
+        for idx, row in enumerate(members):
+            row.display_order = idx
         self.session.flush()
         return True, None
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   render,
   screen,
@@ -18,6 +18,10 @@ import {
 vi.mock('../api/http', () => ({
   searchTracks: vi.fn().mockResolvedValue([]),
 }))
+
+beforeEach(() => {
+  sessionStorage.clear()
+})
 
 function makePoolEntry(
   overrides: Partial<PoolEntry> & { id: number; track_id: number },
@@ -60,6 +64,7 @@ function renderPool(
       subgroupMemberships={memberships}
       onRemove={noop}
       onReorder={noop}
+      onReorderSubgroupMember={asyncTrue}
       onSetHighlight={noop}
       onAddTrack={noop}
       onCreateSubgroup={asyncNull}
@@ -252,10 +257,10 @@ describe('SetPoolTable per-group sorting', () => {
   }
 
   const memberships: PoolSubgroupMembership[] = [
-    { id: 1, subgroup_id: 1, pool_entry_id: 1 },
-    { id: 2, subgroup_id: 1, pool_entry_id: 2 },
-    { id: 3, subgroup_id: 2, pool_entry_id: 2 },
-    { id: 4, subgroup_id: 2, pool_entry_id: 3 },
+    { id: 1, subgroup_id: 1, pool_entry_id: 1, display_order: 0 },
+    { id: 2, subgroup_id: 1, pool_entry_id: 2, display_order: 1 },
+    { id: 3, subgroup_id: 2, pool_entry_id: 2, display_order: 0 },
+    { id: 4, subgroup_id: 2, pool_entry_id: 3, display_order: 1 },
   ]
 
   function rowTitles(root: Element): string[] {
@@ -366,7 +371,7 @@ describe('SetPoolTable drag-and-drop row reordering', () => {
     expect(onReorder).not.toHaveBeenCalled()
   })
 
-  it('maps drop index to full-pool position on a subgroup tab', () => {
+  it('maps drop index to subgroup member position on a subgroup tab', () => {
     const onReorder = vi.fn()
     const subgroups: PoolSubgroup[] = [
       { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
@@ -374,22 +379,91 @@ describe('SetPoolTable drag-and-drop row reordering', () => {
     // Subgroup members are entries 1 (order 0) and 3 (order 2); entry 2 is
     // in the pool but not in the group.
     const memberships: PoolSubgroupMembership[] = [
-      { id: 1, subgroup_id: 1, pool_entry_id: 1 },
-      { id: 2, subgroup_id: 1, pool_entry_id: 3 },
+      { id: 1, subgroup_id: 1, pool_entry_id: 1, display_order: 0 },
+      { id: 2, subgroup_id: 1, pool_entry_id: 3, display_order: 1 },
     ]
+    const onReorderSubgroupMember = vi.fn().mockResolvedValue(true)
     const { container } = renderPool(makeEntries(), subgroups, memberships, {
-      onReorder,
+      onReorderSubgroupMember,
     })
     fireEvent.click(
       container.querySelectorAll('.pool-tab-bar .pool-tab')[2], // Warmup
     )
     const rows = container.querySelectorAll('tbody tr')
     expect(rows.length).toBe(2)
-    // Drag track 30 (full-pool rank 2) onto track 10 (full-pool rank 0).
+    // Drag track 30 (group index 1) onto track 10 (group index 0).
     fireEvent.dragStart(rows[1], dragData())
     fireEvent.dragOver(rows[0], dragData())
     fireEvent.drop(rows[0], dragData())
-    expect(onReorder).toHaveBeenCalledWith(30, 0)
+    expect(onReorderSubgroupMember).toHaveBeenCalledWith(1, 3, 0)
+    expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it('orders subgroup tab rows by membership display_order after rehydrate', () => {
+    const subgroups: PoolSubgroup[] = [
+      { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+    ]
+    const alpha = makePoolEntry({
+      id: 10,
+      track_id: 100,
+      insertion_order: 0,
+    })
+    alpha.track = { ...alpha.track!, title: 'Alpha' }
+    const beta = makePoolEntry({
+      id: 20,
+      track_id: 200,
+      insertion_order: 1,
+    })
+    beta.track = { ...beta.track!, title: 'Beta' }
+    const gamma = makePoolEntry({
+      id: 30,
+      track_id: 300,
+      insertion_order: 2,
+    })
+    gamma.track = { ...gamma.track!, title: 'Gamma' }
+    const entries = [alpha, beta, gamma]
+    const memberships: PoolSubgroupMembership[] = [
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 2 },
+      { id: 2, subgroup_id: 1, pool_entry_id: 20, display_order: 0 },
+      { id: 3, subgroup_id: 1, pool_entry_id: 30, display_order: 1 },
+    ]
+    const { container, rerender } = renderPool(entries, subgroups, memberships)
+    fireEvent.click(
+      container.querySelectorAll('.pool-tab-bar .pool-tab')[2], // Warmup
+    )
+    const rowTitles = () =>
+      Array.from(container.querySelectorAll('.set-ws-cell-title')).map(
+        (cell) => cell.textContent ?? '',
+      )
+    expect(rowTitles()).toEqual(['Beta', 'Gamma', 'Alpha'])
+
+    rerender(
+      <SetPoolTable
+        allTracks={[]}
+        pool={entries}
+        subgroups={subgroups}
+        subgroupMemberships={[
+          { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
+          { id: 2, subgroup_id: 1, pool_entry_id: 20, display_order: 2 },
+          { id: 3, subgroup_id: 1, pool_entry_id: 30, display_order: 1 },
+        ]}
+        onRemove={noop}
+        onReorder={noop}
+        onReorderSubgroupMember={asyncTrue}
+        onSetHighlight={noop}
+        onAddTrack={noop}
+        onCreateSubgroup={asyncNull}
+        onRenameSubgroup={asyncTrue}
+        onDeleteSubgroup={asyncTrue}
+        onReorderSubgroups={asyncTrue}
+        onAddSubgroupMember={asyncTrue}
+        onRemoveSubgroupMember={asyncTrue}
+        onDropTrackToSubgroup={noop}
+        onDropFromTracklist={noop}
+        {...testPoolTableProps}
+      />,
+    )
+    expect(rowTitles()).toEqual(['Alpha', 'Gamma', 'Beta'])
   })
 })
 
@@ -434,8 +508,8 @@ describe('SetPoolTable tab bar and subgroup features', () => {
 
   it('shows member counts on subgroup tabs', () => {
     const memberships: PoolSubgroupMembership[] = [
-      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
-      { id: 2, subgroup_id: 1, pool_entry_id: 20 },
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
+      { id: 2, subgroup_id: 1, pool_entry_id: 20, display_order: 1 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
     const counts = Array.from(
@@ -446,7 +520,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
 
   it('shows a dot only for the groups a track actually belongs to', () => {
     const memberships: PoolSubgroupMembership[] = [
-      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
     const rows = container.querySelectorAll('tbody tr')
@@ -466,9 +540,9 @@ describe('SetPoolTable tab bar and subgroup features', () => {
       { id: 3, set_id: 1, name: 'Cooldown', display_order: 2 },
     ]
     const memberships: PoolSubgroupMembership[] = [
-      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
-      { id: 2, subgroup_id: 2, pool_entry_id: 10 },
-      { id: 3, subgroup_id: 3, pool_entry_id: 10 },
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
+      { id: 2, subgroup_id: 2, pool_entry_id: 10, display_order: 0 },
+      { id: 3, subgroup_id: 3, pool_entry_id: 10, display_order: 0 },
     ]
     const { container } = renderPool(makeEntries(), manyGroups, memberships)
     const cell = container.querySelector('td.set-ws-cell-subgroups')!
@@ -497,7 +571,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
 
   it('clicking subgroup tab shows only filtered tracks', () => {
     const memberships: PoolSubgroupMembership[] = [
-      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
     const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
@@ -513,7 +587,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
 
   it('Groups tab renders one section per subgroup with counts', () => {
     const memberships: PoolSubgroupMembership[] = [
-      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
     const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
@@ -604,7 +678,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     const onAddSubgroupMember = vi.fn().mockResolvedValue(true)
     const onRemoveSubgroupMember = vi.fn().mockResolvedValue(true)
     const memberships: PoolSubgroupMembership[] = [
-      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships, {
       onAddSubgroupMember,
@@ -621,7 +695,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
 
   it('opens the filter popup from a filled cell without showing an inline input', () => {
     const memberships: PoolSubgroupMembership[] = [
-      { id: 1, subgroup_id: 1, pool_entry_id: 10 },
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
     const cell = container.querySelector('td.set-ws-cell-subgroups')!

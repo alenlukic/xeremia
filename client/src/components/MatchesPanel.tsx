@@ -63,8 +63,11 @@ import {
 } from '../hooks/useTrackFilters'
 import { ToggleFilterGroup, type ToggleOption } from './table/ToggleFilterGroup'
 import { normalizeScore, scoreCellStyle } from './table/scoreGradient'
-
-type BucketKey = 'same_key' | 'higher_key' | 'lower_key'
+import {
+  readTableViewState,
+  usePersistTableViewSlice,
+  type BucketKey,
+} from '../tableViewState'
 
 const BUCKETS: { key: BucketKey; label: string }[] = [
   { key: 'same_key', label: 'Same' },
@@ -284,7 +287,10 @@ export const MatchesPanel = memo(function MatchesPanel({
   const columnSizing = tableConfig.columnWidths
   const columnOrder = tableConfig.columnOrder
   const columnVisibility = tableConfig.columnVisibility
-  const [sorting, setSorting] = useState<SortingState>([])
+  const initialMatchesView = readTableViewState().matches
+  const [sorting, setSorting] = useState<SortingState>(
+    initialMatchesView.sorting,
+  )
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
   // Column widths live locally during an active resize so the drag doesn't
   // round-trip through App state on every mousemove (which re-rendered every
@@ -295,14 +301,26 @@ export const MatchesPanel = memo(function MatchesPanel({
   // Persistent Same/Higher/Lower key-relationship toggles (replace the old tabs;
   // all buckets on by default, all results live in one table).
   const [activeBuckets, setActiveBuckets] = useState<Set<string>>(
-    () => new Set(BUCKETS.map((b) => b.key)),
+    () => new Set(initialMatchesView.activeBuckets),
   )
   // Active numeric score-column filters, keyed by column id, in displayed
   // (0–100) scale.
-  const [filters, setFilters] = useState<FilterMap>({})
+  const [filters, setFilters] = useState<FilterMap>(initialMatchesView.filters)
   // Candidate-attribute filter (Key/BPM/Genre/…) — the same grouped model the
   // browse quadrant uses, applied to the collection track behind each candidate.
-  const [filterModel, setFilterModel] = useState<FilterModel>([])
+  const [filterModel, setFilterModel] = useState<FilterModel>(
+    initialMatchesView.filterModel,
+  )
+  const matchesViewState = useMemo(
+    () => ({
+      sorting,
+      activeBuckets: [...activeBuckets] as BucketKey[],
+      filters,
+      filterModel,
+    }),
+    [sorting, activeBuckets, filters, filterModel],
+  )
+  usePersistTableViewSlice('matches', matchesViewState)
   const filterModelActive = isActiveModel(filterModel)
 
   const ignoreNextScroll = useRef<'top' | 'wrapper' | null>(null)

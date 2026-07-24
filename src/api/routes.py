@@ -33,6 +33,7 @@ from src.api.schemas import (
     SubgroupCreateRequest,
     SubgroupDropRequest,
     SubgroupMemberRequest,
+    SubgroupMemberReorderRequest,
     SubgroupRenameRequest,
     SubgroupReorderRequest,
     TableId,
@@ -654,6 +655,7 @@ def _serialize_hydrated(hydration, session) -> dict:
                 "id": m.id,
                 "subgroup_id": m.subgroup_id,
                 "pool_entry_id": m.pool_entry_id,
+                "display_order": m.display_order,
             }
             for m in hydration.get("pool_subgroup_memberships", [])
         ],
@@ -984,6 +986,42 @@ def api_subgroup_reorder(set_id: int, body: SubgroupReorderRequest):
         session.rollback()
         logger.exception("Subgroup reorder failed")
         raise HTTPException(status_code=500, detail="Subgroup reorder failed")
+    finally:
+        session.close()
+
+
+@router.post(
+    "/sets/{set_id}/pool/subgroups/{subgroup_id}/reorder",
+)
+def api_subgroup_member_reorder(
+    set_id: int,
+    subgroup_id: int,
+    body: SubgroupMemberReorderRequest,
+):
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.subgroup_member_reorder(
+            set_id,
+            subgroup_id,
+            body.pool_entry_id,
+            body.new_position,
+        )
+        if not ok:
+            raise HTTPException(status_code=400, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Subgroup member reorder failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Subgroup member reorder failed",
+        )
     finally:
         session.close()
 

@@ -38,4 +38,5 @@ class SetPoolSubgroupMember(Base):
         nullable=False,
         index=True,
     )
+    display_order = Column("display_order", Integer, nullable=False, default=0)
     added_at = Column("added_at", DateTime, server_default=func.now(), nullable=False)
