@@ -12,6 +12,105 @@ def test_expected_tables_includes_table_preference():
     assert "table_preference" in init_db.EXPECTED_TABLES
 
 
+def test_expected_tables_includes_pool_subgroups():
+    assert "set_pool_subgroup" in init_db.EXPECTED_TABLES
+    assert "set_pool_subgroup_member" in init_db.EXPECTED_TABLES
+
+
+def test_subgroup_migration_verify_reports_missing_tables():
+    from src.scripts import migrate_pool_subgroups
+
+    with patch.object(migrate_pool_subgroups, "subgroup_table_exists", return_value=False):
+        errors = migrate_pool_subgroups.verify()
+    assert errors == ["set_pool_subgroup table is missing"]
+
+
+def test_subgroup_migration_verify_passes_when_present():
+    from src.scripts import migrate_pool_subgroups
+
+    with (
+        patch.object(migrate_pool_subgroups, "subgroup_table_exists", return_value=True),
+        patch.object(migrate_pool_subgroups, "member_table_exists", return_value=True),
+        patch.object(
+            migrate_pool_subgroups,
+            "_member_column_names",
+            return_value={"display_order", "subgroup_id", "pool_entry_id"},
+        ),
+        patch.object(
+            migrate_pool_subgroups,
+            "_invalid_member_order_subgroup_ids",
+            return_value=[],
+        ),
+    ):
+        assert migrate_pool_subgroups.verify() == []
+
+
+def test_subgroup_migration_verify_reports_non_dense_order():
+    from src.scripts import migrate_pool_subgroups
+
+    with (
+        patch.object(migrate_pool_subgroups, "subgroup_table_exists", return_value=True),
+        patch.object(migrate_pool_subgroups, "member_table_exists", return_value=True),
+        patch.object(
+            migrate_pool_subgroups,
+            "_member_column_names",
+            return_value={"display_order", "subgroup_id", "pool_entry_id"},
+        ),
+        patch.object(
+            migrate_pool_subgroups,
+            "_invalid_member_order_subgroup_ids",
+            return_value=[3, 7],
+        ),
+    ):
+        assert migrate_pool_subgroups.verify() == [
+            "set_pool_subgroup_member.display_order is not dense for subgroups: 3, 7"
+        ]
+
+
+def test_subgroup_migration_repairs_only_non_dense_order():
+    from src.scripts import migrate_pool_subgroups
+
+    with (
+        patch.object(migrate_pool_subgroups, "subgroup_table_exists", return_value=True),
+        patch.object(migrate_pool_subgroups, "member_table_exists", return_value=True),
+        patch.object(
+            migrate_pool_subgroups,
+            "_member_column_names",
+            return_value={"display_order", "subgroup_id", "pool_entry_id"},
+        ),
+        patch.object(
+            migrate_pool_subgroups,
+            "_invalid_member_order_subgroup_ids",
+            return_value=[7],
+        ),
+        patch.object(migrate_pool_subgroups, "_backfill_member_order") as backfill,
+    ):
+        migrate_pool_subgroups.apply()
+    backfill.assert_called_once_with([7])
+
+
+def test_subgroup_migration_rerun_preserves_dense_order():
+    from src.scripts import migrate_pool_subgroups
+
+    with (
+        patch.object(migrate_pool_subgroups, "subgroup_table_exists", return_value=True),
+        patch.object(migrate_pool_subgroups, "member_table_exists", return_value=True),
+        patch.object(
+            migrate_pool_subgroups,
+            "_member_column_names",
+            return_value={"display_order", "subgroup_id", "pool_entry_id"},
+        ),
+        patch.object(
+            migrate_pool_subgroups,
+            "_invalid_member_order_subgroup_ids",
+            return_value=[],
+        ),
+        patch.object(migrate_pool_subgroups, "_backfill_member_order") as backfill,
+    ):
+        migrate_pool_subgroups.apply()
+    backfill.assert_not_called()
+
+
 def test_migration_verify_reports_missing_table():
     with patch.object(migrate_table_preferences, "table_exists", return_value=False):
         errors = migrate_table_preferences.verify()

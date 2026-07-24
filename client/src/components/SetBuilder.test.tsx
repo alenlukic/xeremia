@@ -55,6 +55,7 @@ function defaultProps() {
     renameSubgroup: async () => true,
     deleteSubgroup: async () => true,
     reorderSubgroups: async () => true,
+    reorderSubgroupMember: async () => true,
     addSubgroupMember: async () => true,
     removeSubgroupMember: async () => true,
     dropTrackToSubgroup: async () => {},

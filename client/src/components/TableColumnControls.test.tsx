@@ -300,6 +300,7 @@ describe('SetPoolTable header layout and column controls', () => {
         subgroupMemberships={[]}
         onRemove={noop}
         onReorder={noop}
+        onReorderSubgroupMember={asyncTrue}
         onSetHighlight={noop}
         onAddTrack={noop}
         onCreateSubgroup={asyncNull}

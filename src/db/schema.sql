@@ -362,6 +362,72 @@ ALTER SEQUENCE public.set_pool_entry_id_seq OWNED BY public.set_pool_entry.id;
 
 
 --
+-- Name: set_pool_subgroup; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.set_pool_subgroup (
+    id integer NOT NULL,
+    set_id integer NOT NULL,
+    name character varying(256) NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: set_pool_subgroup_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE IF NOT EXISTS public.set_pool_subgroup_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: set_pool_subgroup_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.set_pool_subgroup_id_seq OWNED BY public.set_pool_subgroup.id;
+
+
+--
+-- Name: set_pool_subgroup_member; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.set_pool_subgroup_member (
+    id integer NOT NULL,
+    subgroup_id integer NOT NULL,
+    pool_entry_id integer NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
+    added_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: set_pool_subgroup_member_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE IF NOT EXISTS public.set_pool_subgroup_member_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: set_pool_subgroup_member_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.set_pool_subgroup_member_id_seq OWNED BY public.set_pool_subgroup_member.id;
+
+
+--
 -- Name: set_tracklist_entry; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -565,6 +631,20 @@ ALTER TABLE ONLY public.set_pool_entry ALTER COLUMN id SET DEFAULT nextval('publ
 
 
 --
+-- Name: set_pool_subgroup id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.set_pool_subgroup ALTER COLUMN id SET DEFAULT nextval('public.set_pool_subgroup_id_seq'::regclass);
+
+
+--
+-- Name: set_pool_subgroup_member id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.set_pool_subgroup_member ALTER COLUMN id SET DEFAULT nextval('public.set_pool_subgroup_member_id_seq'::regclass);
+
+
+--
 -- Name: set_tracklist_entry id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -762,6 +842,30 @@ ALTER TABLE ONLY public.set_pool_entry
 
 
 --
+-- Name: set_pool_subgroup set_pool_subgroup_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.set_pool_subgroup
+    ADD CONSTRAINT set_pool_subgroup_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: set_pool_subgroup_member set_pool_subgroup_member_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.set_pool_subgroup_member
+    ADD CONSTRAINT set_pool_subgroup_member_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: set_pool_subgroup_member uq_subgroup_member; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.set_pool_subgroup_member
+    ADD CONSTRAINT uq_subgroup_member UNIQUE (subgroup_id, pool_entry_id);
+
+
+--
 -- Name: set_tracklist_entry set_tracklist_entry_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -865,6 +969,27 @@ CREATE INDEX IF NOT EXISTS idx_pool_set_id ON public.set_pool_entry USING btree 
 --
 
 CREATE INDEX IF NOT EXISTS idx_pool_track_id ON public.set_pool_entry USING btree (track_id);
+
+
+--
+-- Name: idx_subgroup_member_pool_entry_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS idx_subgroup_member_pool_entry_id ON public.set_pool_subgroup_member USING btree (pool_entry_id);
+
+
+--
+-- Name: idx_subgroup_member_subgroup_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS idx_subgroup_member_subgroup_id ON public.set_pool_subgroup_member USING btree (subgroup_id);
+
+
+--
+-- Name: idx_subgroup_set_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS idx_subgroup_set_id ON public.set_pool_subgroup USING btree (set_id);
 
 
 --
@@ -1275,6 +1400,30 @@ ALTER TABLE ONLY public.set_pool_entry
 
 ALTER TABLE ONLY public.set_pool_entry
     ADD CONSTRAINT set_pool_entry_track_id_fkey FOREIGN KEY (track_id) REFERENCES public.track(id) ON DELETE CASCADE;
+
+
+--
+-- Name: set_pool_subgroup set_pool_subgroup_set_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.set_pool_subgroup
+    ADD CONSTRAINT set_pool_subgroup_set_id_fkey FOREIGN KEY (set_id) REFERENCES public.dj_set(id) ON DELETE CASCADE;
+
+
+--
+-- Name: set_pool_subgroup_member set_pool_subgroup_member_pool_entry_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.set_pool_subgroup_member
+    ADD CONSTRAINT set_pool_subgroup_member_pool_entry_id_fkey FOREIGN KEY (pool_entry_id) REFERENCES public.set_pool_entry(id) ON DELETE CASCADE;
+
+
+--
+-- Name: set_pool_subgroup_member set_pool_subgroup_member_subgroup_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.set_pool_subgroup_member
+    ADD CONSTRAINT set_pool_subgroup_member_subgroup_id_fkey FOREIGN KEY (subgroup_id) REFERENCES public.set_pool_subgroup(id) ON DELETE CASCADE;
 
 
 --

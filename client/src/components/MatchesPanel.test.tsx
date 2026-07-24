@@ -16,6 +16,7 @@ class ResizeObserverMock {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+  sessionStorage.clear()
 })
 
 function makeMatch(overrides: Partial<TransitionMatch> = {}): TransitionMatch {
@@ -634,5 +635,71 @@ describe('MatchesPanel', () => {
       expect(screen.queryByTitle('Add to Tracklist')).not.toBeInTheDocument()
       expect(document.querySelectorAll('.match-action-btn').length).toBe(0)
     })
+  })
+})
+
+describe('session table view state', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  it('restores active bucket toggles after remount', async () => {
+    const { TABLE_VIEW_STATE_KEY } = await import('../tableViewState')
+    sessionStorage.setItem(
+      TABLE_VIEW_STATE_KEY,
+      JSON.stringify({
+        version: 1,
+        search: {
+          searchText: '',
+          filterModel: [],
+          sorting: [],
+        },
+        matches: {
+          sorting: [],
+          activeBuckets: ['same_key'],
+          filters: {},
+          filterModel: [],
+        },
+        pool: { sortingByScope: {}, filtersByScope: {} },
+        tracklist: {},
+      }),
+    )
+
+    const matchSource = {
+      id: 1,
+      title: 'Source',
+      artist_names: ['A'],
+      bpm: 128,
+      key: 'C',
+      camelot_code: '8B',
+    }
+    const { unmount } = render(
+      <MatchesPanel
+        matchSource={matchSource}
+        matches={[
+          makeMatch({ candidate_id: 1, bucket: 'same_key', title: 'Same' }),
+          makeMatch({ candidate_id: 2, bucket: 'higher_key', title: 'Higher' }),
+        ]}
+        loading={false}
+        trackIndex={makeTrackIndex()}
+        {...testMatchesPanelTableProps}
+      />,
+    )
+    expect(rowTitles()).toEqual(['Same'])
+    unmount()
+
+    render(
+      <MatchesPanel
+        matchSource={matchSource}
+        matches={[
+          makeMatch({ candidate_id: 1, bucket: 'same_key', title: 'Same' }),
+          makeMatch({ candidate_id: 2, bucket: 'higher_key', title: 'Higher' }),
+        ]}
+        loading={false}
+        trackIndex={makeTrackIndex()}
+        {...testMatchesPanelTableProps}
+      />,
+    )
+    expect(rowTitles()).toEqual(['Same'])
   })
 })

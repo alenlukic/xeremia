@@ -330,6 +330,28 @@ export async function subgroupReorder(
   }
 }
 
+export async function subgroupMemberReorder(
+  setId: number,
+  subgroupId: number,
+  poolEntryId: number,
+  newPosition: number,
+): Promise<void> {
+  const res = await fetch(
+    `/api/sets/${setId}/pool/subgroups/${subgroupId}/reorder`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pool_entry_id: poolEntryId,
+        new_position: newPosition,
+      }),
+    },
+  )
+  if (!res.ok) {
+    throw new Error(`Subgroup member reorder failed: ${res.status}`)
+  }
+}
+
 export async function subgroupAddMember(
   setId: number,
   subgroupId: number,

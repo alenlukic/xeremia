@@ -29,6 +29,11 @@ import { PlayButton } from './PlayButton'
 import { SortTierBar, SortAddButton } from './SortTierBar'
 import type { SortDescriptor, SortColumn } from './SortTierBar'
 import {
+  readTableViewState,
+  usePersistTableViewSlice,
+  type PoolTableViewState,
+} from '../tableViewState'
+import {
   TABLE_REGISTRIES,
   visibleColumnIds,
   type NormalizedTableConfig,
@@ -185,6 +190,11 @@ interface Props {
   onColumnWidthFlush: (columnId: string, width: number) => void
   onRemove: (trackId: number) => void
   onReorder: (trackId: number, newPosition: number) => void
+  onReorderSubgroupMember: (
+    subgroupId: number,
+    poolEntryId: number,
+    newPosition: number,
+  ) => Promise<boolean>
   onSetHighlight: (trackId: number, color: string | null) => void
   onAddTrack: (trackId: number, title?: string) => void
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
@@ -219,16 +229,41 @@ function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
 function sortEntries(
   entries: PoolEntry[],
   sorting: SortDescriptor[],
+  displayOrderByEntry?: Map<number, number>,
 ): PoolEntry[] {
   return [...entries].sort((a, b) => {
     for (const s of sorting) {
-      const cmp = compareByColumn(a, b, s.id)
+      let cmp: number
+      if (s.id === 'insertion_order' && displayOrderByEntry) {
+        cmp =
+          (displayOrderByEntry.get(a.id) ?? 0) -
+          (displayOrderByEntry.get(b.id) ?? 0)
+      } else {
+        cmp = compareByColumn(a, b, s.id)
+      }
       if (cmp !== 0) {
         return s.desc ? -cmp : cmp
       }
     }
     return 0
   })
+}
+
+function memberDisplayOrderByEntry(
+  memberships: PoolSubgroupMembership[],
+  subgroupId: number,
+): Map<number, number> {
+  const map = new Map<number, number>()
+  for (const membership of memberships) {
+    if (membership.subgroup_id === subgroupId) {
+      map.set(membership.pool_entry_id, membership.display_order)
+    }
+  }
+  return map
+}
+
+function scopeFiltersActive(filters: FilterMap): boolean {
+  return isActiveFilter(filters.bpm) || isActiveFilter(filters.key)
 }
 
 function groupMembershipIds(
@@ -1172,6 +1207,7 @@ function SubgroupSection({
   subgroup,
   entries,
   subgroups,
+  subgroupMemberships,
   colorByIndex,
   membershipByEntry,
   sorting,
@@ -1190,6 +1226,7 @@ function SubgroupSection({
   subgroup: PoolSubgroup
   entries: PoolEntry[]
   subgroups: PoolSubgroup[]
+  subgroupMemberships: PoolSubgroupMembership[]
   colorByIndex: Map<number, string>
   membershipByEntry: Map<number, Set<number>>
   sorting: SortDescriptor[]
@@ -1241,8 +1278,17 @@ function SubgroupSection({
   )
 
   const sorted = useMemo(
-    () => sortEntries(entries, sorting),
-    [entries, sorting],
+    () =>
+      sortEntries(
+        entries,
+        sorting,
+        sorting.length === 1 &&
+          sorting[0].id === 'insertion_order' &&
+          !sorting[0].desc
+          ? memberDisplayOrderByEntry(subgroupMemberships, subgroup.id)
+          : undefined,
+      ),
+    [entries, sorting, subgroupMemberships, subgroup.id],
   )
 
   const style: React.CSSProperties = {
@@ -1350,6 +1396,7 @@ export function SetPoolTable({
   onColumnWidthFlush,
   onRemove,
   onReorder,
+  onReorderSubgroupMember,
   onSetHighlight,
   onAddTrack,
   onCreateSubgroup,
@@ -1393,22 +1440,20 @@ export function SetPoolTable({
     return m
   }, [subgroups])
 
-  // Numeric column filters (design-system Add filter), applied on top of the
-  // active tab/scope. Keyed by column id (currently BPM).
-  const [poolFilters, setPoolFilters] = useState<FilterMap>({})
-  const setPoolFilter = useCallback(
-    (columnId: string, filter: ColumnFilter) => {
-      setPoolFilters((prev) => ({ ...prev, [columnId]: filter }))
-    },
-    [],
+  const initialPoolView = readTableViewState().pool
+  const [sortingByScope, setSortingByScope] = useState<
+    Record<string, SortDescriptor[]>
+  >(initialPoolView.sortingByScope)
+  const [filtersByScope, setFiltersByScope] = useState<
+    Record<string, FilterMap>
+  >(initialPoolView.filtersByScope)
+  const poolViewState = useMemo<PoolTableViewState>(
+    () => ({ sortingByScope, filtersByScope }),
+    [sortingByScope, filtersByScope],
   )
-  const removePoolFilter = useCallback((columnId: string) => {
-    setPoolFilters((prev) => {
-      const next = { ...prev }
-      delete next[columnId]
-      return next
-    })
-  }, [])
+  usePersistTableViewSlice('pool', poolViewState)
+  const [selectedTab, setSelectedTab] = useState<PoolTab>('all')
+
   const poolFilterColumns = useMemo<FilterableColumn[]>(
     () => [
       { id: 'bpm', label: 'BPM' },
@@ -1420,30 +1465,6 @@ export function SetPoolTable({
       },
     ],
     [pool],
-  )
-  const bpmFilter = poolFilters.bpm
-  const keyFilter = poolFilters.key
-  const filterEntries = useCallback(
-    (entries: PoolEntry[]) => {
-      const bpmActive = isActiveFilter(bpmFilter)
-      const keyActive = isActiveFilter(keyFilter)
-      if (!bpmActive && !keyActive) {
-        return entries
-      }
-      return entries.filter((e) => {
-        if (bpmActive && !passesColumnFilter(e.track?.bpm ?? null, bpmFilter)) {
-          return false
-        }
-        if (
-          keyActive &&
-          !passesColumnFilter(e.track?.camelot_code ?? null, keyFilter)
-        ) {
-          return false
-        }
-        return true
-      })
-    },
-    [bpmFilter, keyFilter],
   )
 
   const handleColumnDragStart = useCallback(
@@ -1546,13 +1567,6 @@ export function SetPoolTable({
       beginPoolColResize,
     ],
   )
-  // Sort tiers are scoped per view: the All tab has its own, and each
-  // subgroup's tab and Groups-view section share one. Keyed by 'all' or the
-  // subgroup id; unset scopes fall back to the persisted pool order.
-  const [sortingByScope, setSortingByScope] = useState<
-    Record<string, SortDescriptor[]>
-  >({})
-  const [selectedTab, setSelectedTab] = useState<PoolTab>('all')
   // The group navigation lives in a rail pinned to the right of the table; it
   // collapses to a slim spine so the table can reclaim the width, and its
   // expanded width is drag-resizable.
@@ -1635,6 +1649,65 @@ export function SetPoolTable({
       ? DEFAULT_POOL_SORTING
       : (sortingByScope[activeSortScope] ?? DEFAULT_POOL_SORTING)
 
+  const activePoolFilters =
+    activeSortScope === null ? {} : (filtersByScope[activeSortScope] ?? {})
+  const setPoolFilter = useCallback(
+    (columnId: string, filter: ColumnFilter) => {
+      if (activeSortScope === null) {
+        return
+      }
+      setFiltersByScope((prev) => ({
+        ...prev,
+        [activeSortScope]: {
+          ...(prev[activeSortScope] ?? {}),
+          [columnId]: filter,
+        },
+      }))
+    },
+    [activeSortScope],
+  )
+  const removePoolFilter = useCallback(
+    (columnId: string) => {
+      if (activeSortScope === null) {
+        return
+      }
+      setFiltersByScope((prev) => {
+        const scopeFilters = { ...(prev[activeSortScope] ?? {}) }
+        delete scopeFilters[columnId]
+        return { ...prev, [activeSortScope]: scopeFilters }
+      })
+    },
+    [activeSortScope],
+  )
+  const bpmFilter = activePoolFilters.bpm
+  const keyFilter = activePoolFilters.key
+  const filterEntries = useCallback(
+    (entries: PoolEntry[]) => {
+      const bpmActive = isActiveFilter(bpmFilter)
+      const keyActive = isActiveFilter(keyFilter)
+      if (!bpmActive && !keyActive) {
+        return entries
+      }
+      return entries.filter((e) => {
+        if (bpmActive && !passesColumnFilter(e.track?.bpm ?? null, bpmFilter)) {
+          return false
+        }
+        if (
+          keyActive &&
+          !passesColumnFilter(e.track?.camelot_code ?? null, keyFilter)
+        ) {
+          return false
+        }
+        return true
+      })
+    },
+    [bpmFilter, keyFilter],
+  )
+  const subgroupDisplayOrder =
+    typeof activeTab === 'number'
+      ? memberDisplayOrderByEntry(subgroupMemberships, activeTab)
+      : undefined
+
   const setSortingForScope = useCallback(
     (scope: string, next: SortDescriptor[]) => {
       setSortingByScope((prev) => ({ ...prev, [scope]: next }))
@@ -1697,18 +1770,28 @@ export function SetPoolTable({
   }, [pool, activeTab, memberEntriesBySubgroup, filterEntries])
 
   const sorted = useMemo(
-    () => sortEntries(filteredPool, activeSorting),
-    [filteredPool, activeSorting],
+    () =>
+      sortEntries(
+        filteredPool,
+        activeSorting,
+        subgroupDisplayOrder &&
+          activeSorting.length === 1 &&
+          activeSorting[0].id === 'insertion_order' &&
+          !activeSorting[0].desc
+          ? subgroupDisplayOrder
+          : undefined,
+      ),
+    [filteredPool, activeSorting, subgroupDisplayOrder],
   )
 
-  // Row drag reordering only makes sense when rows follow the persisted pool
-  // order (# ascending). Subgroup tabs show a filtered subset in that same
-  // order, so drops there map to the target row's position in the full pool.
+  // Row drag reordering only makes sense when rows follow the persisted order
+  // (# ascending) without active filters.
   const rowReorderEnabled =
     activeTab !== 'groups' &&
     activeSorting.length === 1 &&
     activeSorting[0].id === 'insertion_order' &&
-    !activeSorting[0].desc
+    !activeSorting[0].desc &&
+    !scopeFiltersActive(activePoolFilters)
   const poolByOrder = useMemo(
     () => [...pool].sort((a, b) => a.insertion_order - b.insertion_order),
     [pool],
@@ -1763,16 +1846,29 @@ export function SetPoolTable({
       }
       e.preventDefault()
       if (rowDragIndex !== index) {
-        // The backend takes the target's dense rank in the full pool; on a
-        // filtered subgroup tab the row index is not that rank.
-        const target = sorted[index]
-        const newPosition = poolByOrder.findIndex((p) => p.id === target.id)
-        onReorder(sorted[rowDragIndex].track_id, newPosition)
+        if (typeof activeTab === 'number') {
+          void onReorderSubgroupMember(
+            activeTab,
+            sorted[rowDragIndex].id,
+            index,
+          )
+        } else {
+          const target = sorted[index]
+          const newPosition = poolByOrder.findIndex((p) => p.id === target.id)
+          onReorder(sorted[rowDragIndex].track_id, newPosition)
+        }
       }
       setRowDragIndex(null)
       setRowDropIndex(null)
     },
-    [rowDragIndex, sorted, poolByOrder, onReorder],
+    [
+      rowDragIndex,
+      sorted,
+      poolByOrder,
+      onReorder,
+      activeTab,
+      onReorderSubgroupMember,
+    ],
   )
 
   const handleRowDragEnd = useCallback(() => {
@@ -1820,11 +1916,11 @@ export function SetPoolTable({
                   hideAddButton
                 />
               )}
-              {(isActiveFilter(poolFilters.bpm) ||
-                isActiveFilter(poolFilters.key)) && (
+              {(isActiveFilter(activePoolFilters.bpm) ||
+                isActiveFilter(activePoolFilters.key)) && (
                 <TableFilterPills
                   columns={poolFilterColumns}
-                  filters={poolFilters}
+                  filters={activePoolFilters}
                   onFilterChange={setPoolFilter}
                   onRemove={removePoolFilter}
                 />
@@ -1842,7 +1938,7 @@ export function SetPoolTable({
               )}
               <TableFilterAddButton
                 columns={poolFilterColumns}
-                filters={poolFilters}
+                filters={activePoolFilters}
                 onFilterChange={setPoolFilter}
                 label="Add filter"
               />
@@ -1874,6 +1970,7 @@ export function SetPoolTable({
                           subgroup={sg}
                           entries={entries}
                           subgroups={subgroups}
+                          subgroupMemberships={subgroupMemberships}
                           colorByIndex={subgroupColorById}
                           membershipByEntry={membershipByEntry}
                           sorting={

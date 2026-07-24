@@ -44,6 +44,8 @@ EXPECTED_TABLES = frozenset(
         "set_explorer_edge",
         "set_explorer_node",
         "set_pool_entry",
+        "set_pool_subgroup",
+        "set_pool_subgroup_member",
         "set_tracklist_entry",
         "table_preference",
         "track",

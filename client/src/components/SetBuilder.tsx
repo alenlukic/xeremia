@@ -44,6 +44,11 @@ interface Props {
   renameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
   deleteSubgroup: (subgroupId: number) => Promise<boolean>
   reorderSubgroups: (subgroupIds: number[]) => Promise<boolean>
+  reorderSubgroupMember: (
+    subgroupId: number,
+    poolEntryId: number,
+    newPosition: number,
+  ) => Promise<boolean>
   addSubgroupMember: (
     subgroupId: number,
     poolEntryId: number,
@@ -113,6 +118,7 @@ export function SetBuilder({
   renameSubgroup,
   deleteSubgroup,
   reorderSubgroups,
+  reorderSubgroupMember,
   addSubgroupMember,
   removeSubgroupMember,
   dropTrackToSubgroup,
@@ -271,6 +277,7 @@ export function SetBuilder({
                 onRenameSubgroup={renameSubgroup}
                 onDeleteSubgroup={deleteSubgroup}
                 onReorderSubgroups={reorderSubgroups}
+                onReorderSubgroupMember={reorderSubgroupMember}
                 onAddSubgroupMember={addSubgroupMember}
                 onRemoveSubgroupMember={removeSubgroupMember}
                 onDropTrackToSubgroup={dropTrackToSubgroup}

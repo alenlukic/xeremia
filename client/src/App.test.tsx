@@ -133,6 +133,7 @@ class ResizeObserverMock {
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
   localStorage.clear()
+  sessionStorage.clear()
   vi.mocked(useCollectionCache).mockReturnValue({
     allTracks: makeTracks(600),
     traitMap: new Map(),
@@ -1011,7 +1012,7 @@ describe('Set workspace', () => {
     expect(screen.queryByLabelText('Tracklist menu')).not.toBeInTheDocument()
   })
 
-  it('renders dual add-to-pool/tracklist buttons in matches panel', async () => {
+  it('does not render removed add-to-pool/tracklist buttons in matches panel', async () => {
     const httpMod = await import('./api/http')
     const match = makeTransitionMatch({ candidate_id: 2, title: 'Track 2' })
     vi.mocked(httpMod.fetchMatches).mockResolvedValue([match])
@@ -1023,20 +1024,17 @@ describe('Set workspace', () => {
     await selectTrackViaBrowse('Track 1')
 
     await waitFor(() => {
-      const poolBtns = screen.getAllByTitle('Add to Pool')
-      const tlBtns = screen.getAllByTitle('Add to Tracklist')
-      expect(poolBtns.length).toBeGreaterThan(0)
-      expect(tlBtns.length).toBeGreaterThan(0)
+      expect(screen.getByTitle('Use as source track')).toBeInTheDocument()
     })
+    expect(screen.queryByTitle('Add to Pool')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Add to Tracklist')).not.toBeInTheDocument()
   })
 
-  it('renders dual add buttons in browse table', async () => {
+  it('does not render removed add buttons in browse table', async () => {
     await openBrowseTab()
 
-    const poolBtns = screen.getAllByTitle('Add to Pool')
-    const tlBtns = screen.getAllByTitle('Add to Tracklist')
-    expect(poolBtns.length).toBeGreaterThan(0)
-    expect(tlBtns.length).toBeGreaterThan(0)
+    expect(screen.queryByTitle('Add to Pool')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Add to Tracklist')).not.toBeInTheDocument()
   })
 })
 
@@ -1290,5 +1288,45 @@ describe('Cross-region drag and drop', () => {
       fireEvent.drop(tracklist, { dataTransfer: dt })
     })
     expect(httpMod.tracklistAdd).not.toHaveBeenCalled()
+  })
+})
+
+describe('session table view state', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  it('restores browse search text after remount', async () => {
+    const { TABLE_VIEW_STATE_KEY } = await import('./tableViewState')
+    sessionStorage.setItem(
+      TABLE_VIEW_STATE_KEY,
+      JSON.stringify({
+        version: 1,
+        search: {
+          searchText: 'alpha',
+          filterModel: [],
+          sorting: [{ id: 'title', desc: false }],
+        },
+        matches: {
+          sorting: [],
+          activeBuckets: ['same_key', 'higher_key', 'lower_key'],
+          filters: {},
+          filterModel: [],
+        },
+        pool: { sortingByScope: {}, filtersByScope: {} },
+        tracklist: {},
+      }),
+    )
+
+    const { unmount } = render(<App />)
+    expect(
+      (screen.getByPlaceholderText(/search/i) as HTMLInputElement).value,
+    ).toBe('alpha')
+    unmount()
+
+    render(<App />)
+    expect(
+      (screen.getByPlaceholderText(/search/i) as HTMLInputElement).value,
+    ).toBe('alpha')
   })
 })

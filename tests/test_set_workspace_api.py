@@ -367,27 +367,49 @@ class TestPoolSubgroups:
     def test_pool_remove_cleans_memberships(
         self, svc: SetWorkspaceService, session: Session
     ):
-        s, entries = self._set_with_pool(svc, session)
+        s, entries = self._set_with_pool(svc, session, track_ids=(10, 20, 30))
         sg = svc.subgroup_create(s.id, "Warmup")
         session.commit()
-        svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        for track_id in (10, 20, 30):
+            svc.subgroup_add_track(s.id, sg.id, entries[track_id].id)
         session.commit()
-        assert svc.pool_remove(s.id, 10) is True
+        assert svc.pool_remove(s.id, 20) is True
         session.commit()
-        assert session.query(SetPoolSubgroupMember).count() == 0
+        members = (
+            session.query(SetPoolSubgroupMember)
+            .filter_by(subgroup_id=sg.id)
+            .order_by(SetPoolSubgroupMember.display_order)
+            .all()
+        )
+        assert [member.pool_entry_id for member in members] == [
+            entries[10].id,
+            entries[30].id,
+        ]
+        assert [member.display_order for member in members] == [0, 1]
 
     def test_pool_move_to_tracklist_cleans_memberships(
         self, svc: SetWorkspaceService, session: Session
     ):
-        s, entries = self._set_with_pool(svc, session)
+        s, entries = self._set_with_pool(svc, session, track_ids=(10, 20, 30))
         sg = svc.subgroup_create(s.id, "Warmup")
         session.commit()
-        svc.subgroup_add_track(s.id, sg.id, entries[10].id)
+        for track_id in (10, 20, 30):
+            svc.subgroup_add_track(s.id, sg.id, entries[track_id].id)
         session.commit()
-        ok, err = svc.pool_move_to_tracklist(s.id, 10)
+        ok, err = svc.pool_move_to_tracklist(s.id, 20)
         assert ok is True
         assert err is None
-        assert session.query(SetPoolSubgroupMember).count() == 0
+        members = (
+            session.query(SetPoolSubgroupMember)
+            .filter_by(subgroup_id=sg.id)
+            .order_by(SetPoolSubgroupMember.display_order)
+            .all()
+        )
+        assert [member.pool_entry_id for member in members] == [
+            entries[10].id,
+            entries[30].id,
+        ]
+        assert [member.display_order for member in members] == [0, 1]
 
     def test_delete_set_cascades_subgroups(
         self, svc: SetWorkspaceService, session: Session
@@ -418,6 +440,69 @@ class TestPoolSubgroups:
         assert len(memberships) == 1
         assert memberships[0].subgroup_id == sg1.id
         assert memberships[0].pool_entry_id == entries[10].id
+        assert memberships[0].display_order == 0
+
+    def test_member_display_order_assignment_and_reorder(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        entries = [svc.pool_add(s.id, i)[0] for i in range(10, 13)]
+        session.commit()
+        sg = svc.subgroup_create(s.id, "Warmup")
+        m1, _ = svc.subgroup_add_track(s.id, sg.id, entries[0].id)
+        m2, _ = svc.subgroup_add_track(s.id, sg.id, entries[1].id)
+        m3, _ = svc.subgroup_add_track(s.id, sg.id, entries[2].id)
+        session.commit()
+        assert m1.display_order == 0
+        assert m2.display_order == 1
+        assert m3.display_order == 2
+
+        ok, err = svc.subgroup_member_reorder(
+            s.id, sg.id, entries[2].id, 0
+        )
+        assert ok is True
+        assert err is None
+        session.commit()
+
+        hydration = svc.hydrate_set(s.id)
+        memberships = [
+            m
+            for m in hydration["pool_subgroup_memberships"]
+            if m.subgroup_id == sg.id
+        ]
+        assert [m.pool_entry_id for m in memberships] == [
+            entries[2].id,
+            entries[0].id,
+            entries[1].id,
+        ]
+        assert [m.display_order for m in memberships] == [0, 1, 2]
+
+    def test_member_reorder_rejects_foreign_entry(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        entries = [svc.pool_add(s.id, i)[0] for i in range(10, 12)]
+        session.commit()
+        sg = svc.subgroup_create(s.id, "Warmup")
+        svc.subgroup_add_track(s.id, sg.id, entries[0].id)
+        session.commit()
+        ok, err = svc.subgroup_member_reorder(s.id, sg.id, entries[1].id, 0)
+        assert ok is False
+        assert err is not None
+
+
+class TestHydratedSetResponseSchema:
+    def test_pool_subgroup_member_response_includes_display_order(self):
+        from src.api.schemas import PoolSubgroupMemberResponse
+
+        member = PoolSubgroupMemberResponse(
+            id=1,
+            subgroup_id=2,
+            pool_entry_id=3,
+            display_order=4,
+        )
+        assert member.display_order == 4
+        assert member.model_dump()["display_order"] == 4
 
 
 class TestSubgroupDrop:

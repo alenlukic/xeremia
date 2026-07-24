@@ -3792,8 +3792,7 @@ body,
   background: var(--surface);
   overflow: hidden;
 }
-/* Collapsed: the whole spine is a single expand button (no chevron), with a
-   hover "wibble" to signal it is interactive. */
+/* Collapsed: the whole spine is a single expand button (no chevron). */
 .pool-group-rail--collapsed {
   width: 26px;
   align-items: center;
@@ -3807,30 +3806,9 @@ body,
   color: var(--text);
   background: var(--surface-hover);
 }
-.pool-group-rail--collapsed:hover .pool-group-rail-spine-label {
-  animation: pool-rail-wibble 0.5s ease-in-out;
-}
 .pool-group-rail--collapsed:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-}
-
-@keyframes pool-rail-wibble {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  25% {
-    transform: translateY(-3px) rotate(-2deg);
-  }
-  75% {
-    transform: translateY(3px) rotate(2deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pool-group-rail--collapsed:hover .pool-group-rail-spine-label {
-    animation: none;
-  }
 }
 
 /* Left-edge drag handle: widens/narrows the expanded rail. */
