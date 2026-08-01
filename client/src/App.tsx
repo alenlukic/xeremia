@@ -557,6 +557,7 @@ export function App() {
             reorderTracklist={setBuilder.reorderTracklist}
             updateTracklistNote={setBuilder.updateTracklistNote}
             addToTracklist={setBuilder.addToTracklist}
+            insertIntoTracklist={setBuilder.insertIntoTracklist}
             addExplorerNode={setBuilder.addExplorerNode}
             moveExplorerNode={setBuilder.moveExplorerNode}
             setExplorerPositions={setBuilder.setExplorerPositions}

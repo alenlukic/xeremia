@@ -264,6 +264,31 @@ export function useSetBuilder() {
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
+  // Add-then-reorder: the API only ever appends, so an insert is a two-step
+  // write. Both hit the server before the single rehydrate below, so the UI
+  // never renders the intermediate "appended at the end" state.
+  const insertIntoTracklist = useCallback(
+    async (trackId: number, position: number) => {
+      if (activeSetId === null) {
+        return
+      }
+      try {
+        await tracklistAdd(activeSetId, trackId)
+        await tracklistReorder(activeSetId, trackId, position)
+        await refreshActive()
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(
+            friendlyError(err, 'Could not insert track into tracklist.'),
+          )
+          // A failed reorder can leave the track appended; resync either way.
+          await refreshActive()
+        }
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
   const removeFromPool = useCallback(
     async (trackId: number) => {
       if (activeSetId === null) {
@@ -828,6 +853,7 @@ export function useSetBuilder() {
     deleteSet: deleteSetAction,
     addToPool,
     addToTracklist,
+    insertIntoTracklist,
     removeFromPool,
     removeFromTracklist,
     movePoolToTracklist,

@@ -5,6 +5,8 @@ import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
 import { displayTitle } from '../utils/trackTitle'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
+import { useDragAutoScroll } from '../hooks/useDragAutoScroll'
+import { TrackSearchModal } from './TrackSearchModal'
 import {
   TABLE_REGISTRIES,
   visibleColumnIds,
@@ -51,6 +53,8 @@ interface Props {
   onReorder: (trackId: number, newPosition: number) => void
   onUpdateNote: (trackId: number, note: string) => void
   onAddTrack: (trackId: number, title?: string) => void
+  /** Add `trackId` and place it at `position` (0-based) in one step. */
+  onInsertTrack: (trackId: number, position: number) => void
   onDropFromPool: (trackId: number) => void
   onExportM3u8: () => void
 }
@@ -118,6 +122,7 @@ export function SetTracklist({
   onReorder,
   onUpdateNote,
   onAddTrack,
+  onInsertTrack,
   onDropFromPool,
   onExportM3u8,
 }: Props) {
@@ -126,6 +131,12 @@ export function SetTracklist({
   const [dragTrackId, setDragTrackId] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  // Track the "+" was clicked on; the picked track lands right after it. Held
+  // by id, not index, so a list refresh while the modal is open can't reanchor
+  // the insert onto whatever row slid into that slot.
+  const [insertAfterTrackId, setInsertAfterTrackId] = useState<number | null>(
+    null,
+  )
   // Live width for the column being resized. Kept local so a drag re-renders
   // only this table, not the whole App (which re-rendered every quadrant on
   // each mousemove and made resizing crawl). Flushed to App on mouse-up.
@@ -231,6 +242,32 @@ export function SetTracklist({
     [handleExternalDrop, onDropFromPool],
   )
   const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
+  const {
+    scrollRef: tableScrollRef,
+    onDragOver: autoScrollOnDragOver,
+    onDragLeave: autoScrollOnDragLeave,
+  } = useDragAutoScroll<HTMLDivElement>()
+
+  const insertAfterEntry = useMemo(
+    () =>
+      insertAfterTrackId === null
+        ? null
+        : (tracklist.find((e) => e.track_id === insertAfterTrackId) ?? null),
+    [insertAfterTrackId, tracklist],
+  )
+
+  const handleInsertSelect = useCallback(
+    (trackId: number) => {
+      const anchorIndex = tracklist.findIndex(
+        (e) => e.track_id === insertAfterTrackId,
+      )
+      if (anchorIndex !== -1) {
+        onInsertTrack(trackId, anchorIndex + 1)
+      }
+      setInsertAfterTrackId(null)
+    },
+    [insertAfterTrackId, tracklist, onInsertTrack],
+  )
 
   const colStyle = (id: string) => {
     if (liveResize?.id === id) {
@@ -438,10 +475,15 @@ export function SetTracklist({
         <TableColumnEmptyRecovery />
       ) : (
         <div className="track-table-outer">
-          <div className="track-table-wrapper">
+          <div
+            className="track-table-wrapper"
+            ref={tableScrollRef}
+            onDragOver={autoScrollOnDragOver}
+            onDragLeave={autoScrollOnDragLeave}
+          >
             <table className="set-tracklist-table">
               <colgroup>
-                <col className="set-ws-col-remove" />
+                <col className="set-ws-col-remove set-ws-col-rowactions" />
                 {visibleIds.map((colId) => (
                   <col
                     key={colId}
@@ -453,8 +495,8 @@ export function SetTracklist({
               <thead>
                 <tr>
                   <th
-                    className="set-ws-th set-ws-th-remove"
-                    aria-label="Remove"
+                    className="set-ws-th set-ws-th-remove set-ws-th-rowactions"
+                    aria-label="Row actions"
                   />
                   {visibleIds.map((colId) => renderHeaderCell(colId))}
                 </tr>
@@ -526,7 +568,7 @@ export function SetTracklist({
                       clearRowDragState()
                     }}
                   >
-                    <td className="set-ws-cell-remove">
+                    <td className="set-ws-cell-remove set-ws-cell-rowactions">
                       <button
                         type="button"
                         className="set-row-remove-btn"
@@ -536,6 +578,15 @@ export function SetTracklist({
                       >
                         ×
                       </button>
+                      <button
+                        type="button"
+                        className="set-row-remove-btn set-row-insert-btn"
+                        aria-label={`Insert track after ${displayTitle(entry.track, entry.track_id)}`}
+                        title="Insert track after this row"
+                        onClick={() => setInsertAfterTrackId(entry.track_id)}
+                      >
+                        +
+                      </button>
                     </td>
                     {visibleIds.map((colId) => renderBodyCell(colId, entry, i))}
                   </tr>
@@ -544,6 +595,25 @@ export function SetTracklist({
             </table>
           </div>
         </div>
+      )}
+      {insertAfterEntry && (
+        <TrackSearchModal
+          allTracks={allTracks}
+          title="Insert Track"
+          subtitle={
+            <>
+              Inserting after{' '}
+              <strong>
+                {displayTitle(
+                  insertAfterEntry.track,
+                  insertAfterEntry.track_id,
+                )}
+              </strong>
+            </>
+          }
+          onSelect={(suggestion) => handleInsertSelect(suggestion.id)}
+          onClose={() => setInsertAfterTrackId(null)}
+        />
       )}
     </div>
   )

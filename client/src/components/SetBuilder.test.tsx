@@ -64,6 +64,7 @@ function defaultProps() {
     reorderTracklist: noop,
     updateTracklistNote: noop,
     addToTracklist: noop,
+    insertIntoTracklist: noop,
     addExplorerNode: asyncNoop as unknown as (
       trackId: number,
       x?: number,

@@ -4858,6 +4858,43 @@ tr:hover .set-row-remove-btn {
   opacity: 0.85;
 }
 
+/* The tracklist pairs the × with an insert "+", so its leftmost column is
+   wider than the pool's remove-only one. */
+.set-ws-col-rowactions {
+  width: 42px;
+}
+.set-ws-th-rowactions,
+.set-ws-cell-rowactions {
+  width: 42px;
+  padding: 0;
+  white-space: nowrap;
+}
+.set-row-insert-btn {
+  font-size: 14px;
+}
+.set-row-insert-btn:hover,
+.set-row-insert-btn:focus-visible {
+  color: var(--accent);
+}
+
+.track-search-modal {
+  max-width: 520px;
+}
+.track-search-modal .set-explorer-search {
+  margin-top: 4px;
+}
+.track-search-modal-results {
+  list-style: none;
+  margin-top: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.track-search-modal-results .set-explorer-search-item.active {
+  background: var(--surface-hover);
+}
+
 .table-col-insert-zone:hover .table-col-insert-btn,
 .table-col-insert-zone:focus-within .table-col-insert-btn {
   opacity: 1;

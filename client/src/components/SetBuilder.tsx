@@ -67,6 +67,7 @@ interface Props {
   reorderTracklist: (trackId: number, newPosition: number) => void
   updateTracklistNote: (trackId: number, note: string) => void
   addToTracklist: (trackId: number, title?: string) => void
+  insertIntoTracklist: (trackId: number, position: number) => void
   addExplorerNode: (
     trackId: number,
     x?: number,
@@ -133,6 +134,7 @@ export function SetBuilder({
   reorderTracklist,
   updateTracklistNote,
   addToTracklist,
+  insertIntoTracklist,
   addExplorerNode,
   moveExplorerNode,
   setExplorerPositions,
@@ -242,6 +244,7 @@ export function SetBuilder({
               onReorder={reorderTracklist}
               onUpdateNote={updateTracklistNote}
               onAddTrack={handleTracklistAddTrack}
+              onInsertTrack={insertIntoTracklist}
               onDropFromPool={movePoolToTracklist}
               onExportM3u8={handleExport}
             />

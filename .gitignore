@@ -15,6 +15,7 @@ logs/
 
 # Environments
 .env
+.env.backup
 .venv
 
 # Ruff

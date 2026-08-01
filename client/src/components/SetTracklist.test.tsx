@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { SetTracklist } from './SetTracklist'
 import { TRACKLIST_ROW_MIME, POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
-import type { TracklistEntry } from '../types'
+import type { Track, TracklistEntry } from '../types'
 import {
   testTracklistTableProps,
   columnHeaderLabel,
@@ -49,6 +49,7 @@ function renderTracklist(
       onReorder={noop}
       onUpdateNote={noop}
       onAddTrack={noop}
+      onInsertTrack={noop}
       onDropFromPool={noop}
       onExportM3u8={noop}
       {...testTracklistTableProps}
@@ -318,6 +319,7 @@ describe('SetTracklist cross-panel drag-and-drop', () => {
         onReorder={noop}
         onUpdateNote={noop}
         onAddTrack={noop}
+        onInsertTrack={noop}
         onDropFromPool={noop}
         onExportM3u8={noop}
         {...testTracklistTableProps}
@@ -326,6 +328,84 @@ describe('SetTracklist cross-panel drag-and-drop', () => {
 
     const nextRows = container.querySelectorAll('tbody tr')
     expect(nextRows[0].classList.contains('set-row-dragging')).toBe(false)
+  })
+})
+
+describe('SetTracklist row insert', () => {
+  const catalog: Track[] = [
+    {
+      id: 77,
+      title: 'Nightfall',
+      artist_names: ['Someone'],
+      bpm: 128,
+      key: 'Aminor',
+      camelot_code: '8A',
+      genre: null,
+      label: null,
+      energy: null,
+      date_added: null,
+    },
+  ]
+
+  const entries = [
+    makeEntry({ id: 1, track_id: 10, position: 0 }),
+    makeEntry({ id: 2, track_id: 20, position: 1 }),
+  ]
+
+  function openInsertModalOnRow(rowIndex: number, trackId: number) {
+    fireEvent.click(
+      screen.getByLabelText(`Insert track after Track ${trackId}`),
+    )
+    return rowIndex
+  }
+
+  it('renders a + next to the × on every row', () => {
+    const { container } = renderTracklist(entries)
+    const firstCell = container.querySelector('tbody tr .set-ws-cell-remove')!
+    const buttons = firstCell.querySelectorAll('button')
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0].textContent).toBe('×')
+    expect(buttons[1].textContent).toBe('+')
+    // The + is styled off the same base class as the ×.
+    expect(buttons[1].classList.contains('set-row-remove-btn')).toBe(true)
+  })
+
+  it('opens the track search modal from the + button', () => {
+    renderTracklist(entries, { allTracks: catalog })
+    expect(screen.queryByTestId('track-search-modal')).toBeNull()
+
+    openInsertModalOnRow(0, 10)
+
+    const modal = screen.getByTestId('track-search-modal')
+    // The subtitle names the row the insert is anchored to.
+    expect(modal.textContent).toContain('Inserting after')
+    expect(within(modal).getByText('Track 10')).toBeTruthy()
+  })
+
+  it('inserts the picked track directly after the target row', () => {
+    const onInsertTrack = vi.fn()
+    renderTracklist(entries, { allTracks: catalog, onInsertTrack })
+
+    // Second row (index 1) → the track lands at position 2.
+    openInsertModalOnRow(1, 20)
+    fireEvent.change(screen.getByTestId('track-search-modal-input'), {
+      target: { value: 'Nightfall' },
+    })
+    fireEvent.mouseDown(screen.getByTestId('track-search-modal-item'))
+
+    expect(onInsertTrack).toHaveBeenCalledWith(77, 2)
+    expect(screen.queryByTestId('track-search-modal')).toBeNull()
+  })
+
+  it('closes the modal on Cancel without inserting', () => {
+    const onInsertTrack = vi.fn()
+    renderTracklist(entries, { allTracks: catalog, onInsertTrack })
+
+    openInsertModalOnRow(0, 10)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByTestId('track-search-modal')).toBeNull()
+    expect(onInsertTrack).not.toHaveBeenCalled()
   })
 })
 
