@@ -152,11 +152,91 @@ function colorForNodeId(nodeId: string): string {
   return colorForColumn(h)
 }
 
-function truncateForSvg(text: string, max = 30): string {
-  if (text.length <= max) {
-    return text
+// --- Node titles -----------------------------------------------------------
+// Titles arrive as `[01B - B - 110.00] Artist - Track`. They render on two
+// lines — metadata prefix + artist, then the track name — each truncated on its
+// own against the node's inner width. Type size is derived from the node box
+// rather than hard-coded, so resizing the node carries through to both the
+// label size and the width truncation measures against.
+
+/** Horizontal breathing room between the label and the node's edges. */
+const TITLE_PAD_X = 8
+const TITLE_MAX_W = NODE_W - 2 * TITLE_PAD_X
+const TITLE_PRIMARY_SIZE = Math.round(NODE_H / 4)
+const TITLE_SECONDARY_SIZE = TITLE_PRIMARY_SIZE - 1
+/** Distance between the two lines' centers. */
+const TITLE_LINE_GAP = TITLE_PRIMARY_SIZE + 2
+/** Must track --font-body so measurement matches what actually renders. */
+const TITLE_FONT_FAMILY = "'DM Sans', system-ui, sans-serif"
+
+/**
+ * Split a raw title into its two display lines: `[prefix] Artist` and `Track`.
+ * Titles without a metadata prefix or an ` - ` separator collapse to one line.
+ */
+function splitNodeTitle(full: string): [string, string] {
+  const close = full.indexOf(']')
+  const prefix = close === -1 ? '' : full.slice(0, close + 1)
+  const rest = (close === -1 ? full : full.slice(close + 1)).trim()
+  const dash = rest.indexOf(' - ')
+  const head = dash === -1 ? rest : rest.slice(0, dash).trim()
+  const tail = dash === -1 ? '' : rest.slice(dash + 3).trim()
+  return [prefix ? `${prefix} ${head}`.trim() : head, tail]
+}
+
+/** Lazily-created 2D context reused for glyph measurement. */
+let measureCtx: CanvasRenderingContext2D | null | undefined
+function textWidth(text: string, fontSize: number): number {
+  if (measureCtx === undefined) {
+    measureCtx = document.createElement('canvas').getContext('2d')
   }
-  return text.slice(0, max - 1) + '…'
+  if (!measureCtx) {
+    // No canvas (jsdom): fall back to an average-advance estimate so
+    // truncation still degrades sensibly rather than throwing.
+    return text.length * fontSize * 0.55
+  }
+  measureCtx.font = `${fontSize}px ${TITLE_FONT_FAMILY}`
+  return measureCtx.measureText(text).width
+}
+
+const truncCache = new Map<string, string>()
+
+/**
+ * Trim `text` until it fits `maxW` at `fontSize`, appending an ellipsis.
+ * Measuring real glyph widths (rather than counting characters) is what keeps
+ * truncation correct as the type scale changes.
+ */
+function truncateToWidth(
+  text: string,
+  fontSize: number,
+  maxW = TITLE_MAX_W,
+): string {
+  if (!text) {
+    return ''
+  }
+  const key = `${fontSize}|${maxW}|${text}`
+  const cached = truncCache.get(key)
+  if (cached !== undefined) {
+    return cached
+  }
+  let out = text
+  if (textWidth(text, fontSize) > maxW) {
+    let lo = 0
+    let hi = text.length
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2)
+      if (textWidth(text.slice(0, mid) + '…', fontSize) <= maxW) {
+        lo = mid
+      } else {
+        hi = mid - 1
+      }
+    }
+    out = lo > 0 ? text.slice(0, lo).trimEnd() + '…' : '…'
+  }
+  if (truncCache.size > 2000) {
+    truncCache.clear()
+  }
+  truncCache.set(key, out)
+  return out
 }
 
 // Point on a node's rectangle border along the ray from its center toward
@@ -296,7 +376,9 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   onNodeToTracklist,
 }: ExplorerNodeItemProps) {
   const fullTitle = trackTitle ?? String(trackId)
-  const title = truncateForSvg(fullTitle)
+  const [titleHead, titleTail] = splitNodeTitle(fullTitle)
+  const primary = truncateToWidth(titleHead, TITLE_PRIMARY_SIZE)
+  const secondary = truncateToWidth(titleTail, TITLE_SECONDARY_SIZE)
 
   const actions: {
     key: string
@@ -433,15 +515,28 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
         strokeWidth={isSelected ? 2 : isSwapSource ? 2 : 0}
       />
       <text
-        x={NODE_W / 2}
-        y={NODE_H / 2}
         textAnchor="middle"
         dominantBaseline="central"
         fill="#fff"
-        fontSize={11}
         className="explorer-node-title"
       >
-        {title}
+        <tspan
+          x={NODE_W / 2}
+          y={NODE_H / 2 - (secondary ? TITLE_LINE_GAP / 2 : 0)}
+          fontSize={TITLE_PRIMARY_SIZE}
+        >
+          {primary}
+        </tspan>
+        {secondary && (
+          <tspan
+            x={NODE_W / 2}
+            y={NODE_H / 2 + TITLE_LINE_GAP / 2}
+            fontSize={TITLE_SECONDARY_SIZE}
+            opacity={0.85}
+          >
+            {secondary}
+          </tspan>
+        )}
       </text>
 
       {/* Outgoing-edge connect port (drag from here to another node). */}

@@ -170,6 +170,65 @@ describe('SetExplorerCanvas — rendering', () => {
     expect(g.querySelector('.explorer-node-title')?.textContent).toBe('Track 1')
   })
 
+  it('splits a prefixed title into a metadata+artist line and a track line', () => {
+    const nodes = [
+      makeNode({
+        node_id: 'a',
+        track_id: 7,
+        track: makeTrack(7, '[01B - B - 110.00] Cher - Believe'),
+      }),
+    ]
+    const { container } = render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+    const lines = nodeEl(container, 'a').querySelectorAll(
+      '.explorer-node-title tspan',
+    )
+    expect(lines).toHaveLength(2)
+    expect(lines[0].textContent).toBe('[01B - B - 110.00] Cher')
+    expect(lines[1].textContent).toBe('Believe')
+  })
+
+  it('renders a single centered line when the title has no track separator', () => {
+    const nodes = [
+      makeNode({
+        node_id: 'a',
+        track_id: 7,
+        track: makeTrack(7, '[08A - Am - 120.00] Untitled'),
+      }),
+    ]
+    const { container } = render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+    const lines = nodeEl(container, 'a').querySelectorAll(
+      '.explorer-node-title tspan',
+    )
+    expect(lines).toHaveLength(1)
+    expect(lines[0].textContent).toBe('[08A - Am - 120.00] Untitled')
+    // Centered vertically rather than offset into the two-line position.
+    expect(lines[0].getAttribute('y')).toBe('24')
+  })
+
+  it('truncates each title line independently', () => {
+    const nodes = [
+      makeNode({
+        node_id: 'a',
+        track_id: 7,
+        track: makeTrack(
+          7,
+          '[01B - B - 110.00] A Very Long Artist Name That Overflows - ' +
+            'An Equally Long Track Title That Also Overflows',
+        ),
+      }),
+    ]
+    const { container } = render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+    const lines = nodeEl(container, 'a').querySelectorAll(
+      '.explorer-node-title tspan',
+    )
+    expect(lines).toHaveLength(2)
+    // Both overflow, so both get their own ellipsis.
+    expect(lines[0].textContent?.endsWith('…')).toBe(true)
+    expect(lines[1].textContent?.endsWith('…')).toBe(true)
+    expect(lines[0].textContent).not.toContain('Overflows')
+    expect(lines[1].textContent).not.toContain('Overflows')
+  })
+
   it('renders the infinite dot grid', () => {
     const { container } = render(<SetExplorerCanvas {...defaultProps()} />)
     expect(container.querySelector('.explorer-grid-bg')).toBeInTheDocument()
