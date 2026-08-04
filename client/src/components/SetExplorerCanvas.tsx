@@ -86,6 +86,10 @@ interface DeletedNode {
 const NODE_W = 210
 const NODE_H = 48
 const GRID = 20
+/** Horizontal padding between a node and its lane's boundaries. */
+const LANE_PAD = 15
+/** Lane width: one node plus padding on both sides (a multiple of GRID). */
+const LANE_W = NODE_W + 2 * LANE_PAD
 const HANDLE_R = 6
 const ACTION_H = 48
 const ACTION_LABEL_SIZE = 20
@@ -129,6 +133,13 @@ function readStoredEdgeStyle(): EdgeStyle {
 
 function snapToGrid(v: number): number {
   return Math.round(v / GRID) * GRID
+}
+
+// Nodes always rest inside a vertical lane one node wide, never straddling a
+// boundary: snap x to the nearest lane's interior.
+function snapToLaneX(x: number): number {
+  const lane = Math.max(0, Math.round((x - LANE_PAD) / LANE_W))
+  return lane * LANE_W + LANE_PAD
 }
 
 // Stable per-node color derived from its id, so a node keeps its color across
@@ -250,6 +261,7 @@ interface ExplorerNodeItemProps {
   showActions: boolean
   isSwapSource: boolean
   isDragging: boolean
+  isStacked: boolean
   inTracklist: boolean
   onNodeClick: (nodeId: string, additive: boolean) => void
   onNodeMouseDown: (e: React.MouseEvent, nodeId: string) => void
@@ -272,6 +284,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
   showActions,
   isSwapSource,
   isDragging,
+  isStacked,
   inTracklist,
   onNodeClick,
   onNodeMouseDown,
@@ -415,7 +428,7 @@ const ExplorerNodeItem = memo(function ExplorerNodeItem({
         height={NODE_H}
         rx={6}
         fill={color}
-        opacity={isSwapSource ? 0.5 : 0.85}
+        opacity={isSwapSource ? 0.5 : isStacked ? 0.45 : 0.85}
         stroke={isSelected ? '#fff' : isSwapSource ? '#fff' : 'none'}
         strokeWidth={isSelected ? 2 : isSwapSource ? 2 : 0}
       />
@@ -635,7 +648,7 @@ export function SetExplorerCanvas({
   const [posOverride, setPosOverride] = useState<Map<string, Point>>(
     () => new Map(),
   )
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
+  const [draggingIds, setDraggingIds] = useState<Set<string> | null>(null)
 
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -665,14 +678,23 @@ export function SetExplorerCanvas({
   const panningRef = useRef(false)
   const lastMouseRef = useRef({ x: 0, y: 0 })
   const nodeDragRef = useRef<{
-    nodeId: string
     startClientX: number
     startClientY: number
-    originX: number
-    originY: number
+    lastClientX: number
+    lastClientY: number
+    /** Viewport scroll offsets at drag start; scrolling mid-drag (e.g. edge
+        auto-scroll) moves the content without any mousemove, so the scroll
+        delta must be added to the client delta to keep nodes under the cursor. */
+    startScrollLeft: number
+    startScrollTop: number
+    /** Drag-start position of every node moving in this gesture. */
+    origins: Map<string, Point>
     moved: boolean
   } | null>(null)
   const marqueeOriginRef = useRef<Point | null>(null)
+  /** Last pointer position in client coords, for re-mapping gesture previews
+      when the viewport scrolls under a stationary pointer. */
+  const lastPointerClientRef = useRef<Point | null>(null)
   const marqueeEndRef = useRef<Point | null>(null)
   const marqueeMovedRef = useRef(false)
   const suppressSvgClickRef = useRef(false)
@@ -733,6 +755,29 @@ export function SetExplorerCanvas({
     }
     return map
   }, [nodes, posOverride])
+
+  // Nodes whose rectangles overlap another node's ("stacked") render more
+  // transparent so the ones underneath stay visible.
+  const stackedIds = useMemo(() => {
+    const entries = [...nodeMap.values()]
+    const ids = new Set<string>()
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const a = entries[i].pos
+        const b = entries[j].pos
+        if (
+          a.x < b.x + NODE_W &&
+          a.x + NODE_W > b.x &&
+          a.y < b.y + NODE_H &&
+          a.y + NODE_H > b.y
+        ) {
+          ids.add(entries[i].node.node_id)
+          ids.add(entries[j].node.node_id)
+        }
+      }
+    }
+    return ids
+  }, [nodeMap])
 
   const canvasSize = useMemo(() => {
     let maxX = 0
@@ -862,56 +907,115 @@ export function SetExplorerCanvas({
     [toSvgPoint],
   )
 
+  // Re-derive dragged node positions from the latest pointer + scroll state.
+  // Called from mousemove, and from viewport scroll so nodes keep following
+  // the cursor while the content scrolls under a stationary pointer.
+  const updateNodeDragPositions = useCallback(() => {
+    const nd = nodeDragRef.current
+    if (!nd) {
+      return
+    }
+    const vp = viewportRef.current
+    const dxc =
+      nd.lastClientX -
+      nd.startClientX +
+      ((vp?.scrollLeft ?? nd.startScrollLeft) - nd.startScrollLeft)
+    const dyc =
+      nd.lastClientY -
+      nd.startClientY +
+      ((vp?.scrollTop ?? nd.startScrollTop) - nd.startScrollTop)
+    if (!nd.moved && Math.abs(dxc) + Math.abs(dyc) < DRAG_THRESHOLD) {
+      return
+    }
+    if (!nd.moved) {
+      nd.moved = true
+      setDraggingIds(new Set(nd.origins.keys()))
+    }
+    setPosOverride((prev) => {
+      const next = new Map(prev)
+      for (const [id, o] of nd.origins) {
+        next.set(id, {
+          x: Math.max(0, o.x + dxc / zoom),
+          y: Math.max(0, o.y + dyc / zoom),
+        })
+      }
+      return next
+    })
+  }, [zoom])
+
+  // Marquee in progress: re-map its moving corner from client coords.
+  // Returns true when a marquee gesture is active (caller should stop there).
+  const updateMarquee = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      const o = marqueeOriginRef.current
+      if (!o) {
+        return false
+      }
+      const p = toSvgPoint(clientX, clientY)
+      if (p) {
+        marqueeEndRef.current = p
+        if (Math.abs(p.x - o.x) + Math.abs(p.y - o.y) >= DRAG_THRESHOLD) {
+          marqueeMovedRef.current = true
+        }
+        setMarquee({ x0: o.x, y0: o.y, x1: p.x, y1: p.y })
+      }
+      return true
+    },
+    [toSvgPoint],
+  )
+
+  // Connect-drag preview: re-map the cursor end of the pending edge.
+  const updateConnectDrag = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      if (!connectDragRef.current) {
+        return false
+      }
+      const p = toSvgPoint(clientX, clientY)
+      if (p) {
+        setConnectDrag((prev) =>
+          prev ? { ...prev, cursorX: p.x, cursorY: p.y } : prev,
+        )
+      }
+      return true
+    },
+    [toSvgPoint],
+  )
+
+  // Scrolling moves the content under a stationary pointer without any
+  // mousemove, so every in-flight gesture must be re-derived here.
+  const handleViewportScroll = useCallback(() => {
+    if (nodeDragRef.current) {
+      updateNodeDragPositions()
+      return
+    }
+    const last = lastPointerClientRef.current
+    if (!last) {
+      return
+    }
+    if (updateMarquee(last.x, last.y)) {
+      return
+    }
+    updateConnectDrag(last.x, last.y)
+  }, [updateNodeDragPositions, updateMarquee, updateConnectDrag])
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      // Marquee in progress.
-      const o = marqueeOriginRef.current
-      if (o) {
-        const p = toSvgPoint(e.clientX, e.clientY)
-        if (p) {
-          marqueeEndRef.current = p
-          if (Math.abs(p.x - o.x) + Math.abs(p.y - o.y) >= DRAG_THRESHOLD) {
-            marqueeMovedRef.current = true
-          }
-          setMarquee({ x0: o.x, y0: o.y, x1: p.x, y1: p.y })
-        }
+      lastPointerClientRef.current = { x: e.clientX, y: e.clientY }
+
+      if (updateMarquee(e.clientX, e.clientY)) {
         return
       }
 
-      // Connect-drag preview.
-      const cd = connectDragRef.current
-      if (cd) {
-        const p = toSvgPoint(e.clientX, e.clientY)
-        if (p) {
-          setConnectDrag((prev) =>
-            prev ? { ...prev, cursorX: p.x, cursorY: p.y } : prev,
-          )
-        }
+      if (updateConnectDrag(e.clientX, e.clientY)) {
         return
       }
 
-      // Node reposition drag.
+      // Node reposition drag (single node, or the whole selection as a group).
       const nd = nodeDragRef.current
       if (nd) {
-        const dxc = e.clientX - nd.startClientX
-        const dyc = e.clientY - nd.startClientY
-        if (
-          !nd.moved &&
-          Math.abs(dxc) + Math.abs(dyc) < DRAG_THRESHOLD
-        ) {
-          return
-        }
-        if (!nd.moved) {
-          nd.moved = true
-          setDraggingNodeId(nd.nodeId)
-        }
-        const nx = Math.max(0, nd.originX + dxc / zoom)
-        const ny = Math.max(0, nd.originY + dyc / zoom)
-        setPosOverride((prev) => {
-          const next = new Map(prev)
-          next.set(nd.nodeId, { x: nx, y: ny })
-          return next
-        })
+        nd.lastClientX = e.clientX
+        nd.lastClientY = e.clientY
+        updateNodeDragPositions()
         return
       }
 
@@ -924,7 +1028,7 @@ export function SetExplorerCanvas({
       lastMouseRef.current = { x: e.clientX, y: e.clientY }
       setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }))
     },
-    [toSvgPoint, zoom],
+    [updateMarquee, updateConnectDrag, updateNodeDragPositions],
   )
 
   const finishMarquee = useCallback(() => {
@@ -963,23 +1067,35 @@ export function SetExplorerCanvas({
     if (finishMarquee()) {
       return
     }
-    // Finish a node reposition: snap + persist.
+    // Finish a node reposition: snap to lane/grid + persist.
     const nd = nodeDragRef.current
     if (nd) {
       nodeDragRef.current = null
       if (nd.moved) {
-        const cur = posOverrideRef.current.get(nd.nodeId)
-        const sx = snapToGrid(cur?.x ?? nd.originX)
-        const sy = snapToGrid(cur?.y ?? nd.originY)
+        const snapped: { node_id: string; x: number; y: number }[] = []
+        for (const [id, o] of nd.origins) {
+          const cur = posOverrideRef.current.get(id) ?? o
+          snapped.push({
+            node_id: id,
+            x: snapToLaneX(cur.x),
+            y: snapToGrid(cur.y),
+          })
+        }
         setPosOverride((prev) => {
           const next = new Map(prev)
-          next.set(nd.nodeId, { x: sx, y: sy })
+          for (const s of snapped) {
+            next.set(s.node_id, { x: s.x, y: s.y })
+          }
           return next
         })
-        onMoveNodeRef.current(nd.nodeId, sx, sy)
+        if (snapped.length === 1) {
+          onMoveNodeRef.current(snapped[0].node_id, snapped[0].x, snapped[0].y)
+        } else {
+          void onSetPositionsRef.current(snapped)
+        }
         suppressSvgClickRef.current = true
       }
-      setDraggingNodeId(null)
+      setDraggingIds(null)
     }
     panningRef.current = false
     if (connectDragRef.current) {
@@ -1002,16 +1118,30 @@ export function SetExplorerCanvas({
         return
       }
       e.stopPropagation()
-      const entry = nodeMap.get(nodeId)
-      if (!entry) {
+      if (!nodeMap.has(nodeId)) {
         return
       }
+      // Grabbing a node inside the current multi-selection drags the whole
+      // selection; grabbing any other node drags just that node.
+      const selected = selectedNodeIdsRef.current
+      const ids =
+        selected.has(nodeId) && selected.size > 1 ? [...selected] : [nodeId]
+      const origins = new Map<string, Point>()
+      for (const id of ids) {
+        const entry = nodeMap.get(id)
+        if (entry) {
+          origins.set(id, { x: entry.pos.x, y: entry.pos.y })
+        }
+      }
+      const vp = viewportRef.current
       nodeDragRef.current = {
-        nodeId,
         startClientX: e.clientX,
         startClientY: e.clientY,
-        originX: entry.pos.x,
-        originY: entry.pos.y,
+        lastClientX: e.clientX,
+        lastClientY: e.clientY,
+        startScrollLeft: vp?.scrollLeft ?? 0,
+        startScrollTop: vp?.scrollTop ?? 0,
+        origins,
         moved: false,
       }
     },
@@ -1400,7 +1530,7 @@ export function SetExplorerCanvas({
   const handleAddSelect = useCallback(
     (trackId: number) => {
       const c = viewportCenterSvg()
-      stableOnAddNode(trackId, snapToGrid(c.x), snapToGrid(c.y))
+      stableOnAddNode(trackId, snapToLaneX(c.x), snapToGrid(c.y))
       setAddQuery('')
       addClear()
     },
@@ -1432,10 +1562,10 @@ export function SetExplorerCanvas({
         x: childAdd.parentNode.x,
         y: childAdd.parentNode.y,
       }
-      // Place the child a little below-right of its parent, snapped to grid.
+      // Place the child below-right of its parent, in the next lane over.
       stableOnAddNode(
         m.candidate_id,
-        snapToGrid(src.x + NODE_W + 60),
+        snapToLaneX(src.x + LANE_W),
         snapToGrid(src.y + NODE_H + 60),
         childAdd.parentNode.node_id,
       )
@@ -1457,20 +1587,19 @@ export function SetExplorerCanvas({
     if (layout.size === 0) {
       return
     }
+    const snapped = [...layout.entries()].map(([id, p]) => ({
+      node_id: id,
+      x: snapToLaneX(p.x),
+      y: snapToGrid(p.y),
+    }))
     setPosOverride(() => {
       const next = new Map<string, Point>()
-      for (const [id, p] of layout) {
-        next.set(id, p)
+      for (const s of snapped) {
+        next.set(s.node_id, { x: s.x, y: s.y })
       }
       return next
     })
-    void onSetPositionsRef.current(
-      [...layout.entries()].map(([id, p]) => ({
-        node_id: id,
-        x: p.x,
-        y: p.y,
-      })),
-    )
+    void onSetPositionsRef.current(snapped)
   }, [])
 
   // --- Drag-and-drop from track lists ---------------------------------------
@@ -1502,7 +1631,7 @@ export function SetExplorerCanvas({
       const pt = toSvgPoint(e.clientX, e.clientY) ?? viewportCenterSvg()
       stableOnAddNode(
         trackId,
-        Math.max(0, snapToGrid(pt.x - NODE_W / 2)),
+        snapToLaneX(pt.x - NODE_W / 2),
         Math.max(0, snapToGrid(pt.y - NODE_H / 2)),
       )
     },
@@ -1641,6 +1770,7 @@ export function SetExplorerCanvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onScroll={handleViewportScroll}
         onDragOver={handleViewportDragOver}
         onDrop={handleViewportDrop}
       >
@@ -1671,6 +1801,20 @@ export function SetExplorerCanvas({
             >
               <circle cx={1} cy={1} r={1} className="explorer-grid-dot" />
             </pattern>
+            <pattern
+              id="explorer-lane-lines"
+              width={LANE_W}
+              height={GRID}
+              patternUnits="userSpaceOnUse"
+            >
+              <line
+                className="explorer-lane-line"
+                x1={0.5}
+                y1={0}
+                x2={0.5}
+                y2={GRID}
+              />
+            </pattern>
           </defs>
           <rect
             className="explorer-grid-bg"
@@ -1679,6 +1823,17 @@ export function SetExplorerCanvas({
             width={canvasSize.w}
             height={canvasSize.h}
             fill="url(#explorer-grid-dots)"
+          />
+          {/* Lane boundary lines, one every LANE_W. Shares the grid-bg class
+              so background hit-testing (pan, marquee, deselect) still works. */}
+          <rect
+            className="explorer-grid-bg explorer-lane-bg"
+            x={0}
+            y={0}
+            width={canvasSize.w}
+            height={canvasSize.h}
+            fill="url(#explorer-lane-lines)"
+            data-testid="explorer-lane-bg"
           />
 
           {/* Edges */}
@@ -1749,7 +1904,8 @@ export function SetExplorerCanvas({
               isSelected={selectedNodeIds.has(node.node_id)}
               showActions={singleSelected === node.node_id}
               isSwapSource={swapSource === node.node_id}
-              isDragging={draggingNodeId === node.node_id}
+              isDragging={draggingIds?.has(node.node_id) ?? false}
+              isStacked={stackedIds.has(node.node_id)}
               inTracklist={tracklistTrackIds.has(node.track_id)}
               onNodeClick={handleNodeClick}
               onNodeMouseDown={handleNodeMouseDown}

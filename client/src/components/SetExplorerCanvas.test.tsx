@@ -104,8 +104,10 @@ function defaultProps(
 
 // jsdom implements no SVG coordinate mapping, so `toSvgPoint` returns null and
 // geometry features (marquee, drop hit-testing) can't resolve. Stub the matrix
-// to identity so SVG user-space equals client coordinates.
-function withSvgMatrixStub<T>(fn: () => T): T {
+// to identity so SVG user-space equals client coordinates. Mutating `offset`
+// mid-test simulates the CTM shift a real browser reports after the viewport
+// scrolls (SVG coords = client coords + scroll offset).
+function withSvgMatrixStub<T>(fn: () => T, offset = { x: 0, y: 0 }): T {
   const proto = window.SVGSVGElement.prototype as unknown as {
     createSVGPoint?: () => {
       x: number
@@ -117,7 +119,11 @@ function withSvgMatrixStub<T>(fn: () => T): T {
   const origPoint = proto.createSVGPoint
   const origCTM = proto.getScreenCTM
   proto.createSVGPoint = function () {
-    const p = { x: 0, y: 0, matrixTransform: () => ({ x: p.x, y: p.y }) }
+    const p = {
+      x: 0,
+      y: 0,
+      matrixTransform: () => ({ x: p.x + offset.x, y: p.y + offset.y }),
+    }
     return p
   }
   proto.getScreenCTM = function () {
@@ -168,6 +174,32 @@ describe('SetExplorerCanvas — rendering', () => {
     const { container } = render(<SetExplorerCanvas {...defaultProps()} />)
     expect(container.querySelector('.explorer-grid-bg')).toBeInTheDocument()
     expect(container.querySelector('#explorer-grid-dots')).toBeInTheDocument()
+  })
+
+  it('renders lane boundary lines', () => {
+    const { container } = render(<SetExplorerCanvas {...defaultProps()} />)
+    expect(container.querySelector('#explorer-lane-lines')).toBeInTheDocument()
+    expect(
+      container.querySelector('[data-testid="explorer-lane-bg"]'),
+    ).toBeInTheDocument()
+  })
+
+  it('renders overlapping nodes more transparent than free-standing ones', () => {
+    const nodes = [
+      makeNode({ node_id: 'a', track_id: 1, x: 15, y: 0 }),
+      makeNode({ node_id: 'b', track_id: 2, x: 15, y: 20 }),
+      makeNode({ node_id: 'c', track_id: 3, x: 495, y: 400 }),
+    ]
+    const { container } = render(
+      <SetExplorerCanvas {...defaultProps({ nodes })} />,
+    )
+    const bodyOpacity = (id: string) =>
+      nodeEl(container, id)
+        .querySelector('.explorer-node-body')
+        ?.getAttribute('opacity')
+    expect(bodyOpacity('a')).toBe('0.45')
+    expect(bodyOpacity('b')).toBe('0.45')
+    expect(bodyOpacity('c')).toBe('0.85')
   })
 })
 
@@ -266,7 +298,7 @@ describe('SetExplorerCanvas — selection and node actions', () => {
 })
 
 describe('SetExplorerCanvas — repositioning (drag)', () => {
-  it('persists a snapped position after dragging a node body', () => {
+  it('persists a lane/grid-snapped position after dragging a node body', () => {
     const nodes = [makeNode({ node_id: 'a', track_id: 1, x: 100, y: 100 })]
     const props = defaultProps({ nodes })
     const { container } = render(<SetExplorerCanvas {...props} />)
@@ -275,8 +307,106 @@ describe('SetExplorerCanvas — repositioning (drag)', () => {
     fireEvent.mouseDown(g, { clientX: 100, clientY: 100, button: 0 })
     fireEvent.mouseMove(vp, { clientX: 200, clientY: 160 })
     fireEvent.mouseUp(vp)
-    // originX 100 + delta 100 = 200, originY 100 + 60 = 160 (grid-snapped).
-    expect(props.onMoveNode).toHaveBeenCalledWith('a', 200, 160)
+    // originX 100 + delta 100 = 200 → nearest lane interior 255 (lane 1 of
+    // width 240 + pad 15); originY 100 + 60 = 160 (grid-snapped).
+    expect(props.onMoveNode).toHaveBeenCalledWith('a', 255, 160)
+  })
+
+  it('drags all selected nodes as a group and persists them in one batch', () => {
+    const nodes = [
+      makeNode({ node_id: 'a', track_id: 1, x: 15, y: 0 }),
+      makeNode({ node_id: 'b', track_id: 2, x: 255, y: 0 }),
+    ]
+    const props = defaultProps({ nodes })
+    const { container } = render(<SetExplorerCanvas {...props} />)
+    fireEvent.click(nodeEl(container, 'a'))
+    fireEvent.click(nodeEl(container, 'b'), { ctrlKey: true })
+    const vp = viewportEl(container)
+    fireEvent.mouseDown(nodeEl(container, 'a'), {
+      clientX: 100,
+      clientY: 100,
+      button: 0,
+    })
+    fireEvent.mouseMove(vp, { clientX: 100, clientY: 200 })
+    fireEvent.mouseUp(vp)
+    expect(props.onMoveNode).not.toHaveBeenCalled()
+    expect(props.onSetPositions).toHaveBeenCalledTimes(1)
+    const positions = props.onSetPositions.mock.calls[0][0]
+    expect(positions).toEqual(
+      expect.arrayContaining([
+        { node_id: 'a', x: 15, y: 100 },
+        { node_id: 'b', x: 255, y: 100 },
+      ]),
+    )
+    expect(positions).toHaveLength(2)
+  })
+
+  it('keeps the dragged node tracking the cursor when the viewport scrolls mid-drag', () => {
+    const nodes = [makeNode({ node_id: 'a', track_id: 1, x: 15, y: 100 })]
+    const props = defaultProps({ nodes })
+    const { container } = render(<SetExplorerCanvas {...props} />)
+    const g = nodeEl(container, 'a')
+    const vp = viewportEl(container)
+    fireEvent.mouseDown(g, { clientX: 100, clientY: 100, button: 0 })
+    fireEvent.mouseMove(vp, { clientX: 100, clientY: 160 })
+    // Edge auto-scroll: the content scrolls 80px with the pointer stationary.
+    Object.defineProperty(vp, 'scrollTop', { value: 80, configurable: true })
+    fireEvent.scroll(vp)
+    fireEvent.mouseUp(vp)
+    // y = 100 + mouse delta 60 + scroll delta 80 = 240; x stays in lane 0.
+    expect(props.onMoveNode).toHaveBeenCalledWith('a', 15, 240)
+  })
+
+  it('keeps the marquee tracking the pointer when the viewport scrolls mid-drag', () => {
+    const nodes = [makeNode({ node_id: 'a', track_id: 1, x: 15, y: 0 })]
+    const { container } = render(
+      <SetExplorerCanvas {...defaultProps({ nodes })} />,
+    )
+    const svg = container.querySelector('.set-explorer-svg') as HTMLElement
+    const vp = viewportEl(container)
+    const offset = { x: 0, y: 0 }
+    withSvgMatrixStub(() => {
+      fireEvent.mouseDown(svg, {
+        ctrlKey: true,
+        clientX: 100,
+        clientY: 100,
+        button: 0,
+      })
+      fireEvent.mouseMove(vp, { clientX: 150, clientY: 150 })
+      expect(
+        screen.getByTestId('explorer-marquee').getAttribute('height'),
+      ).toBe('50')
+      // Content scrolls 80px under the stationary pointer.
+      offset.y = 80
+      fireEvent.scroll(vp)
+      expect(
+        screen.getByTestId('explorer-marquee').getAttribute('height'),
+      ).toBe('130')
+    }, offset)
+  })
+
+  it('keeps the connect-drag preview tracking the pointer when the viewport scrolls', () => {
+    const nodes = [makeNode({ node_id: 'a', track_id: 1, x: 0, y: 0 })]
+    const { container } = render(
+      <SetExplorerCanvas {...defaultProps({ nodes })} />,
+    )
+    const handle = nodeEl(container, 'a').querySelector(
+      '.explorer-connect-handle',
+    ) as HTMLElement
+    const vp = viewportEl(container)
+    const offset = { x: 0, y: 0 }
+    withSvgMatrixStub(() => {
+      fireEvent.mouseDown(handle, { button: 0 })
+      fireEvent.mouseMove(vp, { clientX: 300, clientY: 100 })
+      expect(
+        screen.getByTestId('connect-drag-line').getAttribute('y2'),
+      ).toBe('100')
+      offset.y = 80
+      fireEvent.scroll(vp)
+      expect(
+        screen.getByTestId('connect-drag-line').getAttribute('y2'),
+      ).toBe('180')
+    }, offset)
   })
 
   it('does not persist a click without movement', () => {

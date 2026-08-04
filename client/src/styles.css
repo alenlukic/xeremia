@@ -3288,6 +3288,13 @@ body,
   opacity: 0.55;
 }
 
+/* Virtual lane boundaries (each lane is one node wide plus padding). */
+.explorer-lane-line {
+  stroke: var(--border);
+  stroke-width: 1;
+  opacity: 0.35;
+}
+
 /* Node reposition affordances. */
 .explorer-node-body {
   cursor: grab;
