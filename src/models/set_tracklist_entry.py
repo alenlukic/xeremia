@@ -3,6 +3,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     Sequence,
     Text,
     UniqueConstraint,
@@ -41,4 +42,12 @@ class SetTracklistEntry(Base):
     )
     position = Column("position", Integer, nullable=False, default=0)
     note = Column("note", Text, nullable=False, default="", server_default="")
+
+    # Sequencer overrides. Each is null until the DJ sets it, and null means
+    # "derive from the track": play length from the play fraction, end time from
+    # packing, played BPM from the original BPM.
+    play_minutes = Column("play_minutes", Numeric(6, 2))
+    pinned_end_minutes = Column("pinned_end_minutes", Numeric(7, 2))
+    bpm_override = Column("bpm_override", Numeric(5, 2))
+
     added_at = Column("added_at", DateTime, server_default=func.now(), nullable=False)

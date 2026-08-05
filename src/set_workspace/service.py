@@ -591,6 +591,32 @@ class SetWorkspaceService:
         self.session.flush()
         return True, None
 
+    def set_tracklist_overrides(
+        self,
+        set_id: int,
+        track_id: int,
+        play_minutes: Optional[float],
+        pinned_end_minutes: Optional[float],
+        bpm_override: Optional[float],
+    ) -> Tuple[bool, Optional[str]]:
+        """Replace the Sequencer override triple for one tracklist entry.
+
+        A null value clears that override, so the Sequencer falls back to the
+        derived play length, packed end time, or original BPM.
+        """
+        entry = (
+            self.session.query(SetTracklistEntry)
+            .filter_by(set_id=set_id, track_id=track_id)
+            .first()
+        )
+        if entry is None:
+            return False, "Track not found in tracklist"
+        entry.play_minutes = play_minutes
+        entry.pinned_end_minutes = pinned_end_minutes
+        entry.bpm_override = bpm_override
+        self.session.flush()
+        return True, None
+
     def tracklist_move_to_pool(
         self, set_id: int, track_id: int
     ) -> Tuple[bool, Optional[str]]:

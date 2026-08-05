@@ -51,6 +51,49 @@ export function SlidersIcon({ size = 13 }: IconProps) {
   )
 }
 
+/** Six dots — the drag grip on a workspace widget. */
+export function GripIcon({ size = 13 }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="6" cy="3.5" r="1.25" />
+      <circle cx="10" cy="3.5" r="1.25" />
+      <circle cx="6" cy="8" r="1.25" />
+      <circle cx="10" cy="8" r="1.25" />
+      <circle cx="6" cy="12.5" r="1.25" />
+      <circle cx="10" cy="12.5" r="1.25" />
+    </svg>
+  )
+}
+
+/** Up arrow — promote a benched block into the committed lane. */
+export function PromoteIcon({ size = 13 }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M8 13V3.6M8 3.6 4.4 7.2M8 3.6l3.6 3.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /** Funnel — "add filter". */
 export function FilterIcon({ size = 13 }: IconProps) {
   return (

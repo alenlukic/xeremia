@@ -30,6 +30,35 @@ from src.data_management.utils import (
 from src.utils.file_operations import get_file_creation_time
 
 
+def duration_from_audio(audio):
+    """Return the playable length in seconds carried by a mutagen file object.
+
+    Returns None when the object exposes no positive length, so callers treat an
+    unmeasured track as a gap rather than as a zero-length track.
+    """
+    length = getattr(getattr(audio, "info", None), "length", None)
+    if length is None:
+        return None
+    try:
+        seconds = float(length)
+    except (TypeError, ValueError):
+        return None
+    return round(seconds, 2) if seconds > 0 else None
+
+
+def read_duration_seconds(full_path):
+    """Read the playable length in seconds from an audio file header.
+
+    Returns None for a missing, unreadable, or length-free file so a batch
+    backfill can report the skip and continue.
+    """
+    try:
+        audio = mutagen.File(full_path)
+    except (OSError, mutagen.MutagenError):
+        return None
+    return duration_from_audio(audio)
+
+
 class AudioFile:
     """Encapsulates an audio file and its metadata."""
 
@@ -279,6 +308,9 @@ class AudioFile:
 
     def get_tags(self):
         return self.tags
+
+    def get_duration_seconds(self):
+        return duration_from_audio(self.id3)
 
     # ===================
     # ID3-related methods

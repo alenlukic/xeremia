@@ -447,3 +447,67 @@ class TestAudioEndpoint:
 
         assert resp.status_code == 200
         assert resp.content == b"normalized-audio"
+
+
+# ---------------------------------------------------------------------------
+# Track duration exposure
+# ---------------------------------------------------------------------------
+
+
+class TestTrackDurationSerialization:
+    """The Sequencer reads block length from the serialized duration."""
+
+    def _track(self, duration):
+        track = MagicMock()
+        track.id = 7
+        track.title = "Opener"
+        track.bpm = 124
+        track.key = "Abm"
+        track.camelot_code = "01A"
+        track.genre = "Techno"
+        track.label = "Label"
+        track.energy = 6
+        track.date_added = "Mon Jan 1 00:00:00 2024"
+        track.duration_seconds = duration
+        return track
+
+    def test_serializer_exposes_duration(self):
+        from src.api.serializers import serialize_track_row
+
+        payload = serialize_track_row(self._track(390.25))
+        assert payload["duration_seconds"] == pytest.approx(390.25)
+
+    def test_serializer_preserves_null_duration(self):
+        from src.api.serializers import serialize_track_row
+
+        assert serialize_track_row(self._track(None))["duration_seconds"] is None
+
+    def test_serializer_tolerates_a_row_without_the_column(self):
+        from src.api.serializers import serialize_track_row
+
+        class LegacyTrack:
+            id = 7
+            title = "Opener"
+            bpm = None
+            key = None
+            camelot_code = None
+            genre = None
+            label = None
+            energy = None
+            date_added = None
+
+        assert serialize_track_row(LegacyTrack())["duration_seconds"] is None
+
+    def test_track_response_carries_duration(self):
+        from src.api.schemas import TrackResponse
+
+        response = TrackResponse(id=7, title="Opener", duration_seconds=390.25)
+        assert response.model_dump()["duration_seconds"] == pytest.approx(390.25)
+
+    def test_tracks_endpoint_returns_duration(self, client):
+        with patch(
+            "src.api.routes.get_tracks", return_value=[self._track(412.0)]
+        ), patch("src.api.routes._get_session", return_value=MagicMock()):
+            resp = client.get("/api/tracks")
+        assert resp.status_code == 200
+        assert resp.json()[0]["duration_seconds"] == pytest.approx(412.0)

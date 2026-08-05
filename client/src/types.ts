@@ -9,6 +9,8 @@ export interface Track {
   label: string | null
   energy: number | null
   date_added: string | null
+  /** Track length read from the audio header; null until the backfill runs. */
+  duration_seconds?: number | null
 }
 
 export interface SearchSuggestion {
@@ -155,7 +157,18 @@ export interface TracklistEntry {
   track_id: number
   position: number
   note?: string
+  /** Sequencer overrides. Null means "derive from the track". */
+  play_minutes?: number | null
+  pinned_end_minutes?: number | null
+  bpm_override?: number | null
   track: Track | null
+}
+
+/** Per-track Sequencer overrides as the API accepts them. */
+export interface TracklistOverrides {
+  play_minutes: number | null
+  pinned_end_minutes: number | null
+  bpm_override: number | null
 }
 
 export interface ExplorerNode {
@@ -205,10 +218,45 @@ export interface HydratedSet {
 
 export type TableId = 'search' | 'matches' | 'tracklist' | 'pool'
 
+/** The workspace layout reuses the table-preference surface for device scoping. */
+export const WORKSPACE_LAYOUT_TABLE_ID = 'workspace-layout'
+
+export type PreferenceTableId = TableId | typeof WORKSPACE_LAYOUT_TABLE_ID
+
+export type WidgetId = 'browser' | 'matches' | 'pool' | 'explorer' | 'sequencer'
+
+export interface Placement {
+  r: 0 | 1
+  c: 0 | 1 | 2
+  span: 1 | 2
+}
+
+export type LayoutPlace = Partial<Record<WidgetId, Placement>>
+
+export type ShellId = 'workspace' | 'legacy'
+
+/** A named layout the DJ saved: placement plus the fr allocations it used. */
+export interface SavedLayout {
+  place: LayoutPlace
+  cols: [number, number, number]
+  rows: [number, number]
+}
+
+export interface WorkspaceLayoutState {
+  preset: string
+  place: LayoutPlace
+  cols: [number, number, number]
+  rows: [number, number]
+  custom: Record<string, SavedLayout>
+  shell: ShellId
+}
+
 export interface TablePreferenceConfig {
   column_order: string[]
   column_visibility: Record<string, boolean>
   column_widths: Record<string, number>
+  /** Only the workspace-layout row carries this. */
+  layout?: WorkspaceLayoutState | null
 }
 
 export interface TablePreferenceResponse extends TablePreferenceConfig {

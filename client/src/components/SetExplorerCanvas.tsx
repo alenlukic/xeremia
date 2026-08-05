@@ -1795,22 +1795,24 @@ export function SetExplorerCanvas({
           aria-label="Edge style"
           data-testid="explorer-edge-style-toggle"
         >
-          {(['curved', 'straight', 'orthogonal'] as EdgeStyle[]).map((style) => (
-            <button
-              key={style}
-              type="button"
-              className={`explorer-edge-style-btn${edgeStyle === style ? ' explorer-edge-style-btn--active' : ''}`}
-              aria-pressed={edgeStyle === style}
-              onClick={() => changeEdgeStyle(style)}
-              data-testid={`explorer-edge-style-${style}`}
-            >
-              {style === 'curved'
-                ? 'Curved'
-                : style === 'straight'
-                  ? 'Straight'
-                  : 'Right-angle'}
-            </button>
-          ))}
+          {(['curved', 'straight', 'orthogonal'] as EdgeStyle[]).map(
+            (style) => (
+              <button
+                key={style}
+                type="button"
+                className={`explorer-edge-style-btn${edgeStyle === style ? ' explorer-edge-style-btn--active' : ''}`}
+                aria-pressed={edgeStyle === style}
+                onClick={() => changeEdgeStyle(style)}
+                data-testid={`explorer-edge-style-${style}`}
+              >
+                {style === 'curved'
+                  ? 'Curved'
+                  : style === 'straight'
+                    ? 'Straight'
+                    : 'Right-angle'}
+              </button>
+            ),
+          )}
         </div>
 
         {swapSource && (

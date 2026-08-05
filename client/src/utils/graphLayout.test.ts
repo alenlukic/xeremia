@@ -28,9 +28,10 @@ describe('forceDirectedLayout', () => {
   })
 
   it('separates two connected nodes to roughly the ideal distance', () => {
-    const out = forceDirectedLayout([{ id: 'a' }, { id: 'b' }], [
-      { source: 'a', target: 'b' },
-    ])
+    const out = forceDirectedLayout(
+      [{ id: 'a' }, { id: 'b' }],
+      [{ source: 'a', target: 'b' }],
+    )
     const a = out.get('a')!
     const b = out.get('b')!
     const dist = Math.hypot(a.x - b.x, a.y - b.y)
@@ -95,9 +96,10 @@ describe('forceDirectedLayout', () => {
   })
 
   it('ignores edges that reference unknown nodes', () => {
-    const out = forceDirectedLayout([{ id: 'a' }, { id: 'b' }], [
-      { source: 'a', target: 'ghost' },
-    ])
+    const out = forceDirectedLayout(
+      [{ id: 'a' }, { id: 'b' }],
+      [{ source: 'a', target: 'ghost' }],
+    )
     expect(out.size).toBe(2)
     for (const p of out.values()) {
       expect(Number.isFinite(p.x)).toBe(true)

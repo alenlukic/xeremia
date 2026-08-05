@@ -30,6 +30,9 @@ class TablePreference(Base):
     column_order = Column(JSONB, nullable=False)
     column_visibility = Column(JSONB, nullable=False)
     column_widths = Column(JSONB, nullable=False)
+    # Free-form layout payload used by the ``workspace-layout`` table id. The
+    # column-based table ids leave it null.
+    layout = Column(JSONB, nullable=True)
     updated_at = Column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
     )

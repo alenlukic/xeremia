@@ -1,28 +1,22 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { SearchPanel } from './components/SearchPanel'
 import {
   QuadrantDivider,
   QuadrantExpandBar,
 } from './components/QuadrantControls'
-import {
-  BrowseFilterAddButton,
-  BrowseFilterGroups,
-} from './components/FilterBar'
-import { TrackTable } from './components/TrackTable'
-import { MatchesPanel } from './components/MatchesPanel'
-import { TableHeader } from './components/table/TableHeader'
-import { TableControlPanel } from './components/table/TableControlPanel'
-import { SortTierBar, SortAddButton } from './components/SortTierBar'
-import { MatchDetail } from './components/MatchDetail'
 import { AdminDashboard } from './components/AdminDashboard'
 import { SetBuilder } from './components/SetBuilder'
 import { SetPickerControls } from './components/SetPickerControls'
 import { PlaybackBar } from './components/PlaybackBar'
-import { WorkspaceGrid } from './components/WorkspaceGrid'
+import { BrowserWidget } from './components/BrowserWidget'
+import { MatchesWidget } from './components/MatchesWidget'
+import { PoolWidget } from './components/PoolWidget'
 import { ExplorerMatrix } from './components/ExplorerMatrix'
-import { SequencerLanes } from './components/SequencerLanes'
-import { SetPoolTable } from './components/SetPoolTable'
-import { exportSetM3u8 } from './api/http'
+import { Sequencer } from './components/Sequencer'
+import { WorkspaceGrid } from './components/WorkspaceGrid'
+import type { WorkspacePanel } from './components/WorkspaceGrid'
+import { useWorkspaceLayout } from './hooks/useWorkspaceLayout'
+import type { WidgetId } from './hooks/useWorkspaceLayout'
+import type { LaneKey } from './hooks/useSequencer'
 import { useSelectedTrack } from './hooks/useSelectedTrack'
 import { useTrackFilters } from './hooks/useTrackFilters'
 import { useCollectionCache } from './hooks/useCollectionCache'
@@ -55,6 +49,7 @@ export function App() {
   } = useCollectionCache()
 
   const tablePrefs = useTablePreferences()
+  const layout = useWorkspaceLayout()
 
   const [topSplit, setTopSplit] = useState<TopSplit>('split')
   const [rowSplit, setRowSplit] = useState<RowSplit>('split')
@@ -278,6 +273,55 @@ export function App() {
   const searchConfig = tablePrefs.configs.search
   const matchesConfig = tablePrefs.configs.matches
 
+  const laneCount = setBuilder.activeSet?.pool_subgroups?.length ?? 0
+
+  // The default lane is virtual: it exists only while the set has no subgroup,
+  // and the first drop on it creates the subgroup that replaces it.
+  const resolveLane = useCallback(
+    async (lane: LaneKey): Promise<number | null> => {
+      if (typeof lane === 'number') {
+        return lane
+      }
+      const created = await setBuilder.createSubgroup(`Alt ${laneCount + 1}`)
+      return created?.id ?? null
+    },
+    [setBuilder, laneCount],
+  )
+
+  const handleBenchToLane = useCallback(
+    async (trackId: number, lane: LaneKey, source: 'browse' | 'tracklist') => {
+      const subgroupId = await resolveLane(lane)
+      if (subgroupId === null) {
+        return
+      }
+      await setBuilder.dropTrackToSubgroup(subgroupId, trackId, source)
+    },
+    [resolveLane, setBuilder],
+  )
+
+  const handleMoveBench = useCallback(
+    async (poolEntryId: number, from: number, to: number) => {
+      if (from === to) {
+        return
+      }
+      await setBuilder.removeSubgroupMember(from, poolEntryId)
+      await setBuilder.addSubgroupMember(to, poolEntryId)
+    },
+    [setBuilder],
+  )
+
+  const handlePromote = useCallback(
+    async (trackId: number, position: number) => {
+      await setBuilder.movePoolToTracklist(trackId)
+      await setBuilder.reorderTracklist(trackId, position)
+    },
+    [setBuilder],
+  )
+
+  const handleAddLane = useCallback(() => {
+    void setBuilder.createSubgroup(`Alt ${laneCount + 1}`)
+  }, [setBuilder, laneCount])
+
   // Sortable browse columns (visible order, minus display/action columns), fed
   // to the design-system Add-sort control and control-panel sort tiers.
   const searchSortColumns = useMemo(() => {
@@ -288,169 +332,270 @@ export function App() {
       .map((id) => ({ id, label: reg.get(id)?.label ?? id }))
   }, [searchConfig])
 
-  // --- Set Builder Workspace v2 (design mock) -------------------------------
-  // Opt-in via ?workspace-v2 while the grid shell is validated. Reuses every
-  // existing data hook; only the shell and the Explorer/Sequencer widgets are
-  // new. Browser/Matches/Pool mount the SAME components as the legacy layout,
-  // so sorting, filtering, row virtualization, and table prefs carry over.
-  const workspaceV2 = useMemo(
-    () => new URLSearchParams(window.location.search).has('workspace-v2'),
-    [],
+  const matchesHeaderTitle =
+    transitionChain.length > 0 && matchSource ? (
+      <div className="transition-chain transition-chain--header">
+        <button
+          className="chain-back-btn"
+          onClick={handleChainBack}
+          title="Go back to previous source"
+        >
+          ← Back
+        </button>
+        {transitionChain.map((entry, i) => (
+          <span key={`chain-${entry.track.id}-${i}`} className="chain-step">
+            <button
+              className="chain-entry"
+              onClick={() => handleChainNavigate(i)}
+              title={`Return to ${entry.track.title}`}
+            >
+              {entry.track.title}
+            </button>
+            <span className="chain-arrow">→</span>
+          </span>
+        ))}
+        <span className="chain-current">{matchSource.title}</span>
+      </div>
+    ) : undefined
+
+  const browserStack = (
+    <BrowserWidget
+      allTracks={allTracks}
+      tracks={browseTracks}
+      loading={collectionLoading}
+      tracksError={tracksError}
+      traitsError={traitsError}
+      selectedTrack={browseSelection}
+      selectTrack={handleSelectTrack}
+      clearBrowseSelection={handleClearBrowse}
+      searchText={searchText}
+      onSearchTextChange={setSearchText}
+      onTrackDrop={handleTrackDropAsSource}
+      sorting={searchSorting}
+      onSortingChange={setSearchSorting}
+      sortColumns={searchSortColumns}
+      filterModel={filterModel}
+      setFilterModel={setFilterModel}
+      filtersActive={filtersActive}
+      genres={filterGenres}
+      labels={filterLabels}
+      tableConfig={searchConfig}
+      onToggleColumnVisibility={(id) =>
+        tablePrefs.toggleVisibility('search', id)
+      }
+      onReorderColumn={(draggedId, targetId) =>
+        tablePrefs.reorderColumn('search', draggedId, targetId)
+      }
+      onInsertColumnAfter={(afterId, columnId) =>
+        tablePrefs.insertColumnAfter('search', afterId, columnId)
+      }
+      onColumnWidthChange={(id, width) =>
+        tablePrefs.setColumnWidth('search', id, width)
+      }
+      onColumnWidthFlush={(id, width) =>
+        tablePrefs.flushColumnWidth('search', id, width)
+      }
+      scrollRestorationKey={`${layout.shell}:${topSplit}:${rowSplit}`}
+    />
   )
 
-  const activeSet = setBuilder.activeSet
+  const matchesStack = (
+    <MatchesWidget
+      matchSource={matchSource}
+      matches={matches}
+      loading={matchesLoading}
+      matchesError={matchesError}
+      detailMatch={detailMatch}
+      headerTitle={matchesHeaderTitle}
+      tableConfig={matchesConfig}
+      traitMap={traitMap}
+      trackIndex={trackIndex}
+      genres={filterGenres}
+      labels={filterLabels}
+      onClearMatchSource={handleClearMatches}
+      onToggleColumnVisibility={(id) =>
+        tablePrefs.toggleVisibility('matches', id)
+      }
+      onReorderColumn={(draggedId, targetId) =>
+        tablePrefs.reorderColumn('matches', draggedId, targetId)
+      }
+      onInsertColumnAfter={(afterId, columnId) =>
+        tablePrefs.insertColumnAfter('matches', afterId, columnId)
+      }
+      onColumnWidthChange={(id, width) =>
+        tablePrefs.setColumnWidth('matches', id, width)
+      }
+      onColumnWidthFlush={(id, width) =>
+        tablePrefs.flushColumnWidth('matches', id, width)
+      }
+      onViewDetail={setDetailMatch}
+      onUseAsSource={handleUseAsSource}
+      onTrackDrop={handleMatchSourceDrop}
+      onAddToPool={handleAddToPool}
+      onAddToTracklist={handleAddToTracklist}
+    />
+  )
 
-  const handleSequencerExport = useCallback(async () => {
-    if (!activeSet || activeSet.tracklist.length === 0) return
-    const ids = activeSet.tracklist.map((e) => e.track_id)
-    const result = await exportSetM3u8(ids, activeSet.set.name)
-    const blob = new Blob([result.content], { type: 'audio/x-mpegurl' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = result.filename
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [activeSet])
-
-  const handlePromote = useCallback(
-    (trackId: number, position: number) => {
-      setBuilder.movePoolToTracklist(trackId)
-      setBuilder.reorderTracklist(trackId, position)
+  const workspacePanels: Partial<Record<WidgetId, WorkspacePanel>> = {
+    browser: { node: browserStack },
+    matches: { node: matchesStack },
+    pool: {
+      node: (
+        <PoolWidget
+          allTracks={allTracks}
+          activeSet={setBuilder.activeSet}
+          tableConfig={tablePrefs.configs.pool}
+          onToggleColumn={(id) => tablePrefs.toggleVisibility('pool', id)}
+          onReorderColumn={(draggedId, targetId) =>
+            tablePrefs.reorderColumn('pool', draggedId, targetId)
+          }
+          onInsertColumnAfter={(afterId, columnId) =>
+            tablePrefs.insertColumnAfter('pool', afterId, columnId)
+          }
+          onColumnWidthChange={(id, width) =>
+            tablePrefs.setColumnWidth('pool', id, width)
+          }
+          onColumnWidthFlush={(id, width) =>
+            tablePrefs.flushColumnWidth('pool', id, width)
+          }
+          onRemove={setBuilder.removeFromPool}
+          onReorder={setBuilder.reorderPool}
+          onSetHighlight={setBuilder.setPoolHighlight}
+          onAddTrack={setBuilder.addToPool}
+          onCreateSubgroup={setBuilder.createSubgroup}
+          onRenameSubgroup={setBuilder.renameSubgroup}
+          onDeleteSubgroup={setBuilder.deleteSubgroup}
+          onReorderSubgroups={setBuilder.reorderSubgroups}
+          onReorderSubgroupMember={setBuilder.reorderSubgroupMember}
+          onAddSubgroupMember={setBuilder.addSubgroupMember}
+          onRemoveSubgroupMember={setBuilder.removeSubgroupMember}
+          onDropTrackToSubgroup={setBuilder.dropTrackToSubgroup}
+          onDropFromTracklist={setBuilder.moveTracklistToPool}
+        />
+      ),
     },
-    [setBuilder],
+    explorer: {
+      node: (
+        <ExplorerMatrix
+          pool={setBuilder.activeSet?.pool ?? []}
+          onDropTrack={(trackId) => setBuilderAddToPool(trackId)}
+        />
+      ),
+    },
+    sequencer: {
+      node: (
+        <Sequencer
+          activeSet={setBuilder.activeSet}
+          onPromote={handlePromote}
+          onReorder={setBuilder.reorderTracklist}
+          onBenchToLane={handleBenchToLane}
+          onMoveBench={handleMoveBench}
+          onRemove={setBuilder.removeFromTracklist}
+          onRemoveBenched={setBuilder.removeFromPool}
+          onAddLane={handleAddLane}
+          onDeleteLane={(subgroupId) => {
+            void setBuilder.deleteSubgroup(subgroupId)
+          }}
+          onSaved={setBuilder.refreshActive}
+        />
+      ),
+    },
+  }
+
+  const shellToggle = (
+    <button
+      className="shell-toggle"
+      aria-pressed={layout.shell === 'legacy'}
+      title={
+        layout.shell === 'workspace'
+          ? 'Switch to the legacy quadrant shell'
+          : 'Switch to the set builder workspace'
+      }
+      onClick={() =>
+        layout.setShell(layout.shell === 'workspace' ? 'legacy' : 'workspace')
+      }
+    >
+      {layout.shell === 'workspace' ? 'Legacy shell' : 'Workspace shell'}
+    </button>
   )
 
-  if (workspaceV2) {
+  const adminControls = (
+    <>
+      {shellToggle}
+      <button
+        className="admin-gear"
+        aria-label="Admin"
+        title="Admin"
+        aria-haspopup="dialog"
+        aria-expanded={adminOpen}
+        onClick={() => setAdminOpen((prev) => !prev)}
+      >
+        <span className="admin-gear-glyph" aria-hidden="true">
+          {'\u2699\uFE0E'}
+        </span>
+      </button>
+      {adminOpen && (
+        <div
+          className="admin-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Admin dashboard"
+        >
+          <div className="admin-overlay-header">
+            <h2 className="admin-overlay-title">Admin</h2>
+            <button
+              className="admin-overlay-close"
+              aria-label="Close admin"
+              title="Close admin"
+              onClick={() => setAdminOpen(false)}
+            >
+              ×
+            </button>
+          </div>
+          <AdminDashboard
+            stats={cacheStats}
+            loading={cacheLoading}
+            error={cacheError}
+            weights={weights}
+            weightsLoading={weightsLoading}
+            setWeight={setWeight}
+            weightsSaving={weightsSaving}
+            weightsSaveSuccess={weightsSaveSuccess}
+            weightsError={weightsError}
+            weightsWarning={weightsWarning}
+            normalizeWeights={normalizeWeights}
+            resetWeights={resetWeights}
+            isSumValid={isSumValid}
+            rawSum={rawSum}
+            tablePrefs={tablePrefs}
+          />
+        </div>
+      )}
+    </>
+  )
+
+  if (layout.shell === 'workspace') {
     return (
       <AudioPlayerProvider>
         <WorkspaceGrid
+          layout={layout}
+          panels={workspacePanels}
           headerExtras={setPicker}
-          panels={{
-            browser: (
-              <>
-                <TableHeader
-                  title={
-                    <div className="ds-header-search">
-                      <SearchPanel
-                        allTracks={allTracks}
-                        selectedTrack={browseSelection}
-                        selectTrack={handleSelectTrack}
-                        clearBrowseSelection={handleClearBrowse}
-                        onSearchTextChange={setSearchText}
-                        searchText={searchText}
-                        onTrackDrop={handleTrackDropAsSource}
-                      />
-                    </div>
-                  }
-                  primary={
-                    <>
-                      <SortAddButton
-                        sorting={searchSorting}
-                        columns={searchSortColumns}
-                        onSortingChange={setSearchSorting}
-                        label="Add sort"
-                        className="ds-header-btn"
-                      />
-                      <BrowseFilterAddButton
-                        model={filterModel}
-                        setModel={setFilterModel}
-                        genres={filterGenres}
-                        labels={filterLabels}
-                      />
-                    </>
-                  }
-                />
-                <TrackTable
-                  tracks={browseTracks}
-                  loading={collectionLoading}
-                  selectedTrack={browseSelection}
-                  selectTrack={handleSelectTrack}
-                  error={tracksError}
-                  tableConfig={searchConfig}
-                  sorting={searchSorting}
-                  onSortingChange={setSearchSorting}
-                  onToggleColumnVisibility={(id) => tablePrefs.toggleVisibility('search', id)}
-                  onReorderColumn={(a, b) => tablePrefs.reorderColumn('search', a, b)}
-                  onInsertColumnAfter={(a, b) => tablePrefs.insertColumnAfter('search', a, b)}
-                  onColumnWidthChange={(id, w) => tablePrefs.setColumnWidth('search', id, w)}
-                  onColumnWidthFlush={(id, w) => tablePrefs.flushColumnWidth('search', id, w)}
-                  scrollRestorationKey="workspace-v2"
-                />
-              </>
-            ),
-            matches: (
-              <MatchesPanel
-                matchSource={matchSource}
-                matches={matches}
-                loading={matchesLoading}
-                matchesError={matchesError}
-                tableConfig={matchesConfig}
-                onClearMatchSource={handleClearMatches}
-                onToggleColumnVisibility={(id) => tablePrefs.toggleVisibility('matches', id)}
-                onReorderColumn={(a, b) => tablePrefs.reorderColumn('matches', a, b)}
-                onInsertColumnAfter={(a, b) => tablePrefs.insertColumnAfter('matches', a, b)}
-                onColumnWidthChange={(id, w) => tablePrefs.setColumnWidth('matches', id, w)}
-                onColumnWidthFlush={(id, w) => tablePrefs.flushColumnWidth('matches', id, w)}
-                onViewDetail={setDetailMatch}
-                onUseAsSource={handleUseAsSource}
-                onTrackDrop={handleMatchSourceDrop}
-                trackIndex={trackIndex}
-                genres={filterGenres}
-                labels={filterLabels}
-              />
-            ),
-            pool: activeSet ? (
-              <SetPoolTable
-                allTracks={allTracks}
-                pool={activeSet.pool}
-                subgroups={activeSet.pool_subgroups ?? []}
-                subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
-                tableConfig={tablePrefs.configs.pool}
-                onToggleColumn={(id) => tablePrefs.toggleVisibility('pool', id)}
-                onReorderColumn={(a, b) => tablePrefs.reorderColumn('pool', a, b)}
-                onInsertColumnAfter={(a, b) => tablePrefs.insertColumnAfter('pool', a, b)}
-                onColumnWidthChange={(id, w) => tablePrefs.setColumnWidth('pool', id, w)}
-                onColumnWidthFlush={(id, w) => tablePrefs.flushColumnWidth('pool', id, w)}
-                onRemove={setBuilder.removeFromPool}
-                onReorder={setBuilder.reorderPool}
-                onSetHighlight={setBuilder.setPoolHighlight}
-                onAddTrack={setBuilder.addToPool}
-                onCreateSubgroup={setBuilder.createSubgroup}
-                onRenameSubgroup={setBuilder.renameSubgroup}
-                onDeleteSubgroup={setBuilder.deleteSubgroup}
-                onReorderSubgroups={setBuilder.reorderSubgroups}
-                onReorderSubgroupMember={setBuilder.reorderSubgroupMember}
-                onAddSubgroupMember={setBuilder.addSubgroupMember}
-                onRemoveSubgroupMember={setBuilder.removeSubgroupMember}
-                onDropTrackToSubgroup={setBuilder.dropTrackToSubgroup}
-                onDropFromTracklist={setBuilder.moveTracklistToPool}
-              />
-            ) : null,
-            explorer: activeSet ? (
-              <ExplorerMatrix
-                pool={activeSet.pool}
-                onDropTrack={(id) => setBuilder.addToPool(id)}
-              />
-            ) : null,
-            sequencer: activeSet ? (
-              <SequencerLanes
-                setId={activeSet.set.id}
-                tracklist={activeSet.tracklist}
-                pool={activeSet.pool}
-                subgroups={activeSet.pool_subgroups ?? []}
-                memberships={activeSet.pool_subgroup_memberships ?? []}
-                startMin={360}
-                endMin={480}
-                onPromote={handlePromote}
-                onBench={(id) => setBuilder.moveTracklistToPool(id)}
-                onReorder={setBuilder.reorderTracklist}
-                onRemove={setBuilder.removeFromTracklist}
-                onExport={handleSequencerExport}
-              />
-            ) : null,
-          }}
         />
+        {setBuilder.error && (
+          <div className="set-toast" role="alert">
+            <span>{setBuilder.error}</span>
+            <button
+              className="set-toast-dismiss"
+              onClick={setBuilder.clearError}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        <PlaybackBar />
+        {adminControls}
       </AudioPlayerProvider>
     )
   }
@@ -483,87 +628,7 @@ export function App() {
             aria-label="Track browser"
             hidden={topSplit === 'browser-collapsed'}
           >
-            <TableHeader
-              title={
-                <div className="ds-header-search">
-                  <SearchPanel
-                    allTracks={allTracks}
-                    selectedTrack={browseSelection}
-                    selectTrack={handleSelectTrack}
-                    clearBrowseSelection={handleClearBrowse}
-                    onSearchTextChange={setSearchText}
-                    searchText={searchText}
-                    onTrackDrop={handleTrackDropAsSource}
-                  />
-                </div>
-              }
-              primary={
-                <>
-                  <SortAddButton
-                    sorting={searchSorting}
-                    columns={searchSortColumns}
-                    onSortingChange={setSearchSorting}
-                    label="Add sort"
-                    className="ds-header-btn"
-                  />
-                  <BrowseFilterAddButton
-                    model={filterModel}
-                    setModel={setFilterModel}
-                    genres={filterGenres}
-                    labels={filterLabels}
-                  />
-                </>
-              }
-            />
-            <TableControlPanel>
-              {searchSorting.length > 0 && (
-                <SortTierBar
-                  sorting={searchSorting}
-                  columns={searchSortColumns}
-                  onSortingChange={setSearchSorting}
-                  hideAddButton
-                />
-              )}
-              {filtersActive && (
-                <BrowseFilterGroups
-                  model={filterModel}
-                  setModel={setFilterModel}
-                  genres={filterGenres}
-                  labels={filterLabels}
-                />
-              )}
-            </TableControlPanel>
-            {traitsError && (
-              <p className="table-status table-status--error">
-                Failed to load track traits — {traitsError}
-              </p>
-            )}
-            <TrackTable
-              tracks={browseTracks}
-              loading={collectionLoading}
-              selectedTrack={browseSelection}
-              selectTrack={handleSelectTrack}
-              error={tracksError}
-              tableConfig={searchConfig}
-              sorting={searchSorting}
-              onSortingChange={setSearchSorting}
-              onToggleColumnVisibility={(id) =>
-                tablePrefs.toggleVisibility('search', id)
-              }
-              onReorderColumn={(draggedId, targetId) =>
-                tablePrefs.reorderColumn('search', draggedId, targetId)
-              }
-              onInsertColumnAfter={(afterId, columnId) =>
-                tablePrefs.insertColumnAfter('search', afterId, columnId)
-              }
-              onColumnWidthChange={(id, width) =>
-                tablePrefs.setColumnWidth('search', id, width)
-              }
-              onColumnWidthFlush={(id, width) =>
-                tablePrefs.flushColumnWidth('search', id, width)
-              }
-              scrollRestorationKey={`${topSplit}:${rowSplit}`}
-            />
+            {browserStack}
           </section>
           {topSplit === 'split' && (
             <QuadrantDivider
@@ -579,77 +644,7 @@ export function App() {
             aria-label="Matches"
             hidden={topSplit === 'matches-collapsed'}
           >
-            {!detailMatch && (
-              <MatchesPanel
-                matchSource={matchSource}
-                matches={matches}
-                loading={matchesLoading}
-                matchesError={matchesError}
-                headerTitle={
-                  transitionChain.length > 0 && matchSource ? (
-                    <div className="transition-chain transition-chain--header">
-                      <button
-                        className="chain-back-btn"
-                        onClick={handleChainBack}
-                        title="Go back to previous source"
-                      >
-                        ← Back
-                      </button>
-                      {transitionChain.map((entry, i) => (
-                        <span
-                          key={`chain-${entry.track.id}-${i}`}
-                          className="chain-step"
-                        >
-                          <button
-                            className="chain-entry"
-                            onClick={() => handleChainNavigate(i)}
-                            title={`Return to ${entry.track.title}`}
-                          >
-                            {entry.track.title}
-                          </button>
-                          <span className="chain-arrow">→</span>
-                        </span>
-                      ))}
-                      <span className="chain-current">{matchSource.title}</span>
-                    </div>
-                  ) : undefined
-                }
-                tableConfig={matchesConfig}
-                onClearMatchSource={handleClearMatches}
-                onToggleColumnVisibility={(id) =>
-                  tablePrefs.toggleVisibility('matches', id)
-                }
-                onReorderColumn={(draggedId, targetId) =>
-                  tablePrefs.reorderColumn('matches', draggedId, targetId)
-                }
-                onInsertColumnAfter={(afterId, columnId) =>
-                  tablePrefs.insertColumnAfter('matches', afterId, columnId)
-                }
-                onColumnWidthChange={(id, width) =>
-                  tablePrefs.setColumnWidth('matches', id, width)
-                }
-                onColumnWidthFlush={(id, width) =>
-                  tablePrefs.flushColumnWidth('matches', id, width)
-                }
-                onViewDetail={setDetailMatch}
-                onUseAsSource={handleUseAsSource}
-                onTrackDrop={handleMatchSourceDrop}
-                trackIndex={trackIndex}
-                genres={filterGenres}
-                labels={filterLabels}
-              />
-            )}
-            {detailMatch && (
-              <MatchDetail
-                sourceTrack={matchSource}
-                match={detailMatch}
-                onBack={() => setDetailMatch(null)}
-                traitMap={traitMap}
-                onUseAsSource={handleUseAsSource}
-                onAddToPool={handleAddToPool}
-                onAddToTracklist={handleAddToTracklist}
-              />
-            )}
+            {matchesStack}
           </section>
           {topSplit === 'matches-collapsed' && (
             <QuadrantExpandBar
@@ -754,55 +749,7 @@ export function App() {
 
         <PlaybackBar />
 
-        <button
-          className="admin-gear"
-          aria-label="Admin"
-          title="Admin"
-          aria-haspopup="dialog"
-          aria-expanded={adminOpen}
-          onClick={() => setAdminOpen((prev) => !prev)}
-        >
-          <span className="admin-gear-glyph" aria-hidden="true">
-            {'\u2699\uFE0E'}
-          </span>
-        </button>
-        {adminOpen && (
-          <div
-            className="admin-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Admin dashboard"
-          >
-            <div className="admin-overlay-header">
-              <h2 className="admin-overlay-title">Admin</h2>
-              <button
-                className="admin-overlay-close"
-                aria-label="Close admin"
-                title="Close admin"
-                onClick={() => setAdminOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-            <AdminDashboard
-              stats={cacheStats}
-              loading={cacheLoading}
-              error={cacheError}
-              weights={weights}
-              weightsLoading={weightsLoading}
-              setWeight={setWeight}
-              weightsSaving={weightsSaving}
-              weightsSaveSuccess={weightsSaveSuccess}
-              weightsError={weightsError}
-              weightsWarning={weightsWarning}
-              normalizeWeights={normalizeWeights}
-              resetWeights={resetWeights}
-              isSumValid={isSumValid}
-              rawSum={rawSum}
-              tablePrefs={tablePrefs}
-            />
-          </div>
-        )}
+        {adminControls}
       </div>
     </AudioPlayerProvider>
   )

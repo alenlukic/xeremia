@@ -9,6 +9,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from src.api.schemas import (
+    COLUMN_TABLE_IDS,
     CacheStatsResponse,
     ExplorerAddEdgeRequest,
     ExplorerAddNodeRequest,
@@ -44,6 +45,7 @@ from src.api.schemas import (
     TablePreferencesListResponse,
     TracklistAddRequest,
     TracklistNoteUpdateRequest,
+    TracklistOverridesRequest,
     TracklistReorderRequest,
     TrackResponse,
     TrackTraitResponse,
@@ -55,6 +57,7 @@ from src.api.schemas import (
 )
 from src.api.queries import get_tracks
 from src.api.serializers import (
+    optional_float,
     serialize_explorer_node,
     serialize_match_detail_track,
     serialize_matches,
@@ -632,6 +635,11 @@ def _serialize_hydrated(hydration, session) -> dict:
                 "track_id": e.track_id,
                 "position": e.position,
                 "note": getattr(e, "note", "") or "",
+                "play_minutes": optional_float(getattr(e, "play_minutes", None)),
+                "pinned_end_minutes": optional_float(
+                    getattr(e, "pinned_end_minutes", None)
+                ),
+                "bpm_override": optional_float(getattr(e, "bpm_override", None)),
                 "track": track_map.get(e.track_id),
             }
             for e in hydration["tracklist"]
@@ -1205,6 +1213,41 @@ def api_tracklist_update_note(
         session.close()
 
 
+@router.put("/sets/{set_id}/tracklist/{track_id}/overrides")
+def api_tracklist_set_overrides(
+    set_id: int, track_id: int, body: TracklistOverridesRequest
+):
+    """Replace the Sequencer overrides for one tracklist entry.
+
+    PUT rather than PATCH because CORS ``allow_methods`` in src/api/app.py omits
+    PATCH, so a cross-origin client cannot preflight a PATCH request.
+    """
+    from src.set_workspace.service import SetWorkspaceService
+
+    session = _get_session()
+    try:
+        svc = SetWorkspaceService(session)
+        ok, error = svc.set_tracklist_overrides(
+            set_id,
+            track_id,
+            body.play_minutes,
+            body.pinned_end_minutes,
+            body.bpm_override,
+        )
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Tracklist override update failed")
+        raise HTTPException(status_code=500, detail="Override update failed")
+    finally:
+        session.close()
+
+
 @router.post("/sets/{set_id}/tracklist/move-to-pool")
 def api_tracklist_move_to_pool(set_id: int, body: MoveRequest):
     from src.set_workspace.service import SetWorkspaceService
@@ -1520,13 +1563,18 @@ def _resolve_device_hash(raw: Optional[str]) -> str:
 
 def _serialize_table_preference(row) -> dict:
     updated = row.updated_at.isoformat() if row.updated_at else None
-    return {
+    payload = {
         "table_id": row.table_id,
         "column_order": row.column_order,
         "column_visibility": row.column_visibility,
         "column_widths": row.column_widths,
         "updated_at": updated,
     }
+    # Only the workspace-layout row carries a layout payload, so column-based
+    # rows keep their existing response shape.
+    if row.table_id == TableId.workspace_layout.value:
+        payload["layout"] = row.layout
+    return payload
 
 
 @router.get(
@@ -1590,6 +1638,12 @@ def api_update_table_preferences(
 
     if table_id not in _VALID_TABLE_IDS:
         raise HTTPException(status_code=400, detail="Unknown table_id")
+    if table_id in COLUMN_TABLE_IDS and not body.column_order:
+        raise HTTPException(status_code=422, detail="column_order must not be empty")
+    if table_id == TableId.workspace_layout.value and body.layout is None:
+        raise HTTPException(
+            status_code=422, detail="layout is required for the workspace-layout table"
+        )
 
     device_hash = _resolve_device_hash(x_device_id)
     session = _get_session()
@@ -1603,6 +1657,7 @@ def api_update_table_preferences(
             "column_order": body.column_order,
             "column_visibility": body.column_visibility,
             "column_widths": body.column_widths,
+            "layout": body.layout,
         }
         if row is None:
             row = TablePreference(
@@ -1613,6 +1668,7 @@ def api_update_table_preferences(
             row.column_order = payload["column_order"]
             row.column_visibility = payload["column_visibility"]
             row.column_widths = payload["column_widths"]
+            row.layout = payload["layout"]
         session.commit()
         # The session wrapper has no `refresh`; expire_on_commit=True means the
         # row's attributes reload from the DB on access during serialization.

@@ -68,7 +68,15 @@ function makeExplorerNode(
     level: number
   },
 ): ExplorerNode {
-  const { node_id, track_id, level, col_index = 0, ...rest } = overrides
+  const {
+    node_id,
+    track_id,
+    level,
+    col_index = 0,
+    x = 0,
+    y = 0,
+    ...rest
+  } = overrides
   return {
     id: 1,
     set_id: 1,
@@ -76,6 +84,8 @@ function makeExplorerNode(
     track_id,
     level,
     col_index,
+    x,
+    y,
     track: makeTrack(track_id),
     ...rest,
   }
@@ -133,7 +143,13 @@ describe('useSetBuilder addExplorerNode', () => {
       await result.current.addExplorerNode(99, 300, 200)
     })
 
-    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 300, 200, undefined)
+    expect(http.explorerAddNode).toHaveBeenCalledWith(
+      1,
+      99,
+      300,
+      200,
+      undefined,
+    )
     expect(http.explorerAddEdge).not.toHaveBeenCalled()
   })
 

@@ -95,6 +95,14 @@ vi.mock('./api/http', () => ({
   explorerNodeToTracklist: vi.fn().mockResolvedValue(undefined),
   explorerEdgeScores: vi.fn().mockResolvedValue({ scores: [] }),
   fetchTablePreferences: vi.fn().mockResolvedValue({ preferences: [] }),
+  fetchWorkspaceLayout: vi.fn().mockResolvedValue(null),
+  saveWorkspaceLayout: vi.fn().mockResolvedValue(undefined),
+  tracklistSetOverrides: vi.fn().mockResolvedValue(undefined),
+  subgroupCreate: vi.fn().mockResolvedValue({ id: 1, name: 'Alt 2' }),
+  subgroupRename: vi.fn().mockResolvedValue(undefined),
+  subgroupDelete: vi.fn().mockResolvedValue(undefined),
+  subgroupReorder: vi.fn().mockResolvedValue(undefined),
+  subgroupMemberReorder: vi.fn().mockResolvedValue(undefined),
   updateTablePreferences: vi.fn().mockResolvedValue({
     table_id: 'search',
     column_order: ['title'],
@@ -130,10 +138,19 @@ class ResizeObserverMock {
   disconnect = vi.fn()
 }
 
+// The workspace shell is the default, so the quadrant suites below seed the
+// layout cache with the legacy shell the toggle reaches.
+const LAYOUT_CACHE_KEY = 'xeremia:workspace-layout:v1'
+
+function seedShell(shell: 'workspace' | 'legacy') {
+  localStorage.setItem(LAYOUT_CACHE_KEY, JSON.stringify({ shell }))
+}
+
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
   localStorage.clear()
   sessionStorage.clear()
+  seedShell('legacy')
   vi.mocked(useCollectionCache).mockReturnValue({
     allTracks: makeTracks(600),
     traitMap: new Map(),
@@ -1328,5 +1345,90 @@ describe('session table view state', () => {
     expect(
       (screen.getByPlaceholderText(/search/i) as HTMLInputElement).value,
     ).toBe('alpha')
+  })
+})
+
+describe('Shell toggle', () => {
+  it('mounts the workspace shell by default', async () => {
+    localStorage.clear()
+    await act(async () => {
+      render(<App />)
+    })
+
+    expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Collapse track browser')).toBeNull()
+  })
+
+  it('renders every workspace widget frame in the default preset', async () => {
+    localStorage.clear()
+    await act(async () => {
+      render(<App />)
+    })
+
+    const grid = screen.getByLabelText('Workspace grid')
+    for (const label of ['Explorer', 'Browser', 'Sequencer', 'Matches']) {
+      expect(within(grid).getByLabelText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('switches to the legacy quadrant shell and back', async () => {
+    localStorage.clear()
+    await act(async () => {
+      render(<App />)
+    })
+
+    await act(async () => {
+      screen.getByRole('button', { name: /legacy shell/i }).click()
+    })
+    expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Workspace grid')).toBeNull()
+
+    await act(async () => {
+      screen.getByRole('button', { name: /workspace shell/i }).click()
+    })
+    expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
+  })
+
+  it('persists the shell choice through the layout preference row', async () => {
+    vi.useFakeTimers()
+    try {
+      localStorage.clear()
+      const httpMod = await import('./api/http')
+      vi.mocked(httpMod.saveWorkspaceLayout).mockClear()
+
+      await act(async () => {
+        render(<App />)
+      })
+      await act(async () => {
+        screen.getByRole('button', { name: /legacy shell/i }).click()
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+
+      const saved = vi.mocked(httpMod.saveWorkspaceLayout).mock.calls.at(-1)
+      expect(saved?.[0].shell).toBe('legacy')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hydrates the shell from the server layout row', async () => {
+    localStorage.clear()
+    const httpMod = await import('./api/http')
+    vi.mocked(httpMod.fetchWorkspaceLayout).mockResolvedValueOnce({
+      preset: 'Explorer sandbox',
+      place: { browser: { r: 0, c: 0, span: 1 } },
+      cols: [1, 1, 1],
+      rows: [1, 1],
+      custom: {},
+      shell: 'legacy',
+    })
+
+    await act(async () => {
+      render(<App />)
+    })
+
+    expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
   })
 })

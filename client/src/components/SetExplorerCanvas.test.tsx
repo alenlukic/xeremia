@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { SetExplorerCanvas } from './SetExplorerCanvas'
 import type { ExplorerNode, ExplorerEdge, Track } from '../types'
 import { TRACK_DRAG_MIME } from '../utils'
@@ -66,11 +72,7 @@ function makeTrack(id: number, title: string): Track {
   }
 }
 
-function makeEdge(
-  id: number,
-  parent: string,
-  child: string,
-): ExplorerEdge {
+function makeEdge(id: number, parent: string, child: string): ExplorerEdge {
   return { id, set_id: 1, parent_node_id: parent, child_node_id: child }
 }
 
@@ -97,8 +99,12 @@ function defaultProps(
     onNodeToTracklist: vi.fn(),
     onAddNodeWithParents: vi.fn().mockResolvedValue({ node_id: 'new' }),
     tracklistTrackIds: overrides.tracklistTrackIds ?? new Set<number>(),
-    fetchEdgeScores:
-      overrides.fetchEdgeScores ?? vi.fn().mockResolvedValue({ scores: [] }),
+    // vi.fn() widened to Mock<Procedure | Constructable> in Vitest 4, which no
+    // longer matches the prop signature, so assert the call shape here.
+    fetchEdgeScores: (overrides.fetchEdgeScores ??
+      vi.fn().mockResolvedValue({ scores: [] })) as unknown as (
+      pairs: [number, number][],
+    ) => Promise<{ scores: (number | null)[] }>,
   }
 }
 
@@ -178,7 +184,9 @@ describe('SetExplorerCanvas — rendering', () => {
         track: makeTrack(7, '[01B - B - 110.00] Cher - Believe'),
       }),
     ]
-    const { container } = render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+    const { container } = render(
+      <SetExplorerCanvas {...defaultProps({ nodes })} />,
+    )
     const lines = nodeEl(container, 'a').querySelectorAll(
       '.explorer-node-title tspan',
     )
@@ -195,7 +203,9 @@ describe('SetExplorerCanvas — rendering', () => {
         track: makeTrack(7, '[08A - Am - 120.00] Untitled'),
       }),
     ]
-    const { container } = render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+    const { container } = render(
+      <SetExplorerCanvas {...defaultProps({ nodes })} />,
+    )
     const lines = nodeEl(container, 'a').querySelectorAll(
       '.explorer-node-title tspan',
     )
@@ -217,7 +227,9 @@ describe('SetExplorerCanvas — rendering', () => {
         ),
       }),
     ]
-    const { container } = render(<SetExplorerCanvas {...defaultProps({ nodes })} />)
+    const { container } = render(
+      <SetExplorerCanvas {...defaultProps({ nodes })} />,
+    )
     const lines = nodeEl(container, 'a').querySelectorAll(
       '.explorer-node-title tspan',
     )
@@ -270,15 +282,15 @@ describe('SetExplorerCanvas — selection and node actions', () => {
     )
     const g = nodeEl(container, 'a')
     expect(
-      within(g).getByTestId('explorer-action-row').classList.contains(
-        'explorer-action-row--visible',
-      ),
+      within(g)
+        .getByTestId('explorer-action-row')
+        .classList.contains('explorer-action-row--visible'),
     ).toBe(false)
     fireEvent.click(g)
     expect(
-      within(g).getByTestId('explorer-action-row').classList.contains(
-        'explorer-action-row--visible',
-      ),
+      within(g)
+        .getByTestId('explorer-action-row')
+        .classList.contains('explorer-action-row--visible'),
     ).toBe(true)
   })
 
@@ -348,7 +360,9 @@ describe('SetExplorerCanvas — selection and node actions', () => {
     })
     const { container } = render(<SetExplorerCanvas {...props} />)
     fireEvent.click(nodeEl(container, 'a'))
-    fireEvent.click(within(nodeEl(container, 'a')).getByLabelText('Add to Tracklist'))
+    fireEvent.click(
+      within(nodeEl(container, 'a')).getByLabelText('Add to Tracklist'),
+    )
     expect(props.onNodeToTracklist).toHaveBeenCalledWith('a')
     expect(
       within(nodeEl(container, 'b')).queryByLabelText('Add to Tracklist'),
@@ -457,14 +471,14 @@ describe('SetExplorerCanvas — repositioning (drag)', () => {
     withSvgMatrixStub(() => {
       fireEvent.mouseDown(handle, { button: 0 })
       fireEvent.mouseMove(vp, { clientX: 300, clientY: 100 })
-      expect(
-        screen.getByTestId('connect-drag-line').getAttribute('y2'),
-      ).toBe('100')
+      expect(screen.getByTestId('connect-drag-line').getAttribute('y2')).toBe(
+        '100',
+      )
       offset.y = 80
       fireEvent.scroll(vp)
-      expect(
-        screen.getByTestId('connect-drag-line').getAttribute('y2'),
-      ).toBe('180')
+      expect(screen.getByTestId('connect-drag-line').getAttribute('y2')).toBe(
+        '180',
+      )
     }, offset)
   })
 
@@ -541,7 +555,9 @@ describe('SetExplorerCanvas — edges', () => {
     const edges = [makeEdge(1, 'a', 'b')]
     const fetchEdgeScores = vi.fn().mockResolvedValue({ scores: [0.9] })
     render(
-      <SetExplorerCanvas {...defaultProps({ nodes, edges, fetchEdgeScores })} />,
+      <SetExplorerCanvas
+        {...defaultProps({ nodes, edges, fetchEdgeScores })}
+      />,
     )
     await waitFor(() =>
       expect(screen.getByTestId('explorer-edge-label')).toBeInTheDocument(),
@@ -641,7 +657,9 @@ describe('SetExplorerCanvas — adding tracks', () => {
     const props = defaultProps({ nodes })
     const { container } = render(<SetExplorerCanvas {...props} />)
     fireEvent.click(nodeEl(container, 'a'))
-    fireEvent.click(within(nodeEl(container, 'a')).getByLabelText('Add child node'))
+    fireEvent.click(
+      within(nodeEl(container, 'a')).getByLabelText('Add child node'),
+    )
     const item = await screen.findByTestId('child-match-item')
     fireEvent.click(item)
     expect(props.onAddNode).toHaveBeenCalled()

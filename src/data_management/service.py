@@ -90,6 +90,9 @@ def insert_tracks(tracks):
             db_row[TrackDBCols.FILE_NAME.value] = file_name
             title = extract_unformatted_title(db_row[TrackDBCols.TITLE.value])
             db_row[TrackDBCols.TITLE.value] = title
+            # Read straight from the header rather than through the tag record:
+            # duration is not an ID3 tag and never round-trips through metadata.
+            db_row["duration_seconds"] = track.get_duration_seconds()
 
             try:
                 # Persist row to DB

@@ -604,7 +604,12 @@ export function useSetBuilder() {
   )
 
   const addExplorerNode = useCallback(
-    async (trackId: number, x: number = 0, y: number = 0, parentNodeId?: string) => {
+    async (
+      trackId: number,
+      x: number = 0,
+      y: number = 0,
+      parentNodeId?: string,
+    ) => {
       if (activeSetId === null) {
         return null
       }
@@ -732,12 +737,7 @@ export function useSetBuilder() {
   // Add a node at (x, y) wired to one or more parents. Used by undo to
   // reconstruct a deleted node together with its incoming edges.
   const addNodeWithParents = useCallback(
-    async (
-      trackId: number,
-      parentIds: string[],
-      x: number,
-      y: number,
-    ) => {
+    async (trackId: number, parentIds: string[], x: number, y: number) => {
       if (activeSetId === null) {
         return null
       }
