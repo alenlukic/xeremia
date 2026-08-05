@@ -18,6 +18,11 @@ import { AdminDashboard } from './components/AdminDashboard'
 import { SetBuilder } from './components/SetBuilder'
 import { SetPickerControls } from './components/SetPickerControls'
 import { PlaybackBar } from './components/PlaybackBar'
+import { WorkspaceGrid } from './components/WorkspaceGrid'
+import { ExplorerMatrix } from './components/ExplorerMatrix'
+import { SequencerLanes } from './components/SequencerLanes'
+import { SetPoolTable } from './components/SetPoolTable'
+import { exportSetM3u8 } from './api/http'
 import { useSelectedTrack } from './hooks/useSelectedTrack'
 import { useTrackFilters } from './hooks/useTrackFilters'
 import { useCollectionCache } from './hooks/useCollectionCache'
@@ -282,6 +287,173 @@ export function App() {
       .filter((id) => !nonSortable.has(id))
       .map((id) => ({ id, label: reg.get(id)?.label ?? id }))
   }, [searchConfig])
+
+  // --- Set Builder Workspace v2 (design mock) -------------------------------
+  // Opt-in via ?workspace-v2 while the grid shell is validated. Reuses every
+  // existing data hook; only the shell and the Explorer/Sequencer widgets are
+  // new. Browser/Matches/Pool mount the SAME components as the legacy layout,
+  // so sorting, filtering, row virtualization, and table prefs carry over.
+  const workspaceV2 = useMemo(
+    () => new URLSearchParams(window.location.search).has('workspace-v2'),
+    [],
+  )
+
+  const activeSet = setBuilder.activeSet
+
+  const handleSequencerExport = useCallback(async () => {
+    if (!activeSet || activeSet.tracklist.length === 0) return
+    const ids = activeSet.tracklist.map((e) => e.track_id)
+    const result = await exportSetM3u8(ids, activeSet.set.name)
+    const blob = new Blob([result.content], { type: 'audio/x-mpegurl' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = result.filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [activeSet])
+
+  const handlePromote = useCallback(
+    (trackId: number, position: number) => {
+      setBuilder.movePoolToTracklist(trackId)
+      setBuilder.reorderTracklist(trackId, position)
+    },
+    [setBuilder],
+  )
+
+  if (workspaceV2) {
+    return (
+      <AudioPlayerProvider>
+        <WorkspaceGrid
+          headerExtras={setPicker}
+          panels={{
+            browser: (
+              <>
+                <TableHeader
+                  title={
+                    <div className="ds-header-search">
+                      <SearchPanel
+                        allTracks={allTracks}
+                        selectedTrack={browseSelection}
+                        selectTrack={handleSelectTrack}
+                        clearBrowseSelection={handleClearBrowse}
+                        onSearchTextChange={setSearchText}
+                        searchText={searchText}
+                        onTrackDrop={handleTrackDropAsSource}
+                      />
+                    </div>
+                  }
+                  primary={
+                    <>
+                      <SortAddButton
+                        sorting={searchSorting}
+                        columns={searchSortColumns}
+                        onSortingChange={setSearchSorting}
+                        label="Add sort"
+                        className="ds-header-btn"
+                      />
+                      <BrowseFilterAddButton
+                        model={filterModel}
+                        setModel={setFilterModel}
+                        genres={filterGenres}
+                        labels={filterLabels}
+                      />
+                    </>
+                  }
+                />
+                <TrackTable
+                  tracks={browseTracks}
+                  loading={collectionLoading}
+                  selectedTrack={browseSelection}
+                  selectTrack={handleSelectTrack}
+                  error={tracksError}
+                  tableConfig={searchConfig}
+                  sorting={searchSorting}
+                  onSortingChange={setSearchSorting}
+                  onToggleColumnVisibility={(id) => tablePrefs.toggleVisibility('search', id)}
+                  onReorderColumn={(a, b) => tablePrefs.reorderColumn('search', a, b)}
+                  onInsertColumnAfter={(a, b) => tablePrefs.insertColumnAfter('search', a, b)}
+                  onColumnWidthChange={(id, w) => tablePrefs.setColumnWidth('search', id, w)}
+                  onColumnWidthFlush={(id, w) => tablePrefs.flushColumnWidth('search', id, w)}
+                  scrollRestorationKey="workspace-v2"
+                />
+              </>
+            ),
+            matches: (
+              <MatchesPanel
+                matchSource={matchSource}
+                matches={matches}
+                loading={matchesLoading}
+                matchesError={matchesError}
+                tableConfig={matchesConfig}
+                onClearMatchSource={handleClearMatches}
+                onToggleColumnVisibility={(id) => tablePrefs.toggleVisibility('matches', id)}
+                onReorderColumn={(a, b) => tablePrefs.reorderColumn('matches', a, b)}
+                onInsertColumnAfter={(a, b) => tablePrefs.insertColumnAfter('matches', a, b)}
+                onColumnWidthChange={(id, w) => tablePrefs.setColumnWidth('matches', id, w)}
+                onColumnWidthFlush={(id, w) => tablePrefs.flushColumnWidth('matches', id, w)}
+                onViewDetail={setDetailMatch}
+                onUseAsSource={handleUseAsSource}
+                onTrackDrop={handleMatchSourceDrop}
+                trackIndex={trackIndex}
+                genres={filterGenres}
+                labels={filterLabels}
+              />
+            ),
+            pool: activeSet ? (
+              <SetPoolTable
+                allTracks={allTracks}
+                pool={activeSet.pool}
+                subgroups={activeSet.pool_subgroups ?? []}
+                subgroupMemberships={activeSet.pool_subgroup_memberships ?? []}
+                tableConfig={tablePrefs.configs.pool}
+                onToggleColumn={(id) => tablePrefs.toggleVisibility('pool', id)}
+                onReorderColumn={(a, b) => tablePrefs.reorderColumn('pool', a, b)}
+                onInsertColumnAfter={(a, b) => tablePrefs.insertColumnAfter('pool', a, b)}
+                onColumnWidthChange={(id, w) => tablePrefs.setColumnWidth('pool', id, w)}
+                onColumnWidthFlush={(id, w) => tablePrefs.flushColumnWidth('pool', id, w)}
+                onRemove={setBuilder.removeFromPool}
+                onReorder={setBuilder.reorderPool}
+                onSetHighlight={setBuilder.setPoolHighlight}
+                onAddTrack={setBuilder.addToPool}
+                onCreateSubgroup={setBuilder.createSubgroup}
+                onRenameSubgroup={setBuilder.renameSubgroup}
+                onDeleteSubgroup={setBuilder.deleteSubgroup}
+                onReorderSubgroups={setBuilder.reorderSubgroups}
+                onReorderSubgroupMember={setBuilder.reorderSubgroupMember}
+                onAddSubgroupMember={setBuilder.addSubgroupMember}
+                onRemoveSubgroupMember={setBuilder.removeSubgroupMember}
+                onDropTrackToSubgroup={setBuilder.dropTrackToSubgroup}
+                onDropFromTracklist={setBuilder.moveTracklistToPool}
+              />
+            ) : null,
+            explorer: activeSet ? (
+              <ExplorerMatrix
+                pool={activeSet.pool}
+                onDropTrack={(id) => setBuilder.addToPool(id)}
+              />
+            ) : null,
+            sequencer: activeSet ? (
+              <SequencerLanes
+                setId={activeSet.set.id}
+                tracklist={activeSet.tracklist}
+                pool={activeSet.pool}
+                subgroups={activeSet.pool_subgroups ?? []}
+                memberships={activeSet.pool_subgroup_memberships ?? []}
+                startMin={360}
+                endMin={480}
+                onPromote={handlePromote}
+                onBench={(id) => setBuilder.moveTracklistToPool(id)}
+                onReorder={setBuilder.reorderTracklist}
+                onRemove={setBuilder.removeFromTracklist}
+                onExport={handleSequencerExport}
+              />
+            ) : null,
+          }}
+        />
+      </AudioPlayerProvider>
+    )
+  }
 
   return (
     <AudioPlayerProvider>
