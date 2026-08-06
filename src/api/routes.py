@@ -32,6 +32,7 @@ from src.api.schemas import (
     SetExportRequest,
     SetExportResponse,
     SetSummary,
+    SetSequencerRequest,
     SetUpdateRequest,
     SubgroupCreateRequest,
     SubgroupDropRequest,
@@ -596,6 +597,7 @@ def _serialize_set_summary(dj_set, session) -> dict:
         "updated_at": dj_set.updated_at.isoformat() if dj_set.updated_at else "",
         "pool_count": pool_count,
         "tracklist_count": tracklist_count,
+        "sequencer": dj_set.sequencer,
     }
 
 
@@ -750,6 +752,31 @@ def api_update_set(set_id: int, body: SetUpdateRequest):
         session.rollback()
         logger.exception("Set update failed for set_id=%s", set_id)
         raise HTTPException(status_code=500, detail="Set update failed")
+    finally:
+        session.close()
+
+
+@router.put("/sets/{set_id}/sequencer", response_model=SetSummary)
+def api_update_set_sequencer(set_id: int, body: SetSequencerRequest):
+    """Merge Sequencer view state into the set, so nothing about it is ephemeral."""
+    from src.models.dj_set import DjSet
+
+    session = _get_session()
+    try:
+        dj_set = session.query(DjSet).filter_by(id=set_id).one_or_none()
+        if dj_set is None:
+            raise HTTPException(status_code=404, detail="Set not found")
+        merged = dict(dj_set.sequencer or {})
+        merged.update(body.model_dump(exclude_none=True))
+        dj_set.sequencer = merged
+        session.commit()
+        return _serialize_set_summary(dj_set, session)
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Sequencer settings update failed for set_id=%s", set_id)
+        raise HTTPException(status_code=500, detail="Sequencer settings update failed")
     finally:
         session.close()
 

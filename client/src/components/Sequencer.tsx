@@ -1,10 +1,15 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SequencerLanes } from './SequencerLanes'
 import { SequencerTracklist } from './SequencerTracklist'
 import { SequencerFooter } from './SequencerFooter'
-import { laneKeyOf, useSequencer } from '../hooks/useSequencer'
+import { laneKeyOf, tickForZoom, useSequencer } from '../hooks/useSequencer'
 import type { LaneKey } from '../hooks/useSequencer'
 import { exportSetM3u8 } from '../api/http'
+import {
+  useSequencerSettings,
+  DEFAULT_START_MIN,
+  DEFAULT_END_MIN,
+} from '../hooks/useSequencerSettings'
 import { formatHM, parseTimeInput } from '../utils/time'
 import type { HydratedSet } from '../types'
 
@@ -13,20 +18,18 @@ import type { HydratedSet } from '../types'
 
 type View = 'lanes' | 'list'
 
-const TICKS = [5, 10, 15, 30]
-const DEFAULT_START_MIN = 6 * 60
-const DEFAULT_END_MIN = 8 * 60
 const MIN_PX_PER_MIN = 2
 const MAX_PX_PER_MIN = 40
 
 interface Props {
   activeSet: HydratedSet | null
+  onAddCommitted: (trackId: number, position: number) => void
   onPromote: (trackId: number, position: number) => void
   onReorder: (trackId: number, position: number) => void
   onBenchToLane: (
     trackId: number,
     lane: LaneKey,
-    source: 'browse' | 'tracklist',
+    source: 'browse' | 'pool' | 'tracklist',
   ) => void
   onMoveBench: (poolEntryId: number, from: number, to: number) => void
   onRemove: (trackId: number) => void
@@ -38,6 +41,7 @@ interface Props {
 
 export function Sequencer({
   activeSet,
+  onAddCommitted,
   onPromote,
   onReorder,
   onBenchToLane,
@@ -48,14 +52,24 @@ export function Sequencer({
   onDeleteLane,
   onSaved,
 }: Props) {
-  const [view, setView] = useState<View>('lanes')
-  const [startMin, setStartMin] = useState(DEFAULT_START_MIN)
-  const [targetEndMin, setTargetEndMin] = useState(DEFAULT_END_MIN)
-  const [tickMin, setTickMin] = useState(15)
-  const [pxPerMin, setPxPerMin] = useState(6)
+  // Every one of these is persisted on the set, so a reload restores them.
+  const settings = useSequencerSettings(
+    activeSet?.set.id ?? null,
+    activeSet?.set.sequencer,
+  )
+  const { startMin, endMin: targetEndMin, view, patch } = settings
+  const setView = useCallback((v: View) => patch({ view: v }), [patch])
   const [selectedTrackId, setSelectedTrackId] = useState<number | null>(null)
   const [startDraft, setStartDraft] = useState(formatHM(DEFAULT_START_MIN))
   const [endDraft, setEndDraft] = useState(formatHM(DEFAULT_END_MIN))
+
+  // Keep the text inputs in step with the stored values.
+  useEffect(() => {
+    setStartDraft(formatHM(startMin))
+  }, [startMin])
+  useEffect(() => {
+    setEndDraft(formatHM(targetEndMin))
+  }, [targetEndMin])
 
   const sequencer = useSequencer({
     setId: activeSet?.set.id ?? null,
@@ -66,6 +80,14 @@ export function Sequencer({
     startMin,
     onSaved,
   })
+
+  // Clamp on read as well as on write: a value persisted before these limits
+  // existed must not survive as an unusable zoom.
+  const pxPerMin = Math.min(
+    MAX_PX_PER_MIN,
+    Math.max(MIN_PX_PER_MIN, settings.pxPerMin),
+  )
+  const tickMin = tickForZoom(pxPerMin)
 
   const selectedBlock = useMemo(
     () =>
@@ -92,7 +114,32 @@ export function Sequencer({
     ? laneKeyOf(sequencer.lanes[0])
     : 'default'
 
-  const overflowing = sequencer.endMinutes > targetEndMin
+  // Ctrl/Cmd + wheel zooms the timeline. Without the modifier the event is
+  // left alone so the lanes still scroll normally.
+  const mainRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) {
+      return
+    }
+    function onWheel(e: WheelEvent) {
+      if (!e.ctrlKey && !e.metaKey) {
+        return
+      }
+      // Must be a non-passive listener, or this is ignored and the browser
+      // zooms the whole page instead of the timeline.
+      e.preventDefault()
+      const factor = Math.exp(-e.deltaY / 300)
+      patch({
+        pxPerMin: Math.min(
+          MAX_PX_PER_MIN,
+          Math.max(MIN_PX_PER_MIN, pxPerMin * factor),
+        ),
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [patch, pxPerMin])
 
   const handleExport = useCallback(async () => {
     if (!activeSet || sequencer.blocks.length === 0) {
@@ -123,8 +170,11 @@ export function Sequencer({
 
   return (
     <div className="sq-body">
-      <div className="sq-toolbar">
-        <div className="sq-view-pills">
+      {/* A narrow sticky rail beside the lanes: the view switch and the run
+          window. Everything else the toolbar carried is gone — the tick
+          follows the zoom and the zoom follows ctrl/cmd + wheel. */}
+      <div className="sq-rail">
+        <div className="sq-rail-group">
           <button
             className={`ws-pill${view === 'lanes' ? ' ws-pill--on' : ''}`}
             aria-pressed={view === 'lanes'}
@@ -140,113 +190,85 @@ export function Sequencer({
             Tracklist
           </button>
         </div>
-        <span
-          className={`sq-total${overflowing ? ' sq-total--over' : ''}`}
-          role="status"
-        >
-          {sequencer.blocks.length} tracks · {formatHM(startMin)}→
-          {formatHM(sequencer.endMinutes)} of {formatHM(targetEndMin)}
-        </span>
+        <div className="sq-rail-group">
+          <label className="sq-time-field">
+            start
+            <input
+              aria-label="Set start time"
+              value={startDraft}
+              onChange={(e) => setStartDraft(e.target.value)}
+              onBlur={() => {
+                const parsed = parseTimeInput(startDraft)
+                if (parsed != null) {
+                  patch({ startMin: parsed })
+                  setStartDraft(formatHM(parsed))
+                } else {
+                  setStartDraft(formatHM(startMin))
+                }
+              }}
+            />
+          </label>
+          <label className="sq-time-field">
+            end
+            <input
+              aria-label="Set end time"
+              value={endDraft}
+              onChange={(e) => setEndDraft(e.target.value)}
+              onBlur={() => {
+                const parsed = parseTimeInput(endDraft)
+                if (parsed != null) {
+                  patch({ endMin: parsed })
+                  setEndDraft(formatHM(parsed))
+                } else {
+                  setEndDraft(formatHM(targetEndMin))
+                }
+              }}
+            />
+          </label>
+        </div>
         {view === 'list' && (
           <button className="ws-pill" onClick={handleExport}>
             Export
           </button>
         )}
-        <label className="sq-time-field">
-          start
-          <input
-            aria-label="Set start time"
-            value={startDraft}
-            onChange={(e) => setStartDraft(e.target.value)}
-            onBlur={() => {
-              const parsed = parseTimeInput(startDraft)
-              if (parsed != null) {
-                setStartMin(parsed)
-                setStartDraft(formatHM(parsed))
-              } else {
-                setStartDraft(formatHM(startMin))
-              }
-            }}
-          />
-        </label>
-        <label className="sq-time-field">
-          end
-          <input
-            aria-label="Set end time"
-            value={endDraft}
-            onChange={(e) => setEndDraft(e.target.value)}
-            onBlur={() => {
-              const parsed = parseTimeInput(endDraft)
-              if (parsed != null) {
-                setTargetEndMin(parsed)
-                setEndDraft(formatHM(parsed))
-              } else {
-                setEndDraft(formatHM(targetEndMin))
-              }
-            }}
-          />
-        </label>
-        <div className="sq-tick-pills">
-          {TICKS.map((t) => (
-            <button
-              key={t}
-              className={`ws-pill${tickMin === t ? ' ws-pill--on' : ''}`}
-              aria-pressed={tickMin === t}
-              onClick={() => setTickMin(t)}
-            >
-              {t}m
-            </button>
-          ))}
-        </div>
-        <button
-          className="ws-pill"
-          aria-label="Zoom out"
-          onClick={() => setPxPerMin((v) => Math.max(MIN_PX_PER_MIN, v / 1.4))}
-        >
-          −
-        </button>
-        <button
-          className="ws-pill"
-          aria-label="Zoom in"
-          onClick={() => setPxPerMin((v) => Math.min(MAX_PX_PER_MIN, v * 1.4))}
-        >
-          +
-        </button>
       </div>
-      {sequencer.saveError && (
-        <p className="table-status table-status--error">
-          {sequencer.saveError}
-        </p>
-      )}
-      {view === 'lanes' ? (
-        <SequencerLanes
-          blocks={sequencer.blocks}
-          benchLanes={sequencer.benchLanes}
-          startMin={startMin}
-          endMin={Math.max(targetEndMin, sequencer.endMinutes)}
-          tickMin={tickMin}
-          pxPerMin={pxPerMin}
-          selectedTrackId={selectedTrackId}
-          onSelect={setSelectedTrackId}
-          onPromote={onPromote}
-          onReorder={onReorder}
-          onBenchToLane={onBenchToLane}
-          onMoveBench={onMoveBench}
-          onSetBenchTime={sequencer.setBenchTime}
-          onAddLane={onAddLane}
-          onDeleteLane={onDeleteLane}
-        />
-      ) : (
-        <SequencerTracklist
-          blocks={sequencer.blocks}
-          overrides={sequencer.overrides}
-          selectedTrackId={selectedTrackId}
-          onSelect={setSelectedTrackId}
-          onBpmChange={(trackId, bpm) =>
-            sequencer.patchOverride(trackId, { bpmOv: bpm })
-          }
-        />
-      )}
+      <div className="sq-main" ref={mainRef}>
+        {sequencer.saveError && (
+          <p className="table-status table-status--error">
+            {sequencer.saveError}
+          </p>
+        )}
+        {view === 'lanes' ? (
+          <SequencerLanes
+            blocks={sequencer.blocks}
+            benchLanes={sequencer.benchLanes}
+            startMin={startMin}
+            endMin={Math.max(targetEndMin, sequencer.endMinutes)}
+            tickMin={tickMin}
+            pxPerMin={pxPerMin}
+            selectedTrackId={selectedTrackId}
+            onSelect={setSelectedTrackId}
+            onAddCommitted={onAddCommitted}
+            onPromote={onPromote}
+            onReorder={onReorder}
+            onBenchToLane={onBenchToLane}
+            onMoveBench={onMoveBench}
+            onSetBenchTime={sequencer.setBenchTime}
+            onAddLane={onAddLane}
+            onDeleteLane={onDeleteLane}
+          />
+        ) : (
+          <SequencerTracklist
+            blocks={sequencer.blocks}
+            overrides={sequencer.overrides}
+            selectedTrackId={selectedTrackId}
+            onSelect={setSelectedTrackId}
+            onBpmChange={(trackId, bpm) =>
+              sequencer.patchOverride(trackId, { bpmOv: bpm })
+            }
+          />
+        )}
+      </div>
       <SequencerFooter
         block={selectedBlock}
         benched={benchedSelection}

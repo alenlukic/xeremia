@@ -175,6 +175,18 @@ class SetSummary(BaseModel):
     updated_at: str
     pool_count: int = 0
     tracklist_count: int = 0
+    # Sequencer view state for this set; null until the DJ changes something.
+    sequencer: Optional[dict] = None
+
+
+class SetSequencerRequest(BaseModel):
+    """Sequencer view state. Every field is optional so a partial save works."""
+
+    start_minutes: Optional[float] = Field(default=None, ge=0, le=1440)
+    end_minutes: Optional[float] = Field(default=None, ge=0, le=2880)
+    tick_minutes: Optional[int] = Field(default=None, ge=1, le=240)
+    px_per_min: Optional[float] = Field(default=None, ge=0.5, le=200)
+    view: Optional[str] = Field(default=None, max_length=32)
 
 
 class SetCreateRequest(BaseModel):

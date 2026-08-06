@@ -19,6 +19,7 @@ import {
   useSequencer,
   writeBlockDrag,
 } from './useSequencer'
+import { TRACK_DRAG_MIME } from '../utils'
 import { DUR_MAX, DUR_MIN } from '../utils/harmonic'
 import type {
   PoolEntry,
@@ -109,10 +110,10 @@ describe('block drag payload', () => {
     }
   }
 
-  it('carries the source lane alongside the plain track id', () => {
+  it('carries the source lane alongside the standard track id', () => {
     const dt = dataTransfer()
     writeBlockDrag(dt, { trackId: 4, poolEntryId: 9, from: 7 })
-    expect(dt.getData('text/track')).toBe('4')
+    expect(dt.getData(TRACK_DRAG_MIME)).toBe('4')
     expect(readBlockDrag(dt)).toEqual({
       trackId: 4,
       poolEntryId: 9,
@@ -122,7 +123,7 @@ describe('block drag payload', () => {
 
   it('reads nothing from a plain track drag or a corrupt payload', () => {
     const plain = dataTransfer()
-    plain.setData('text/track', '4')
+    plain.setData(TRACK_DRAG_MIME, '4')
     expect(readBlockDrag(plain)).toBeNull()
 
     const broken = dataTransfer()

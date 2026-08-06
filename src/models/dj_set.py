@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Integer, Sequence, String, func
+from sqlalchemy import Column, DateTime, Integer, JSON, Sequence, String, func
 
 from src.db import metadata, Base
 
@@ -16,6 +16,10 @@ class DjSet(Base):
     )
 
     name = Column("name", String(256), nullable=False)
+    # Sequencer view state for this set: start/end minutes, ruler tick, zoom and
+    # the selected view. It belongs to the set rather than the device, because a
+    # set's start and end times are a property of the gig itself.
+    sequencer = Column("sequencer", JSON, nullable=True)
     created_at = Column(
         "created_at", DateTime, server_default=func.now(), nullable=False
     )

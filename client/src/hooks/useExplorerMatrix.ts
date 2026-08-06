@@ -66,7 +66,6 @@ export function useExplorerMatrix(pool: PoolEntry[]) {
   const [hover, setHover] = useState<
     (MatrixCell & { rect: { l: number; r: number; t: number } }) | null
   >(null)
-  const [legendOpen, setLegendOpen] = useState(false)
 
   const buckets = useMemo(() => bucketPool(pool), [pool])
 
@@ -133,7 +132,6 @@ export function useExplorerMatrix(pool: PoolEntry[]) {
     buckets,
     selected,
     hover,
-    legendOpen,
     inspectorOpen,
     /** Side of the grid the inspector opens on: the far half from the selection. */
     inspectorSide:
@@ -149,6 +147,5 @@ export function useExplorerMatrix(pool: PoolEntry[]) {
     clearSelection,
     closeInspector,
     setHover,
-    setLegendOpen,
   }
 }

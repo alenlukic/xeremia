@@ -114,3 +114,96 @@ export function FilterIcon({ size = 13 }: IconProps) {
     </svg>
   )
 }
+
+/** Outward arrows to a right edge — "widen by one column". */
+export function WidenIcon({ size = 13 }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M6.6 4.4 3.2 8l3.4 3.6M13 3.2v9.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3.4 8H10"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/** Inward arrow from a right edge — "narrow by one column". */
+export function NarrowIcon({ size = 13 }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3.4 4.4 6.8 8l-3.4 3.6M13 3.2v9.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6.6 8h3.8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/** Padlock — closed pins a widget's width, open leaves it free. */
+export function LockIcon({
+  size = 13,
+  open = false,
+}: IconProps & { open?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect
+        x="3.2"
+        y="7.2"
+        width="9.6"
+        height="6.4"
+        rx="1.3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path
+        d={
+          open
+            ? 'M5.6 7.2V5.2a2.4 2.4 0 0 1 4.8-.3'
+            : 'M5.6 7.2V5.2a2.4 2.4 0 0 1 4.8 0v2'
+        }
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}

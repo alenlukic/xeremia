@@ -289,7 +289,11 @@ export function App() {
   )
 
   const handleBenchToLane = useCallback(
-    async (trackId: number, lane: LaneKey, source: 'browse' | 'tracklist') => {
+    async (
+      trackId: number,
+      lane: LaneKey,
+      source: 'browse' | 'pool' | 'tracklist',
+    ) => {
       const subgroupId = await resolveLane(lane)
       if (subgroupId === null) {
         return
@@ -486,6 +490,7 @@ export function App() {
       node: (
         <Sequencer
           activeSet={setBuilder.activeSet}
+          onAddCommitted={setBuilder.insertIntoTracklist}
           onPromote={handlePromote}
           onReorder={setBuilder.reorderTracklist}
           onBenchToLane={handleBenchToLane}
@@ -502,9 +507,11 @@ export function App() {
     },
   }
 
-  const shellToggle = (
+  // The workspace shell carries this in its header; the legacy quadrants have
+  // no header, so there it stays a floating control.
+  const renderShellToggle = (className: string) => (
     <button
-      className="shell-toggle"
+      className={className}
       aria-pressed={layout.shell === 'legacy'}
       title={
         layout.shell === 'workspace'
@@ -519,21 +526,31 @@ export function App() {
     </button>
   )
 
+  // The workspace shell carries the gear in its header; the legacy quadrants
+  // have no header, so there it stays a floating control.
+  const renderAdminGear = (className: string) => (
+    <button
+      className={className}
+      aria-label="Admin"
+      title="Admin"
+      aria-haspopup="dialog"
+      aria-expanded={adminOpen}
+      onClick={() => setAdminOpen((prev) => !prev)}
+    >
+      <span className="admin-gear-glyph" aria-hidden="true">
+        {'\u2699\uFE0E'}
+      </span>
+    </button>
+  )
+
   const adminControls = (
     <>
-      {shellToggle}
-      <button
-        className="admin-gear"
-        aria-label="Admin"
-        title="Admin"
-        aria-haspopup="dialog"
-        aria-expanded={adminOpen}
-        onClick={() => setAdminOpen((prev) => !prev)}
-      >
-        <span className="admin-gear-glyph" aria-hidden="true">
-          {'\u2699\uFE0E'}
-        </span>
-      </button>
+      {layout.shell === 'legacy' && (
+        <>
+          {renderShellToggle('shell-toggle')}
+          {renderAdminGear('admin-gear')}
+        </>
+      )}
       {adminOpen && (
         <div
           className="admin-overlay"
@@ -580,7 +597,13 @@ export function App() {
         <WorkspaceGrid
           layout={layout}
           panels={workspacePanels}
-          headerExtras={setPicker}
+          headerExtras={
+            <>
+              {setPicker}
+              {renderAdminGear('ws-icon-btn ws-header-gear')}
+            </>
+          }
+          shellToggle={renderShellToggle('ws-pill')}
         />
         {setBuilder.error && (
           <div className="set-toast" role="alert">

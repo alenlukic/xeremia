@@ -9,7 +9,7 @@ import {
 } from '@testing-library/react'
 import { Sequencer } from './Sequencer'
 import { SequencerBlock } from './SequencerBlock'
-import { DETAIL_TIERS } from '../hooks/useSequencer'
+import { POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 import type {
   HydratedSet,
   PoolEntry,
@@ -98,6 +98,7 @@ function makeSet(
 
 function makeHandlers() {
   return {
+    onAddCommitted: vi.fn(),
     onPromote: vi.fn(),
     onReorder: vi.fn(),
     onBenchToLane: vi.fn(),
@@ -151,20 +152,38 @@ describe('Sequencer lanes', () => {
     )
   })
 
-  it('renders a sticky ruler whose ticks follow the tick pill', () => {
+  it('renders a sticky ruler whose ticks follow the zoom', () => {
     const { container } = renderSequencer(
       makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]),
     )
 
     const ruler = container.querySelector('.sq-ruler') as HTMLElement
-    expect(within(ruler).getByText('6:00')).toBeInTheDocument()
-    expect(within(ruler).getByText('6:15')).toBeInTheDocument()
+    const labels = () =>
+      Array.from(ruler.querySelectorAll('*'))
+        .map((n) => n.textContent ?? '')
+        .filter((t) => /^\d+:\d\d$/.test(t))
 
+    // The spacing is chosen from the zoom, so the labels never crowd.
+    const before = labels()
+    expect(before[0]).toBe('6:00')
+    expect(before.length).toBeGreaterThan(1)
+
+    // Ctrl + wheel is the zoom control now.
+    const zoom = () =>
+      Number(
+        (container.querySelector('.sq-lanes') as HTMLElement).dataset.pxPerMin,
+      )
+    const zoomBefore = zoom()
     act(() => {
-      screen.getByRole('button', { name: '30m' }).click()
+      fireEvent.wheel(container.querySelector('.sq-main') as HTMLElement, {
+        deltaY: 240,
+        ctrlKey: true,
+      })
     })
-    expect(within(ruler).queryByText('6:15')).toBeNull()
-    expect(within(ruler).getByText('6:30')).toBeInTheDocument()
+
+    // The zoom actually moved, and the ruler thinned out rather than crowding.
+    expect(zoom()).toBeLessThan(zoomBefore)
+    expect(labels().length).toBeLessThanOrEqual(before.length)
   })
 
   it('starts with exactly one alternative lane and no subgroups', () => {
@@ -181,7 +200,7 @@ describe('Sequencer lanes', () => {
     const { onAddLane } = renderSequencer(makeSet([]))
 
     act(() => {
-      screen.getByRole('button', { name: '+ lane' }).click()
+      screen.getByRole('button', { name: 'Add lane' }).click()
     })
 
     expect(onAddLane).toHaveBeenCalledTimes(1)
@@ -215,7 +234,7 @@ describe('Sequencer lanes', () => {
     const { onBenchToLane } = renderSequencer(makeSet([], [], subgroups))
 
     fireEvent.drop(screen.getByLabelText('Alt 2 lane'), {
-      dataTransfer: dataTransfer({ 'text/track': '12' }),
+      dataTransfer: dataTransfer({ [TRACK_DRAG_MIME]: '12' }),
     })
 
     expect(onBenchToLane).toHaveBeenCalledWith(12, 7, 'browse')
@@ -225,10 +244,33 @@ describe('Sequencer lanes', () => {
     const { onBenchToLane } = renderSequencer(makeSet([]))
 
     fireEvent.drop(screen.getByLabelText('Alt 1 lane'), {
-      dataTransfer: dataTransfer({ 'text/track': '12' }),
+      dataTransfer: dataTransfer({ [TRACK_DRAG_MIME]: '12' }),
     })
 
     expect(onBenchToLane).toHaveBeenCalledWith(12, 'default', 'browse')
+  })
+
+  it('adds a browse track dropped on the committed lane', () => {
+    const { onAddCommitted } = renderSequencer(makeSet([]))
+
+    fireEvent.drop(screen.getByLabelText('Committed lane'), {
+      dataTransfer: dataTransfer({ [TRACK_DRAG_MIME]: '12' }),
+    })
+
+    expect(onAddCommitted).toHaveBeenCalledWith(12, 0)
+  })
+
+  it('routes a pool row to its target alternative lane', () => {
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 2', display_order: 0 },
+    ]
+    const { onBenchToLane } = renderSequencer(makeSet([], [], subgroups))
+
+    fireEvent.drop(screen.getByLabelText('Alt 2 lane'), {
+      dataTransfer: dataTransfer({ [POOL_ROW_MIME]: '12' }),
+    })
+
+    expect(onBenchToLane).toHaveBeenCalledWith(12, 7, 'pool')
   })
 
   it('promotes a benched block from its promote control', () => {
@@ -250,8 +292,14 @@ describe('Sequencer block drag', () => {
   const second = makeTrack(2, '09A', 128)
 
   /** 6px per minute from 6:00, after the 88px lane label. */
+  /** Zoom is derived from the blocks now, so it is read back off the lanes. */
+  function pxPerMin() {
+    const lanes = document.querySelector('.sq-lanes') as HTMLElement
+    return Number(lanes.dataset.pxPerMin)
+  }
+
   function clientXFor(minute: number) {
-    return 88 + (minute - 360) * 6
+    return 88 + (minute - 360) * pxPerMin()
   }
 
   /**
@@ -362,7 +410,7 @@ describe('Sequencer block drag', () => {
   })
 })
 
-describe('SequencerBlock detail tiers', () => {
+describe('SequencerBlock sizing', () => {
   const track = makeTrack(1, '08A', 128)
 
   function renderBlock(width: number) {
@@ -381,37 +429,44 @@ describe('SequencerBlock detail tiers', () => {
     )
   }
 
-  it('drops detail progressively as the block narrows', () => {
-    const [range, bpm, title, code, dot] = DETAIL_TIERS
+  it('carries only the key and the BPM, with the title in the popover', () => {
+    const { container } = renderBlock(120)
 
-    const widest = renderBlock(range).container
-    expect(widest.textContent).toContain('6:00–6:05')
-    expect(widest.textContent).toContain('128.0')
-    expect(widest.textContent).toContain('Track 1')
-    widest.remove()
+    // Both sit on the tile at the same size, left-aligned under each other.
+    expect(container.querySelector('.sq-block-line')?.textContent).toContain(
+      '08A',
+    )
+    expect(container.querySelector('.sq-block-sub')?.textContent).toBe('128')
+    expect(
+      container.querySelector('.sq-block-line')?.textContent,
+    ).not.toContain('Track 1')
 
-    const noRange = renderBlock(bpm).container
-    expect(noRange.textContent).not.toContain('6:00–6:05')
-    expect(noRange.textContent).toContain('128.0')
-    noRange.remove()
+    // Nothing until hover, and then the full details, portalled out of the
+    // block so its overflow clipping cannot hide them.
+    expect(document.querySelector('.sq-block-pop')).toBeNull()
+    act(() => {
+      fireEvent.pointerEnter(
+        container.querySelector('.sq-block') as HTMLElement,
+      )
+    })
+    const popover = document.querySelector('.sq-block-pop') as HTMLElement
+    expect(popover.textContent).toContain('Track 1')
+    expect(popover.textContent).toContain('128 BPM')
+    expect(popover.closest('.sq-block')).toBeNull()
 
-    const noBpm = renderBlock(title).container
-    expect(noBpm.textContent).not.toContain('128.0')
-    expect(noBpm.textContent).toContain('Track 1')
-    noBpm.remove()
+    act(() => {
+      fireEvent.pointerLeave(
+        container.querySelector('.sq-block') as HTMLElement,
+      )
+    })
+    expect(document.querySelector('.sq-block-pop')).toBeNull()
+  })
 
-    const noTitle = renderBlock(code).container
-    expect(noTitle.textContent).not.toContain('Track 1')
-    expect(noTitle.textContent).toContain('08A')
-    noTitle.remove()
-
-    const dotOnly = renderBlock(dot).container
-    expect(dotOnly.textContent).not.toContain('08A')
-    expect(dotOnly.querySelector('.key-dot')).not.toBeNull()
-    dotOnly.remove()
-
-    const bare = renderBlock(dot - 1).container
-    expect(bare.querySelector('.key-dot')).toBeNull()
+  it('renders at the width the zoom gives it, however narrow', () => {
+    // No artificial floor: a sliver stays a sliver and simply clips.
+    const { container } = renderBlock(9)
+    const block = container.querySelector('.sq-block') as HTMLElement
+    expect(block.style.width).toBe('9px')
   })
 
   it('marks a benched block and offers the promote control', () => {
@@ -538,41 +593,6 @@ describe('Sequencer tracklist view', () => {
       [1, 2],
       'Night Set',
     )
-  })
-})
-
-describe('Sequencer header chip', () => {
-  it('reports the run range and turns red past the target end', () => {
-    const tracklist = Array.from({ length: 3 }, (_, i) =>
-      makeEntry(makeTrack(i + 1, '08A', 128), i),
-    )
-    renderSequencer(makeSet(tracklist))
-
-    const chip = screen.getByRole('status')
-    expect(chip.textContent).toContain('3 tracks')
-    expect(chip.textContent).toContain('6:00→')
-    expect(chip.className).not.toContain('sq-total--over')
-
-    act(() => {
-      const end = screen.getByLabelText('Set end time')
-      fireEvent.change(end, { target: { value: '6:05' } })
-      fireEvent.blur(end)
-    })
-
-    expect(screen.getByRole('status').className).toContain('sq-total--over')
-  })
-
-  it('accepts 390, 6:30 and 6h30 as the same start time', () => {
-    renderSequencer(makeSet([]))
-    const start = screen.getByLabelText('Set start time') as HTMLInputElement
-
-    for (const raw of ['390', '6:30', '6h30']) {
-      act(() => {
-        fireEvent.change(start, { target: { value: raw } })
-        fireEvent.blur(start)
-      })
-      expect(start.value).toBe('6:30')
-    }
   })
 })
 

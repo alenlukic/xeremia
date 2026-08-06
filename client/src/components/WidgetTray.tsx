@@ -2,43 +2,43 @@ import { useRef, useState } from 'react'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 import type { WidgetId } from '../hooks/useWorkspaceLayout'
 
-// The dashed button an empty grid cell shows in edit mode. Its tray lists only
-// the widgets that are currently off the grid.
+// The header control that puts a removed widget back on the canvas. It lists
+// only the widgets that are currently off the grid.
 
 interface Props {
-  cell: { r: 0 | 1; c: 0 | 1 | 2 }
   available: WidgetId[]
   labels: Record<WidgetId, string>
-  onAdd: (id: WidgetId, cell: { r: 0 | 1; c: 0 | 1 | 2 }) => void
+  onAdd: (id: WidgetId) => void
 }
 
-export function WidgetTray({ cell, available, labels, onAdd }: Props) {
+export function WidgetTray({ available, labels, onAdd }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
   useDismissOnOutsideClick(ref, open, () => setOpen(false))
 
   return (
-    <div className="wt-slot" ref={ref}>
+    <div className="ws-picker" ref={ref}>
       <button
-        className="wt-add"
-        aria-label={`Add widget to row ${cell.r + 1} column ${cell.c + 1}`}
+        className={`ws-pill ws-picker-button${open ? ' ws-pill--on' : ''}`}
+        aria-label="Add widget"
+        aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        + add widget
+        <span className="ws-picker-value">Add widget</span>
+        <span className="ws-picker-caret" aria-hidden="true">
+          ▾
+        </span>
       </button>
       {open && (
-        <div className="wt-tray" role="menu">
-          {available.length === 0 && (
-            <span className="wt-empty">every widget is on the grid</span>
-          )}
+        <div className="ws-picker-menu" role="menu">
           {available.map((id) => (
             <button
               key={id}
-              className="ws-pill"
+              className="ws-picker-item"
               role="menuitem"
               onClick={() => {
-                onAdd(id, cell)
+                onAdd(id)
                 setOpen(false)
               }}
             >

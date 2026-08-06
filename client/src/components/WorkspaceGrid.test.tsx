@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act, fireEvent, within } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import { WorkspaceGrid } from './WorkspaceGrid'
 import type { WorkspacePanel } from './WorkspaceGrid'
 import {
-  LAYOUT_PRESETS,
+  PRESET_NAMES,
+  UNIT_PX,
+  overlaps,
+  presetPlace,
   useWorkspaceLayout,
   type WidgetId,
   type WorkspaceLayout,
@@ -22,6 +25,10 @@ const PANELS: Partial<Record<WidgetId, WorkspacePanel>> = {
   sequencer: { node: <p>sequencer body</p> },
 }
 
+// The canvas is 1200x800, so it measures 150x100 units of 8px.
+const UNIT = UNIT_PX
+const BOUNDS = { cols: 150, rows: 100 }
+
 // The grid is a pure view over the layout hook, so the tests drive the real
 // hook through a host component and assert what the grid renders.
 function Host({ onLayout }: { onLayout?: (l: WorkspaceLayout) => void }) {
@@ -35,6 +42,12 @@ async function renderGrid() {
   await act(async () => {
     render(<Host onLayout={(l) => (latest = l)} />)
   })
+  const canvas = document.querySelector('.ws-canvas') as HTMLElement
+  Object.defineProperty(canvas, 'clientWidth', { value: 1200 })
+  Object.defineProperty(canvas, 'clientHeight', { value: 800 })
+  await act(async () => {
+    latest!.setBounds(BOUNDS)
+  })
   return () => latest as unknown as WorkspaceLayout
 }
 
@@ -42,8 +55,38 @@ function panel(label: string): HTMLElement {
   return screen.getByLabelText(label)
 }
 
-function gridArea(label: string): string {
-  return panel(label).style.gridArea
+/** The rectangle a panel occupies, in units, read off its inline geometry. */
+function rect(label: string) {
+  const el = panel(label)
+  const px = (value: string) => Number(value.replace('px', '')) / UNIT
+  return {
+    x: px(el.style.left),
+    y: px(el.style.top),
+    w: px(el.style.width),
+    h: px(el.style.height),
+  }
+}
+
+/** Drag an element by whole grid units via the pointer sequence the grid uses. */
+async function drag(
+  el: HTMLElement,
+  units: { dx?: number; dy?: number; px?: { dx?: number; dy?: number } },
+) {
+  const dx = units.px ? (units.px.dx ?? 0) : (units.dx ?? 0) * UNIT
+  const dy = units.px ? (units.px.dy ?? 0) : (units.dy ?? 0) * UNIT
+  await act(async () => {
+    fireEvent.pointerDown(el, { clientX: 400, clientY: 400, button: 0 })
+  })
+  await act(async () => {
+    fireEvent.pointerMove(window, { clientX: 400 + dx, clientY: 400 + dy })
+  })
+  await act(async () => {
+    fireEvent.pointerUp(window)
+  })
+}
+
+function handle(label: string, edge: string): HTMLElement {
+  return screen.getByLabelText(`Resize ${label} ${edge} edge`)
 }
 
 beforeEach(() => {
@@ -51,137 +94,220 @@ beforeEach(() => {
 })
 
 describe('WorkspaceGrid placement', () => {
-  it('renders all five widgets at their row, column and span', async () => {
+  it('lays every widget out at its preset rectangle', async () => {
     await renderGrid()
+    const expected = presetPlace('Explorer sandbox', BOUNDS)
 
-    // The default preset spans Explorer across two columns.
-    expect(gridArea('Explorer')).toBe('1 / 1 / 2 / 3')
-    expect(gridArea('Browser')).toBe('1 / 3 / 2 / 4')
-    expect(gridArea('Sequencer')).toBe('2 / 1 / 3 / 2')
-    expect(gridArea('Pool')).toBe('2 / 2 / 3 / 3')
-    expect(gridArea('Matches')).toBe('2 / 3 / 3 / 4')
-    expect(within(panel('Browser')).getByText('browser body')).toBeVisible()
+    expect(screen.getAllByRole('region')).toHaveLength(5)
+    expect(rect('Explorer')).toEqual(expected.explorer)
+    expect(rect('Browser')).toEqual(expected.browser)
+    expect(rect('Sequencer')).toEqual(expected.sequencer)
   })
 
-  it('places every widget in every preset without an overlap', async () => {
-    for (const place of Object.values(LAYOUT_PRESETS)) {
-      const cells = new Set<string>()
-      for (const id of Object.keys(place) as WidgetId[]) {
-        const p = place[id]!
-        for (let i = 0; i < p.span; i++) {
-          cells.add(`${p.r}:${p.c + i}`)
+  it('places every widget in every preset without an overlap', () => {
+    for (const name of PRESET_NAMES) {
+      const place = presetPlace(name, BOUNDS)
+      const seen = Object.values(place)
+      expect(seen, name).toHaveLength(5)
+      for (let i = 0; i < seen.length; i++) {
+        for (let j = i + 1; j < seen.length; j++) {
+          expect(overlaps(seen[i], seen[j]), `${name} overlaps`).toBe(false)
         }
       }
-      expect(Object.keys(place).sort()).toEqual([
-        'browser',
-        'explorer',
-        'matches',
-        'pool',
-        'sequencer',
-      ])
-      expect(cells.size).toBe(6)
     }
   })
 
-  it('leaves a removed widget off the grid', async () => {
+  it('applies a preset chosen from the picker', async () => {
     const layout = await renderGrid()
 
     await act(async () => {
-      layout().removeWidget('pool')
+      screen.getByRole('button', { name: 'Layout preset' }).click()
+    })
+    await act(async () => {
+      screen.getByRole('menuitemradio', { name: 'Pool curation' }).click()
     })
 
-    expect(screen.queryByLabelText('Pool')).toBeNull()
+    expect(layout().place).toEqual(presetPlace('Pool curation', BOUNDS))
+    expect(rect('Pool')).toEqual(presetPlace('Pool curation', BOUNDS).pool)
   })
 
-  it('applies a preset and resets the fr allocations', async () => {
+  it('shows Custom in the picker after an edit and saves it as a preset', async () => {
     const layout = await renderGrid()
 
-    await act(async () => {
-      layout().resize('col', 1, [1, 1, 1], 0.25)
-    })
-    expect(layout().cols).not.toEqual([1, 1, 1])
+    await drag(handle('Browser', 'left'), { dx: -1 })
+    expect(
+      screen.getByRole('button', { name: 'Layout preset' }),
+    ).toHaveTextContent('Custom')
 
     await act(async () => {
-      screen.getByRole('button', { name: 'Pool curation' }).click()
+      screen.getByRole('button', { name: 'Layout preset' }).click()
     })
-
-    expect(layout().place).toEqual(LAYOUT_PRESETS['Pool curation'])
-    expect(layout().cols).toEqual([1, 1, 1])
-    expect(layout().rows).toEqual([1, 1])
-    expect(gridArea('Pool')).toBe('1 / 1 / 2 / 3')
-  })
-
-  it('shows the Custom pill after an edit and saves it as a named preset', async () => {
-    const layout = await renderGrid()
-
     await act(async () => {
-      layout().swapWidgets('browser', 'matches')
-    })
-    expect(screen.getByRole('button', { name: 'Custom' })).toBeDisabled()
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Save as preset' }).click()
+      screen.getByRole('menuitem', { name: /Save Custom as preset/ }).click()
     })
 
-    expect(screen.getByRole('button', { name: 'Custom 1' })).toBeInTheDocument()
     expect(layout().presets['Custom 1']).toEqual(layout().place)
+    expect(layout().preset).toBe('Custom 1')
   })
 })
 
-describe('WorkspaceGrid edit mode', () => {
-  async function enterEditMode() {
-    const layout = await renderGrid()
-    await act(async () => {
-      screen.getByRole('button', { name: 'Edit layout' }).click()
-    })
-    return layout
-  }
-
-  it('hides the edit controls until edit mode is on', async () => {
+describe('WorkspaceGrid resizing', () => {
+  it('offers a handle on every edge and corner', async () => {
     await renderGrid()
 
-    expect(screen.queryByLabelText('Move Browser')).toBeNull()
-    expect(screen.queryByLabelText('Remove Browser')).toBeNull()
-  })
-
-  it('swaps two widgets through a grip drag', async () => {
-    await enterEditMode()
-    const before = gridArea('Browser')
-    const target = gridArea('Matches')
-
-    const data = new Map<string, string>()
-    const dataTransfer = {
-      setData: (k: string, v: string) => data.set(k, v),
-      getData: (k: string) => data.get(k) ?? '',
+    for (const edge of [
+      'top',
+      'bottom',
+      'left',
+      'right',
+      'top-left',
+      'top-right',
+      'bottom-left',
+      'bottom-right',
+    ]) {
+      expect(handle('Browser', edge)).toBeInTheDocument()
     }
-    await act(async () => {
-      fireEvent.dragStart(screen.getByLabelText('Move Browser'), {
-        dataTransfer,
-      })
-      fireEvent.drop(panel('Matches'), { dataTransfer })
-    })
-
-    expect(gridArea('Browser')).toBe(target)
-    expect(gridArea('Matches')).toBe(before)
   })
 
-  it('changes a widget span and re-seats what it covers', async () => {
-    await enterEditMode()
-    expect(gridArea('Browser')).toBe('1 / 3 / 2 / 4')
+  it('snaps an edge drag to the nearest 8px unit', async () => {
+    await renderGrid()
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+    expect(rect('Browser')).toEqual(P.browser)
 
-    await act(async () => {
-      screen.getByLabelText('Set Browser span to 2').click()
+    // Six pixels is past the halfway mark of an 8px unit, so it snaps out one.
+    await drag(handle('Browser', 'left'), { px: { dx: 6 } })
+
+    expect(rect('Browser')).toEqual({
+      ...P.browser!,
+      x: P.browser!.x + 1,
+      w: P.browser!.w - 1,
     })
-
-    // A span of 2 cannot start in the last column, so it shifts left. The
-    // Explorer gives up the column it lost and keeps the free one.
-    expect(gridArea('Browser')).toBe('1 / 2 / 2 / 4')
-    expect(gridArea('Explorer')).toBe('1 / 1 / 2 / 2')
-    expect(screen.getAllByRole('region')).toHaveLength(5)
   })
 
-  it('removes a widget and offers it again from an empty cell tray', async () => {
-    await enterEditMode()
+  it('ignores a drag that has not reached the halfway mark', async () => {
+    await renderGrid()
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+
+    // Three pixels is under half a unit, so nothing moves.
+    await drag(handle('Browser', 'left'), { px: { dx: 3 } })
+
+    expect(rect('Browser')).toEqual(P.browser)
+  })
+
+  it('stops a left edge against the widget beside it', async () => {
+    await renderGrid()
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+
+    // Explorer ends where Browser begins, so Browser cannot grow leftwards.
+    await drag(handle('Browser', 'left'), { dx: -4 })
+
+    expect(rect('Browser')).toEqual(P.browser)
+    expect(rect('Explorer')).toEqual(P.explorer)
+  })
+
+  it('resizes the bottom edge without touching any other widget', async () => {
+    await renderGrid()
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+    const before = rect('Sequencer')
+
+    await drag(handle('Explorer', 'bottom'), { dy: -4 })
+
+    expect(rect('Explorer')).toEqual({
+      ...P.explorer!,
+      h: P.explorer!.h - 4,
+    })
+    // The widget below keeps the size it had: rectangles are independent.
+    expect(rect('Sequencer')).toEqual(before)
+  })
+
+  it('stops an edge against the neighbour instead of overlapping it', async () => {
+    await renderGrid()
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+
+    // Explorer's right edge would run straight through Browser.
+    await drag(handle('Explorer', 'right'), { dx: 20 })
+
+    expect(rect('Explorer')).toEqual(P.explorer)
+    expect(rect('Browser')).toEqual(P.browser)
+  })
+
+  it('keeps a widget inside the canvas', async () => {
+    await renderGrid()
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+
+    await drag(handle('Browser', 'right'), { dx: 200 })
+
+    expect(rect('Browser')).toEqual(P.browser)
+  })
+})
+
+describe('WorkspaceGrid moving', () => {
+  it('moves a widget by dragging its header into free space', async () => {
+    const layout = await renderGrid()
+    await act(async () => {
+      layout().removeWidget('matches')
+    })
+
+    // Matches is gone, so the bottom-right block is free for Browser.
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+    await drag(panel('Browser').querySelector('.wf-bar') as HTMLElement, {
+      dy: P.matches!.y,
+    })
+
+    expect(rect('Browser')).toEqual({ ...P.browser!, y: P.matches!.y })
+  })
+
+  it('refuses a move that would land on another widget', async () => {
+    await renderGrid()
+
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+    await drag(panel('Browser').querySelector('.wf-bar') as HTMLElement, {
+      dx: -4,
+    })
+
+    expect(rect('Browser')).toEqual(P.browser)
+  })
+})
+
+describe('WorkspaceGrid widget controls', () => {
+  it('locks a widget so it cannot be resized or moved', async () => {
+    await renderGrid()
+
+    await act(async () => {
+      screen.getByLabelText('Lock Browser').click()
+    })
+
+    // A locked widget offers no handles at all.
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+    expect(screen.queryByLabelText('Resize Browser left edge')).toBeNull()
+    await drag(panel('Browser').querySelector('.wf-bar') as HTMLElement, {
+      dy: 4,
+    })
+    expect(rect('Browser')).toEqual(P.browser)
+
+    await act(async () => {
+      screen.getByLabelText('Unlock Browser').click()
+    })
+    expect(
+      screen.getByLabelText('Resize Browser left edge'),
+    ).toBeInTheDocument()
+  })
+
+  it('never lets one widget lock block resizing another', async () => {
+    await renderGrid()
+
+    await act(async () => {
+      screen.getByLabelText('Lock Browser').click()
+    })
+    const P = presetPlace('Explorer sandbox', BOUNDS)
+    await drag(handle('Explorer', 'bottom'), { dy: -4 })
+
+    expect(rect('Explorer')).toEqual({ ...P.explorer!, h: P.explorer!.h - 4 })
+    expect(rect('Browser')).toEqual(P.browser)
+  })
+
+  it('removes a widget and offers it again from the header tray', async () => {
+    await renderGrid()
 
     await act(async () => {
       screen.getByLabelText('Remove Matches').click()
@@ -189,18 +315,18 @@ describe('WorkspaceGrid edit mode', () => {
     expect(screen.queryByLabelText('Matches')).toBeNull()
 
     await act(async () => {
-      screen.getByLabelText('Add widget to row 2 column 3').click()
+      screen.getByRole('button', { name: 'Add widget' }).click()
     })
-    const tray = screen.getByRole('menu')
-    expect(
-      within(tray)
-        .getAllByRole('menuitem')
-        .map((b) => b.textContent),
-    ).toEqual(['Matches'])
-
     await act(async () => {
-      within(tray).getByRole('menuitem', { name: 'Matches' }).click()
+      screen.getByRole('menuitem', { name: 'Matches' }).click()
     })
-    expect(gridArea('Matches')).toBe('2 / 3 / 3 / 4')
+
+    expect(screen.getByLabelText('Matches')).toBeInTheDocument()
+  })
+
+  it('hides the add control when every widget is on the canvas', async () => {
+    await renderGrid()
+
+    expect(screen.queryByRole('button', { name: 'Add widget' })).toBeNull()
   })
 })

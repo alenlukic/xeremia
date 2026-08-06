@@ -3,6 +3,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { ExplorerMatrix } from './ExplorerMatrix'
 import { CELL_WIDTH_PX } from '../hooks/useExplorerMatrix'
 import { CAMELOT_ROWS, MATRIX_COLS, colForBpm } from '../utils/harmonic'
+import { TRACK_DRAG_MIME } from '../utils'
 import type { PoolEntry, Track } from '../types'
 
 function makeTrack(id: number, camelot: string, bpm: number): Track {
@@ -95,9 +96,12 @@ describe('ExplorerMatrix cohorts', () => {
     const onDropTrack = vi.fn()
     const { container } = renderMatrix([], onDropTrack)
 
-    const data = new Map([['text/track', '42']])
+    const data = new Map([[TRACK_DRAG_MIME, '42']])
     fireEvent.drop(container.querySelector('.xm-body') as HTMLElement, {
-      dataTransfer: { getData: (k: string) => data.get(k) ?? '' },
+      dataTransfer: {
+        types: [TRACK_DRAG_MIME],
+        getData: (k: string) => data.get(k) ?? '',
+      },
     })
 
     expect(onDropTrack).toHaveBeenCalledWith(42)
@@ -108,7 +112,7 @@ describe('ExplorerMatrix cohorts', () => {
     const { container } = renderMatrix([], onDropTrack)
 
     fireEvent.drop(container.querySelector('.xm-body') as HTMLElement, {
-      dataTransfer: { getData: () => '' },
+      dataTransfer: { types: [], getData: () => '' },
     })
 
     expect(onDropTrack).not.toHaveBeenCalled()
@@ -200,16 +204,10 @@ describe('ExplorerMatrix tooltip and legend', () => {
     expect(relTip.querySelectorAll('.xm-tip-move')).toHaveLength(2)
   })
 
-  it('toggles a legend with five rank swatches and the two pitch-effort swatches', () => {
+  it('shows no legend, keeping the row it used for the matrix', () => {
     renderMatrix([])
 
+    expect(screen.queryByRole('button', { name: 'Legend' })).toBeNull()
     expect(screen.queryByLabelText('Harmony legend')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Legend' }))
-
-    const legend = screen.getByLabelText('Harmony legend')
-    const swatches = legend.querySelectorAll('.xm-swatch')
-    expect(swatches).toHaveLength(7)
-    expect((swatches[5] as HTMLElement).style.borderStyle).toBe('dashed')
-    expect((swatches[6] as HTMLElement).style.borderStyle).toBe('dotted')
   })
 })

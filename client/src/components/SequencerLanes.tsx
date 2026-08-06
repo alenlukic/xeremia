@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { SequencerBlock } from './SequencerBlock'
 import {
+  BLOCK_DRAG_MIME,
   laneKeyOf,
   readBlockDrag,
   snapMinutes,
@@ -16,12 +17,41 @@ import { pairTracks } from '../utils/harmonic'
 import type { PairResult } from '../utils/harmonic'
 import { formatHM } from '../utils/time'
 import type { Track } from '../types'
+import { POOL_ROW_MIME, TRACKLIST_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 
 // Lanes view: a sticky ruler, the committed spine that packs end to end, and
 // one lane per pool subgroup. A set without a subgroup shows the virtual
 // default lane instead, and the first drop on it creates the subgroup.
 
 const LANE_LABEL_PX = 88
+
+type ExternalDropSource = 'browse' | 'pool' | 'tracklist'
+
+const EXTERNAL_TRACK_MIMES: Array<[string, ExternalDropSource]> = [
+  [TRACK_DRAG_MIME, 'browse'],
+  [POOL_ROW_MIME, 'pool'],
+  [TRACKLIST_ROW_MIME, 'tracklist'],
+]
+
+function readExternalTrackDrag(
+  dataTransfer: DataTransfer,
+): { trackId: number; source: ExternalDropSource } | null {
+  for (const [mime, source] of EXTERNAL_TRACK_MIMES) {
+    const raw = dataTransfer.getData(mime)
+    const trackId = Number(raw)
+    if (raw && Number.isInteger(trackId)) {
+      return { trackId, source }
+    }
+  }
+  return null
+}
+
+function hasSupportedTrackDrag(dataTransfer: DataTransfer): boolean {
+  const types = Array.from(dataTransfer.types ?? [])
+  return [BLOCK_DRAG_MIME, ...EXTERNAL_TRACK_MIMES.map(([mime]) => mime)].some(
+    (mime) => types.includes(mime),
+  )
+}
 
 export interface BenchLane {
   lane: SequencerLane
@@ -37,12 +67,13 @@ interface Props {
   pxPerMin: number
   selectedTrackId: number | null
   onSelect: (trackId: number | null) => void
+  onAddCommitted: (trackId: number, position: number) => void
   onPromote: (trackId: number, position: number) => void
   onReorder: (trackId: number, position: number) => void
   onBenchToLane: (
     trackId: number,
     lane: LaneKey,
-    source: 'browse' | 'tracklist',
+    source: ExternalDropSource,
   ) => void
   onMoveBench: (poolEntryId: number, from: number, to: number) => void
   onSetBenchTime: (trackId: number, minutes: number) => void
@@ -59,6 +90,7 @@ export function SequencerLanes({
   pxPerMin,
   selectedTrackId,
   onSelect,
+  onAddCommitted,
   onPromote,
   onReorder,
   onBenchToLane,
@@ -147,14 +179,24 @@ export function SequencerLanes({
   const handleCommittedDrop = useCallback(
     (e: React.DragEvent) => {
       const payload = readBlockDrag(e.dataTransfer)
-      const rawTrack = e.dataTransfer.getData('text/track')
-      if (!payload && rawTrack === '') {
+      const external = payload ? null : readExternalTrackDrag(e.dataTransfer)
+      if (!payload && !external) {
         return
       }
       e.preventDefault()
       const minute = minuteAt(e)
+      if (external) {
+        const position = positionAt(minute, null)
+        if (external.source === 'browse') {
+          onAddCommitted(external.trackId, position)
+        } else if (external.source === 'pool') {
+          onPromote(external.trackId, position)
+        } else {
+          onReorder(external.trackId, position)
+        }
+        return
+      }
       if (!payload) {
-        onPromote(Number(rawTrack), positionAt(minute, null))
         return
       }
       const position = positionAt(minute, payload.trackId)
@@ -169,25 +211,31 @@ export function SequencerLanes({
       }
       onPromote(payload.trackId, position)
     },
-    [blocks, minuteAt, onPromote, onReorder, positionAt],
+    [blocks, minuteAt, onAddCommitted, onPromote, onReorder, positionAt],
   )
 
   const handleLaneDrop = useCallback(
     (target: LaneKey) => (e: React.DragEvent) => {
       const payload = readBlockDrag(e.dataTransfer)
-      const rawTrack = e.dataTransfer.getData('text/track')
-      if (!payload && rawTrack === '') {
+      const external = payload ? null : readExternalTrackDrag(e.dataTransfer)
+      if (!payload && !external) {
         return
       }
       e.preventDefault()
       const minute = minuteAt(e)
-      const trackId = payload ? payload.trackId : Number(rawTrack)
-      if (minute != null) {
-        onSetBenchTime(trackId, minute)
+      if (external) {
+        if (minute != null) {
+          onSetBenchTime(external.trackId, minute)
+        }
+        onBenchToLane(external.trackId, target, external.source)
+        return
       }
       if (!payload) {
-        onBenchToLane(trackId, target, 'browse')
         return
+      }
+      const trackId = payload.trackId
+      if (minute != null) {
+        onSetBenchTime(trackId, minute)
       }
       if (payload.from === 'committed') {
         onBenchToLane(payload.trackId, target, 'tracklist')
@@ -206,7 +254,7 @@ export function SequencerLanes({
   )
 
   return (
-    <div className="sq-lanes">
+    <div className="sq-lanes" data-px-per-min={pxPerMin}>
       <div className="sq-ruler" style={{ width: width + LANE_LABEL_PX }}>
         {ticks.map((m) => (
           <span
@@ -222,7 +270,11 @@ export function SequencerLanes({
         className="sq-lane sq-lane--committed"
         style={{ width: width + LANE_LABEL_PX }}
         aria-label="Committed lane"
-        onDragOver={(e) => e.preventDefault()}
+        onDragOver={(e) => {
+          if (hasSupportedTrackDrag(e.dataTransfer)) {
+            e.preventDefault()
+          }
+        }}
         onDrop={handleCommittedDrop}
       >
         <span className="sq-lane-label">Committed</span>
@@ -266,7 +318,11 @@ export function SequencerLanes({
             style={{ width: width + LANE_LABEL_PX }}
             data-lane={key}
             aria-label={`${lane.name} lane`}
-            onDragOver={(e) => e.preventDefault()}
+            onDragOver={(e) => {
+              if (hasSupportedTrackDrag(e.dataTransfer)) {
+                e.preventDefault()
+              }
+            }}
             onDrop={handleLaneDrop(key)}
           >
             <span className="sq-lane-label">{lane.name}</span>
@@ -314,8 +370,13 @@ export function SequencerLanes({
         )
       })}
       <div className="sq-lane-actions">
-        <button className="ws-pill sq-add-lane" onClick={onAddLane}>
-          + lane
+        <button
+          className="sq-add-lane"
+          aria-label="Add lane"
+          title="Add an alternative lane"
+          onClick={onAddLane}
+        >
+          +
         </button>
       </div>
     </div>

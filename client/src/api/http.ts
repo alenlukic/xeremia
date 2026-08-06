@@ -6,6 +6,7 @@ import type {
   CacheStats,
   WeightsResponse,
   TrackTraitEntry,
+  SequencerSettings,
   SetSummary,
   HydratedSet,
   PoolSubgroup,
@@ -196,6 +197,22 @@ export async function updateSet(
   })
   if (!res.ok) {
     throw new Error(`Failed to update set: ${res.status}`)
+  }
+  return res.json()
+}
+
+/** Sequencer view state is per set, so nothing about it is ephemeral. */
+export async function updateSetSequencer(
+  setId: number,
+  settings: SequencerSettings,
+): Promise<SetSummary> {
+  const res = await fetch(`/api/sets/${setId}/sequencer`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+  if (!res.ok) {
+    throw new Error(`Failed to save sequencer settings: ${res.status}`)
   }
   return res.json()
 }

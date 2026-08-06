@@ -1,13 +1,14 @@
+import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { PromoteIcon } from './table/icons'
-import { detailFor } from '../hooks/useSequencer'
 import { formatHM, formatMinutes } from '../utils/time'
 import { harmonyPaint, keyDotColor } from '../utils/harmonic'
 import type { PairResult } from '../utils/harmonic'
 import type { Track } from '../types'
 
-// One block on a lane. Detail drops out progressively as the block narrows, and
-// the auto-scale factor never appears here — only in the footer and the
-// Tracklist Length column.
+// One block on a lane. The tile carries only a key over a BPM; the full track
+// details live in a hover popover. The auto-scale factor never appears here —
+// only in the footer and the Tracklist Length column.
 
 const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const
 
@@ -49,7 +50,6 @@ export function SequencerBlock({
   onPromote,
   onDragStart,
 }: Props) {
-  const detail = detailFor(width)
   const paint = relation && relation.p >= 0 ? harmonyPaint(relation.p) : null
   const style: React.CSSProperties = {
     left,
@@ -64,22 +64,18 @@ export function SequencerBlock({
     style.opacity = 0.35
   }
 
-  const label = [
-    detail.showCode ? track?.camelot_code : null,
-    detail.showTitle ? track?.title : null,
-  ]
-    .filter(Boolean)
-    .join(' ')
-
-  const sub = [
-    detail.showBpm && bpm != null ? `${bpm.toFixed(1)}` : null,
+  // The tile is far too narrow for a title at any useful zoom, so the details
+  // live in a popover. It is rendered through a portal because the block clips
+  // its own overflow to keep the tile copy tidy, which would otherwise hide it.
+  const [pop, setPop] = useState<{ x: number; y: number } | null>(null)
+  const meta = [
+    track?.camelot_code,
+    bpm != null ? `${Math.round(bpm)} BPM` : null,
     // A trailing tilde marks a length the fallback produced.
-    detail.showBpm && playMinutes != null
+    playMinutes != null
       ? `${formatMinutes(playMinutes)}m${fallback ? '~' : ''}`
       : null,
-    detail.showRange && start != null && end != null
-      ? `${formatHM(start)}–${formatHM(end)}`
-      : null,
+    start != null && end != null ? `${formatHM(start)}–${formatHM(end)}` : null,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -106,6 +102,11 @@ export function SequencerBlock({
           ? 'No measured duration; the block uses the 5:00 fallback length.'
           : undefined
       }
+      onPointerEnter={(e) => {
+        const r = e.currentTarget.getBoundingClientRect()
+        setPop({ x: r.left + r.width / 2, y: r.top })
+      }}
+      onPointerLeave={() => setPop(null)}
       onClick={onSelect}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -117,18 +118,29 @@ export function SequencerBlock({
       onDragStart={onDragStart}
     >
       <span className="sq-block-line">
-        {detail.showDot && (
-          <span
-            className="key-dot"
-            aria-hidden="true"
-            style={{
-              background: keyDotColor(track?.camelot_code) ?? 'transparent',
-            }}
-          />
-        )}
-        {label}
+        <span
+          className="key-dot"
+          aria-hidden="true"
+          style={{
+            background: keyDotColor(track?.camelot_code) ?? 'transparent',
+          }}
+        />
+        {track?.camelot_code}
       </span>
-      {sub && <span className="sq-block-sub">{sub}</span>}
+      {bpm != null && <span className="sq-block-sub">{Math.round(bpm)}</span>}
+      {pop &&
+        track &&
+        createPortal(
+          <div
+            className="sq-block-pop"
+            role="tooltip"
+            style={{ left: pop.x, top: pop.y }}
+          >
+            <span className="sq-block-pop-title">{track.title}</span>
+            {meta && <span className="sq-block-pop-meta">{meta}</span>}
+          </div>,
+          document.body,
+        )}
       {benched && onPromote && (
         <button
           className="sq-promote"

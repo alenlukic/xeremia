@@ -132,6 +132,15 @@ export interface DjSet {
 
 // --- Persisted set workspace types ---
 
+/** Sequencer view state, stored on the set so it survives a reload. */
+export interface SequencerSettings {
+  start_minutes?: number
+  end_minutes?: number
+  tick_minutes?: number
+  px_per_min?: number
+  view?: string
+}
+
 export interface SetSummary {
   id: number
   name: string
@@ -139,6 +148,7 @@ export interface SetSummary {
   updated_at: string
   pool_count: number
   tracklist_count: number
+  sequencer?: SequencerSettings | null
 }
 
 export interface PoolEntry {
@@ -225,30 +235,47 @@ export type PreferenceTableId = TableId | typeof WORKSPACE_LAYOUT_TABLE_ID
 
 export type WidgetId = 'browser' | 'matches' | 'pool' | 'explorer' | 'sequencer'
 
+/**
+ * A widget's rectangle in grid units on the discretized workspace canvas.
+ * Free-form: any size, any position, as long as it stays on the grid and does
+ * not overlap another widget.
+ */
 export interface Placement {
-  r: 0 | 1
-  c: 0 | 1 | 2
-  span: 1 | 2
+  x: number
+  y: number
+  w: number
+  h: number
 }
 
 export type LayoutPlace = Partial<Record<WidgetId, Placement>>
 
 export type ShellId = 'workspace' | 'legacy'
 
-/** A named layout the DJ saved: placement plus the fr allocations it used. */
+/**
+ * Widgets whose width is pinned. A locked widget's columns are excluded from
+ * divider redistribution, so resizing elsewhere leaves its width untouched.
+ */
+export type LockedWidgets = Partial<Record<WidgetId, true>>
+
+/** A named layout the DJ saved. Rectangles carry their own sizes. */
 export interface SavedLayout {
   place: LayoutPlace
-  cols: [number, number, number]
-  rows: [number, number]
+  locked?: LockedWidgets
 }
 
 export interface WorkspaceLayoutState {
   preset: string
   place: LayoutPlace
-  cols: [number, number, number]
-  rows: [number, number]
+  /**
+   * Canvas size the rectangles were authored at, in units. Placements rescale
+   * from this on load, so a different window never shifts widgets into each
+   * other.
+   */
+  bounds?: { cols: number; rows: number }
   custom: Record<string, SavedLayout>
   shell: ShellId
+  /** Absent on rows written before width locking existed. */
+  locked?: LockedWidgets
 }
 
 export interface TablePreferenceConfig {

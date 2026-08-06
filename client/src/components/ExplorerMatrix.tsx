@@ -1,6 +1,5 @@
-import { useCallback } from 'react'
+import { useMemo } from 'react'
 import { ExplorerInspector } from './ExplorerInspector'
-import { ExplorerLegend } from './ExplorerLegend'
 import { ExplorerTooltip } from './ExplorerTooltip'
 import {
   CELL_GAP_PX,
@@ -8,8 +7,10 @@ import {
   CELL_WIDTH_PX,
   useExplorerMatrix,
 } from '../hooks/useExplorerMatrix'
+import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import { bucketLoBpm, harmonyPaint } from '../utils/harmonic'
 import type { PoolEntry } from '../types'
+import { POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 
 // BPM cohort matrix: 24 literal Camelot rows × 26 ×1.0293 BPM buckets. Axes
 // never shift, harmony is hue-only, and pitch effort is the border style.
@@ -19,28 +20,18 @@ import type { PoolEntry } from '../types'
 interface Props {
   pool: PoolEntry[]
   onDropTrack: (trackId: number) => void
-  /** Reuse the app's standard track drag payload. */
-  trackDragKey?: string
 }
 
-export function ExplorerMatrix({
-  pool,
-  onDropTrack,
-  trackDragKey = 'text/track',
-}: Props) {
+export function ExplorerMatrix({ pool, onDropTrack }: Props) {
   const matrix = useExplorerMatrix(pool)
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      const raw = e.dataTransfer.getData(trackDragKey)
-      if (raw === '') {
-        return
-      }
-      e.preventDefault()
-      onDropTrack(Number(raw))
-    },
-    [onDropTrack, trackDragKey],
+  const dropTargets = useMemo(
+    () => [
+      { mime: TRACK_DRAG_MIME, onDropTrack },
+      { mime: POOL_ROW_MIME, onDropTrack, dropEffect: 'move' as const },
+    ],
+    [onDropTrack],
   )
+  const { dropHandlers } = useExternalTrackDrop(dropTargets)
 
   const cellStyle = {
     width: CELL_WIDTH_PX,
@@ -48,26 +39,17 @@ export function ExplorerMatrix({
   }
 
   return (
-    <div
-      className="xm-body"
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={handleDrop}
-    >
+    <div className="xm-body" {...dropHandlers}>
       <div className="xm-scroll">
-        <div className="xm-toolbar">
-          <button
-            className={`ws-pill${matrix.legendOpen ? ' ws-pill--on' : ''}`}
-            aria-pressed={matrix.legendOpen}
-            onClick={() => matrix.setLegendOpen(!matrix.legendOpen)}
-          >
-            Legend
-          </button>
-          {matrix.selected && (
+        {/* No legend: the relation colours read on their own, and the row
+            it occupied is vertical space the matrix needs more. */}
+        {matrix.selected && (
+          <div className="xm-toolbar">
             <button className="ws-pill" onClick={matrix.clearSelection}>
               Clear selection
             </button>
-          )}
-        </div>
+          </div>
+        )}
         <div className="xm-col-heads" style={{ gap: CELL_GAP_PX }}>
           {Array.from({ length: matrix.cols }, (_, c) => (
             <span
@@ -141,7 +123,6 @@ export function ExplorerMatrix({
             })}
           </div>
         ))}
-        {matrix.legendOpen && <ExplorerLegend />}
       </div>
 
       {matrix.inspectorOpen &&
@@ -152,7 +133,6 @@ export function ExplorerMatrix({
             range={matrix.bucketRange(matrix.selected.c)}
             cohort={matrix.selectedCohort}
             side={matrix.inspectorSide}
-            trackDragKey={trackDragKey}
             onClose={matrix.closeInspector}
           />
         )}

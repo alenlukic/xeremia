@@ -140,7 +140,7 @@ class ResizeObserverMock {
 
 // The workspace shell is the default, so the quadrant suites below seed the
 // layout cache with the legacy shell the toggle reaches.
-const LAYOUT_CACHE_KEY = 'xeremia:workspace-layout:v1'
+const LAYOUT_CACHE_KEY = 'xeremia:workspace-layout:v2'
 
 function seedShell(shell: 'workspace' | 'legacy') {
   localStorage.setItem(LAYOUT_CACHE_KEY, JSON.stringify({ shell }))
@@ -1418,9 +1418,7 @@ describe('Shell toggle', () => {
     const httpMod = await import('./api/http')
     vi.mocked(httpMod.fetchWorkspaceLayout).mockResolvedValueOnce({
       preset: 'Explorer sandbox',
-      place: { browser: { r: 0, c: 0, span: 1 } },
-      cols: [1, 1, 1],
-      rows: [1, 1],
+      place: { browser: { x: 0, y: 0, w: 4, h: 4 } },
       custom: {},
       shell: 'legacy',
     })

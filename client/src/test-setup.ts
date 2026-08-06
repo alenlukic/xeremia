@@ -34,3 +34,14 @@ Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
     return (origOffsetWidth?.get?.call(this) as number) ?? 0
   },
 })
+
+// jsdom ships no ResizeObserver; the workspace canvas measures itself with one.
+// Observing is a no-op here, so components fall back to their reported bounds.
+if (!('ResizeObserver' in globalThis)) {
+  class TestResizeObserver implements ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = TestResizeObserver
+}

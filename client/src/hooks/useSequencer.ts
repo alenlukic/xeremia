@@ -8,6 +8,7 @@ import type {
   Track,
   TracklistEntry,
 } from '../types'
+import { TRACK_DRAG_MIME } from '../utils'
 
 // Sequencer state: the committed lane IS the server tracklist in position
 // order, and alternative lanes are pool subgroups holding benched candidates.
@@ -28,27 +29,19 @@ export const SNAP_MIN = 0.5
 /** The bench lane that exists before any subgroup does. */
 export const DEFAULT_LANE_NAME = 'Alt 1'
 
-/** Block widths, widest first, where the next detail tier disappears. */
-export const DETAIL_TIERS = [150, 140, 64, 34, 22] as const
+/**
+ * Ruler spacing follows the zoom: the coarsest tick that still leaves a
+ * readable gap between labels wins, so there is nothing to pick by hand.
+ */
+const TICK_CHOICES = [1, 2, 5, 10, 15, 30, 60]
+const MIN_TICK_PX = 56
 
-export interface BlockDetail {
-  showRange: boolean
-  showBpm: boolean
-  showTitle: boolean
-  showCode: boolean
-  showDot: boolean
+export function tickForZoom(pxPerMin: number): number {
+  return (
+    TICK_CHOICES.find((t) => t * pxPerMin >= MIN_TICK_PX) ??
+    TICK_CHOICES[TICK_CHOICES.length - 1]
+  )
 }
-
-export function detailFor(width: number): BlockDetail {
-  return {
-    showRange: width >= DETAIL_TIERS[0],
-    showBpm: width >= DETAIL_TIERS[1],
-    showTitle: width >= DETAIL_TIERS[2],
-    showCode: width >= DETAIL_TIERS[3],
-    showDot: width >= DETAIL_TIERS[4],
-  }
-}
-
 export interface BlockOverride {
   durOv: number | null
   endPin: number | null
@@ -273,8 +266,8 @@ export function laneKeyOf(lane: SequencerLane): LaneKey {
 /**
  * One drag contract for every Sequencer block. The payload names the source
  * lane so a drop can tell a reorder, a promotion, a bench move and a free-time
- * move apart. `text/track` rides along, so the lanes still accept a plain track
- * drag from the Browser, the Matches table or the Pool.
+ * move apart. The standard track MIME rides along for other workspace drop
+ * surfaces; pool and tracklist rows retain their own source-specific MIME.
  */
 export const BLOCK_DRAG_MIME = 'text/sq-block'
 
@@ -291,7 +284,9 @@ interface DragData {
 }
 
 export function writeBlockDrag(dt: DragData, payload: BlockDragPayload): void {
-  dt.setData('text/track', String(payload.trackId))
+  // Keep blocks interoperable with the other track drop surfaces. The block
+  // payload remains authoritative for moves within the sequencer.
+  dt.setData(TRACK_DRAG_MIME, String(payload.trackId))
   dt.setData(BLOCK_DRAG_MIME, JSON.stringify(payload))
 }
 

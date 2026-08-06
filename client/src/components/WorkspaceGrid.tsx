@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { ReactNode } from 'react'
+import { LayoutPicker } from './LayoutPicker'
 import { WidgetFrame } from './WidgetFrame'
 import { WidgetTray } from './WidgetTray'
 import {
@@ -7,11 +14,16 @@ import {
   WIDGET_IDS,
   WIDGET_LABELS,
 } from '../hooks/useWorkspaceLayout'
-import type { WidgetId, WorkspaceLayout } from '../hooks/useWorkspaceLayout'
+import type {
+  Edge,
+  Placement,
+  WidgetId,
+  WorkspaceLayout,
+} from '../hooks/useWorkspaceLayout'
 import './workspace.css'
 
-// The v2 shell: a 3×2 grid with named presets, an edit mode that swaps, spans,
-// removes and re-adds widgets, and draggable dividers that reallocate fr units.
+// The v2 shell: a discretized free-form canvas. Widgets are rectangles in grid
+// units, every edge and corner resizes, and the header bar drags one around.
 // Panels are provided by App so every data hook stays where it lives today.
 
 export interface WorkspacePanel {
@@ -23,39 +35,115 @@ interface Props {
   layout: WorkspaceLayout
   panels: Partial<Record<WidgetId, WorkspacePanel>>
   headerExtras?: ReactNode
+  /** The workspace/legacy switch, rendered as a header tab. */
+  shellToggle?: ReactNode
 }
 
-const ROWS: (0 | 1)[] = [0, 1]
-const COLS: (0 | 1 | 2)[] = [0, 1, 2]
+const EDGES: Edge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 
-export function WorkspaceGrid({ layout, panels, headerExtras }: Props) {
-  const gridRef = useRef<HTMLDivElement | null>(null)
-  const dragRef = useRef<{
-    axis: 'col' | 'row'
-    k: number
-    x0: number
-    y0: number
-    fr0: number[]
-  } | null>(null)
-  const resize = layout.resize
+const EDGE_LABELS: Record<Edge, string> = {
+  n: 'top',
+  s: 'bottom',
+  e: 'right',
+  w: 'left',
+  ne: 'top-right',
+  nw: 'top-left',
+  se: 'bottom-right',
+  sw: 'bottom-left',
+}
+
+interface Drag {
+  id: WidgetId
+  kind: 'move' | Edge
+  start: Placement
+  x0: number
+  y0: number
+}
+
+/** The snapped rectangle a drag is aiming at, before any clamping. */
+function previewOf(z: Drag, dx: number, dy: number): Placement {
+  const s = z.start
+  if (z.kind === 'move') {
+    return { ...s, x: s.x + dx, y: s.y + dy }
+  }
+  let { x, y, w, h } = s
+  if (z.kind.includes('w')) {
+    x = s.x + dx
+    w = s.w - dx
+  }
+  if (z.kind.includes('e')) {
+    w = s.w + dx
+  }
+  if (z.kind.includes('n')) {
+    y = s.y + dy
+    h = s.h - dy
+  }
+  if (z.kind.includes('s')) {
+    h = s.h + dy
+  }
+  return { x, y, w, h }
+}
+
+export function WorkspaceGrid({
+  layout,
+  panels,
+  headerExtras,
+  shellToggle,
+}: Props) {
+  const canvasRef = useRef<HTMLDivElement | null>(null)
+  const { setBounds, unitPx } = layout
+  const dragRef = useRef<Drag | null>(null)
+  const [dragging, setDragging] = useState<WidgetId | null>(null)
+  // The rectangle the drag would land on, drawn as a dashed outline while the
+  // pointer moves so the snap target is visible before the pointer is released.
+  const [preview, setPreview] = useState<Placement | null>(null)
+  const { resizeWidget, moveWidget } = layout
+
+  useLayoutEffect(() => {
+    const el = canvasRef.current
+    if (!el) {
+      return
+    }
+    const report = () =>
+      setBounds({
+        cols: Math.max(1, Math.floor(el.clientWidth / unitPx)),
+        rows: Math.max(1, Math.floor(el.clientHeight / unitPx)),
+      })
+    report()
+    const observer = new ResizeObserver(report)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [setBounds, unitPx])
 
   useEffect(() => {
+    // One unit is 8px, so a drag converts pixels to units and rounds — the
+    // halfway mark decides which boundary an edge snaps to.
+    function unitsOf(e: PointerEvent, z: Drag) {
+      return {
+        dx: Math.round((e.clientX - z.x0) / unitPx),
+        dy: Math.round((e.clientY - z.y0) / unitPx),
+      }
+    }
     function onMove(e: PointerEvent) {
       const z = dragRef.current
-      const el = gridRef.current
-      if (!z || !el) {
+      if (!z) {
         return
       }
-      const rect = el.getBoundingClientRect()
-      const tot = z.fr0.reduce((a, b) => a + b, 0)
-      const deltaFrac =
-        z.axis === 'col'
-          ? ((e.clientX - z.x0) / Math.max(60, rect.width - 48)) * tot
-          : ((e.clientY - z.y0) / Math.max(60, rect.height - 24)) * tot
-      resize(z.axis, z.k, z.fr0, deltaFrac)
+      const d = unitsOf(e, z)
+      if (!d) {
+        return
+      }
+      if (z.kind === 'move') {
+        moveWidget(z.id, z.start, z.start.x + d.dx, z.start.y + d.dy)
+      } else {
+        resizeWidget(z.id, z.kind, z.start, d.dx, d.dy)
+      }
+      setPreview(previewOf(z, d.dx, d.dy))
     }
     function onUp() {
       dragRef.current = null
+      setDragging(null)
+      setPreview(null)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -63,70 +151,22 @@ export function WorkspaceGrid({ layout, panels, headerExtras }: Props) {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
-  }, [resize])
+  }, [resizeWidget, moveWidget, unitPx])
 
-  const startColDrag = useCallback(
-    (k: number) => (e: React.PointerEvent) => {
-      dragRef.current = {
-        axis: 'col',
-        k,
-        x0: e.clientX,
-        y0: e.clientY,
-        fr0: layout.cols.slice(),
-      }
-    },
-    [layout.cols],
-  )
-  const startRowDrag = useCallback(
-    (e: React.PointerEvent) => {
-      dragRef.current = {
-        axis: 'row',
-        k: 1,
-        x0: e.clientX,
-        y0: e.clientY,
-        fr0: layout.rows.slice(),
-      }
-    },
-    [layout.rows],
-  )
-
-  const handlePanelDrop = useCallback(
-    (target: WidgetId) => (e: React.DragEvent) => {
-      const src = e.dataTransfer.getData('text/panel') as WidgetId
-      if (src && src !== target) {
-        e.preventDefault()
-        layout.swapWidgets(src, target)
-      }
-    },
-    [layout],
-  )
-
-  // Cells no placed widget covers; the tray offers them in edit mode.
-  const emptyCells = useMemo(() => {
-    const taken = new Set<string>()
-    for (const id of WIDGET_IDS) {
-      const p = layout.place[id]
-      if (!p) {
-        continue
-      }
-      for (let i = 0; i < p.span; i++) {
-        taken.add(`${p.r}:${p.c + i}`)
-      }
-    }
-    const cells: { r: 0 | 1; c: 0 | 1 | 2 }[] = []
-    for (const r of ROWS) {
-      for (const c of COLS) {
-        if (!taken.has(`${r}:${c}`)) {
-          cells.push({ r, c })
+  const startDrag = useCallback(
+    (id: WidgetId, kind: 'move' | Edge, start: Placement) =>
+      (e: React.PointerEvent) => {
+        if (e.button !== 0) {
+          return
         }
-      }
-    }
-    return cells
-  }, [layout.place])
+        e.preventDefault()
+        dragRef.current = { id, kind, start, x0: e.clientX, y0: e.clientY }
+        setDragging(id)
+      },
+    [],
+  )
 
   const presetNames = Object.keys(layout.presets)
-  const totC = layout.cols[0] + layout.cols[1] + layout.cols[2]
-  const totR = layout.rows[0] + layout.rows[1]
 
   return (
     <div className="ws-shell">
@@ -134,126 +174,96 @@ export function WorkspaceGrid({ layout, panels, headerExtras }: Props) {
         <span className="ws-wordmark">XEREMIA</span>
         <span className="ws-header-rule" />
         <span className="ws-header-label">Layout</span>
-        <div className="ws-preset-pills">
-          {presetNames.map((name) => (
-            <button
-              key={name}
-              className={`ws-pill${name === layout.preset ? ' ws-pill--on' : ''}`}
-              onClick={() => layout.selectPreset(name)}
-            >
-              {name}
-            </button>
-          ))}
-          {layout.preset === CUSTOM_PRESET && (
-            <>
-              <button className="ws-pill ws-pill--on" disabled>
-                {CUSTOM_PRESET}
-              </button>
-              <button className="ws-pill" onClick={layout.saveCustomPreset}>
-                Save as preset
-              </button>
-            </>
-          )}
-        </div>
-        <button
-          className={`ws-pill${layout.editing ? ' ws-pill--on' : ''}`}
-          aria-pressed={layout.editing}
-          onClick={() => layout.setEditing(!layout.editing)}
-        >
-          Edit layout
-        </button>
+        <LayoutPicker
+          preset={layout.preset}
+          presetNames={presetNames}
+          dirty={layout.preset === CUSTOM_PRESET}
+          onSelect={layout.selectPreset}
+          onSaveCustom={layout.saveCustomPreset}
+        />
+        {layout.missing.length > 0 && (
+          <WidgetTray
+            available={layout.missing}
+            labels={WIDGET_LABELS}
+            onAdd={layout.addWidget}
+          />
+        )}
+        {shellToggle}
         <div className="ws-header-spacer" />
         {headerExtras}
       </header>
       <div className="ws-grid-wrap">
         <div
-          ref={gridRef}
-          className="ws-grid"
+          ref={canvasRef}
+          className={`ws-canvas${dragging ? ' ws-canvas--dragging' : ''}`}
           role="group"
           aria-label="Workspace grid"
-          style={{
-            gridTemplateColumns: layout.cols.map((v) => `${v}fr`).join(' '),
-            gridTemplateRows: layout.rows.map((v) => `${v}fr`).join(' '),
-          }}
         >
+          {/* Dashed unit guides, shown only while a drag is in flight. */}
+          {dragging && (
+            <div
+              className="ws-guides"
+              aria-hidden="true"
+              style={{ backgroundSize: `${unitPx * 4}px ${unitPx * 4}px` }}
+            />
+          )}
+          {preview && (
+            <div
+              className="ws-preview"
+              aria-hidden="true"
+              style={{
+                left: preview.x * unitPx,
+                top: preview.y * unitPx,
+                width: preview.w * unitPx,
+                height: preview.h * unitPx,
+              }}
+            />
+          )}
           {WIDGET_IDS.map((id) => {
             const p = layout.place[id]
             const panel = panels[id]
             if (!p || !panel) {
               return null
             }
+            const locked = !!layout.locked[id]
             return (
               <section
                 key={id}
-                className="ws-panel"
+                className={`ws-panel${dragging === id ? ' ws-panel--dragging' : ''}`}
                 aria-label={WIDGET_LABELS[id]}
-                data-span={p.span}
                 style={{
-                  gridArea: `${p.r + 1} / ${p.c + 1} / ${p.r + 2} / ${p.c + 1 + p.span}`,
+                  left: p.x * unitPx,
+                  top: p.y * unitPx,
+                  width: p.w * unitPx,
+                  height: p.h * unitPx,
                 }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handlePanelDrop(id)}
               >
                 <WidgetFrame
                   id={id}
                   title={WIDGET_LABELS[id]}
-                  span={p.span}
-                  editing={layout.editing}
+                  locked={locked}
                   actions={panel.actions}
-                  onGripDragStart={(e) =>
-                    e.dataTransfer.setData('text/panel', id)
-                  }
-                  onSpanChange={(span) => layout.setSpan(id, span)}
+                  onMoveStart={startDrag(id, 'move', p)}
+                  onToggleLock={() => layout.toggleLock(id)}
                   onRemove={() => layout.removeWidget(id)}
                 >
                   {panel.node}
                 </WidgetFrame>
+                {/* Every edge and corner resizes; a locked widget shows none. */}
+                {!locked &&
+                  EDGES.map((edge) => (
+                    <span
+                      key={edge}
+                      className={`ws-handle ws-handle--${edge}`}
+                      role="separator"
+                      aria-label={`Resize ${WIDGET_LABELS[id]} ${EDGE_LABELS[edge]} edge`}
+                      onPointerDown={startDrag(id, edge, p)}
+                    />
+                  ))}
               </section>
             )
           })}
-          {layout.editing &&
-            emptyCells.map((cell) => (
-              <div
-                key={`empty-${cell.r}-${cell.c}`}
-                className="ws-panel ws-panel--empty"
-                style={{
-                  gridArea: `${cell.r + 1} / ${cell.c + 1} / ${cell.r + 2} / ${cell.c + 2}`,
-                }}
-              >
-                <WidgetTray
-                  cell={cell}
-                  available={layout.missing}
-                  labels={WIDGET_LABELS}
-                  onAdd={layout.addWidget}
-                />
-              </div>
-            ))}
         </div>
-        {[1, 2].map((k) => (
-          <div
-            key={`c${k}`}
-            className="ws-divider ws-divider--col"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={`Resize column ${k}`}
-            style={{
-              left: `calc((100% - 48px) * ${(
-                layout.cols.slice(0, k).reduce((a, b) => a + b, 0) / totC
-              ).toFixed(5)} + ${8 * k - 1}px)`,
-            }}
-            onPointerDown={startColDrag(k)}
-          />
-        ))}
-        <div
-          className="ws-divider ws-divider--row"
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize row 1"
-          style={{
-            top: `calc((100% - 24px) * ${(layout.rows[0] / totR).toFixed(5)} + 7px)`,
-          }}
-          onPointerDown={startRowDrag}
-        />
       </div>
     </div>
   )

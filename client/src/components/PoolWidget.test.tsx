@@ -133,6 +133,27 @@ describe('PoolWidget', () => {
     ).toBeInTheDocument()
   })
 
+  it('rails grouped rows with their subgroup color', () => {
+    const pool = [makePoolEntry(1), makePoolEntry(2)]
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Peak', display_order: 0 },
+    ]
+    const memberships: PoolSubgroupMembership[] = [
+      { id: 1, subgroup_id: 7, pool_entry_id: 1, display_order: 0 },
+    ]
+    const { container } = renderWidget(makeSet(pool, subgroups, memberships))
+
+    const rows = container.querySelectorAll('tbody tr')
+    const railed = (rows[0] as HTMLElement).querySelector(
+      '.set-ws-cell-remove',
+    ) as HTMLElement
+    expect(railed.style.boxShadow).toBe('inset 2px 0 0 0 var(--dot-1)')
+    const plain = (rows[1] as HTMLElement).querySelector(
+      '.set-ws-cell-remove',
+    ) as HTMLElement
+    expect(plain.style.boxShadow).toBe('')
+  })
+
   it('creates a pool subgroup from the rail', async () => {
     const onCreateSubgroup = vi.fn().mockResolvedValue({
       id: 9,

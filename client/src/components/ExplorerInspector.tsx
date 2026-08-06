@@ -1,11 +1,6 @@
-import {
-  CAMELOT_ROWS,
-  DUR_MAX,
-  DUR_MIN,
-  keyDotColor,
-  shiftCode,
-} from '../utils/harmonic'
+import { CAMELOT_ROWS, keyDotColor } from '../utils/harmonic'
 import type { Track } from '../types'
+import { POOL_ROW_MIME } from '../utils'
 
 // The 238px overlay that lists a cohort's tracks. It floats above the grid, so
 // opening it never changes the matrix width.
@@ -15,7 +10,6 @@ interface Props {
   range: [number, number]
   cohort: Track[]
   side: 'left' | 'right'
-  trackDragKey: string
   onClose: () => void
 }
 
@@ -24,11 +18,9 @@ export function ExplorerInspector({
   range,
   cohort,
   side,
-  trackDragKey,
   onClose,
 }: Props) {
   const code = CAMELOT_ROWS[row]
-  const centre = (range[0] + range[1]) / 2
   return (
     <div
       className={`xm-inspector xm-inspector--${side}`}
@@ -52,22 +44,16 @@ export function ExplorerInspector({
           ×
         </button>
       </div>
-      <div className="xm-inspector-sub">
-        pairable window {(centre * DUR_MIN).toFixed(1)}–
-        {(centre * DUR_MAX).toFixed(1)} BPM
-      </div>
-      <div className="xm-inspector-sub">
-        pitched up → {shiftCode(code, 7)} · pitched down → {shiftCode(code, -7)}
-      </div>
       <div className="xm-inspector-tracks">
         {cohort.map((t) => (
           <div
             key={t.id}
             className="xm-track-card"
             draggable
-            onDragStart={(e) =>
-              e.dataTransfer.setData(trackDragKey, String(t.id))
-            }
+            onDragStart={(e) => {
+              e.dataTransfer.setData(POOL_ROW_MIME, String(t.id))
+              e.dataTransfer.effectAllowed = 'move'
+            }}
           >
             [{t.camelot_code} · {Math.round(t.bpm ?? 0)}] {t.title}
           </div>
