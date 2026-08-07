@@ -9,7 +9,14 @@ import {
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from './App'
-import type { Track, TransitionMatch } from './types'
+import type {
+  HydratedSet,
+  PoolEntry,
+  PoolSubgroup,
+  PoolSubgroupMembership,
+  Track,
+  TransitionMatch,
+} from './types'
 import { useCollectionCache } from './hooks/useCollectionCache'
 
 vi.mock('./hooks/useCollectionCache', () => ({
@@ -95,6 +102,16 @@ vi.mock('./api/http', () => ({
   explorerNodeToTracklist: vi.fn().mockResolvedValue(undefined),
   explorerEdgeScores: vi.fn().mockResolvedValue({ scores: [] }),
   fetchTablePreferences: vi.fn().mockResolvedValue({ preferences: [] }),
+  fetchWorkspaceLayout: vi.fn().mockResolvedValue(null),
+  saveWorkspaceLayout: vi.fn().mockResolvedValue(undefined),
+  tracklistSetOverrides: vi.fn().mockResolvedValue(undefined),
+  subgroupCreate: vi.fn().mockResolvedValue({ id: 1, name: 'Alt 2' }),
+  subgroupRename: vi.fn().mockResolvedValue(undefined),
+  subgroupDelete: vi.fn().mockResolvedValue(undefined),
+  subgroupReorder: vi.fn().mockResolvedValue(undefined),
+  subgroupMemberReorder: vi.fn().mockResolvedValue(undefined),
+  subgroupAddMember: vi.fn().mockResolvedValue(undefined),
+  subgroupDropTrack: vi.fn().mockResolvedValue(undefined),
   updateTablePreferences: vi.fn().mockResolvedValue({
     table_id: 'search',
     column_order: ['title'],
@@ -102,6 +119,8 @@ vi.mock('./api/http', () => ({
     column_widths: { title: 220 },
   }),
   updateSet: vi.fn().mockResolvedValue({}),
+  updateSetSequencer: vi.fn().mockResolvedValue(undefined),
+  updateTracklistNote: vi.fn().mockResolvedValue(undefined),
 }))
 
 function makeTracks(count: number): Track[] {
@@ -130,10 +149,19 @@ class ResizeObserverMock {
   disconnect = vi.fn()
 }
 
+// The workspace shell is the default, so the quadrant suites below seed the
+// layout cache with the legacy shell the toggle reaches.
+const LAYOUT_CACHE_KEY = 'xeremia:workspace-layout:v2'
+
+function seedShell(shell: 'workspace' | 'legacy') {
+  localStorage.setItem(LAYOUT_CACHE_KEY, JSON.stringify({ shell }))
+}
+
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
   localStorage.clear()
   sessionStorage.clear()
+  seedShell('legacy')
   vi.mocked(useCollectionCache).mockReturnValue({
     allTracks: makeTracks(600),
     traitMap: new Map(),
@@ -1328,5 +1356,465 @@ describe('session table view state', () => {
     expect(
       (screen.getByPlaceholderText(/search/i) as HTMLInputElement).value,
     ).toBe('alpha')
+  })
+})
+
+describe('Shell toggle', () => {
+  it('mounts the workspace shell by default', async () => {
+    localStorage.clear()
+    await act(async () => {
+      render(<App />)
+    })
+
+    expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Collapse track browser')).toBeNull()
+  })
+
+  it('renders every workspace widget frame in the default preset', async () => {
+    localStorage.clear()
+    await act(async () => {
+      render(<App />)
+    })
+
+    const grid = screen.getByLabelText('Workspace grid')
+    for (const label of ['Explorer', 'Browser', 'Sequencer', 'Matches']) {
+      expect(within(grid).getByLabelText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('switches to the legacy quadrant shell and back', async () => {
+    localStorage.clear()
+    await act(async () => {
+      render(<App />)
+    })
+
+    await act(async () => {
+      screen.getByRole('button', { name: /legacy shell/i }).click()
+    })
+    expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Workspace grid')).toBeNull()
+
+    await act(async () => {
+      screen.getByRole('button', { name: /workspace shell/i }).click()
+    })
+    expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
+  })
+
+  it('persists the shell choice through the layout preference row', async () => {
+    vi.useFakeTimers()
+    try {
+      localStorage.clear()
+      const httpMod = await import('./api/http')
+      vi.mocked(httpMod.saveWorkspaceLayout).mockClear()
+
+      await act(async () => {
+        render(<App />)
+      })
+      await act(async () => {
+        screen.getByRole('button', { name: /legacy shell/i }).click()
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+
+      const saved = vi.mocked(httpMod.saveWorkspaceLayout).mock.calls.at(-1)
+      expect(saved?.[0].shell).toBe('legacy')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('wires the Explorer bulk actions to the pool', async () => {
+    localStorage.clear()
+    const httpMod = await import('./api/http')
+    const [committed, benched] = makeTracks(2)
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      {
+        id: 1,
+        name: 'Test',
+        created_at: '',
+        updated_at: '',
+        pool_count: 2,
+        tracklist_count: 1,
+      },
+    ])
+    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
+      set: {
+        id: 1,
+        name: 'Test',
+        created_at: '',
+        updated_at: '',
+        pool_count: 2,
+        tracklist_count: 1,
+      },
+      pool: [
+        {
+          id: 20,
+          set_id: 1,
+          track_id: committed.id,
+          insertion_order: 0,
+          highlight_color: null,
+          track: committed,
+        },
+        {
+          id: 21,
+          set_id: 1,
+          track_id: benched.id,
+          insertion_order: 1,
+          highlight_color: null,
+          track: benched,
+        },
+      ],
+      tracklist: [
+        {
+          id: 10,
+          set_id: 1,
+          track_id: committed.id,
+          position: 0,
+          track: committed,
+        },
+      ],
+      explorer_nodes: [],
+      explorer_edges: [],
+    })
+    localStorage.setItem('xeremia-active-set-id', '1')
+
+    await act(async () => {
+      render(<App />)
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Prune' })).toBeEnabled(),
+    )
+    vi.mocked(httpMod.poolRemove).mockClear()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Prune' }).click()
+    })
+
+    // Only the pooled track the committed lane already holds is removed.
+    expect(vi.mocked(httpMod.poolRemove).mock.calls).toEqual([
+      [1, committed.id],
+    ])
+  })
+
+  it('hydrates the shell from the server layout row', async () => {
+    localStorage.clear()
+    const httpMod = await import('./api/http')
+    vi.mocked(httpMod.fetchWorkspaceLayout).mockResolvedValueOnce({
+      preset: 'Explorer sandbox',
+      place: { browser: { x: 0, y: 0, w: 4, h: 4 } },
+      custom: {},
+      shell: 'legacy',
+    })
+
+    await act(async () => {
+      render(<App />)
+    })
+
+    expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
+  })
+})
+
+describe('Sequencer bench clipboard', () => {
+  /**
+   * Pool, subgroup and membership rows the bench clipboard writes. The
+   * sequencer's default lane is virtual until a subgroup exists, so a paste
+   * onto it depends on how the server answers after each write.
+   */
+  function fakeSetRows(tracks: Track[]) {
+    const pool: PoolEntry[] = tracks.map((track, index) => ({
+      id: 20 + index,
+      set_id: 1,
+      track_id: track.id,
+      insertion_order: index,
+      highlight_color: null,
+      track,
+    }))
+    const subgroups: PoolSubgroup[] = []
+    const memberships: PoolSubgroupMembership[] = []
+    let nextPoolEntryId = 40
+    let nextSubgroupId = 5
+    let nextMembershipId = 60
+    let releasePoolRemovals: (() => void) | null = null
+    let poolRemovalGate: Promise<void> | null = null
+
+    const entryOf = (trackId: number) =>
+      pool.find((entry) => entry.track_id === trackId) ?? null
+
+    const addMember = (subgroupId: number, poolEntryId: number) => {
+      const held = memberships.some(
+        (m) => m.subgroup_id === subgroupId && m.pool_entry_id === poolEntryId,
+      )
+      if (!held) {
+        memberships.push({
+          id: nextMembershipId++,
+          subgroup_id: subgroupId,
+          pool_entry_id: poolEntryId,
+          display_order: memberships.length,
+        })
+      }
+    }
+
+    return {
+      hydrate: (): HydratedSet => ({
+        set: {
+          id: 1,
+          name: 'Test',
+          created_at: '',
+          updated_at: '',
+          pool_count: pool.length,
+          tracklist_count: 0,
+        },
+        pool: pool.map((entry) => ({ ...entry })),
+        tracklist: [],
+        explorer_nodes: [],
+        explorer_edges: [],
+        pool_subgroups: subgroups.map((group) => ({ ...group })),
+        pool_subgroup_memberships: memberships.map((m) => ({ ...m })),
+      }),
+      poolRemove: async (_setId: number, trackId: number) => {
+        const entry = entryOf(trackId)
+        if (!entry) {
+          return
+        }
+        pool.splice(pool.indexOf(entry), 1)
+        for (let i = memberships.length - 1; i >= 0; i--) {
+          if (memberships[i].pool_entry_id === entry.id) {
+            memberships.splice(i, 1)
+          }
+        }
+        await poolRemovalGate
+      },
+      pausePoolRemovals: () => {
+        poolRemovalGate = new Promise((resolve) => {
+          releasePoolRemovals = resolve
+        })
+      },
+      releasePoolRemovals: () => {
+        releasePoolRemovals?.()
+        releasePoolRemovals = null
+        poolRemovalGate = null
+      },
+      subgroupCreate: async (_setId: number, name: string) => {
+        const group = {
+          id: nextSubgroupId++,
+          set_id: 1,
+          name,
+          display_order: subgroups.length,
+        }
+        subgroups.push(group)
+        return group
+      },
+      subgroupDelete: async (_setId: number, subgroupId: number) => {
+        const group = subgroups.find((g) => g.id === subgroupId)
+        if (group) {
+          subgroups.splice(subgroups.indexOf(group), 1)
+        }
+        for (let i = memberships.length - 1; i >= 0; i--) {
+          if (memberships[i].subgroup_id === subgroupId) {
+            memberships.splice(i, 1)
+          }
+        }
+      },
+      subgroupAddMember: async (
+        _setId: number,
+        subgroupId: number,
+        poolEntryId: number,
+      ) => {
+        if (!pool.some((entry) => entry.id === poolEntryId)) {
+          throw new Error('pool row is gone')
+        }
+        addMember(subgroupId, poolEntryId)
+      },
+      subgroupDropTrack: async (
+        _setId: number,
+        subgroupId: number,
+        trackId: number,
+      ) => {
+        let entry = entryOf(trackId)
+        if (!entry) {
+          entry = {
+            id: nextPoolEntryId++,
+            set_id: 1,
+            track_id: trackId,
+            insertion_order: pool.length,
+            highlight_color: null,
+            track: tracks.find((t) => t.id === trackId) ?? null,
+          }
+          pool.push(entry)
+        }
+        addMember(subgroupId, entry.id)
+      },
+      /** Track titles per lane, so a split lane is visible in the result. */
+      laneTitles: () =>
+        subgroups.map((group) =>
+          memberships
+            .filter((m) => m.subgroup_id === group.id)
+            .map(
+              (m) => pool.find((entry) => entry.id === m.pool_entry_id)?.track,
+            )
+            .map((track) => track?.title ?? '')
+            .sort(),
+        ),
+    }
+  }
+
+  async function renderWithSequencerSet(tracks: Track[]) {
+    const httpMod = await import('./api/http')
+    const rows = fakeSetRows(tracks)
+    vi.mocked(httpMod.fetchSets).mockResolvedValue([
+      {
+        id: 1,
+        name: 'Test',
+        created_at: '',
+        updated_at: '',
+        pool_count: tracks.length,
+        tracklist_count: 0,
+      },
+    ])
+    vi.mocked(httpMod.fetchHydratedSet).mockImplementation(async () =>
+      rows.hydrate(),
+    )
+    vi.mocked(httpMod.poolRemove).mockImplementation(rows.poolRemove)
+    vi.mocked(httpMod.subgroupCreate).mockImplementation(rows.subgroupCreate)
+    vi.mocked(httpMod.subgroupDelete).mockImplementation(rows.subgroupDelete)
+    vi.mocked(httpMod.subgroupAddMember).mockImplementation(
+      rows.subgroupAddMember,
+    )
+    vi.mocked(httpMod.subgroupDropTrack).mockImplementation(
+      rows.subgroupDropTrack,
+    )
+    localStorage.setItem('xeremia-active-set-id', '1')
+
+    await act(async () => {
+      render(<App />)
+    })
+    const sequencer = await screen.findByLabelText('Sequencer')
+    await waitFor(() =>
+      expect(
+        within(sequencer).getByLabelText(tracks[0].title),
+      ).toBeInTheDocument(),
+    )
+    return rows
+  }
+
+  async function pressClipboardKey(sequencer: HTMLElement, key: string) {
+    const body = sequencer.querySelector('.sq-body') as HTMLElement
+    await act(async () => {
+      fireEvent.keyDown(body, { key, metaKey: true })
+    })
+  }
+
+  function placeCursor(
+    sequencer: HTMLElement,
+    laneLabel: string,
+    clientX: number,
+  ) {
+    const lane = within(sequencer).getByLabelText(laneLabel)
+    act(() => {
+      fireEvent.pointerDown(lane, { clientX, button: 0 })
+    })
+    act(() => {
+      fireEvent.pointerUp(window, { clientX })
+    })
+  }
+
+  // These cases count subgroup writes, so they start from a clean call log.
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('keeps a multi-track bench cut in place until a safe paste', async () => {
+    const httpMod = await import('./api/http')
+    await renderWithSequencerSet(makeTracks(3))
+    const sequencer = screen.getByLabelText('Sequencer')
+    const lane = sequencer.querySelector('.sq-lane--alt') as HTMLElement
+
+    // jsdom reports a zero rect, so client x 88 is the set start and every
+    // 6px after it is one minute. The sweep covers the first two blocks.
+    act(() => {
+      fireEvent.pointerDown(lane, { clientX: 88, clientY: 10, button: 0 })
+    })
+    act(() => {
+      fireEvent.pointerMove(window, { clientX: 112, clientY: 10 })
+      fireEvent.pointerUp(window, { clientX: 112, clientY: 10 })
+    })
+    await pressClipboardKey(sequencer, 'x')
+    await pressClipboardKey(sequencer, 'v')
+
+    expect(sequencer.querySelectorAll('.sq-lane--alt')).toHaveLength(1)
+    expect(httpMod.poolRemove).not.toHaveBeenCalled()
+    expect(httpMod.subgroupCreate).not.toHaveBeenCalled()
+    expect(httpMod.subgroupDropTrack).not.toHaveBeenCalled()
+    for (const title of ['Track 1', 'Track 2', 'Track 3']) {
+      expect(within(sequencer).getByLabelText(title)).toBeInTheDocument()
+    }
+  })
+
+  it('does not materialize the virtual lane during repeated in-place pastes', async () => {
+    const httpMod = await import('./api/http')
+    await renderWithSequencerSet(makeTracks(1))
+    const sequencer = screen.getByLabelText('Sequencer')
+
+    for (let i = 0; i < 2; i++) {
+      act(() => {
+        within(sequencer).getByLabelText('Track 1').click()
+      })
+      await pressClipboardKey(sequencer, 'x')
+      await pressClipboardKey(sequencer, 'v')
+    }
+
+    expect(httpMod.poolRemove).not.toHaveBeenCalled()
+    expect(httpMod.subgroupCreate).not.toHaveBeenCalled()
+    expect(sequencer.querySelectorAll('.sq-lane--alt')).toHaveLength(1)
+    expect(within(sequencer).getByLabelText('Track 1')).toBeInTheDocument()
+  })
+
+  it('copies a benched track to committed without removing it from the pool', async () => {
+    const httpMod = await import('./api/http')
+    await renderWithSequencerSet(makeTracks(1))
+    const sequencer = screen.getByLabelText('Sequencer')
+
+    act(() => {
+      within(sequencer).getByLabelText('Track 1').click()
+    })
+    await pressClipboardKey(sequencer, 'c')
+    placeCursor(sequencer, 'Committed lane', 120)
+    await pressClipboardKey(sequencer, 'v')
+
+    await waitFor(() => expect(httpMod.tracklistAdd).toHaveBeenCalledWith(1, 1))
+    expect(httpMod.poolMoveToTracklist).not.toHaveBeenCalled()
+  })
+
+  it('copies a benched track into another lane via subgroup drop', async () => {
+    const httpMod = await import('./api/http')
+    await renderWithSequencerSet(makeTracks(1))
+    const sequencer = screen.getByLabelText('Sequencer')
+
+    act(() => {
+      within(sequencer).getByLabelText('Track 1').click()
+    })
+    await pressClipboardKey(sequencer, 'c')
+    act(() => {
+      within(sequencer).getByLabelText('Add lane').click()
+    })
+    await waitFor(() =>
+      expect(
+        within(sequencer).getByLabelText('Alt 1 lane'),
+      ).toBeInTheDocument(),
+    )
+    placeCursor(sequencer, 'Alt 1 lane', 120)
+    await pressClipboardKey(sequencer, 'v')
+
+    await waitFor(() =>
+      expect(httpMod.subgroupDropTrack).toHaveBeenCalledWith(
+        1,
+        expect.any(Number),
+        1,
+        'pool',
+      ),
+    )
+    expect(httpMod.subgroupAddMember).not.toHaveBeenCalled()
   })
 })

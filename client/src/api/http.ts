@@ -6,14 +6,18 @@ import type {
   CacheStats,
   WeightsResponse,
   TrackTraitEntry,
+  SequencerSettings,
   SetSummary,
   HydratedSet,
   PoolSubgroup,
-  TableId,
+  PreferenceTableId,
   TablePreferenceConfig,
   TablePreferenceResponse,
   TablePreferencesListResponse,
+  TracklistOverrides,
+  WorkspaceLayoutState,
 } from '../types'
+import { WORKSPACE_LAYOUT_TABLE_ID } from '../types'
 import { getDeviceHash } from '../deviceId'
 
 export async function fetchTracks(params: {
@@ -193,6 +197,22 @@ export async function updateSet(
   })
   if (!res.ok) {
     throw new Error(`Failed to update set: ${res.status}`)
+  }
+  return res.json()
+}
+
+/** Sequencer view state is per set, so nothing about it is ephemeral. */
+export async function updateSetSequencer(
+  setId: number,
+  settings: SequencerSettings,
+): Promise<SetSummary> {
+  const res = await fetch(`/api/sets/${setId}/sequencer`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+  if (!res.ok) {
+    throw new Error(`Failed to save sequencer settings: ${res.status}`)
   }
   return res.json()
 }
@@ -438,6 +458,25 @@ export async function updateTracklistNote(
   }
 }
 
+/**
+ * Save the Sequencer overrides for one committed track. A null field clears the
+ * override and hands the value back to the derived default.
+ */
+export async function tracklistSetOverrides(
+  setId: number,
+  trackId: number,
+  overrides: TracklistOverrides,
+): Promise<void> {
+  const res = await fetch(`/api/sets/${setId}/tracklist/${trackId}/overrides`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(overrides),
+  })
+  if (!res.ok) {
+    throw new Error(`Tracklist overrides update failed: ${res.status}`)
+  }
+}
+
 export async function tracklistRemove(
   setId: number,
   trackId: number,
@@ -485,7 +524,13 @@ export async function explorerAddNode(
   x: number = 0,
   y: number = 0,
   parentNodeId?: string,
-): Promise<{ ok: boolean; node_id: string; track_id: number; x: number; y: number }> {
+): Promise<{
+  ok: boolean
+  node_id: string
+  track_id: number
+  x: number
+  y: number
+}> {
   const res = await fetch(`/api/sets/${setId}/explorer/nodes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -633,7 +678,7 @@ export async function fetchTablePreferences(): Promise<TablePreferencesListRespo
 }
 
 export async function updateTablePreferences(
-  tableId: TableId,
+  tableId: PreferenceTableId,
   config: TablePreferenceConfig,
 ): Promise<TablePreferenceResponse> {
   const res = await fetch(`/api/admin/table-preferences/${tableId}`, {
@@ -651,4 +696,29 @@ export async function updateTablePreferences(
     )
   }
   return res.json()
+}
+
+/**
+ * Read the workspace layout out of the device's table-preference rows. Returns
+ * null when this device has never saved a layout.
+ */
+export async function fetchWorkspaceLayout(): Promise<WorkspaceLayoutState | null> {
+  const data = await fetchTablePreferences()
+  // The listed rows are typed for the four column tables, so the layout row is
+  // matched on the raw id.
+  const row = data.preferences.find(
+    (pref) => (pref.table_id as string) === WORKSPACE_LAYOUT_TABLE_ID,
+  )
+  return row?.layout ?? null
+}
+
+export async function saveWorkspaceLayout(
+  layout: WorkspaceLayoutState,
+): Promise<void> {
+  await updateTablePreferences(WORKSPACE_LAYOUT_TABLE_ID, {
+    column_order: [],
+    column_visibility: {},
+    column_widths: {},
+    layout,
+  })
 }

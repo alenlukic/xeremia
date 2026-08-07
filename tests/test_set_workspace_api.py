@@ -966,6 +966,130 @@ class TestTracklistNote:
         assert tl[0].note == "Energy peak"
 
 
+class TestTracklistOverrides:
+    """Sequencer overrides: play length, pinned end, and played BPM per entry."""
+
+    def _entry(self, session, set_id, track_id=10):
+        return (
+            session.query(SetTracklistEntry)
+            .filter_by(set_id=set_id, track_id=track_id)
+            .first()
+        )
+
+    def test_defaults_are_null(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        entry, _ = svc.tracklist_add(s.id, 10)
+        session.commit()
+        assert entry.play_minutes is None
+        assert entry.pinned_end_minutes is None
+        assert entry.bpm_override is None
+
+    def test_set_overrides_round_trip(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        session.commit()
+
+        ok, err = svc.set_tracklist_overrides(s.id, 10, 4.5, 372.0, 126.5)
+        session.commit()
+        assert ok is True
+        assert err is None
+
+        entry = self._entry(session, s.id)
+        assert float(entry.play_minutes) == pytest.approx(4.5)
+        assert float(entry.pinned_end_minutes) == pytest.approx(372.0)
+        assert float(entry.bpm_override) == pytest.approx(126.5)
+
+    def test_null_clears_an_override(self, svc: SetWorkspaceService, session: Session):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        svc.set_tracklist_overrides(s.id, 10, 4.5, 372.0, 126.5)
+        session.commit()
+
+        svc.set_tracklist_overrides(s.id, 10, 4.5, None, None)
+        session.commit()
+
+        entry = self._entry(session, s.id)
+        assert float(entry.play_minutes) == pytest.approx(4.5)
+        assert entry.pinned_end_minutes is None
+        assert entry.bpm_override is None
+
+    def test_overrides_are_per_set(self, svc: SetWorkspaceService, session: Session):
+        first = svc.create_set("First")
+        second = svc.create_set("Second")
+        session.commit()
+        svc.tracklist_add(first.id, 10)
+        svc.tracklist_add(second.id, 10)
+        session.commit()
+
+        svc.set_tracklist_overrides(first.id, 10, 7.0, None, None)
+        session.commit()
+
+        assert float(self._entry(session, first.id).play_minutes) == pytest.approx(7.0)
+        assert self._entry(session, second.id).play_minutes is None
+
+    def test_missing_entry_reports_not_found(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        session.commit()
+        ok, err = svc.set_tracklist_overrides(s.id, 999, 4.5, None, None)
+        assert ok is False
+        assert "not found" in err.lower()
+
+    def test_overrides_persist_through_hydration(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        s = svc.create_set("S")
+        session.commit()
+        svc.tracklist_add(s.id, 10)
+        svc.set_tracklist_overrides(s.id, 10, 5.5, None, 124.0)
+        session.commit()
+
+        hydration = svc.hydrate_set(s.id)
+        assert hydration is not None
+        entry = hydration["tracklist"][0]
+        assert float(entry.play_minutes) == pytest.approx(5.5)
+        assert float(entry.bpm_override) == pytest.approx(124.0)
+
+    def test_request_schema_rejects_out_of_range_bpm(self):
+        from pydantic import ValidationError
+
+        from src.api.schemas import TracklistOverridesRequest
+
+        with pytest.raises(ValidationError):
+            TracklistOverridesRequest(bpm_override=10)
+
+    def test_request_schema_defaults_to_cleared_overrides(self):
+        from src.api.schemas import TracklistOverridesRequest
+
+        body = TracklistOverridesRequest()
+        assert body.play_minutes is None
+        assert body.pinned_end_minutes is None
+        assert body.bpm_override is None
+
+    def test_response_schema_carries_overrides(self):
+        from src.api.schemas import TracklistEntryResponse
+
+        entry = TracklistEntryResponse(
+            id=1,
+            set_id=2,
+            track_id=3,
+            position=0,
+            play_minutes=4.5,
+            pinned_end_minutes=372.0,
+            bpm_override=126.5,
+        )
+        dumped = entry.model_dump()
+        assert dumped["play_minutes"] == pytest.approx(4.5)
+        assert dumped["pinned_end_minutes"] == pytest.approx(372.0)
+        assert dumped["bpm_override"] == pytest.approx(126.5)
+
+
 class TestEdgeScoreRequestShape:
     """Verify the add-edge service method validates properly."""
 

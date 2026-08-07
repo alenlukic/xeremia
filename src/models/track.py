@@ -29,6 +29,10 @@ class Track(Base):
 
     bpm = Column("bpm", Numeric(5, 2), index=True)
 
+    # Playable length in seconds, read from the audio header. Nullable because
+    # older rows predate the column and unreadable files stay unmeasured.
+    duration_seconds = Column("duration_seconds", Numeric(7, 2))
+
     key = Column("key", String(4), index=True)
 
     camelot_code = Column("camelot_code", String(4), index=True)

@@ -567,6 +567,8 @@ describe('SetBuilder', () => {
             set_id: 1,
             node_id: 'n1',
             track_id: 99,
+            x: 0,
+            y: 0,
             level: 0,
             col_index: 0,
             track: {
@@ -644,9 +646,7 @@ describe('SetBuilder', () => {
       expect(
         screen.getByTestId('explorer-add-search-input'),
       ).toBeInTheDocument()
-      expect(
-        screen.getByTestId('explorer-auto-layout-btn'),
-      ).toBeInTheDocument()
+      expect(screen.getByTestId('explorer-auto-layout-btn')).toBeInTheDocument()
       expect(
         screen.getByTestId('explorer-edge-style-toggle'),
       ).toBeInTheDocument()
@@ -662,6 +662,8 @@ describe('SetBuilder', () => {
             set_id: 1,
             node_id: 'parent',
             track_id: 1,
+            x: 0,
+            y: 0,
             level: 0,
             col_index: 0,
             track: {
@@ -682,6 +684,8 @@ describe('SetBuilder', () => {
             set_id: 1,
             node_id: 'mid',
             track_id: 2,
+            x: 0,
+            y: 0,
             level: 1,
             col_index: 0,
             track: {
@@ -702,6 +706,8 @@ describe('SetBuilder', () => {
             set_id: 1,
             node_id: 'child',
             track_id: 3,
+            x: 0,
+            y: 0,
             level: 2,
             col_index: 0,
             track: {

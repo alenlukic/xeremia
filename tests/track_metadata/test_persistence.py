@@ -5,7 +5,10 @@ from src.models.artist import Artist
 from src.models.artist_track import ArtistTrack
 from src.models.track import Track
 from src.track_metadata.models import SimpleMetadata
-from src.track_metadata.pipeline.persistence import upsert_track_records
+from src.track_metadata.pipeline.persistence import (
+    update_track_records,
+    upsert_track_records,
+)
 
 
 @dataclass
@@ -18,14 +21,22 @@ class _FakeQuery:
         merged.update(kwargs)
         return _FakeQuery(self.records, merged)
 
-    def first(self):
-        for record in self.records:
+    def _matches(self):
+        return [
+            record
+            for record in self.records
             if all(
                 getattr(record, key, None) == value
                 for key, value in self.criteria.items()
-            ):
-                return record
-        return None
+            )
+        ]
+
+    def first(self):
+        matches = self._matches()
+        return matches[0] if matches else None
+
+    def all(self):
+        return self._matches()
 
 
 class _FakeSession:
@@ -98,6 +109,38 @@ def test_upsert_track_records_persists_formatted_title_and_date_added(tmp_path):
     assert track.genre == "Deep House"
     assert track.label == "CDR"
     assert getattr(track, "date_added", None) is not None
+
+
+def test_upsert_track_records_persists_audio_duration(monkeypatch, tmp_path):
+    session = _FakeSession()
+    file_path = tmp_path / "track.aiff"
+    file_path.write_bytes(b"audio")
+    metadata = SimpleMetadata(title="Track", artist="Artist")
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.persistence.read_duration_seconds",
+        lambda _file_ref: 390.25,
+    )
+
+    upsert_track_records(session, file_path, metadata)
+
+    assert session.data[Track][0].duration_seconds == 390.25
+
+
+def test_update_track_records_persists_audio_duration(monkeypatch, tmp_path):
+    session = _FakeSession()
+    file_path = tmp_path / "track.aiff"
+    file_path.write_bytes(b"audio")
+    existing = Track(file_name="track.aiff", title="Track")
+    session.add(existing)
+    metadata = SimpleMetadata(title="Track", artist="Artist")
+    monkeypatch.setattr(
+        "src.track_metadata.pipeline.persistence.read_duration_seconds",
+        lambda _file_ref: 402.5,
+    )
+
+    update_track_records(session, existing.id, file_path, metadata)
+
+    assert existing.duration_seconds == 402.5
 
 
 def test_upsert_track_records_requires_title():

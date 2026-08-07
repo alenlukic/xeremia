@@ -1,9 +1,13 @@
+import type { WorkspaceLayoutState } from './types'
+
 export type TableId = 'search' | 'matches' | 'tracklist' | 'pool'
 
 export interface TablePreferenceConfig {
   column_order: string[]
   column_visibility: Record<string, boolean>
   column_widths: Record<string, number>
+  /** Only the workspace-layout row carries this; column tables leave it unset. */
+  layout?: WorkspaceLayoutState | null
 }
 
 export interface TablePreferenceResponse extends TablePreferenceConfig {

@@ -15,6 +15,7 @@ class TrackResponse(BaseModel):
     label: Optional[str] = None
     energy: Optional[int] = None
     date_added: Optional[str] = None
+    duration_seconds: Optional[float] = None
 
 
 class SearchSuggestion(BaseModel):
@@ -174,6 +175,32 @@ class SetSummary(BaseModel):
     updated_at: str
     pool_count: int = 0
     tracklist_count: int = 0
+    # Sequencer view state for this set; null until the DJ changes something.
+    sequencer: Optional[dict] = None
+
+
+class SequencerBenchOverride(BaseModel):
+    """Preview values for a track while it remains on an alternative lane."""
+
+    durOv: Optional[float] = None
+    endPin: Optional[float] = None
+    bpmOv: Optional[float] = None
+
+
+class SetSequencerRequest(BaseModel):
+    """Sequencer view state. Every field is optional so a partial save works."""
+
+    start_minutes: Optional[float] = Field(default=None, ge=0, le=1440)
+    end_minutes: Optional[float] = Field(default=None, ge=0, le=2880)
+    tick_minutes: Optional[int] = Field(default=None, ge=1, le=240)
+    px_per_min: Optional[float] = Field(default=None, ge=0.5, le=200)
+    view: Optional[str] = Field(default=None, max_length=32)
+    # Keys are lane-scoped placement ids (for example "12:417"). Legacy
+    # numeric track-id keys remain valid strings for backwards compatibility.
+    bench_times: Optional[Dict[str, float]] = None
+    bench_overrides: Optional[Dict[str, SequencerBenchOverride]] = None
+    starred_tiles: Optional[Dict[str, bool]] = None
+    pinned_tiles: Optional[Dict[str, bool]] = None
 
 
 class SetCreateRequest(BaseModel):
@@ -199,11 +226,26 @@ class TracklistEntryResponse(BaseModel):
     track_id: int
     position: int
     note: str = ""
+    play_minutes: Optional[float] = None
+    pinned_end_minutes: Optional[float] = None
+    bpm_override: Optional[float] = None
     track: Optional[TrackResponse] = None
 
 
 class TracklistNoteUpdateRequest(BaseModel):
     note: str = ""
+
+
+class TracklistOverridesRequest(BaseModel):
+    """Sequencer overrides for one tracklist entry.
+
+    PUT replaces the whole override triple, so a null or omitted field clears
+    that override and restores the derived value.
+    """
+
+    play_minutes: Optional[float] = Field(default=None, ge=0.1, le=600)
+    pinned_end_minutes: Optional[float] = Field(default=None, ge=0, le=2880)
+    bpm_override: Optional[float] = Field(default=None, ge=40, le=300)
 
 
 class PoolSubgroupResponse(BaseModel):
@@ -375,12 +417,28 @@ class TableId(str, Enum):
     matches = "matches"
     tracklist = "tracklist"
     pool = "pool"
+    # Not a column-based table: this row carries the workspace grid layout for
+    # one device in the ``layout`` payload.
+    workspace_layout = "workspace-layout"
+
+
+COLUMN_TABLE_IDS = frozenset(
+    {
+        TableId.search.value,
+        TableId.matches.value,
+        TableId.tracklist.value,
+        TableId.pool.value,
+    }
+)
 
 
 class TablePreferenceConfig(BaseModel):
-    column_order: List[str] = Field(..., min_length=1)
-    column_visibility: Dict[str, bool]
-    column_widths: Dict[str, float]
+    # Column config is empty for the workspace-layout row; the route requires a
+    # non-empty order for every column-based table id.
+    column_order: List[str] = Field(default_factory=list)
+    column_visibility: Dict[str, bool] = Field(default_factory=dict)
+    column_widths: Dict[str, float] = Field(default_factory=dict)
+    layout: Optional[Dict[str, Any]] = None
 
     @validator("column_order")
     def validate_column_order(cls, value: List[str]) -> List[str]:

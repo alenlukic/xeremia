@@ -628,6 +628,7 @@ function PoolRow({
   onRemoveSubgroupMember,
   onCreateSubgroup,
   reorder,
+  railSubgroupId,
 }: {
   entry: PoolEntry
   visibleColumnIds: string[]
@@ -639,8 +640,13 @@ function PoolRow({
   onRemoveSubgroupMember: SubgroupMemberAction
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
   reorder?: RowReorderProps
+  /** Subgroup whose color rails the row; defaults to the first membership. */
+  railSubgroupId?: number
 }) {
   const title = displayTitle(entry.track, entry.track_id)
+  const railId =
+    railSubgroupId ?? subgroups.find((sg) => memberSubgroupIds.has(sg.id))?.id
+  const railColor = railId != null ? colorByIndex.get(railId) : undefined
   const highlight = useContext(PoolHighlightContext)
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
 
@@ -739,7 +745,12 @@ function PoolRow({
           : undefined
       }
     >
-      <td className="set-ws-cell-remove">
+      <td
+        className="set-ws-cell-remove"
+        style={
+          railColor ? { boxShadow: `inset 2px 0 0 0 ${railColor}` } : undefined
+        }
+      >
         <button
           type="button"
           className="set-row-remove-btn"
@@ -1375,6 +1386,7 @@ function SubgroupSection({
                   onAddSubgroupMember={onAddSubgroupMember}
                   onRemoveSubgroupMember={onRemoveSubgroupMember}
                   onCreateSubgroup={onCreateSubgroup}
+                  railSubgroupId={subgroup.id}
                 />
               ))}
             </tbody>

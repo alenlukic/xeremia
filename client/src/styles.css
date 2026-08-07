@@ -632,6 +632,7 @@ body,
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 30;
+  box-sizing: border-box;
 }
 
 .filter-add-menu-item {
@@ -663,6 +664,7 @@ body,
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 30;
+  box-sizing: border-box;
 }
 
 .filter-add-group .filter-popover {
@@ -785,8 +787,11 @@ body,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 220px;
+  width: 220px;
+  min-width: 0;
+  max-width: 100%;
 }
+.filter-multiselect > .filter-input { box-sizing: border-box; width: 100%; }
 .filter-multiselect-list {
   display: flex;
   flex-direction: column;

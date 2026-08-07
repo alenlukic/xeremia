@@ -68,7 +68,15 @@ function makeExplorerNode(
     level: number
   },
 ): ExplorerNode {
-  const { node_id, track_id, level, col_index = 0, ...rest } = overrides
+  const {
+    node_id,
+    track_id,
+    level,
+    col_index = 0,
+    x = 0,
+    y = 0,
+    ...rest
+  } = overrides
   return {
     id: 1,
     set_id: 1,
@@ -76,6 +84,8 @@ function makeExplorerNode(
     track_id,
     level,
     col_index,
+    x,
+    y,
     track: makeTrack(track_id),
     ...rest,
   }
@@ -133,7 +143,13 @@ describe('useSetBuilder addExplorerNode', () => {
       await result.current.addExplorerNode(99, 300, 200)
     })
 
-    expect(http.explorerAddNode).toHaveBeenCalledWith(1, 99, 300, 200, undefined)
+    expect(http.explorerAddNode).toHaveBeenCalledWith(
+      1,
+      99,
+      300,
+      200,
+      undefined,
+    )
     expect(http.explorerAddEdge).not.toHaveBeenCalled()
   })
 
@@ -295,6 +311,190 @@ describe('useSetBuilder dropTrackToSubgroup', () => {
 
     expect(http.subgroupDropTrack).toHaveBeenCalledWith(1, 5, 42, 'browse')
     expect(http.fetchHydratedSet).toHaveBeenCalled()
+  })
+
+  it('reports and rethrows a failure for clipboard callers', async () => {
+    const http = await import('../api/http')
+    vi.mocked(http.subgroupDropTrack).mockRejectedValue(
+      new Error('subgroup write failed'),
+    )
+    const { result } = renderHook(() => useSetBuilder())
+
+    await act(async () => {
+      result.current.selectSet(1)
+    })
+    await waitFor(() => expect(result.current.activeSetId).toBe(1))
+
+    await act(async () => {
+      await expect(
+        result.current.dropTrackToSubgroup(5, 42, 'browse', true),
+      ).rejects.toThrow('subgroup write failed')
+    })
+
+    expect(result.current.error).toBe('Could not add track to group.')
+  })
+})
+
+describe('useSetBuilder removeManyFromPool', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    const http = await import('../api/http')
+    vi.mocked(http.fetchSets).mockResolvedValue([])
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet())
+    vi.mocked(http.poolRemove).mockResolvedValue(undefined)
+  })
+
+  async function activeBuilder() {
+    const view = renderHook(() => useSetBuilder())
+    await act(async () => {
+      view.result.current.selectSet(1)
+    })
+    await waitFor(() => expect(view.result.current.activeSetId).toBe(1))
+    return view
+  }
+
+  it('removes each track in turn and refreshes the set once', async () => {
+    const http = await import('../api/http')
+    const { result } = await activeBuilder()
+    vi.mocked(http.fetchHydratedSet).mockClear()
+
+    await act(async () => {
+      await result.current.removeManyFromPool([7, 8, 9])
+    })
+
+    expect(vi.mocked(http.poolRemove).mock.calls).toEqual([
+      [1, 7],
+      [1, 8],
+      [1, 9],
+    ])
+    expect(http.fetchHydratedSet).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not touch the server for an empty list', async () => {
+    const http = await import('../api/http')
+    const { result } = await activeBuilder()
+    vi.mocked(http.fetchHydratedSet).mockClear()
+
+    await act(async () => {
+      await result.current.removeManyFromPool([])
+    })
+
+    expect(http.poolRemove).not.toHaveBeenCalled()
+    expect(http.fetchHydratedSet).not.toHaveBeenCalled()
+  })
+
+  it('reports a mid-loop failure and still refreshes', async () => {
+    const http = await import('../api/http')
+    const { result } = await activeBuilder()
+    vi.mocked(http.fetchHydratedSet).mockClear()
+    vi.mocked(http.poolRemove)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('pool row is gone'))
+
+    await act(async () => {
+      await result.current.removeManyFromPool([7, 8, 9])
+    })
+
+    // The loop stops at the failure, so the third call never happens.
+    expect(vi.mocked(http.poolRemove).mock.calls).toEqual([
+      [1, 7],
+      [1, 8],
+    ])
+    expect(result.current.error).toContain('pool')
+    expect(http.fetchHydratedSet).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useSetBuilder createSubgroupWithEntries', () => {
+  const created = { id: 5, set_id: 1, name: 'Alt 1', display_order: 0 }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    const http = await import('../api/http')
+    vi.mocked(http.fetchSets).mockResolvedValue([])
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet())
+    vi.mocked(http.subgroupCreate).mockResolvedValue(created)
+    vi.mocked(http.subgroupAddMember).mockResolvedValue(undefined)
+  })
+
+  async function activeBuilder() {
+    const view = renderHook(() => useSetBuilder())
+    await act(async () => {
+      view.result.current.selectSet(1)
+    })
+    await waitFor(() => expect(view.result.current.activeSetId).toBe(1))
+    return view
+  }
+
+  it('carries every listed pool entry into the new group with one refresh', async () => {
+    const http = await import('../api/http')
+    const { result } = await activeBuilder()
+    vi.mocked(http.fetchHydratedSet).mockClear()
+
+    let group: unknown
+    await act(async () => {
+      group = await result.current.createSubgroupWithEntries('Alt 1', [20, 21])
+    })
+
+    expect(http.subgroupCreate).toHaveBeenCalledWith(1, 'Alt 1')
+    expect(vi.mocked(http.subgroupAddMember).mock.calls).toEqual([
+      [1, 5, 20],
+      [1, 5, 21],
+    ])
+    expect(http.fetchHydratedSet).toHaveBeenCalledTimes(1)
+    expect(group).toEqual(created)
+  })
+
+  it('creates an empty group when the pool holds no entry', async () => {
+    const http = await import('../api/http')
+    const { result } = await activeBuilder()
+
+    await act(async () => {
+      await result.current.createSubgroupWithEntries('Alt 1', [])
+    })
+
+    expect(http.subgroupCreate).toHaveBeenCalledWith(1, 'Alt 1')
+    expect(http.subgroupAddMember).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed create and returns no group', async () => {
+    const http = await import('../api/http')
+    vi.mocked(http.subgroupCreate).mockRejectedValue(new Error('500'))
+    const { result } = await activeBuilder()
+
+    let group: unknown = created
+    await act(async () => {
+      group = await result.current.createSubgroupWithEntries('Alt 1', [20])
+    })
+
+    expect(group).toBeNull()
+    expect(http.subgroupAddMember).not.toHaveBeenCalled()
+    expect(result.current.error).toBe(
+      'Server error — please try again shortly.',
+    )
+  })
+
+  it('keeps the new group when one membership write fails', async () => {
+    const http = await import('../api/http')
+    vi.mocked(http.subgroupAddMember).mockRejectedValueOnce(
+      new Error('pool row is gone'),
+    )
+    const { result } = await activeBuilder()
+
+    let group: unknown
+    await act(async () => {
+      group = await result.current.createSubgroupWithEntries('Alt 1', [20, 21])
+    })
+
+    // The lane exists, so the caller can still place its tracks on it.
+    expect(group).toEqual(created)
+    expect(vi.mocked(http.subgroupAddMember).mock.calls).toEqual([
+      [1, 5, 20],
+      [1, 5, 21],
+    ])
+    expect(result.current.error).toBe('Could not create group.')
   })
 })
 

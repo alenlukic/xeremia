@@ -9,6 +9,8 @@ export interface Track {
   label: string | null
   energy: number | null
   date_added: string | null
+  /** Track length read from the audio header; null until the backfill runs. */
+  duration_seconds?: number | null
 }
 
 export interface SearchSuggestion {
@@ -130,6 +132,20 @@ export interface DjSet {
 
 // --- Persisted set workspace types ---
 
+/** Sequencer view state, stored on the set so it survives a reload. */
+export interface SequencerSettings {
+  start_minutes?: number
+  end_minutes?: number
+  tick_minutes?: number
+  px_per_min?: number
+  view?: string
+  /** Bench lane positions by lane-scoped tile id. */
+  bench_times?: Record<string, number>
+  bench_overrides?: Record<string, Record<string, number | null>>
+  starred_tiles?: Record<string, boolean>
+  pinned_tiles?: Record<string, boolean>
+}
+
 export interface SetSummary {
   id: number
   name: string
@@ -137,6 +153,7 @@ export interface SetSummary {
   updated_at: string
   pool_count: number
   tracklist_count: number
+  sequencer?: SequencerSettings | null
 }
 
 export interface PoolEntry {
@@ -155,7 +172,18 @@ export interface TracklistEntry {
   track_id: number
   position: number
   note?: string
+  /** Sequencer overrides. Null means "derive from the track". */
+  play_minutes?: number | null
+  pinned_end_minutes?: number | null
+  bpm_override?: number | null
   track: Track | null
+}
+
+/** Per-track Sequencer overrides as the API accepts them. */
+export interface TracklistOverrides {
+  play_minutes: number | null
+  pinned_end_minutes: number | null
+  bpm_override: number | null
 }
 
 export interface ExplorerNode {
@@ -205,10 +233,62 @@ export interface HydratedSet {
 
 export type TableId = 'search' | 'matches' | 'tracklist' | 'pool'
 
+/** The workspace layout reuses the table-preference surface for device scoping. */
+export const WORKSPACE_LAYOUT_TABLE_ID = 'workspace-layout'
+
+export type PreferenceTableId = TableId | typeof WORKSPACE_LAYOUT_TABLE_ID
+
+export type WidgetId = 'browser' | 'matches' | 'pool' | 'explorer' | 'sequencer'
+
+/**
+ * A widget's rectangle in grid units on the discretized workspace canvas.
+ * Free-form: any size, any position, as long as it stays on the grid and does
+ * not overlap another widget.
+ */
+export interface Placement {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export type LayoutPlace = Partial<Record<WidgetId, Placement>>
+
+export type ShellId = 'workspace' | 'legacy'
+
+/**
+ * Widgets whose width is pinned. A locked widget's columns are excluded from
+ * divider redistribution, so resizing elsewhere leaves its width untouched.
+ */
+export type LockedWidgets = Partial<Record<WidgetId, true>>
+
+/** A named layout the DJ saved. Rectangles carry their own sizes. */
+export interface SavedLayout {
+  place: LayoutPlace
+  locked?: LockedWidgets
+}
+
+export interface WorkspaceLayoutState {
+  preset: string
+  place: LayoutPlace
+  /**
+   * Canvas size the rectangles were authored at, in units. Placements rescale
+   * from this on load, so a different window never shifts widgets into each
+   * other.
+   */
+  bounds?: { cols: number; rows: number }
+  custom: Record<string, SavedLayout>
+  shell: ShellId
+  /** Absent on rows written before width locking existed. */
+  locked?: LockedWidgets
+}
+
 export interface TablePreferenceConfig {
   column_order: string[]
   column_visibility: Record<string, boolean>
   column_widths: Record<string, number>
+  /** Only the workspace-layout row carries this. */
+  layout?: WorkspaceLayoutState | null
 }
 
 export interface TablePreferenceResponse extends TablePreferenceConfig {

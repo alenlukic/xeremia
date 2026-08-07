@@ -61,12 +61,25 @@ def _add_device_scope() -> None:
         )
 
 
+def _add_layout_column() -> None:
+    """Add the nullable layout payload used by the workspace-layout row."""
+    from sqlalchemy import text
+
+    with database.engine.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE public.table_preference ADD COLUMN layout jsonb")
+        )
+
+
 def apply() -> None:
     if not table_exists():
         TablePreference.__table__.create(bind=database.engine, checkfirst=True)
         return
-    if "device_hash" not in _column_names():
+    columns = _column_names()
+    if "device_hash" not in columns:
         _add_device_scope()
+    if "layout" not in columns:
+        _add_layout_column()
 
 
 def verify() -> list[str]:
@@ -74,8 +87,10 @@ def verify() -> list[str]:
     if not table_exists():
         errors.append("table_preference table is missing")
         return errors
-    if "device_hash" not in _column_names():
-        errors.append("table_preference.device_hash column is missing")
+    columns = _column_names()
+    for column in ("device_hash", "layout"):
+        if column not in columns:
+            errors.append(f"table_preference.{column} column is missing")
     return errors
 
 

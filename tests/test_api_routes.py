@@ -447,3 +447,121 @@ class TestAudioEndpoint:
 
         assert resp.status_code == 200
         assert resp.content == b"normalized-audio"
+
+
+# ---------------------------------------------------------------------------
+# Track duration exposure
+# ---------------------------------------------------------------------------
+
+
+class TestTrackDurationSerialization:
+    """The Sequencer reads block length from the serialized duration."""
+
+    def _track(self, duration):
+        track = MagicMock()
+        track.id = 7
+        track.title = "Opener"
+        track.bpm = 124
+        track.key = "Abm"
+        track.camelot_code = "01A"
+        track.genre = "Techno"
+        track.label = "Label"
+        track.energy = 6
+        track.date_added = "Mon Jan 1 00:00:00 2024"
+        track.duration_seconds = duration
+        return track
+
+    def test_serializer_exposes_duration(self):
+        from src.api.serializers import serialize_track_row
+
+        payload = serialize_track_row(self._track(390.25))
+        assert payload["duration_seconds"] == pytest.approx(390.25)
+
+    def test_serializer_preserves_null_duration(self):
+        from src.api.serializers import serialize_track_row
+
+        assert serialize_track_row(self._track(None))["duration_seconds"] is None
+
+    def test_serializer_tolerates_a_row_without_the_column(self):
+        from src.api.serializers import serialize_track_row
+
+        class LegacyTrack:
+            id = 7
+            title = "Opener"
+            bpm = None
+            key = None
+            camelot_code = None
+            genre = None
+            label = None
+            energy = None
+            date_added = None
+
+        assert serialize_track_row(LegacyTrack())["duration_seconds"] is None
+
+    def test_track_response_carries_duration(self):
+        from src.api.schemas import TrackResponse
+
+        response = TrackResponse(id=7, title="Opener", duration_seconds=390.25)
+        assert response.model_dump()["duration_seconds"] == pytest.approx(390.25)
+
+    def test_tracks_endpoint_returns_duration(self, client):
+        with patch(
+            "src.api.routes.get_tracks", return_value=[self._track(412.0)]
+        ), patch("src.api.routes._get_session", return_value=MagicMock()):
+            resp = client.get("/api/tracks")
+        assert resp.status_code == 200
+        assert resp.json()[0]["duration_seconds"] == pytest.approx(412.0)
+
+
+class TestSequencerSettingsContract:
+    def test_schema_keeps_bench_positions_and_overrides(self):
+        from src.api.schemas import SetSequencerRequest
+
+        request = SetSequencerRequest(
+            bench_times={"12:17": 402.5},
+            bench_overrides={
+                "12:17": {"durOv": 3.5, "endPin": None, "bpmOv": 128.0}
+            },
+            starred_tiles={"committed:17": True, "12:17": False},
+            pinned_tiles={"12:17": True},
+        )
+
+        assert request.model_dump(exclude_none=True) == {
+            "bench_times": {"12:17": 402.5},
+            "bench_overrides": {"12:17": {"durOv": 3.5, "bpmOv": 128.0}},
+            "starred_tiles": {"committed:17": True, "12:17": False},
+            "pinned_tiles": {"12:17": True},
+        }
+
+    def test_update_route_merges_bench_state_into_the_set(self):
+        from src.api.routes import api_update_set_sequencer
+        from src.api.schemas import SetSequencerRequest
+
+        dj_set = MagicMock()
+        dj_set.sequencer = {"start_minutes": 360}
+        session = MagicMock()
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = (
+            dj_set
+        )
+        body = SetSequencerRequest(
+            bench_times={"12:17": 402.5},
+            bench_overrides={"12:17": {"durOv": 3.5}},
+            starred_tiles={"12:17": True},
+            pinned_tiles={"12:17": True},
+        )
+
+        with (
+            patch("src.api.routes._get_session", return_value=session),
+            patch("src.api.routes._serialize_set_summary", return_value={"id": 1}),
+        ):
+            result = api_update_set_sequencer(1, body)
+
+        assert result == {"id": 1}
+        assert dj_set.sequencer == {
+            "start_minutes": 360,
+            "bench_times": {"12:17": 402.5},
+            "bench_overrides": {"12:17": {"durOv": 3.5}},
+            "starred_tiles": {"12:17": True},
+            "pinned_tiles": {"12:17": True},
+        }
+        session.commit.assert_called_once()

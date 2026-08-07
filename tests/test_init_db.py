@@ -123,7 +123,7 @@ def test_migration_verify_passes_when_present():
         patch.object(
             migrate_table_preferences,
             "_column_names",
-            return_value={"device_hash", "table_id", "column_order"},
+            return_value={"device_hash", "table_id", "column_order", "layout"},
         ),
     ):
         assert migrate_table_preferences.verify() == []
@@ -135,11 +135,24 @@ def test_migration_verify_flags_missing_device_hash():
         patch.object(
             migrate_table_preferences,
             "_column_names",
-            return_value={"table_id", "column_order"},
+            return_value={"table_id", "column_order", "layout"},
         ),
     ):
         errors = migrate_table_preferences.verify()
     assert errors == ["table_preference.device_hash column is missing"]
+
+
+def test_migration_verify_flags_missing_layout():
+    with (
+        patch.object(migrate_table_preferences, "table_exists", return_value=True),
+        patch.object(
+            migrate_table_preferences,
+            "_column_names",
+            return_value={"device_hash", "table_id", "column_order"},
+        ),
+    ):
+        errors = migrate_table_preferences.verify()
+    assert errors == ["table_preference.layout column is missing"]
 
 
 def test_init_db_verify_schema_flags_missing_table_preference():

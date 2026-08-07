@@ -10,6 +10,11 @@ from src.feature_extraction.trait_extractor import (
 )
 
 
+def optional_float(value):
+    """Convert a Numeric column value to float, preserving null."""
+    return float(value) if value is not None else None
+
+
 def serialize_track_row(track):
     """Convert a Track ORM instance to a response dict."""
     return {
@@ -22,6 +27,7 @@ def serialize_track_row(track):
         "label": track.label,
         "energy": track.energy,
         "date_added": track.date_added,
+        "duration_seconds": optional_float(getattr(track, "duration_seconds", None)),
     }
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from time import ctime
 from typing import Any
 
-from src.data_management.audio_file import AudioFile
+from src.data_management.audio_file import AudioFile, read_duration_seconds
 from src.data_management.config import CANONICAL_KEY_MAP
 from src.track_metadata.label import resolve_label
 from src.track_metadata.sources.genre_lookups import is_beatport_encoded
@@ -127,6 +127,10 @@ def _apply_track_fields(
     track.label = label
     if date_added is not None:
         track.date_added = date_added
+    if file_ref is not None:
+        duration_seconds = read_duration_seconds(file_ref)
+        if duration_seconds is not None:
+            track.duration_seconds = duration_seconds
     return camelot_code
 
 
@@ -199,6 +203,9 @@ def upsert_track_records(
     track.label = label
     if date_added is not None:
         track.date_added = date_added
+    duration_seconds = read_duration_seconds(file_ref)
+    if duration_seconds is not None:
+        track.duration_seconds = duration_seconds
 
     session.commit()
     if created or getattr(track, "id", None) is None:

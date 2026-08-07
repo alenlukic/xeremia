@@ -268,8 +268,11 @@ export function useSetBuilder() {
   // write. Both hit the server before the single rehydrate below, so the UI
   // never renders the intermediate "appended at the end" state.
   const insertIntoTracklist = useCallback(
-    async (trackId: number, position: number) => {
+    async (trackId: number, position: number, rethrow = false) => {
       if (activeSetId === null) {
+        if (rethrow) {
+          throw new Error('No active set.')
+        }
         return
       }
       try {
@@ -284,14 +287,20 @@ export function useSetBuilder() {
           // A failed reorder can leave the track appended; resync either way.
           await refreshActive()
         }
+        if (rethrow) {
+          throw err
+        }
       }
     },
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
   const removeFromPool = useCallback(
-    async (trackId: number) => {
+    async (trackId: number, rethrow = false) => {
       if (activeSetId === null) {
+        if (rethrow) {
+          throw new Error('No active set.')
+        }
         return
       }
       try {
@@ -303,14 +312,47 @@ export function useSetBuilder() {
             friendlyError(err, 'Could not remove track from pool.'),
           )
         }
+        if (rethrow) {
+          throw err
+        }
+      }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  // The pool API removes one track per call, so Prune and Clear loop it. A
+  // mid-loop failure leaves a partial removal, and the single refresh below
+  // shows whatever actually survived. Hydrating clears the error banner, so
+  // the failure is reported after that refresh rather than before it.
+  const removeManyFromPool = useCallback(
+    async (trackIds: number[]) => {
+      if (activeSetId === null || trackIds.length === 0) {
+        return
+      }
+      let failure: { err: unknown } | null = null
+      try {
+        for (const trackId of trackIds) {
+          await poolRemove(activeSetId, trackId)
+        }
+      } catch (err) {
+        failure = { err }
+      }
+      await refreshActive()
+      if (failure && mountedRef.current) {
+        setErrorWithAutoClear(
+          friendlyError(failure.err, 'Could not remove tracks from pool.'),
+        )
       }
     },
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
   const removeFromTracklist = useCallback(
-    async (trackId: number) => {
+    async (trackId: number, rethrow = false) => {
       if (activeSetId === null) {
+        if (rethrow) {
+          throw new Error('No active set.')
+        }
         return
       }
       try {
@@ -322,14 +364,20 @@ export function useSetBuilder() {
             friendlyError(err, 'Could not remove track from tracklist.'),
           )
         }
+        if (rethrow) {
+          throw err
+        }
       }
     },
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
   const movePoolToTracklist = useCallback(
-    async (trackId: number) => {
+    async (trackId: number, rethrow = false) => {
       if (activeSetId === null) {
+        if (rethrow) {
+          throw new Error('No active set.')
+        }
         return
       }
       try {
@@ -340,6 +388,9 @@ export function useSetBuilder() {
           setErrorWithAutoClear(
             friendlyError(err, 'Could not move track to tracklist.'),
           )
+        }
+        if (rethrow) {
+          throw err
         }
       }
     },
@@ -385,6 +436,46 @@ export function useSetBuilder() {
         }
         return null
       }
+    },
+    [activeSetId, refreshActive, setErrorWithAutoClear],
+  )
+
+  // The sequencer's default lane is virtual: while the set has no subgroup the
+  // lane shows the whole pool. Materializing it keeps those entries, so a track
+  // the DJ never touched stays on the lane. One refresh covers the create and
+  // every membership write, and a partial failure is reported after that
+  // refresh because hydrating clears the error banner.
+  const createSubgroupWithEntries = useCallback(
+    async (
+      name: string,
+      poolEntryIds: number[],
+    ): Promise<PoolSubgroup | null> => {
+      if (activeSetId === null) {
+        return null
+      }
+      let created: PoolSubgroup | null = null
+      let failure: { err: unknown } | null = null
+      try {
+        created = await apiSubgroupCreate(activeSetId, name)
+      } catch (err) {
+        failure = { err }
+      }
+      if (created) {
+        for (const poolEntryId of poolEntryIds) {
+          try {
+            await apiSubgroupAddMember(activeSetId, created.id, poolEntryId)
+          } catch (err) {
+            failure ??= { err }
+          }
+        }
+      }
+      await refreshActive()
+      if (failure && mountedRef.current) {
+        setErrorWithAutoClear(
+          friendlyError(failure.err, 'Could not create group.'),
+        )
+      }
+      return created
     },
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
@@ -470,8 +561,12 @@ export function useSetBuilder() {
       subgroupId: number,
       trackId: number,
       source: 'browse' | 'tracklist' | 'pool',
+      rethrow = false,
     ) => {
       if (activeSetId === null) {
+        if (rethrow) {
+          throw new Error('No active set.')
+        }
         return
       }
       try {
@@ -482,6 +577,9 @@ export function useSetBuilder() {
           setErrorWithAutoClear(
             friendlyError(err, 'Could not add track to group.'),
           )
+        }
+        if (rethrow) {
+          throw err
         }
       }
     },
@@ -508,8 +606,11 @@ export function useSetBuilder() {
   )
 
   const reorderTracklist = useCallback(
-    async (trackId: number, newPosition: number) => {
+    async (trackId: number, newPosition: number, rethrow = false) => {
       if (activeSetId === null) {
+        if (rethrow) {
+          throw new Error('No active set.')
+        }
         return
       }
       try {
@@ -520,6 +621,9 @@ export function useSetBuilder() {
           setErrorWithAutoClear(
             friendlyError(err, 'Could not reorder tracklist.'),
           )
+        }
+        if (rethrow) {
+          throw err
         }
       }
     },
@@ -604,7 +708,12 @@ export function useSetBuilder() {
   )
 
   const addExplorerNode = useCallback(
-    async (trackId: number, x: number = 0, y: number = 0, parentNodeId?: string) => {
+    async (
+      trackId: number,
+      x: number = 0,
+      y: number = 0,
+      parentNodeId?: string,
+    ) => {
       if (activeSetId === null) {
         return null
       }
@@ -732,12 +841,7 @@ export function useSetBuilder() {
   // Add a node at (x, y) wired to one or more parents. Used by undo to
   // reconstruct a deleted node together with its incoming edges.
   const addNodeWithParents = useCallback(
-    async (
-      trackId: number,
-      parentIds: string[],
-      x: number,
-      y: number,
-    ) => {
+    async (trackId: number, parentIds: string[], x: number, y: number) => {
       if (activeSetId === null) {
         return null
       }
@@ -855,10 +959,12 @@ export function useSetBuilder() {
     addToTracklist,
     insertIntoTracklist,
     removeFromPool,
+    removeManyFromPool,
     removeFromTracklist,
     movePoolToTracklist,
     moveTracklistToPool,
     createSubgroup,
+    createSubgroupWithEntries,
     renameSubgroup,
     deleteSubgroup,
     reorderSubgroups,

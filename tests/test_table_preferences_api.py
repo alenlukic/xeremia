@@ -124,6 +124,15 @@ class TestTablePreferencesApi:
             device_hash=GLOBAL_DEVICE_HASH
         )
 
+    def test_put_rejects_empty_column_order_for_column_table(self, client):
+        payload = {
+            "column_order": [],
+            "column_visibility": {},
+            "column_widths": {},
+        }
+        response = client.put("/api/admin/table-preferences/search", json=payload)
+        assert response.status_code == 422
+
     def test_empty_device_inherits_global_rows(self, client):
         from src.models.table_preference import GLOBAL_DEVICE_HASH
 
@@ -154,3 +163,98 @@ class TestTablePreferencesApi:
         assert query.filter_by.call_args_list[1].kwargs == {
             "device_hash": GLOBAL_DEVICE_HASH
         }
+
+
+_LAYOUT = {
+    "preset": "Explorer sandbox",
+    "place": {"explorer": {"r": 0, "c": 0, "span": 2}},
+    "cols": [1, 1, 1],
+    "rows": [1, 1],
+    "custom": {},
+    "shell": "workspace",
+}
+
+
+def _layout_row(layout=None):
+    row = MagicMock()
+    row.table_id = "workspace-layout"
+    row.column_order = []
+    row.column_visibility = {}
+    row.column_widths = {}
+    row.layout = _LAYOUT if layout is None else layout
+    row.updated_at = None
+    return row
+
+
+class TestWorkspaceLayoutPreference:
+    """The workspace-layout row stores the grid layout instead of columns."""
+
+    def test_put_saves_layout_payload(self, client):
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = (
+            _layout_row()
+        )
+        payload = {
+            "column_order": [],
+            "column_visibility": {},
+            "column_widths": {},
+            "layout": _LAYOUT,
+        }
+        with patch("src.api.routes._get_session", return_value=mock_session):
+            response = client.put(
+                "/api/admin/table-preferences/workspace-layout",
+                json=payload,
+                headers={"X-Device-Id": "device-xyz"},
+            )
+        assert response.status_code == 200
+        assert response.json()["layout"] == _LAYOUT
+        mock_session.query.return_value.filter_by.assert_called_with(
+            device_hash="device-xyz", table_id="workspace-layout"
+        )
+        mock_session.commit.assert_called_once()
+
+    def test_put_requires_a_layout_object(self, client):
+        payload = {
+            "column_order": [],
+            "column_visibility": {},
+            "column_widths": {},
+        }
+        response = client.put(
+            "/api/admin/table-preferences/workspace-layout", json=payload
+        )
+        assert response.status_code == 422
+
+    def test_get_returns_layout_scoped_to_device(self, client):
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.all.return_value = [
+            _layout_row()
+        ]
+        with patch("src.api.routes._get_session", return_value=mock_session):
+            response = client.get(
+                "/api/admin/table-preferences",
+                headers={"X-Device-Id": "device-xyz"},
+            )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["preferences"][0]["table_id"] == "workspace-layout"
+        assert body["preferences"][0]["layout"] == _LAYOUT
+        mock_session.query.return_value.filter_by.assert_called_once_with(
+            device_hash="device-xyz"
+        )
+
+    def test_column_rows_keep_their_response_shape(self, client):
+        row = MagicMock()
+        row.table_id = "search"
+        row.column_order = ["title"]
+        row.column_visibility = {"title": True}
+        row.column_widths = {"title": 120.0}
+        row.updated_at = None
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.all.return_value = [row]
+        with patch("src.api.routes._get_session", return_value=mock_session):
+            response = client.get(
+                "/api/admin/table-preferences",
+                headers={"X-Device-Id": "abc123"},
+            )
+        assert response.status_code == 200
+        assert response.json()["preferences"][0]["layout"] is None

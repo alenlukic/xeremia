@@ -30,6 +30,7 @@ import {
   formatDateAdded,
   TRACK_DRAG_MIME,
 } from '../utils'
+import { keyDotColor } from '../utils/harmonic'
 import { PlayButton } from './PlayButton'
 import {
   TableColumnControls,
@@ -146,6 +147,20 @@ const dataColumns = [
     header: 'Title',
     size: FLEX_MINS[0],
     minSize: 120,
+    // The key dot reads left of the title, matching Matches and the Sequencer.
+    cell: (info) => (
+      <>
+        <span
+          className="key-dot"
+          aria-hidden="true"
+          style={{
+            background:
+              keyDotColor(info.row.original.camelot_code) ?? 'transparent',
+          }}
+        />
+        {info.getValue()}
+      </>
+    ),
   }),
   col.accessor('label', {
     header: 'Label',
