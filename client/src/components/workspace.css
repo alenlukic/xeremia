@@ -90,6 +90,7 @@
 .xm-cell--sel { background: rgba(207, 224, 255, 0.9) !important; border-color: #eef3ff !important; color: #0f1117 !important; }
 .xm-cell--dim { opacity: 0.55; }
 .xm-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.xm-confirm { font: 400 10px/1 'DM Sans', sans-serif; color: var(--muted, #8b8fa3); }
 .xm-legend { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; max-width: 640px; background: #171a23; border: 1px solid var(--border, #2a2e3b); border-radius: 6px; }
 .xm-swatch { display: inline-flex; align-items: center; height: 14px; padding: 0 4px; border-radius: 2px; border: 1px solid transparent; font: 500 8.5px/1 'JetBrains Mono', monospace; color: #0d1206; }
 .xm-swatch--effort { border-color: var(--border-strong, #3a4055); color: var(--muted, #8b8fa3); }
@@ -141,11 +142,11 @@
 .sq-tick { position: absolute; top: 4px; font: 400 8.5px/1 'JetBrains Mono', monospace; color: #5c6178; transform: translateX(-50%); }
 .sq-lane-actions { margin-top: 6px; }
 .sq-lane-delete { position: absolute; right: 6px; top: 6px; z-index: 2; border: 0; background: none; color: var(--muted, #8b8fa3); cursor: pointer; }
-/* Tight dot, and the BPM indented by exactly the dot's footprint so the two
-   rows line up on the same left edge. */
+/* Tight dot, and the BPM on the dot's own left edge rather than under the
+   Camelot code, so the block spends no width on an indent. */
 .sq-block-line { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
 .sq-block .key-dot { width: 6px; height: 6px; margin-right: 0; flex: 0 0 auto; }
-.sq-block-sub { display: block; font: inherit; opacity: 0.75; white-space: nowrap; padding-left: 9px; }
+.sq-block-sub { display: block; font: inherit; opacity: 0.75; white-space: nowrap; padding-left: 0; }
 /* Only the selected benched tile shows this, tucked into the corner so it
    never sits on top of the key or the BPM. */
 .sq-promote { position: absolute; right: 1px; top: 1px; z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 0; padding: 0; border-radius: 3px; background: rgba(15, 17, 23, 0.65); color: var(--accent-bright, #9db3ff); cursor: pointer; }
@@ -209,6 +210,10 @@
    space, so it is drawn rather than left blank. Click-through and behind the
    blocks: it is a backdrop, never a target. */
 .sq-lane-tail { position: absolute; top: 3px; bottom: 3px; z-index: 0; border: 1px dashed rgba(108, 140, 255, 0.24); border-radius: 5px; background: rgba(108, 140, 255, 0.03); pointer-events: none; }
+
+/* The rectangle a selection drag paints across a lane. Click-through, so the
+   drag keeps reaching the lane underneath it. */
+.sq-marquee { position: absolute; top: 3px; bottom: 3px; z-index: 1; border: 1px solid rgba(157, 179, 255, 0.7); border-radius: 4px; background: rgba(108, 140, 255, 0.16); pointer-events: none; }
 
 /* The label chip is click-through so it never eats a drop aimed at a block
    beneath it; its interactive children opt back in. */

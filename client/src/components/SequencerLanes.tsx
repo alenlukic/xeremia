@@ -1,10 +1,12 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { SequencerBlock } from './SequencerBlock'
 import { SortIcon } from './table/icons'
 import { SequencerScrollbar } from './SequencerScrollbar'
 import {
   BLOCK_DRAG_MIME,
+  arrangeLaneBlocks,
+  blocksInMinuteRange,
   laneKeyOf,
   readBlockDrag,
   snapMinutes,
@@ -14,6 +16,8 @@ import type {
   BenchBlock,
   LaidBlock,
   LaneKey,
+  LaneScope,
+  LaneSelection,
   SequencerLane,
 } from '../hooks/useSequencer'
 import { pairTracks } from '../utils/harmonic'
@@ -80,8 +84,10 @@ interface Props {
   endMin: number
   tickMin: number
   pxPerMin: number
-  selectedTrackId: number | null
-  onSelect: (trackId: number | null) => void
+  selection: LaneSelection
+  onSelect: (lane: LaneScope, trackId: number | null) => void
+  /** Reports the blocks a lane drag covered, in lane order. */
+  onSelectRange: (lane: LaneScope, trackIds: number[]) => void
   onAddCommitted: (trackId: number, position: number) => void
   onPromote: (trackId: number, position: number) => void
   onReorder: (trackId: number, position: number) => void
@@ -107,8 +113,9 @@ export function SequencerLanes({
   endMin,
   tickMin,
   pxPerMin,
-  selectedTrackId,
+  selection,
   onSelect,
+  onSelectRange,
   onAddCommitted,
   onPromote,
   onReorder,
@@ -124,23 +131,33 @@ export function SequencerLanes({
   /** Subgroup whose name is being edited inline. */
   const [renaming, setRenaming] = useState<number | null>(null)
 
+  /** Blocks of one lane, whichever kind that lane holds. */
+  const blocksInLane = useCallback(
+    (lane: LaneScope): Array<LaidBlock | BenchBlock> => {
+      if (lane === 'committed') {
+        return blocks
+      }
+      return benchLanes.find((l) => laneKeyOf(l.lane) === lane)?.blocks ?? []
+    },
+    [blocks, benchLanes],
+  )
+
+  const isSelected = useCallback(
+    (lane: LaneScope, trackId: number) =>
+      selection.lane === lane && selection.ids.includes(trackId),
+    [selection],
+  )
+
   const selectedTrack = useMemo<Track | null>(() => {
-    if (selectedTrackId == null) {
+    if (selection.focus == null) {
       return null
     }
-    // Either block type can be the relation source.
-    const committed = blocks.find((b) => b.entry.track_id === selectedTrackId)
-    if (committed) {
-      return committed.entry.track
-    }
-    for (const { blocks: benched } of benchLanes) {
-      const hit = benched.find((b) => b.entry.track_id === selectedTrackId)
-      if (hit) {
-        return hit.entry.track
-      }
-    }
-    return null
-  }, [blocks, benchLanes, selectedTrackId])
+    // Either block type can be the relation source, but only in its own lane.
+    const hit = blocksInLane(selection.lane).find(
+      (b) => b.entry.track_id === selection.focus,
+    )
+    return hit?.entry.track ?? null
+  }, [blocksInLane, selection])
 
   const relationFor = useCallback(
     (track: Track | null): PairResult | null => {
@@ -179,15 +196,86 @@ export function SequencerLanes({
    * carries no usable coordinate. A null minute means "no position information",
    * so the caller appends rather than guessing.
    */
-  const minuteAt = useCallback(
-    (e: React.DragEvent): number | null => {
-      const rect = e.currentTarget.getBoundingClientRect()
-      const minute =
-        startMin + (e.clientX - rect.left - LANE_LABEL_PX) / pxPerMin
-      return Number.isFinite(minute) ? snapMinutes(minute) : null
-    },
+  const minuteFromClientX = useCallback(
+    (lane: Element, clientX: number) =>
+      startMin +
+      (clientX - lane.getBoundingClientRect().left - LANE_LABEL_PX) / pxPerMin,
     [pxPerMin, startMin],
   )
+
+  const minuteAt = useCallback(
+    (e: React.DragEvent): number | null => {
+      const minute = minuteFromClientX(e.currentTarget, e.clientX)
+      return Number.isFinite(minute) ? snapMinutes(minute) : null
+    },
+    [minuteFromClientX],
+  )
+
+  // Selection drag. It starts on the lane background only, so a pointer-down
+  // on a block still begins the native HTML5 block drag.
+  const [marquee, setMarquee] = useState<{
+    lane: LaneScope
+    from: number
+    to: number
+  } | null>(null)
+  const marqueeRef = useRef<{
+    lane: LaneScope
+    element: Element
+    from: number
+  } | null>(null)
+
+  const beginMarquee = useCallback(
+    (lane: LaneScope) => (e: React.PointerEvent) => {
+      if (e.button !== 0 || e.target !== e.currentTarget) {
+        return
+      }
+      const element = e.currentTarget
+      const from = minuteFromClientX(element, e.clientX)
+      marqueeRef.current = { lane, element, from }
+      setMarquee({ lane, from, to: from })
+    },
+    [minuteFromClientX],
+  )
+
+  const dragging = marquee !== null
+  useEffect(() => {
+    if (!dragging) {
+      return
+    }
+    function onMove(e: PointerEvent) {
+      const drag = marqueeRef.current
+      if (drag) {
+        setMarquee({
+          lane: drag.lane,
+          from: drag.from,
+          to: minuteFromClientX(drag.element, e.clientX),
+        })
+      }
+    }
+    function onUp(e: PointerEvent) {
+      const drag = marqueeRef.current
+      marqueeRef.current = null
+      setMarquee(null)
+      if (!drag) {
+        return
+      }
+      const covered = blocksInMinuteRange(
+        blocksInLane(drag.lane),
+        drag.from,
+        minuteFromClientX(drag.element, e.clientX),
+      )
+      onSelectRange(
+        drag.lane,
+        covered.map((block) => block.entry.track_id),
+      )
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [dragging, blocksInLane, minuteFromClientX, onSelectRange])
 
   /** End of the committed spine: where a fresh bench drop lands by default. */
   const committedEnd = useMemo(
@@ -196,29 +284,30 @@ export function SequencerLanes({
   )
 
   /**
-   * Alphabetical by the track's displayed title, which begins with its
-   * metadata tag, then packed end to end from the committed end.
+   * Group the lane into the same BPM clusters the Explorer grid uses, then
+   * order each cluster by title and pack it from the committed end.
    */
-  const handleSortLane = useCallback(
+  const handleArrangeLane = useCallback(
     (laneBlocks: BenchBlock[]) => {
-      const sorted = [...laneBlocks].sort((a, b) =>
-        (a.entry.track?.title ?? '').localeCompare(
-          b.entry.track?.title ?? '',
-          undefined,
-          { numeric: true, sensitivity: 'base' },
-        ),
-      )
-      let at = committedEnd
-      const next: Record<number, number> = {}
-      for (const block of sorted) {
-        next[block.entry.track_id] = snapMinutes(at)
-        at += block.dur
-      }
       // One write, so the lane cannot overwrite itself block by block.
-      onSetBenchTimes(next)
+      onSetBenchTimes(arrangeLaneBlocks(laneBlocks, committedEnd))
     },
     [committedEnd, onSetBenchTimes],
   )
+
+  const renderMarquee = (lane: LaneScope) =>
+    marquee && marquee.lane === lane ? (
+      <span
+        className="sq-marquee"
+        aria-hidden="true"
+        style={{
+          left:
+            LANE_LABEL_PX +
+            (Math.min(marquee.from, marquee.to) - startMin) * pxPerMin,
+          width: Math.abs(marquee.to - marquee.from) * pxPerMin,
+        }}
+      />
+    ) : null
 
   /** Committed position for a drop time: after every block that starts earlier. */
   const positionAt = useCallback(
@@ -356,37 +445,38 @@ export function SequencerLanes({
           }
         }}
         onDrop={handleCommittedDrop}
+        onPointerDown={beginMarquee('committed')}
       >
         <span className="sq-lane-label">Committed</span>
-        {blocks.map((block) => (
-          <SequencerBlock
-            key={block.entry.id}
-            track={block.entry.track}
-            left={LANE_LABEL_PX + (block.t - startMin) * pxPerMin}
-            width={block.dur * pxPerMin}
-            start={block.t}
-            end={block.t + block.dur}
-            playMinutes={block.dur}
-            bpm={block.entry.track?.bpm ?? null}
-            pinned={block.pinned}
-            fallback={block.fallback}
-            selected={selectedTrackId === block.entry.track_id}
-            relation={relationFor(block.entry.track)}
-            onSelect={() =>
-              onSelect(
-                selectedTrackId === block.entry.track_id
-                  ? null
-                  : block.entry.track_id,
-              )
-            }
-            onDragStart={(e) =>
-              writeBlockDrag(e.dataTransfer, {
-                trackId: block.entry.track_id,
-                from: 'committed',
-              })
-            }
-          />
-        ))}
+        {renderMarquee('committed')}
+        {blocks.map((block) => {
+          const picked = isSelected('committed', block.entry.track_id)
+          return (
+            <SequencerBlock
+              key={block.entry.id}
+              track={block.entry.track}
+              left={LANE_LABEL_PX + (block.t - startMin) * pxPerMin}
+              width={block.dur * pxPerMin}
+              start={block.t}
+              end={block.t + block.dur}
+              playMinutes={block.dur}
+              bpm={block.entry.track?.bpm ?? null}
+              pinned={block.pinned}
+              fallback={block.fallback}
+              selected={picked}
+              relation={picked ? null : relationFor(block.entry.track)}
+              onSelect={() =>
+                onSelect('committed', picked ? null : block.entry.track_id)
+              }
+              onDragStart={(e) =>
+                writeBlockDrag(e.dataTransfer, {
+                  trackId: block.entry.track_id,
+                  from: 'committed',
+                })
+              }
+            />
+          )
+        })}
       </div>
       {benchLanes.map(({ lane, blocks: benched }) => {
         const key = laneKeyOf(lane)
@@ -407,6 +497,7 @@ export function SequencerLanes({
               }
             }}
             onDrop={handleLaneDrop(key)}
+            onPointerDown={beginMarquee(key)}
           >
             <span className="sq-lane-label">
               {renaming === groupId && lane.group != null ? (
@@ -458,13 +549,14 @@ export function SequencerLanes({
               )}
               <button
                 className="sq-lane-sort"
-                aria-label={`Sort lane ${lane.name}`}
-                title="Sort this lane alphabetically"
-                onClick={() => handleSortLane(benched)}
+                aria-label={`Auto-arrange lane ${lane.name}`}
+                title="Group this lane into BPM clusters"
+                onClick={() => handleArrangeLane(benched)}
               >
                 <SortIcon size={11} />
               </button>
             </span>
+            {renderMarquee(key)}
             {committedEnd < endMin && (
               <span
                 className="sq-lane-tail"
@@ -484,37 +576,38 @@ export function SequencerLanes({
                 ×
               </button>
             )}
-            {benched.map((block) => (
-              <SequencerBlock
-                key={block.entry.id}
-                track={block.entry.track}
-                left={LANE_LABEL_PX + (block.t - startMin) * pxPerMin}
-                width={block.dur * pxPerMin}
-                start={block.t}
-                end={block.t + block.dur}
-                playMinutes={block.dur}
-                benched
-                fallback={block.fallback}
-                selected={selectedTrackId === block.entry.track_id}
-                relation={relationFor(block.entry.track)}
-                bpm={block.entry.track?.bpm ?? null}
-                onSelect={() =>
-                  onSelect(
-                    selectedTrackId === block.entry.track_id
-                      ? null
-                      : block.entry.track_id,
-                  )
-                }
-                onDragStart={(e) =>
-                  writeBlockDrag(e.dataTransfer, {
-                    trackId: block.entry.track_id,
-                    poolEntryId: block.entry.id,
-                    from: key,
-                  })
-                }
-                onPromote={() => onPromote(block.entry.track_id, blocks.length)}
-              />
-            ))}
+            {benched.map((block) => {
+              const picked = isSelected(key, block.entry.track_id)
+              return (
+                <SequencerBlock
+                  key={block.entry.id}
+                  track={block.entry.track}
+                  left={LANE_LABEL_PX + (block.t - startMin) * pxPerMin}
+                  width={block.dur * pxPerMin}
+                  start={block.t}
+                  end={block.t + block.dur}
+                  playMinutes={block.dur}
+                  benched
+                  fallback={block.fallback}
+                  selected={picked}
+                  relation={picked ? null : relationFor(block.entry.track)}
+                  bpm={block.entry.track?.bpm ?? null}
+                  onSelect={() =>
+                    onSelect(key, picked ? null : block.entry.track_id)
+                  }
+                  onDragStart={(e) =>
+                    writeBlockDrag(e.dataTransfer, {
+                      trackId: block.entry.track_id,
+                      poolEntryId: block.entry.id,
+                      from: key,
+                    })
+                  }
+                  onPromote={() =>
+                    onPromote(block.entry.track_id, blocks.length)
+                  }
+                />
+              )
+            })}
           </div>
         )
       })}

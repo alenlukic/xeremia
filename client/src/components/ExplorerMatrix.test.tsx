@@ -212,6 +212,82 @@ describe('ExplorerMatrix selection', () => {
   })
 })
 
+describe('ExplorerMatrix bulk pool actions', () => {
+  function renderWithActions(
+    pool: PoolEntry[],
+    committed: number[],
+    onRemoveTracks = vi.fn(),
+  ) {
+    const view = render(
+      <ExplorerMatrix
+        pool={pool}
+        onDropTrack={vi.fn()}
+        committedTrackIds={new Set(committed)}
+        onRemoveTracks={onRemoveTracks}
+      />,
+    )
+    return { ...view, onRemoveTracks }
+  }
+
+  const pool = [
+    makeEntry(makeTrack(1, '08A', 128), 1),
+    makeEntry(makeTrack(2, '09A', 128), 2),
+    makeEntry(makeTrack(3, '03B', 128), 3),
+  ]
+
+  it('prunes only the pool tracks the committed lane already holds', () => {
+    const { onRemoveTracks } = renderWithActions(pool, [1, 3, 99])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Prune' }))
+
+    // Track 99 is committed but not pooled, so it is not part of the removal.
+    expect(onRemoveTracks).toHaveBeenCalledWith([1, 3])
+  })
+
+  it('disables Prune when the pool and the committed lane do not overlap', () => {
+    renderWithActions(pool, [])
+
+    expect(screen.getByRole('button', { name: 'Prune' })).toBeDisabled()
+  })
+
+  it('asks before clearing and removes every cohort on confirm', () => {
+    const { onRemoveTracks } = renderWithActions(pool, [])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByText('Remove every track?')).toBeInTheDocument()
+    expect(onRemoveTracks).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByLabelText('Confirm clear'))
+
+    expect(onRemoveTracks).toHaveBeenCalledWith([1, 2, 3])
+    expect(screen.queryByText('Remove every track?')).toBeNull()
+  })
+
+  it('changes nothing when the clear confirmation is cancelled', () => {
+    const { onRemoveTracks } = renderWithActions(pool, [])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    fireEvent.click(screen.getByLabelText('Cancel clear'))
+
+    expect(onRemoveTracks).not.toHaveBeenCalled()
+    expect(screen.queryByText('Remove every track?')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument()
+  })
+
+  it('disables Clear on an empty pool', () => {
+    renderWithActions([], [])
+
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeDisabled()
+  })
+
+  it('hides both actions when the workspace offers no bulk removal', () => {
+    renderMatrix(pool)
+
+    expect(screen.queryByRole('button', { name: 'Prune' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+  })
+})
+
 describe('ExplorerMatrix tooltip and legend', () => {
   it('shows the cohort card on hover and adds the relation after a selection', () => {
     const pool = [

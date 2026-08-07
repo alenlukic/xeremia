@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ExplorerInspector } from './ExplorerInspector'
 import { ExplorerTooltip } from './ExplorerTooltip'
 import {
@@ -23,9 +23,19 @@ interface Props {
   onDropTrack: (trackId: number) => void
   /** Track the workspace has focused, lit here as if its cell were clicked. */
   focus?: MatrixFocus | null
+  /** Tracks the Sequencer's committed lane already holds; Prune reads these. */
+  committedTrackIds?: ReadonlySet<number>
+  /** Bulk pool removal. Prune and Clear stay hidden without it. */
+  onRemoveTracks?: (trackIds: number[]) => void
 }
 
-export function ExplorerMatrix({ pool, onDropTrack, focus }: Props) {
+export function ExplorerMatrix({
+  pool,
+  onDropTrack,
+  focus,
+  committedTrackIds,
+  onRemoveTracks,
+}: Props) {
   const matrix = useExplorerMatrix(pool, focus)
   const dropTargets = useMemo(
     () => [
@@ -35,6 +45,17 @@ export function ExplorerMatrix({ pool, onDropTrack, focus }: Props) {
     [onDropTrack],
   )
   const { dropHandlers } = useExternalTrackDrop(dropTargets)
+
+  // Clear empties every cohort, so it asks once in the toolbar rather than
+  // relying on an undo the workspace does not have.
+  const [confirmingClear, setConfirmingClear] = useState(false)
+  const prunableIds = useMemo(
+    () =>
+      pool
+        .filter((entry) => committedTrackIds?.has(entry.track_id))
+        .map((entry) => entry.track_id),
+    [pool, committedTrackIds],
+  )
 
   const cellStyle = {
     width: CELL_WIDTH_PX,
@@ -46,11 +67,55 @@ export function ExplorerMatrix({ pool, onDropTrack, focus }: Props) {
       <div className="xm-scroll">
         {/* No legend: the relation colours read on their own, and the row
             it occupied is vertical space the matrix needs more. */}
-        {matrix.selected && (
+        {(matrix.selected || onRemoveTracks) && (
           <div className="xm-toolbar">
-            <button className="ws-pill" onClick={matrix.clearSelection}>
-              Clear selection
-            </button>
+            {matrix.selected && (
+              <button className="ws-pill" onClick={matrix.clearSelection}>
+                Clear selection
+              </button>
+            )}
+            {onRemoveTracks && !confirmingClear && (
+              <>
+                <button
+                  className="ws-pill"
+                  title="Remove pool tracks the committed lane already holds"
+                  disabled={prunableIds.length === 0}
+                  onClick={() => onRemoveTracks(prunableIds)}
+                >
+                  Prune
+                </button>
+                <button
+                  className="ws-pill"
+                  title="Remove every track from the pool"
+                  disabled={pool.length === 0}
+                  onClick={() => setConfirmingClear(true)}
+                >
+                  Clear
+                </button>
+              </>
+            )}
+            {onRemoveTracks && confirmingClear && (
+              <>
+                <span className="xm-confirm">Remove every track?</span>
+                <button
+                  className="ws-pill"
+                  aria-label="Confirm clear"
+                  onClick={() => {
+                    setConfirmingClear(false)
+                    onRemoveTracks(pool.map((entry) => entry.track_id))
+                  }}
+                >
+                  Confirm
+                </button>
+                <button
+                  className="ws-pill"
+                  aria-label="Cancel clear"
+                  onClick={() => setConfirmingClear(false)}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
           </div>
         )}
         <div className="xm-col-heads" style={{ gap: CELL_GAP_PX }}>

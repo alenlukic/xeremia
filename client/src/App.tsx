@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   QuadrantDivider,
   QuadrantExpandBar,
@@ -277,17 +277,58 @@ export function App() {
 
   const laneCount = setBuilder.activeSet?.pool_subgroups?.length ?? 0
 
+  /** The Explorer's Prune reads the committed lane as the source of truth. */
+  const committedTrackIds = useMemo(
+    () =>
+      new Set(
+        (setBuilder.activeSet?.tracklist ?? []).map((entry) => entry.track_id),
+      ),
+    [setBuilder.activeSet],
+  )
+
+  /** Pool entries the virtual default lane shows while no subgroup exists. */
+  const poolEntryIds = useMemo(
+    () => (setBuilder.activeSet?.pool ?? []).map((entry) => entry.id),
+    [setBuilder.activeSet],
+  )
+
   // The default lane is virtual: it exists only while the set has no subgroup,
-  // and the first drop on it creates the subgroup that replaces it.
+  // and the first drop or paste on it creates the subgroup that replaces it.
+  // The new subgroup keeps the pool entries the lane already showed, and the
+  // id is remembered so that pasting several tracks fills one lane instead of
+  // creating a lane per track. A stale-closure caller cannot see the subgroup
+  // it just created, so the effect below drops the id once it is gone.
+  const subgroups = setBuilder.activeSet?.pool_subgroups
+  const materializedLaneRef = useRef<number | null>(null)
+  useEffect(() => {
+    const materialized = materializedLaneRef.current
+    if (
+      materialized !== null &&
+      !(subgroups ?? []).some((group) => group.id === materialized)
+    ) {
+      materializedLaneRef.current = null
+    }
+  }, [subgroups])
+
   const resolveLane = useCallback(
     async (lane: LaneKey): Promise<number | null> => {
       if (typeof lane === 'number') {
         return lane
       }
-      const created = await setBuilder.createSubgroup(`Alt ${laneCount + 1}`)
-      return created?.id ?? null
+      if (materializedLaneRef.current !== null) {
+        return materializedLaneRef.current
+      }
+      const created = await setBuilder.createSubgroupWithEntries(
+        `Alt ${laneCount + 1}`,
+        poolEntryIds,
+      )
+      if (!created) {
+        return null
+      }
+      materializedLaneRef.current = created.id
+      return created.id
     },
-    [setBuilder, laneCount],
+    [laneCount, poolEntryIds, setBuilder],
   )
 
   const handleBenchToLane = useCallback(
@@ -298,9 +339,9 @@ export function App() {
     ) => {
       const subgroupId = await resolveLane(lane)
       if (subgroupId === null) {
-        return
+        throw new Error('Could not create the source lane.')
       }
-      await setBuilder.dropTrackToSubgroup(subgroupId, trackId, source)
+      await setBuilder.dropTrackToSubgroup(subgroupId, trackId, source, true)
     },
     [resolveLane, setBuilder],
   )
@@ -486,6 +527,8 @@ export function App() {
           pool={setBuilder.activeSet?.pool ?? []}
           onDropTrack={(trackId) => setBuilderAddToPool(trackId)}
           focus={sequencerFocus}
+          committedTrackIds={committedTrackIds}
+          onRemoveTracks={setBuilder.removeManyFromPool}
         />
       ),
     },
@@ -496,13 +539,17 @@ export function App() {
           onRenameLane={(id, name) => void setBuilder.renameSubgroup(id, name)}
           onReorderLanes={(ids) => void setBuilder.reorderSubgroups(ids)}
           activeSet={setBuilder.activeSet}
-          onAddCommitted={setBuilder.insertIntoTracklist}
+          onAddCommitted={(trackId, position) =>
+            setBuilder.insertIntoTracklist(trackId, position, true)
+          }
           onPromote={handlePromote}
           onReorder={setBuilder.reorderTracklist}
           onBenchToLane={handleBenchToLane}
           onMoveBench={handleMoveBench}
-          onRemove={setBuilder.removeFromTracklist}
-          onRemoveBenched={setBuilder.removeFromPool}
+          onRemove={(trackId) => setBuilder.removeFromTracklist(trackId, true)}
+          onRemoveBenched={(trackId) =>
+            setBuilder.removeFromPool(trackId, true)
+          }
           onAddLane={handleAddLane}
           onDeleteLane={(subgroupId) => {
             void setBuilder.deleteSubgroup(subgroupId)

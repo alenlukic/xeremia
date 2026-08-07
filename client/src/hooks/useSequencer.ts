@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { tracklistSetOverrides } from '../api/http'
-import { DUR_MAX, DUR_MIN } from '../utils/harmonic'
+import { DUR_MAX, DUR_MIN, colForBpm } from '../utils/harmonic'
 import type {
   PoolEntry,
   PoolSubgroup,
@@ -339,6 +339,105 @@ export function layoutBench(
   })
 }
 
+/** Lane a selection, a clipboard or a paste belongs to. */
+export type LaneScope = 'committed' | LaneKey
+
+/**
+ * Blocks picked in one lane. Selection never spans lanes, so a cut always has
+ * one source lane and a paste always has one target lane.
+ */
+export interface LaneSelection {
+  lane: LaneScope
+  ids: number[]
+  /** The block the footer, the tracklist and the Explorer follow. */
+  focus: number | null
+}
+
+export const EMPTY_SELECTION: LaneSelection = {
+  lane: 'committed',
+  ids: [],
+  focus: null,
+}
+
+/** One track held between a cut and a paste. */
+export interface ClipboardTrack {
+  trackId: number
+  /** Laid-out play length at cut time, used to pack a bench paste. */
+  playMinutes: number
+  /** Committed overrides or bench preview values captured at cut time. */
+  override: Partial<BlockOverride> | null
+  /** Committed note captured at cut time; a benched block carries none. */
+  note: string | null
+}
+
+export interface SequencerClipboard {
+  source: LaneScope
+  tracks: ClipboardTrack[]
+}
+
+interface TimedBlock {
+  t: number
+  dur: number
+}
+
+/**
+ * Every block whose played span meets the dragged range. The range is
+ * direction-free, so a right-to-left drag selects the same blocks.
+ */
+export function blocksInMinuteRange<T extends TimedBlock>(
+  blocks: readonly T[],
+  from: number,
+  to: number,
+): T[] {
+  const lo = Math.min(from, to)
+  const hi = Math.max(from, to)
+  return blocks.filter((block) => block.t <= hi && block.t + block.dur >= lo)
+}
+
+/** Sorts after every Explorer bucket, so a track without a BPM lands last. */
+const NO_BPM_BUCKET = Number.MAX_SAFE_INTEGER
+
+function bpmBucketOf(block: BenchBlock): number {
+  const bpm = block.entry.track?.bpm
+  return bpm != null && Number.isFinite(bpm) ? colForBpm(bpm) : NO_BPM_BUCKET
+}
+
+function compareByTitle(a: BenchBlock, b: BenchBlock): number {
+  return (a.entry.track?.title ?? '').localeCompare(
+    b.entry.track?.title ?? '',
+    undefined,
+    { numeric: true, sensitivity: 'base' },
+  )
+}
+
+/**
+ * Lane free times that group the lane into the Explorer grid's BPM clusters
+ * from low to high, alphabetical by title inside each cluster, packed end to
+ * end from the committed end.
+ */
+export function arrangeLaneBlocks(
+  blocks: BenchBlock[],
+  committedEnd: number,
+): Record<number, number> {
+  const arranged = [...blocks].sort(
+    (a, b) => bpmBucketOf(a) - bpmBucketOf(b) || compareByTitle(a, b),
+  )
+  const times: Record<number, number> = {}
+  let at = committedEnd
+  for (const block of arranged) {
+    times[block.entry.track_id] = at
+    at += block.dur
+  }
+  return times
+}
+
+/** Where a pasted track lands on a bench lane, with its preview length. */
+export interface BenchPlacement {
+  trackId: number
+  minutes: number
+  override?: Partial<BlockOverride> | null
+}
+
 export interface UseSequencerArgs {
   setId: number | null
   tracklist: TracklistEntry[]
@@ -445,17 +544,35 @@ export function useSequencer({
     [setBenchState],
   )
 
-  /** Set many bench times at once, e.g. when a lane is sorted. */
+  /** Set exact bench times at once, so an arranged lane stays end to end. */
   const setBenchTimes = useCallback(
     (entries: Record<number, number>) => {
-      const snapped: Record<number, number> = {}
-      for (const [id, minutes] of Object.entries(entries)) {
-        snapped[Number(id)] = snapMinutes(minutes)
-      }
       setBenchState((prev) => ({
         ...prev,
-        times: { ...prev.times, ...snapped },
+        times: { ...prev.times, ...entries },
       }))
+    },
+    [setBenchState],
+  )
+
+  /**
+   * A paste writes lane times and preview lengths together. Two separate
+   * writes in one tick would both read the same stored bench state, so the
+   * second one would drop the first.
+   */
+  const applyBenchPlacements = useCallback(
+    (placements: BenchPlacement[]) => {
+      setBenchState((prev) => {
+        const times = { ...prev.times }
+        const overrides = { ...prev.overrides }
+        for (const placement of placements) {
+          times[placement.trackId] = snapMinutes(placement.minutes)
+          if (placement.override) {
+            overrides[placement.trackId] = { ...placement.override }
+          }
+        }
+        return { times, overrides }
+      })
     },
     [setBenchState],
   )
@@ -548,6 +665,7 @@ export function useSequencer({
     resetOverrides,
     setBenchTime,
     setBenchTimes,
+    applyBenchPlacements,
     patchBenchOverride,
     resetBenchOverride,
   }

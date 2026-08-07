@@ -6,6 +6,8 @@ import {
   DEFAULT_LANE_NAME,
   FALLBACK_LEN_MIN,
   PLAY_FRACTION,
+  arrangeLaneBlocks,
+  blocksInMinuteRange,
   buildOverrideMap,
   deriveLanes,
   effectivePlayedBpm,
@@ -19,8 +21,9 @@ import {
   useSequencer,
   writeBlockDrag,
 } from './useSequencer'
+import type { BenchBlock } from './useSequencer'
 import { TRACK_DRAG_MIME } from '../utils'
-import { DUR_MAX, DUR_MIN } from '../utils/harmonic'
+import { DUR_MAX, DUR_MIN, colForBpm } from '../utils/harmonic'
 import type {
   PoolEntry,
   PoolSubgroup,
@@ -346,6 +349,93 @@ describe('layoutBench', () => {
   })
 })
 
+describe('blocksInMinuteRange', () => {
+  // Spans of [360, 365], [365, 370] and [380, 385].
+  const blocks = [
+    { t: 360, dur: 5 },
+    { t: 365, dur: 5 },
+    { t: 380, dur: 5 },
+  ]
+
+  it('takes every block the dragged range meets', () => {
+    expect(blocksInMinuteRange(blocks, 362, 366)).toEqual([
+      blocks[0],
+      blocks[1],
+    ])
+  })
+
+  it('reads a right-to-left drag the same way', () => {
+    expect(blocksInMinuteRange(blocks, 366, 362)).toEqual([
+      blocks[0],
+      blocks[1],
+    ])
+  })
+
+  it('takes exactly one block for a drag inside one span', () => {
+    expect(blocksInMinuteRange(blocks, 381, 383)).toEqual([blocks[2]])
+  })
+
+  it('takes nothing from a drag across empty lane space', () => {
+    expect(blocksInMinuteRange(blocks, 372, 378)).toEqual([])
+  })
+})
+
+describe('arrangeLaneBlocks', () => {
+  function benchBlock(
+    trackId: number,
+    title: string,
+    bpm: number | null,
+  ): BenchBlock {
+    return {
+      entry: {
+        ...poolEntry(trackId, trackId),
+        track: { ...track(trackId, bpm, 360), title },
+      },
+      t: 0,
+      dur: 4,
+      fallback: false,
+    }
+  }
+
+  it('orders BPM clusters low to high and each cluster by title', () => {
+    const fast = benchBlock(3, 'Alpha', 150)
+    const slowLater = benchBlock(1, 'Bravo', 100)
+    const slowFirst = benchBlock(2, 'Alpha', 100)
+    expect(colForBpm(100)).toBeLessThan(colForBpm(150))
+
+    // Packed end to end from the committed end, four minutes per block.
+    expect(arrangeLaneBlocks([fast, slowLater, slowFirst], 400)).toEqual({
+      2: 400,
+      1: 404,
+      3: 408,
+    })
+  })
+
+  it('puts a track without a BPM last, in title order', () => {
+    const withBpm = benchBlock(1, 'Zulu', 120)
+    const unknownLater = benchBlock(2, 'Bravo', null)
+    const unknownFirst = benchBlock(3, 'Alpha', null)
+
+    expect(
+      arrangeLaneBlocks([unknownLater, withBpm, unknownFirst], 400),
+    ).toEqual({ 1: 400, 3: 404, 2: 408 })
+  })
+
+  it('packs fractional block lengths without a gap or overlap', () => {
+    const first = { ...benchBlock(1, 'Alpha', 120), dur: 3.7 }
+    const second = { ...benchBlock(2, 'Bravo', 120), dur: 4.1 }
+
+    expect(arrangeLaneBlocks([second, first], 400)).toEqual({
+      1: 400,
+      2: 403.7,
+    })
+  })
+
+  it('returns nothing for an empty lane', () => {
+    expect(arrangeLaneBlocks([], 400)).toEqual({})
+  })
+})
+
 describe('effectivePlayedBpm', () => {
   it('returns the original BPM when nothing was overridden', () => {
     const list = [entry(1, 0, track(1, 124, 600))]
@@ -527,6 +617,38 @@ describe('useSequencer', () => {
 
     rerender({ benchTimes: { 2: 420.5 }, benchOverrides: {} })
     expect(result.current.benchLanes[0].blocks[0].dur).toBeCloseTo(4.2, 5)
+  })
+
+  it('writes pasted lane times and preview lengths in one bench update', () => {
+    // Two separate writes in one tick would both read the stored bench state,
+    // so the second one would drop the first.
+    const onBenchChange = vi.fn()
+    const { result } = renderHook(() =>
+      useSequencer({
+        setId: 1,
+        tracklist,
+        pool: [poolEntry(10, 2), poolEntry(11, 3)],
+        subgroups: [],
+        memberships: [],
+        startMin: START,
+        benchTimes: { 2: 400 },
+        benchOverrides: {},
+        onBenchChange,
+      }),
+    )
+
+    act(() => {
+      result.current.applyBenchPlacements([
+        { trackId: 2, minutes: 420.3, override: { durOv: 3 } },
+        { trackId: 3, minutes: 425, override: null },
+      ])
+    })
+
+    expect(onBenchChange).toHaveBeenCalledTimes(1)
+    expect(onBenchChange).toHaveBeenCalledWith({
+      times: { 2: 420.5, 3: 425 },
+      overrides: { 2: { durOv: 3 } },
+    })
   })
 
   it('surfaces a failed save without dropping the local edit', async () => {
