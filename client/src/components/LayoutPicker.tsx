@@ -9,21 +9,58 @@ import { CUSTOM_PRESET } from '../hooks/useWorkspaceLayout'
 interface Props {
   preset: string
   presetNames: string[]
-  dirty: boolean
   onSelect: (name: string) => void
-  onSaveCustom: () => void
+  onSaveCustom: (name: string) => void
+  onRename: (name: string) => void
 }
 
 export function LayoutPicker({
   preset,
   presetNames,
-  dirty,
   onSelect,
   onSaveCustom,
+  onRename,
 }: Props) {
   const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<'create' | 'rename' | null>(null)
+  const [draft, setDraft] = useState('')
   const ref = useRef<HTMLDivElement | null>(null)
-  useDismissOnOutsideClick(ref, open, () => setOpen(false))
+  useDismissOnOutsideClick(ref, open, () => {
+    setOpen(false)
+    setMode(null)
+  })
+
+  const trimmed = draft.trim()
+  const reserved =
+    trimmed.toLocaleLowerCase() === CUSTOM_PRESET.toLocaleLowerCase()
+  const duplicate = presetNames.some(
+    (name) =>
+      name.toLocaleLowerCase() === trimmed.toLocaleLowerCase() &&
+      (mode !== 'rename' || name !== preset),
+  )
+  const canSubmit =
+    trimmed.length > 0 &&
+    !reserved &&
+    !duplicate &&
+    (mode !== 'rename' || trimmed !== preset)
+
+  const beginName = (nextMode: 'create' | 'rename') => {
+    setMode(nextMode)
+    setDraft(nextMode === 'rename' ? preset : '')
+  }
+
+  const submitName = () => {
+    if (!mode || !canSubmit) {
+      return
+    }
+    if (mode === 'create') {
+      onSaveCustom(trimmed)
+    } else {
+      onRename(trimmed)
+    }
+    setMode(null)
+    setOpen(false)
+  }
 
   return (
     <div className="ws-picker" ref={ref}>
@@ -32,7 +69,10 @@ export function LayoutPicker({
         aria-label="Layout preset"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((value) => !value)
+          setMode(null)
+        }}
       >
         <span className="ws-picker-value">{preset}</span>
         <span className="ws-picker-caret" aria-hidden="true">
@@ -55,18 +95,66 @@ export function LayoutPicker({
               {name}
             </button>
           ))}
-          {dirty && (
+          <span className="ws-picker-sep" role="separator" />
+          {mode ? (
+            <form
+              className="ws-picker-name-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                submitName()
+              }}
+            >
+              <input
+                className="ws-picker-name-input"
+                aria-label={mode === 'create' ? 'New layout name' : 'Rename layout'}
+                autoFocus
+                value={draft}
+                placeholder={mode === 'create' ? 'Layout name' : undefined}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    setMode(null)
+                  }
+                }}
+              />
+              {(duplicate || reserved) && (
+                <span className="ws-picker-name-error">
+                  {duplicate ? 'Name already exists' : 'Choose a different name'}
+                </span>
+              )}
+              <div className="ws-picker-name-actions">
+                <button
+                  className="ws-picker-name-cancel"
+                  type="button"
+                  onClick={() => setMode(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="ws-picker-name-save"
+                  type="submit"
+                  disabled={!canSubmit}
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          ) : (
             <>
-              <span className="ws-picker-sep" role="separator" />
               <button
                 className="ws-picker-item"
                 role="menuitem"
-                onClick={() => {
-                  onSaveCustom()
-                  setOpen(false)
-                }}
+                onClick={() => beginName('create')}
               >
-                Save {CUSTOM_PRESET} as preset…
+                New layout…
+              </button>
+              <button
+                className="ws-picker-item"
+                role="menuitem"
+                onClick={() => beginName('rename')}
+              >
+                Rename layout…
               </button>
             </>
           )}

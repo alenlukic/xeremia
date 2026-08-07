@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { PromoteIcon } from './table/icons'
-import { formatHM, formatMinutes } from '../utils/time'
+import { PinIcon, PromoteIcon } from './table/icons'
+import { formatDuration, formatHM } from '../utils/time'
 import { harmonyPaint, keyDotColor } from '../utils/harmonic'
 import type { PairResult } from '../utils/harmonic'
 import type { Track } from '../types'
 
 // One block on a lane. The tile carries only a key over a BPM; the full track
-// details live in a hover popover. The auto-scale factor never appears here —
-// only in the footer and the Tracklist Length column.
+// details live in a hover popover.
 
 const BORDER_STYLES = ['solid', 'dashed', 'dotted'] as const
 
@@ -21,6 +20,8 @@ interface Props {
   end?: number
   playMinutes?: number
   selected: boolean
+  starred?: boolean
+  locationPinned?: boolean
   pinned?: boolean
   benched?: boolean
   /** True when the length rests on the fallback rather than a measured duration. */
@@ -29,6 +30,8 @@ interface Props {
   relation?: PairResult | null
   bpm?: number | null
   onSelect: () => void
+  onToggleStar?: () => void
+  onTogglePin?: () => void
   onPromote?: () => void
   onDragStart?: (e: React.DragEvent) => void
 }
@@ -41,25 +44,30 @@ export function SequencerBlock({
   end,
   playMinutes,
   selected,
+  starred,
+  locationPinned,
   pinned,
   benched,
   fallback,
   relation,
   bpm,
   onSelect,
+  onToggleStar,
+  onTogglePin,
   onPromote,
   onDragStart,
 }: Props) {
   const paint = relation && relation.p >= 0 ? harmonyPaint(relation.p) : null
   const style: React.CSSProperties = {
     left,
-    width: Math.max(6, width),
+    // Keep a sliver discoverable without extending into the next logical span.
+    width: Math.max(1, width),
   }
-  if (paint && relation) {
+  if (!starred && paint && relation) {
     style.backgroundColor = `hsla(${paint.hue},${paint.sat}%,${paint.light}%,${paint.a})`
     style.borderStyle = BORDER_STYLES[relation.effort]
     style.color = relation.p === 0 ? '#fff4f0' : '#0d1206'
-  } else if (relation) {
+  } else if (!starred && relation) {
     // Selected, but unrelated to the clicked block.
     style.opacity = 0.35
   }
@@ -73,7 +81,7 @@ export function SequencerBlock({
     bpm != null ? `${Math.round(bpm)} BPM` : null,
     // A trailing tilde marks a length the fallback produced.
     playMinutes != null
-      ? `${formatMinutes(playMinutes)}m${fallback ? '~' : ''}`
+      ? `${formatDuration(playMinutes)}${fallback ? '~' : ''}`
       : null,
     start != null && end != null ? `${formatHM(start)}–${formatHM(end)}` : null,
   ]
@@ -85,6 +93,7 @@ export function SequencerBlock({
       className={[
         'sq-block',
         selected ? 'sq-block--sel' : '',
+        starred ? 'sq-block--starred' : '',
         pinned ? 'sq-block--pinned' : '',
         benched ? 'sq-block--benched' : '',
         fallback ? 'sq-block--fallback' : '',
@@ -136,6 +145,44 @@ export function SequencerBlock({
         {track?.camelot_code}
       </span>
       {bpm != null && <span className="sq-block-sub">{Math.round(bpm)}</span>}
+      {onToggleStar && (
+        <button
+          className="sq-star"
+          type="button"
+          draggable={false}
+          aria-label={`${starred ? 'Unstar' : 'Star'} ${track?.title ?? 'track'}`}
+          aria-pressed={!!starred}
+          title={starred ? 'Remove star' : 'Star track'}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleStar()
+          }}
+        >
+          {starred ? '★' : '☆'}
+        </button>
+      )}
+      {onTogglePin && (
+        <button
+          className="sq-pin"
+          type="button"
+          draggable={false}
+          aria-label={`${locationPinned ? 'Unpin' : 'Pin'} ${track?.title ?? 'track'}`}
+          aria-pressed={!!locationPinned}
+          title={
+            locationPinned
+              ? 'Allow auto-arrange'
+              : 'Keep fixed during auto-arrange'
+          }
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            onTogglePin()
+          }}
+        >
+          <PinIcon size={11} pinned={locationPinned} />
+        </button>
+      )}
       {pop &&
         track &&
         createPortal(

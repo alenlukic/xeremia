@@ -3,12 +3,16 @@ import { act, renderHook } from '@testing-library/react'
 import * as http from '../api/http'
 import {
   BLOCK_DRAG_MIME,
+  BENCH_BLOCK_GAP_MIN,
+  BPM_CLUSTER_GAP_MIN,
   DEFAULT_LANE_NAME,
   FALLBACK_LEN_MIN,
   PLAY_FRACTION,
   arrangeLaneBlocks,
+  benchPlacementKey,
   blocksInMinuteRange,
   buildOverrideMap,
+  committedReorderMoves,
   deriveLanes,
   effectivePlayedBpm,
   entryOverride,
@@ -333,8 +337,9 @@ describe('layoutBench', () => {
   })
 
   it('keeps a dragged candidate at its own free time', () => {
-    const blocks = layoutBench(entries, { 1: 425.5 }, {}, START)
+    const blocks = layoutBench(entries, { 'default:1': 425.5 }, {}, START)
     expect(blocks[0].t).toBe(425.5)
+    expect(blocks[0].placementKey).toBe('default:1')
     expect(blocks[1].t).toBeCloseTo(425.5 + blocks[0].dur, 5)
   })
 
@@ -343,7 +348,12 @@ describe('layoutBench', () => {
       ...poolEntry(12, 3),
       track: { ...poolEntry(12, 3).track!, duration_seconds: null },
     }
-    const blocks = layoutBench([noDuration], {}, { 3: { durOv: 3 } }, START)
+    const blocks = layoutBench(
+      [noDuration],
+      {},
+      { 'default:3': { durOv: 3 } },
+      START,
+    )
     expect(blocks[0].dur).toBe(3)
     expect(blocks[0].fallback).toBe(true)
   })
@@ -391,6 +401,7 @@ describe('arrangeLaneBlocks', () => {
         ...poolEntry(trackId, trackId),
         track: { ...track(trackId, bpm, 360), title },
       },
+      placementKey: `5:${trackId}`,
       t: 0,
       dur: 4,
       fallback: false,
@@ -403,11 +414,11 @@ describe('arrangeLaneBlocks', () => {
     const slowFirst = benchBlock(2, 'Alpha', 100)
     expect(colForBpm(100)).toBeLessThan(colForBpm(150))
 
-    // Packed end to end from the committed end, four minutes per block.
+    // Every tile gets a consistent gap, with an additional cohort break.
     expect(arrangeLaneBlocks([fast, slowLater, slowFirst], 400)).toEqual({
-      2: 400,
-      1: 404,
-      3: 408,
+      '5:2': 400,
+      '5:1': 404 + BENCH_BLOCK_GAP_MIN,
+      '5:3': 408 + BENCH_BLOCK_GAP_MIN * 2 + BPM_CLUSTER_GAP_MIN,
     })
   })
 
@@ -418,21 +429,53 @@ describe('arrangeLaneBlocks', () => {
 
     expect(
       arrangeLaneBlocks([unknownLater, withBpm, unknownFirst], 400),
-    ).toEqual({ 1: 400, 3: 404, 2: 408 })
+    ).toEqual({
+      '5:1': 400,
+      '5:3': 404 + BENCH_BLOCK_GAP_MIN + BPM_CLUSTER_GAP_MIN,
+      '5:2': 408 + BENCH_BLOCK_GAP_MIN * 2 + BPM_CLUSTER_GAP_MIN,
+    })
   })
 
-  it('packs fractional block lengths without a gap or overlap', () => {
+  it('keeps a consistent gap between fractional block lengths', () => {
     const first = { ...benchBlock(1, 'Alpha', 120), dur: 3.7 }
     const second = { ...benchBlock(2, 'Bravo', 120), dur: 4.1 }
 
     expect(arrangeLaneBlocks([second, first], 400)).toEqual({
-      1: 400,
-      2: 403.7,
+      '5:1': 400,
+      '5:2': 403.7 + BENCH_BLOCK_GAP_MIN,
+    })
+  })
+
+  it('keeps pinned tiles fixed and routes arranged tiles around them', () => {
+    const first = benchBlock(1, 'Alpha', 120)
+    const pinned = { ...benchBlock(2, 'Pinned', 120), t: 405 }
+    const last = benchBlock(3, 'Zulu', 120)
+
+    expect(
+      arrangeLaneBlocks([last, pinned, first], 400, { '5:2': true }),
+    ).toEqual({
+      '5:1': 400,
+      '5:3': 409.5,
     })
   })
 
   it('returns nothing for an empty lane', () => {
     expect(arrangeLaneBlocks([], 400)).toEqual({})
+  })
+})
+
+describe('committedReorderMoves', () => {
+  it('preserves a multi-track cut while moving it after the remaining tracks', () => {
+    expect(committedReorderMoves([1, 2, 3, 4], [2, 3], 2)).toEqual([
+      { trackId: 4, position: 1 },
+    ])
+  })
+
+  it('preserves selected order when moving a non-contiguous selection', () => {
+    expect(committedReorderMoves([1, 2, 3, 4, 5], [2, 4], 0)).toEqual([
+      { trackId: 2, position: 0 },
+      { trackId: 4, position: 1 },
+    ])
   })
 })
 
@@ -573,8 +616,8 @@ describe('useSequencer', () => {
     const onBenchChange = vi.fn()
     const { result, rerender } = renderHook(
       (props: {
-        benchTimes?: Record<number, number>
-        benchOverrides?: Record<number, { durOv?: number | null }>
+        benchTimes?: Record<string, number>
+        benchOverrides?: Record<string, { durOv?: number | null }>
       }) =>
         useSequencer({
           setId: 1,
@@ -593,29 +636,34 @@ describe('useSequencer', () => {
     expect(result.current.benchLanes[0].blocks[0].t).toBe(START)
 
     act(() => {
-      result.current.setBenchTime(2, 420.3)
+      result.current.setBenchTime('default', 2, 420.3)
     })
     // A lane drag lands on the half-minute grid, reported not stored.
     expect(onBenchChange).toHaveBeenCalledWith(
-      expect.objectContaining({ times: { 2: 420.5 } }),
+      expect.objectContaining({ times: { 'default:2': 420.5 } }),
     )
 
     // Fed back in, it lays the block out at that time.
-    rerender({ benchTimes: { 2: 420.5 } })
+    rerender({ benchTimes: { 'default:2': 420.5 } })
     expect(result.current.benchLanes[0].blocks[0].t).toBe(420.5)
 
     act(() => {
-      result.current.patchBenchOverride(2, { durOv: 3 })
+      result.current.patchBenchOverride('default', 2, { durOv: 3 })
     })
     expect(onBenchChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ overrides: { 2: { durOv: 3 } } }),
+      expect.objectContaining({
+        overrides: { 'default:2': { durOv: 3 } },
+      }),
     )
     expect(http.tracklistSetOverrides).not.toHaveBeenCalled()
 
-    rerender({ benchTimes: { 2: 420.5 }, benchOverrides: { 2: { durOv: 3 } } })
+    rerender({
+      benchTimes: { 'default:2': 420.5 },
+      benchOverrides: { 'default:2': { durOv: 3 } },
+    })
     expect(result.current.benchLanes[0].blocks[0].dur).toBe(3)
 
-    rerender({ benchTimes: { 2: 420.5 }, benchOverrides: {} })
+    rerender({ benchTimes: { 'default:2': 420.5 }, benchOverrides: {} })
     expect(result.current.benchLanes[0].blocks[0].dur).toBeCloseTo(4.2, 5)
   })
 
@@ -631,7 +679,7 @@ describe('useSequencer', () => {
         subgroups: [],
         memberships: [],
         startMin: START,
-        benchTimes: { 2: 400 },
+        benchTimes: { 'default:2': 400 },
         benchOverrides: {},
         onBenchChange,
       }),
@@ -639,15 +687,73 @@ describe('useSequencer', () => {
 
     act(() => {
       result.current.applyBenchPlacements([
-        { trackId: 2, minutes: 420.3, override: { durOv: 3 } },
-        { trackId: 3, minutes: 425, override: null },
+        {
+          placementKey: benchPlacementKey('default', 2),
+          minutes: 420.3,
+          override: { durOv: 3 },
+        },
+        {
+          placementKey: benchPlacementKey('default', 3),
+          minutes: 425,
+          override: null,
+        },
       ])
     })
 
     expect(onBenchChange).toHaveBeenCalledTimes(1)
     expect(onBenchChange).toHaveBeenCalledWith({
-      times: { 2: 420.5, 3: 425 },
-      overrides: { 2: { durOv: 3 } },
+      times: { 'default:2': 420.5, 'default:3': 425 },
+      overrides: { 'default:2': { durOv: 3 } },
+    })
+  })
+
+  it('keeps duplicate tracks in separate lanes completely independent', () => {
+    const onBenchChange = vi.fn()
+    const sharedPoolEntry = poolEntry(10, 2)
+    const { result } = renderHook(() =>
+      useSequencer({
+        setId: 1,
+        tracklist,
+        pool: [sharedPoolEntry],
+        subgroups: [
+          { id: 11, set_id: 1, name: 'Warm', display_order: 0 },
+          { id: 12, set_id: 1, name: 'Peak', display_order: 1 },
+        ],
+        memberships: [
+          { id: 1, subgroup_id: 11, pool_entry_id: 10, display_order: 0 },
+          { id: 2, subgroup_id: 12, pool_entry_id: 10, display_order: 0 },
+        ],
+        startMin: START,
+        benchTimes: { '11:2': 400, '12:2': 430 },
+        benchOverrides: {
+          '11:2': { durOv: 3 },
+          '12:2': { durOv: 6 },
+        },
+        onBenchChange,
+      }),
+    )
+
+    expect(result.current.benchLanes[0].blocks[0]).toMatchObject({
+      placementKey: '11:2',
+      t: 400,
+      dur: 3,
+    })
+    expect(result.current.benchLanes[1].blocks[0]).toMatchObject({
+      placementKey: '12:2',
+      t: 430,
+      dur: 6,
+    })
+
+    act(() => {
+      result.current.setBenchTime(11, 2, 410)
+    })
+
+    expect(onBenchChange).toHaveBeenCalledWith({
+      times: { '11:2': 410, '12:2': 430 },
+      overrides: {
+        '11:2': { durOv: 3 },
+        '12:2': { durOv: 6 },
+      },
     })
   })
 

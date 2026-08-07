@@ -24,7 +24,7 @@ function harness(view: number, total: number) {
           ref.current = el
         }}
       >
-        <SequencerScrollbar scrollRef={ref} />
+        <SequencerScrollbar scrollRef={ref} endOffset={total} />
       </div>
     )
   }

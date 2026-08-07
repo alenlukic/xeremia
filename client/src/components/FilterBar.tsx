@@ -1,5 +1,13 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { FilterIcon } from './table/icons'
 import {
   FILTER_KIND_LABELS,
@@ -20,6 +28,7 @@ function useDismiss(
   ref: React.RefObject<HTMLElement | null>,
   active: boolean,
   onDismiss: () => void,
+  floatingRef?: React.RefObject<HTMLElement | null>,
 ) {
   const onDismissRef = useRef(onDismiss)
   useEffect(() => {
@@ -30,7 +39,12 @@ function useDismiss(
       return
     }
     function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        ref.current &&
+        !ref.current.contains(target) &&
+        !floatingRef?.current?.contains(target)
+      ) {
         onDismissRef.current()
       }
     }
@@ -45,7 +59,108 @@ function useDismiss(
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onEsc)
     }
-  }, [ref, active])
+  }, [ref, floatingRef, active])
+}
+
+type FloatingAlign = 'left' | 'right'
+
+function useWidgetFloating(
+  anchorRef: React.RefObject<HTMLElement | null>,
+  floatingRef: React.RefObject<HTMLElement | null>,
+  align: FloatingAlign,
+) {
+  const update = useCallback(() => {
+    const anchor = anchorRef.current
+    const floating = floatingRef.current
+    if (!anchor || !floating) {
+      return
+    }
+    const anchorRect = anchor.getBoundingClientRect()
+    const panelRect = anchor.closest<HTMLElement>('.ws-panel')?.getBoundingClientRect()
+    const bounds =
+      panelRect && panelRect.width > 0 && panelRect.height > 0
+        ? panelRect
+        : {
+            left: 0,
+            top: 0,
+            right: window.innerWidth,
+            bottom: window.innerHeight,
+            width: window.innerWidth,
+            height: window.innerHeight,
+          }
+    const padding = 8
+    const gap = 4
+    const maxWidth = Math.max(120, bounds.width - padding * 2)
+    const maxHeight = Math.max(80, bounds.height - padding * 2)
+    const width = Math.min(floating.offsetWidth || 220, maxWidth)
+    const height = Math.min(floating.offsetHeight || 160, maxHeight)
+    const minLeft = bounds.left + padding
+    const maxLeft = Math.max(minLeft, bounds.right - padding - width)
+    const preferredLeft =
+      align === 'right' ? anchorRect.right - width : anchorRect.left
+    const left = Math.min(maxLeft, Math.max(minLeft, preferredLeft))
+    const below = anchorRect.bottom + gap
+    const above = anchorRect.top - gap - height
+    const top =
+      below + height <= bounds.bottom - padding
+        ? below
+        : above >= bounds.top + padding
+          ? above
+          : bounds.top + padding
+    Object.assign(floating.style, {
+      position: 'fixed',
+      left: `${left}px`,
+      top: `${top}px`,
+      right: 'auto',
+      bottom: 'auto',
+      maxWidth: `${maxWidth}px`,
+      maxHeight: `${maxHeight}px`,
+      overflow: 'auto',
+      visibility: 'visible',
+    })
+  }, [align, anchorRef, floatingRef])
+
+  useLayoutEffect(() => {
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [update])
+}
+
+function FloatingSurface({
+  anchorRef,
+  floatingRef,
+  align,
+  className,
+  role,
+  ariaLabel,
+  children,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>
+  floatingRef: React.RefObject<HTMLDivElement | null>
+  align: FloatingAlign
+  className: string
+  role: React.AriaRole
+  ariaLabel?: string
+  children: ReactNode
+}) {
+  useWidgetFloating(anchorRef, floatingRef, align)
+  return createPortal(
+    <div
+      ref={floatingRef}
+      className={className}
+      role={role}
+      aria-label={ariaLabel}
+      style={{ position: 'fixed', visibility: 'hidden' }}
+    >
+      {children}
+    </div>,
+    document.body,
+  )
 }
 
 const CAMELOT_CODES = [
@@ -330,11 +445,17 @@ function ConditionPopover({
   genres,
   labels,
   onCommit,
+  anchorRef,
+  floatingRef,
+  align,
 }: {
   initial: FilterCondition
   genres: string[]
   labels: string[]
   onCommit: (c: FilterCondition) => void
+  anchorRef: React.RefObject<HTMLElement | null>
+  floatingRef: React.RefObject<HTMLDivElement | null>
+  align: FloatingAlign
 }) {
   const [draft, setDraft] = useState(initial)
   const commitRef = useRef(() => {})
@@ -343,10 +464,13 @@ function ConditionPopover({
   })
   useEffect(() => () => commitRef.current(), [])
   return (
-    <div
+    <FloatingSurface
+      anchorRef={anchorRef}
+      floatingRef={floatingRef}
+      align={align}
       className="filter-popover"
       role="dialog"
-      aria-label={`${FILTER_KIND_LABELS[initial.kind]} filter`}
+      ariaLabel={`${FILTER_KIND_LABELS[initial.kind]} filter`}
     >
       <ConditionEditor
         draft={draft}
@@ -354,7 +478,7 @@ function ConditionPopover({
         genres={genres}
         labels={labels}
       />
-    </div>
+    </FloatingSurface>
   )
 }
 
@@ -402,12 +526,18 @@ function FilterAddControl({
   const [menuOpen, setMenuOpen] = useState(false)
   const [draftKind, setDraftKind] = useState<FilterKind | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const floatingRef = useRef<HTMLDivElement>(null)
 
   const anyOpen = menuOpen || draftKind !== null
-  useDismiss(ref, anyOpen, () => {
-    setMenuOpen(false)
-    setDraftKind(null)
-  })
+  useDismiss(
+    ref,
+    anyOpen,
+    () => {
+      setMenuOpen(false)
+      setDraftKind(null)
+    },
+    floatingRef,
+  )
 
   return (
     <div className="filter-add-group" ref={ref}>
@@ -425,7 +555,13 @@ function FilterAddControl({
         {icon ?? label}
       </button>
       {menuOpen && (
-        <div className="filter-add-menu" role="menu">
+        <FloatingSurface
+          anchorRef={ref}
+          floatingRef={floatingRef}
+          align="right"
+          className="filter-add-menu"
+          role="menu"
+        >
           {KINDS.map((k) => (
             <button
               key={k}
@@ -439,7 +575,7 @@ function FilterAddControl({
               {FILTER_KIND_LABELS[k]}
             </button>
           ))}
-        </div>
+        </FloatingSurface>
       )}
       {draftKind && (
         <ConditionPopover
@@ -447,6 +583,9 @@ function FilterAddControl({
           initial={newCondition(draftKind)}
           genres={genres}
           labels={labels}
+          anchorRef={ref}
+          floatingRef={floatingRef}
+          align="right"
           onCommit={(cond) =>
             setModel((prev) => addConditionByTarget(prev, target, cond))
           }
@@ -466,7 +605,8 @@ function ConditionPill({
 }: BrowseFilterProps & { groupId: string; condition: FilterCondition }) {
   const [editing, setEditing] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
-  useDismiss(ref, editing, () => setEditing(false))
+  const floatingRef = useRef<HTMLDivElement>(null)
+  useDismiss(ref, editing, () => setEditing(false), floatingRef)
 
   const kindLabel = FILTER_KIND_LABELS[condition.kind]
 
@@ -500,6 +640,9 @@ function ConditionPill({
           initial={condition}
           genres={genres}
           labels={labels}
+          anchorRef={ref}
+          floatingRef={floatingRef}
+          align="left"
           onCommit={(cond) =>
             setModel((prev) => pruneModel(upsertCondition(prev, groupId, cond)))
           }

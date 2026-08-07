@@ -5,10 +5,10 @@ import {
   type OverrideMap,
 } from '../hooks/useSequencer'
 import { keyDotColor } from '../utils/harmonic'
-import { formatHM, formatMinutes } from '../utils/time'
+import { formatDuration, formatHM } from '../utils/time'
 
-// Tracklist view of the committed lane. The BPM cell is the only editable one:
-// it takes the played BPM, and the auto-scale factor appears in Length.
+// Tracklist view of the committed lane. The BPM cell is the only editable one;
+// timing mechanics stay under the hood.
 
 interface Props {
   blocks: LaidBlock[]
@@ -38,7 +38,6 @@ export function SequencerTracklist({
             <th className="sq-col-bpm">BPM</th>
             <th className="sq-col-time">In</th>
             <th className="sq-col-time">Out</th>
-            <th className="sq-col-plays">Plays</th>
             <th className="sq-col-length">Length</th>
           </tr>
         </thead>
@@ -49,7 +48,6 @@ export function SequencerTracklist({
             const played = effectivePlayedBpm(block, overrides)
             const value =
               draft[trackId] ?? (played != null ? played.toFixed(1) : '')
-            const scaled = Math.abs(block.scale - 1) > 0.005
             return (
               <tr
                 key={block.entry.id}
@@ -69,11 +67,6 @@ export function SequencerTracklist({
                   />
                   {block.entry.track?.title}
                   {block.pinned && <span className="sq-flag">pinned</span>}
-                  {scaled && (
-                    <span className="sq-flag sq-flag--scale">
-                      ×{block.scale.toFixed(2)}
-                    </span>
-                  )}
                   {ov.durOv != null && <span className="sq-flag">manual</span>}
                 </td>
                 <td className="sq-col-key mono">
@@ -106,14 +99,8 @@ export function SequencerTracklist({
                 <td className="sq-col-time mono">
                   {formatHM(block.t + block.dur)}
                 </td>
-                <td className="sq-col-plays mono">
-                  {formatMinutes(block.dur)}
-                </td>
                 <td className="sq-col-length mono">
-                  {formatMinutes(block.dur)}
-                  {scaled && (
-                    <span className="sq-scale">×{block.scale.toFixed(2)}</span>
-                  )}
+                  {formatDuration(block.dur)}
                 </td>
               </tr>
             )

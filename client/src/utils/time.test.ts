@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { formatHM, formatMinutes, parseMinutes, parseTimeInput } from './time'
+import {
+  formatDuration,
+  formatHM,
+  formatMinutes,
+  parseMinutes,
+  parseTimeInput,
+} from './time'
 
 describe('formatHM', () => {
   it('formats minutes since midnight as H:MM', () => {
@@ -48,5 +54,13 @@ describe('parseMinutes', () => {
 describe('formatMinutes', () => {
   it('renders one decimal place', () => {
     expect(formatMinutes(6.44)).toBe('6.4')
+  })
+})
+
+describe('formatDuration', () => {
+  it('renders lengths as zero-padded mm:ss', () => {
+    expect(formatDuration(4.5)).toBe('04:30')
+    expect(formatDuration(6.44)).toBe('06:26')
+    expect(formatDuration(65)).toBe('65:00')
   })
 })

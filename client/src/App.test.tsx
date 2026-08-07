@@ -1711,9 +1711,9 @@ describe('Sequencer bench clipboard', () => {
     localStorage.clear()
   })
 
-  it('pastes a multi-track bench cut back into the single source lane', async () => {
+  it('keeps a multi-track bench cut in place until a safe paste', async () => {
     const httpMod = await import('./api/http')
-    const rows = await renderWithSequencerSet(makeTracks(3))
+    await renderWithSequencerSet(makeTracks(3))
     const sequencer = screen.getByLabelText('Sequencer')
     const lane = sequencer.querySelector('.sq-lane--alt') as HTMLElement
 
@@ -1726,57 +1726,34 @@ describe('Sequencer bench clipboard', () => {
       fireEvent.pointerMove(window, { clientX: 112, clientY: 10 })
       fireEvent.pointerUp(window, { clientX: 112, clientY: 10 })
     })
-    // Paste while the cut requests still hold the old three-entry render.
-    // The lane materializer must ignore the two deleted pool-entry ids and
-    // continue far enough to retain the untouched third track.
-    rows.pausePoolRemovals()
     await pressClipboardKey(sequencer, 'x')
     await pressClipboardKey(sequencer, 'v')
-    await act(async () => {
-      rows.releasePoolRemovals()
-      await Promise.resolve()
-    })
 
-    // One backing lane holding the pasted pair and the untouched block.
-    await waitFor(() =>
-      expect(rows.laneTitles()).toEqual([['Track 1', 'Track 2', 'Track 3']]),
-    )
     expect(sequencer.querySelectorAll('.sq-lane--alt')).toHaveLength(1)
-    expect(httpMod.subgroupCreate).toHaveBeenCalledTimes(1)
+    expect(httpMod.poolRemove).not.toHaveBeenCalled()
+    expect(httpMod.subgroupCreate).not.toHaveBeenCalled()
+    expect(httpMod.subgroupDropTrack).not.toHaveBeenCalled()
     for (const title of ['Track 1', 'Track 2', 'Track 3']) {
       expect(within(sequencer).getByLabelText(title)).toBeInTheDocument()
     }
   })
 
-  it('backs the default lane with a new group after the old one is deleted', async () => {
+  it('does not materialize the virtual lane during repeated in-place pastes', async () => {
     const httpMod = await import('./api/http')
-    const rows = await renderWithSequencerSet(makeTracks(1))
+    await renderWithSequencerSet(makeTracks(1))
     const sequencer = screen.getByLabelText('Sequencer')
 
-    act(() => {
-      within(sequencer).getByLabelText('Track 1').click()
-    })
-    await pressClipboardKey(sequencer, 'x')
-    await pressClipboardKey(sequencer, 'v')
-    await waitFor(() => expect(rows.laneTitles()).toEqual([['Track 1']]))
+    for (let i = 0; i < 2; i++) {
+      act(() => {
+        within(sequencer).getByLabelText('Track 1').click()
+      })
+      await pressClipboardKey(sequencer, 'x')
+      await pressClipboardKey(sequencer, 'v')
+    }
 
-    await act(async () => {
-      within(sequencer).getByLabelText('Delete lane Alt 1').click()
-    })
-    await waitFor(() =>
-      expect(
-        within(sequencer).queryByLabelText('Delete lane Alt 1'),
-      ).not.toBeInTheDocument(),
-    )
-
-    act(() => {
-      within(sequencer).getByLabelText('Track 1').click()
-    })
-    await pressClipboardKey(sequencer, 'x')
-    await pressClipboardKey(sequencer, 'v')
-
-    await waitFor(() => expect(rows.laneTitles()).toEqual([['Track 1']]))
-    expect(httpMod.subgroupCreate).toHaveBeenCalledTimes(2)
+    expect(httpMod.poolRemove).not.toHaveBeenCalled()
+    expect(httpMod.subgroupCreate).not.toHaveBeenCalled()
     expect(sequencer.querySelectorAll('.sq-lane--alt')).toHaveLength(1)
+    expect(within(sequencer).getByLabelText('Track 1')).toBeInTheDocument()
   })
 })

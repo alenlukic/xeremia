@@ -9,6 +9,8 @@ import {
 } from '@testing-library/react'
 import { Sequencer } from './Sequencer'
 import { SequencerBlock } from './SequencerBlock'
+import { LANE_LABEL_PX } from './SequencerLanes'
+import { BENCH_BLOCK_GAP_MIN } from '../hooks/useSequencer'
 import { POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 import type {
   HydratedSet,
@@ -201,6 +203,29 @@ describe('Sequencer lanes', () => {
     expect(labels().length).toBeLessThanOrEqual(before.length)
   })
 
+  it('places and centers the insertion cursor from a timestamp-row click', () => {
+    const { container } = renderSequencer(
+      makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]),
+    )
+    const main = container.querySelector('.sq-main') as HTMLElement
+    Object.defineProperty(main, 'clientWidth', {
+      configurable: true,
+      value: 100,
+    })
+    Object.defineProperty(main, 'scrollWidth', {
+      configurable: true,
+      value: 1000,
+    })
+
+    fireEvent.pointerDown(screen.getByLabelText('Timeline ruler'), {
+      clientX: LANE_LABEL_PX + 10 * 6,
+      button: 0,
+    })
+
+    expect(screen.getByLabelText('Paste cursor at 6:10')).toBeInTheDocument()
+    expect(main.scrollLeft).toBe(120)
+  })
+
   it('starts with exactly one alternative lane and no subgroups', () => {
     const pool = [makePoolEntry(makeTrack(5, '08A', 128), 0)]
     const { container } = renderSequencer(makeSet([], pool))
@@ -242,22 +267,23 @@ describe('Sequencer lanes', () => {
     expect(onDeleteLane).toHaveBeenCalledWith(7)
   })
 
-  it('draws the alt lane stretch past the committed end', () => {
-    const subgroups: PoolSubgroup[] = [
-      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
-    ]
-    const committed = [makeEntry(makeTrack(1, '08A', 128), 0)]
-    const { container } = renderSequencer(makeSet(committed, [], subgroups))
+  it('assigns distinct lane colors without using the reserved gold range', () => {
+    const subgroups: PoolSubgroup[] = Array.from({ length: 6 }, (_, index) => ({
+      id: 7 + index,
+      set_id: 1,
+      name: `Alt ${index + 1}`,
+      display_order: index,
+    }))
+    const { container } = renderSequencer(makeSet([], [], subgroups))
 
-    const tail = container.querySelector('.sq-lane-tail') as HTMLElement
-    expect(tail).toBeTruthy()
-    // Starts where the committed spine ends, never at the lane origin.
-    expect(Number.parseFloat(tail.style.left)).toBeGreaterThan(0)
-    expect(Number.parseFloat(tail.style.width)).toBeGreaterThan(0)
-    // Committed lane keeps its solid frame.
-    expect(
-      container.querySelector('.sq-lane--committed .sq-lane-tail'),
-    ).toBeNull()
+    const lanes = Array.from(
+      container.querySelectorAll<HTMLElement>('.sq-lane--alt'),
+    )
+    const hues = lanes.map((lane) =>
+      Number(lane.style.getPropertyValue('--sq-alt-hue')),
+    )
+    expect(new Set(hues).size).toBe(hues.length)
+    expect(hues.every((hue) => hue < 35 || hue > 70)).toBe(true)
   })
 
   it('renames a lane from its double-clicked label', () => {
@@ -368,7 +394,7 @@ describe('Sequencer block drag', () => {
   const first = makeTrack(1, '08A', 128)
   const second = makeTrack(2, '09A', 128)
 
-  /** 6px per minute from 6:00, after the 88px lane label. */
+  /** 6px per minute from 6:00, after the lane label. */
   /** Zoom is derived from the blocks now, so it is read back off the lanes. */
   function pxPerMin() {
     const lanes = document.querySelector('.sq-lanes') as HTMLElement
@@ -376,7 +402,7 @@ describe('Sequencer block drag', () => {
   }
 
   function clientXFor(minute: number) {
-    return 88 + (minute - 360) * pxPerMin()
+    return LANE_LABEL_PX + (minute - 360) * pxPerMin()
   }
 
   /**
@@ -540,10 +566,45 @@ describe('SequencerBlock sizing', () => {
   })
 
   it('renders at the width the zoom gives it, however narrow', () => {
-    // No artificial floor: a sliver stays a sliver and simply clips.
-    const { container } = renderBlock(9)
+    // Only a one-pixel visibility floor remains, and padding stays inside it.
+    const { container } = renderBlock(0.4)
     const block = container.querySelector('.sq-block') as HTMLElement
-    expect(block.style.width).toBe('9px')
+    expect(block.style.width).toBe('1px')
+  })
+
+  it('stars a tile without selecting it and toggles the gold state', () => {
+    const { container } = renderSequencer(
+      makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]),
+    )
+    const block = screen.getByLabelText('Track 1')
+
+    fireEvent.click(screen.getByLabelText('Star Track 1'))
+
+    expect(block).toHaveClass('sq-block--starred')
+    expect(selectedLabels(container)).toEqual([])
+    fireEvent.click(screen.getByLabelText('Unstar Track 1'))
+    expect(block).not.toHaveClass('sq-block--starred')
+  })
+
+  it('pins a benched tile in place when its lane is auto-arranged', () => {
+    const pool = [
+      makePoolEntry({ ...makeTrack(1, '08A', 128), title: 'Zulu' }, 0),
+      makePoolEntry({ ...makeTrack(2, '08A', 128), title: 'Pinned' }, 1),
+      makePoolEntry({ ...makeTrack(3, '08A', 128), title: 'Alpha' }, 2),
+    ]
+    const { container } = renderSequencer(makeSet([], pool))
+    const block = screen.getByLabelText('Pinned')
+    const initialLeft = block.style.left
+
+    fireEvent.click(screen.getByLabelText('Pin Pinned'))
+    expect(screen.getByLabelText('Unpin Pinned')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(selectedLabels(container)).toEqual([])
+
+    fireEvent.click(screen.getByLabelText('Auto-arrange lane Alt 1'))
+    expect(block.style.left).toBe(initialLeft)
   })
 
   it('reveals the promote control only once the benched block is selected', () => {
@@ -597,16 +658,15 @@ describe('SequencerBlock sizing', () => {
     expect(onPromote).toHaveBeenCalled()
   })
 
-  it('never shows the auto-scale factor on a block', () => {
+  it('never exposes a timing multiplier on a block', () => {
     const tracklist = [
       makeEntry(makeTrack(1, '08A', 128), 0, { pinned_end_minutes: 364 }),
       makeEntry(makeTrack(2, '09A', 128), 1),
     ]
-    const { container } = renderSequencer(makeSet(tracklist))
+    renderSequencer(makeSet(tracklist))
 
     const lane = screen.getByLabelText('Committed lane')
     expect(lane.textContent).not.toContain('×')
-    expect(container.querySelector('.sq-block .sq-scale')).toBeNull()
   })
 })
 
@@ -627,6 +687,31 @@ describe('Sequencer harmony highlighting', () => {
     expect(related.style.backgroundColor).not.toBe('')
     expect(screen.getByLabelText('Track 3').style.opacity).toBe('0.35')
   })
+
+  it('does not inspect harmony matches for a multi-track selection', () => {
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '09A', 128), 1),
+      makeEntry(makeTrack(3, '03B', 128), 2),
+    ]
+    const { container } = renderSequencer(makeSet(tracklist))
+    const lane = container.querySelector('.sq-lane--committed') as HTMLElement
+
+    act(() => {
+      fireEvent.pointerDown(lane, {
+        clientX: LANE_LABEL_PX + 6,
+        button: 0,
+      })
+    })
+    act(() => {
+      fireEvent.pointerMove(window, { clientX: LANE_LABEL_PX + 36 })
+      fireEvent.pointerUp(window, { clientX: LANE_LABEL_PX + 36 })
+    })
+
+    expect(selectedLabels(container)).toEqual(['Track 1', 'Track 2'])
+    expect(screen.getByLabelText('Track 3').style.backgroundColor).toBe('')
+    expect(screen.getByLabelText('Track 3').style.opacity).toBe('')
+  })
 })
 
 describe('Sequencer tracklist view', () => {
@@ -638,15 +723,15 @@ describe('Sequencer tracklist view', () => {
     return view
   }
 
-  it('renders the eight declared columns', () => {
+  it('renders the seven timing columns without redundant Plays', () => {
     openList(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
 
     expect(
       screen.getAllByRole('columnheader').map((th) => th.textContent),
-    ).toEqual(['#', 'Title', 'Key', 'BPM', 'In', 'Out', 'Plays', 'Length'])
+    ).toEqual(['#', 'Title', 'Key', 'BPM', 'In', 'Out', 'Length'])
   })
 
-  it('saves an edited BPM and marks the cell as overridden', async () => {
+  it('saves an edited BPM and marks the edited cell', async () => {
     const httpMod = await import('../api/http')
     openList(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
 
@@ -668,7 +753,7 @@ describe('Sequencer tracklist view', () => {
     )
   })
 
-  it('flags pinned, scaled and manual rows and shows the factor in Length', () => {
+  it('keeps timing mechanics hidden and formats Length as mm:ss', () => {
     const tracklist = [
       makeEntry(makeTrack(1, '08A', 128), 0, { pinned_end_minutes: 364 }),
       makeEntry(makeTrack(2, '09A', 128), 1, { play_minutes: 4 }),
@@ -677,13 +762,13 @@ describe('Sequencer tracklist view', () => {
 
     const rows = container.querySelectorAll('.sq-list-row')
     expect(within(rows[0] as HTMLElement).getByText('pinned')).toBeVisible()
-    expect(
-      (rows[0] as HTMLElement).querySelector('.sq-flag--scale'),
-    ).not.toBeNull()
-    expect(
-      (rows[0] as HTMLElement).querySelector('.sq-col-length .sq-scale'),
-    ).not.toBeNull()
     expect(within(rows[1] as HTMLElement).getByText('manual')).toBeVisible()
+    for (const row of rows) {
+      expect(
+        (row as HTMLElement).querySelector('.sq-col-length')?.textContent,
+      ).toMatch(/^\d{2}:\d{2}$/)
+      expect(row.textContent).not.toContain('×')
+    }
   })
 
   it('exports the committed lane in order', async () => {
@@ -716,7 +801,7 @@ describe('Sequencer inspector footer', () => {
     expect(container.querySelector('.sq-inspector')).toBeNull()
   })
 
-  it('shows the meta, inputs and controls for a committed block', () => {
+  it('shows BPM, In and Out controls for a committed block', () => {
     renderSequencer(makeSet(tracklist))
 
     act(() => {
@@ -724,8 +809,12 @@ describe('Sequencer inspector footer', () => {
     })
 
     expect(screen.getByLabelText('Played BPM')).toBeInTheDocument()
-    expect(screen.getByLabelText('Play length in minutes')).toBeInTheDocument()
-    expect(screen.getByLabelText('Pinned end time')).toBeInTheDocument()
+    expect(screen.getByLabelText('In time')).toHaveValue('6:00')
+    expect(screen.getByLabelText('In time')).toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Out time')).toBeInTheDocument()
+    expect(screen.queryByText('overridden')).toBeNull()
+    expect(screen.queryByText('plays')).toBeNull()
+    expect(screen.queryByText('ends')).toBeNull()
     for (const name of ['Reset', 'Bench', 'Remove']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
@@ -742,8 +831,8 @@ describe('Sequencer inspector footer', () => {
       screen.getByLabelText('Track 5').click()
     })
     expect(screen.getByLabelText('Played BPM')).toBeInTheDocument()
-    expect(screen.getByLabelText('Play length in minutes')).toBeInTheDocument()
-    expect(screen.getByLabelText('Pinned end time')).toBeInTheDocument()
+    expect(screen.getByLabelText('In time')).not.toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Out time')).toBeInTheDocument()
     for (const name of ['Reset', 'Commit', 'Remove']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
@@ -755,7 +844,7 @@ describe('Sequencer inspector footer', () => {
     expect(onPromote).toHaveBeenCalledWith(5, 0)
   })
 
-  it('previews a benched play length without touching the server', async () => {
+  it('previews a benched Out edit without touching the server', async () => {
     const httpMod = await import('../api/http')
     const track = makeTrack(5, '08A', 128)
     renderSequencer(makeSet([], [makePoolEntry(track, 0)]))
@@ -764,9 +853,9 @@ describe('Sequencer inspector footer', () => {
       screen.getByLabelText('Track 5').click()
     })
     await act(async () => {
-      const plays = screen.getByLabelText('Play length in minutes')
-      fireEvent.change(plays, { target: { value: '3' } })
-      fireEvent.blur(plays)
+      const out = screen.getByLabelText('Out time')
+      fireEvent.change(out, { target: { value: '6:03' } })
+      fireEvent.blur(out)
     })
 
     expect(vi.mocked(httpMod.tracklistSetOverrides)).not.toHaveBeenCalled()
@@ -806,23 +895,23 @@ describe('Sequencer inspector footer', () => {
     expect(screen.getByLabelText('Track 2').style.opacity).toBe('0.35')
   })
 
-  it('persists a play length edit and resets it again', async () => {
+  it('persists an Out edit and resets it again', async () => {
     const httpMod = await import('../api/http')
     renderSequencer(makeSet(tracklist))
 
     act(() => {
       screen.getByLabelText('Track 1').click()
     })
-    const plays = screen.getByLabelText('Play length in minutes')
+    const out = screen.getByLabelText('Out time')
     await act(async () => {
-      fireEvent.change(plays, { target: { value: '5.5' } })
-      fireEvent.blur(plays)
+      fireEvent.change(out, { target: { value: '6:06' } })
+      fireEvent.blur(out)
     })
 
     expect(vi.mocked(httpMod.tracklistSetOverrides)).toHaveBeenCalledWith(
       1,
       1,
-      expect.objectContaining({ play_minutes: 5.5 }),
+      expect.objectContaining({ pinned_end_minutes: 366 }),
     )
 
     await act(async () => {
@@ -926,9 +1015,59 @@ describe('Sequencer scrollbar', () => {
     // 90px along a 180px travel is half of the 1200px of scrollable width.
     expect(main.scrollLeft).toBeCloseTo(600, 0)
   })
+
+  it('jumps to the timeline end from the subtle arrow control', () => {
+    const tracklist = Array.from({ length: 6 }, (_, i) =>
+      makeEntry(makeTrack(i + 1, '08A', 128), i),
+    )
+    const { container } = renderSequencer(makeSet(tracklist))
+    const main = container.querySelector('.sq-main') as HTMLElement
+    Object.defineProperty(main, 'clientWidth', {
+      value: 400,
+      configurable: true,
+    })
+    Object.defineProperty(main, 'scrollWidth', {
+      value: 1600,
+      configurable: true,
+    })
+    act(() => {
+      fireEvent.scroll(main)
+    })
+
+    const blocks = screen
+      .getByLabelText('Committed lane')
+      .querySelectorAll('.sq-block')
+    const last = blocks[blocks.length - 1] as HTMLElement
+    const sequenceEnd =
+      Number.parseFloat(last.style.left) + Number.parseFloat(last.style.width)
+    fireEvent.click(screen.getByLabelText('Jump to sequence end'))
+
+    expect(main.scrollLeft).toBeCloseTo(
+      Math.min(1200, Math.max(0, sequenceEnd - 400 + 24)),
+      5,
+    )
+  })
 })
 
 describe('Sequencer bench lane defaults', () => {
+  it('switches lane borders to dashed after the committed end', () => {
+    const { container } = renderSequencer(
+      makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]),
+    )
+    const committed = screen.getByLabelText('Track 1')
+    const committedEnd =
+      Number.parseFloat(committed.style.left) +
+      Number.parseFloat(committed.style.width)
+    const borders = container.querySelectorAll<HTMLElement>('.sq-lane-post-end')
+
+    expect(borders).toHaveLength(2)
+    expect(Number.parseFloat(borders[0].style.left)).toBeCloseTo(
+      committedEnd,
+      6,
+    )
+    expect(Number.parseFloat(borders[0].style.width)).toBeGreaterThan(0)
+  })
+
   it('queues a dropped track after the committed spine, not under the pointer', () => {
     // Two committed tracks, so the spine ends well after the start time.
     const tracklist = [
@@ -975,7 +1114,7 @@ describe('Sequencer bench lane defaults', () => {
     expect(at('Alpha')).toBeLessThan(at('Zulu'))
   })
 
-  it('packs an auto-arranged lane end to end from the committed end', () => {
+  it('separates every auto-arranged tile from the committed end', () => {
     const tracklist = [makeEntry(makeTrack(1, '08A', 128), 0)]
     const pool = [
       makePoolEntry({ ...makeTrack(3, '08A', 128), title: 'Bravo' }, 0),
@@ -998,15 +1137,18 @@ describe('Sequencer bench lane defaults', () => {
     const first = box('Alpha')
     const second = box('Bravo')
     expect(first.left).toBeCloseTo(committed.left + committed.width, 6)
-    expect(second.left).toBeCloseTo(first.left + first.width, 6)
+    expect(second.left).toBeCloseTo(
+      first.left + first.width + BENCH_BLOCK_GAP_MIN * 6,
+      6,
+    )
   })
 })
 
 describe('Sequencer lane drag selection', () => {
   // The lane maps a client x to a minute as
   // startMin + (x - laneLeft - LANE_LABEL_PX) / pxPerMin, and jsdom reports a
-  // zero rect, so x 88 is the set start and every 6px after it is one minute.
-  const ORIGIN_PX = 88
+  // zero rect, so the label width is the set start and each 6px is one minute.
+  const ORIGIN_PX = LANE_LABEL_PX
   const PX_PER_MIN = 6
   /** Client x for a minute offset from the set start. */
   const atMinute = (minute: number) => ORIGIN_PX + minute * PX_PER_MIN
@@ -1148,6 +1290,24 @@ describe('Sequencer lane drag selection', () => {
 
     expect(selectedLabels(container)).toEqual(['Track 2'])
   })
+
+  it('clears the current selection with Escape', () => {
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '08A', 128), 1),
+    ]
+    const { container } = renderSequencer(makeSet(tracklist))
+
+    fireEvent.click(screen.getByLabelText('Track 2'))
+    expect(selectedLabels(container)).toEqual(['Track 2'])
+
+    fireEvent.keyDown(container.querySelector('.sq-body') as HTMLElement, {
+      key: 'Escape',
+    })
+
+    expect(selectedLabels(container)).toEqual([])
+    expect(container.querySelector('.sq-inspector')).toBeNull()
+  })
 })
 
 describe('Sequencer cut and paste', () => {
@@ -1170,7 +1330,16 @@ describe('Sequencer cut and paste', () => {
     })
   }
 
-  it('cuts every selected committed track out of the lane', () => {
+  function placeCursor(lane: HTMLElement, clientX: number) {
+    act(() => {
+      fireEvent.pointerDown(lane, { clientX, button: 0 })
+    })
+    act(() => {
+      fireEvent.pointerUp(window, { clientX })
+    })
+  }
+
+  it('captures every selected track without deleting any source row', () => {
     const tracklist = [
       makeEntry(makeTrack(1, '08A', 128), 0),
       makeEntry(makeTrack(2, '08A', 128), 1),
@@ -1191,12 +1360,14 @@ describe('Sequencer cut and paste', () => {
     })
     press(body(container), 'x')
 
-    expect(onRemove.mock.calls).toEqual([[1], [2]])
-    // The cut clears the selection it consumed.
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Track 1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Track 2')).toBeInTheDocument()
     expect(selectedLabels(container)).toEqual([])
+    expect(screen.getByLabelText('Paste cursor at 6:00')).toBeInTheDocument()
   })
 
-  it('cuts with Ctrl as well as Cmd', () => {
+  it('captures a cut with Ctrl as well as Cmd without removing it', () => {
     const tracklist = [makeEntry(makeTrack(1, '08A', 128), 0)]
     const onRemove = vi.fn()
     const { container } = renderSequencer(makeSet(tracklist), { onRemove })
@@ -1206,10 +1377,11 @@ describe('Sequencer cut and paste', () => {
     })
     press(body(container), 'x', { ctrlKey: true })
 
-    expect(onRemove).toHaveBeenCalledWith(1)
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Paste cursor at 6:00')).toBeInTheDocument()
   })
 
-  it('pastes a cut track after the selected committed block', async () => {
+  it('moves a committed cut to the lane cursor without remove/add writes', async () => {
     const tracklist = [
       makeEntry(makeTrack(1, '08A', 128), 0),
       makeEntry(makeTrack(2, '08A', 128), 1, {
@@ -1219,42 +1391,37 @@ describe('Sequencer cut and paste', () => {
       }),
     ]
     const onAddCommitted = vi.fn()
+    const onRemove = vi.fn()
+    const onReorder = vi.fn()
     const { container } = renderSequencer(makeSet(tracklist), {
       onAddCommitted,
+      onRemove,
+      onReorder,
     })
     const httpMod = await import('../api/http')
 
     act(() => {
-      screen.getByLabelText('Track 2').click()
-    })
-    press(body(container), 'x')
-    act(() => {
       screen.getByLabelText('Track 1').click()
     })
+    press(body(container), 'x')
+    placeCursor(screen.getByLabelText('Committed lane'), LANE_LABEL_PX + 20 * 6)
     await pressAsync(body(container), 'v')
 
-    // Track 1 sits at index 0, so the paste lands right after it.
-    expect(onAddCommitted).toHaveBeenCalledWith(2, 1)
-    expect(vi.mocked(httpMod.tracklistSetOverrides)).toHaveBeenCalledWith(
-      1,
-      2,
-      { play_minutes: 5, pinned_end_minutes: null, bpm_override: 130 },
-    )
-    expect(vi.mocked(httpMod.updateTracklistNote)).toHaveBeenCalledWith(
-      1,
-      2,
-      'drop at 32',
-    )
+    expect(onReorder).toHaveBeenCalledWith(2, 0)
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(onAddCommitted).not.toHaveBeenCalled()
+    expect(vi.mocked(httpMod.tracklistSetOverrides)).not.toHaveBeenCalled()
+    expect(vi.mocked(httpMod.updateTracklistNote)).not.toHaveBeenCalled()
   })
 
-  it('pastes at the committed lane end when nothing is selected', async () => {
+  it('defaults the paste cursor to the cut location', async () => {
     const tracklist = [
       makeEntry(makeTrack(1, '08A', 128), 0),
       makeEntry(makeTrack(2, '08A', 128), 1),
     ]
-    const onAddCommitted = vi.fn()
+    const onReorder = vi.fn()
     const { container } = renderSequencer(makeSet(tracklist), {
-      onAddCommitted,
+      onReorder,
     })
 
     act(() => {
@@ -1263,26 +1430,16 @@ describe('Sequencer cut and paste', () => {
     press(body(container), 'x')
     await pressAsync(body(container), 'v')
 
-    expect(onAddCommitted).toHaveBeenCalledWith(1, 1)
+    expect(onReorder).not.toHaveBeenCalled()
   })
 
-  it('waits for the cut write before it computes the remaining lane end', async () => {
-    const tracklist = [
-      makeEntry(makeTrack(1, '08A', 128), 0),
-      makeEntry(makeTrack(2, '08A', 128), 1),
-      makeEntry(makeTrack(3, '08A', 128), 2),
-    ]
-    let finishRemove: (() => void) | null = null
-    const onRemove = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishRemove = resolve
-        }),
-    )
-    const onAddCommitted = vi.fn()
+  it('never starts a destructive cut write before paste', async () => {
+    const tracklist = [makeEntry(makeTrack(1, '08A', 128), 0)]
+    const onRemove = vi.fn(() => new Promise<void>(() => {}))
+    const onReorder = vi.fn()
     const { container } = renderSequencer(makeSet(tracklist), {
       onRemove,
-      onAddCommitted,
+      onReorder,
     })
 
     act(() => {
@@ -1290,47 +1447,50 @@ describe('Sequencer cut and paste', () => {
     })
     press(body(container), 'x')
     await pressAsync(body(container), 'v')
-    expect(onAddCommitted).not.toHaveBeenCalled()
 
-    await act(async () => {
-      finishRemove?.()
-      await Promise.resolve()
-    })
-
-    await vi.waitFor(() => expect(onAddCommitted).toHaveBeenCalledWith(1, 2))
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(onReorder).not.toHaveBeenCalled()
   })
 
   it('empties the clipboard once it has been pasted', async () => {
-    const tracklist = [makeEntry(makeTrack(1, '08A', 128), 0)]
-    const onAddCommitted = vi.fn()
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '08A', 128), 1),
+    ]
+    const onReorder = vi.fn()
     const { container } = renderSequencer(makeSet(tracklist), {
-      onAddCommitted,
+      onReorder,
     })
 
     act(() => {
       screen.getByLabelText('Track 1').click()
     })
     press(body(container), 'x')
+    placeCursor(screen.getByLabelText('Committed lane'), LANE_LABEL_PX + 20 * 6)
     await pressAsync(body(container), 'v')
     await pressAsync(body(container), 'v')
 
-    expect(onAddCommitted).toHaveBeenCalledTimes(1)
+    expect(onReorder).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the clipboard when paste fails and empties it after a retry', async () => {
-    const tracklist = [makeEntry(makeTrack(1, '08A', 128), 0)]
-    const onAddCommitted = vi
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '08A', 128), 1),
+    ]
+    const onReorder = vi
       .fn()
       .mockResolvedValueOnce(false)
       .mockResolvedValue(true)
     const { container } = renderSequencer(makeSet(tracklist), {
-      onAddCommitted,
+      onReorder,
     })
 
     act(() => {
       screen.getByLabelText('Track 1').click()
     })
     press(body(container), 'x')
+    placeCursor(screen.getByLabelText('Committed lane'), LANE_LABEL_PX + 20 * 6)
     await pressAsync(body(container), 'v')
 
     expect(
@@ -1340,11 +1500,11 @@ describe('Sequencer cut and paste', () => {
     await pressAsync(body(container), 'v')
     await pressAsync(body(container), 'v')
 
-    expect(onAddCommitted).toHaveBeenCalledTimes(2)
+    expect(onReorder).toHaveBeenCalledTimes(2)
     expect(screen.queryByText('Could not paste the selection.')).toBeNull()
   })
 
-  it('pastes a benched cut back into its own lane', async () => {
+  it('pastes a benched cut at an explicit cursor in its lane', async () => {
     const pool = [
       makePoolEntry(makeTrack(3, '08A', 128), 0),
       makePoolEntry(makeTrack(4, '08A', 128), 1),
@@ -1358,20 +1518,55 @@ describe('Sequencer cut and paste', () => {
 
     const leftOf = (label: string) =>
       Number.parseFloat(screen.getByLabelText(label).style.left)
-    const laneEnd = leftOf('Track 4')
-    expect(leftOf('Track 3')).toBeLessThan(laneEnd)
 
     act(() => {
       screen.getByLabelText('Track 3').click()
     })
     press(body(container), 'x')
-    expect(onRemoveBenched).toHaveBeenCalledWith(3)
-
+    const targetX = LANE_LABEL_PX + 30 * 6
+    placeCursor(screen.getByLabelText('Alt 1 lane'), targetX)
     await pressAsync(body(container), 'v')
 
-    expect(onBenchToLane).toHaveBeenCalledWith(3, 'default', 'browse')
-    // Re-placed past the old lane end rather than back in its old slot.
-    expect(leftOf('Track 3')).toBeGreaterThan(laneEnd)
+    expect(onRemoveBenched).not.toHaveBeenCalled()
+    expect(onBenchToLane).not.toHaveBeenCalled()
+    expect(leftOf('Track 3')).toBeCloseTo(targetX, 5)
+  })
+
+  it('retries only the unmoved tracks after a partial cross-lane paste', async () => {
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '08A', 128), 1),
+    ]
+    const onRemove = vi.fn()
+    const onBenchToLane = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+    const { container } = renderSequencer(makeSet(tracklist), {
+      onRemove,
+      onBenchToLane,
+    })
+    const committed = screen.getByLabelText('Committed lane')
+    act(() => {
+      fireEvent.pointerDown(committed, { clientX: LANE_LABEL_PX, button: 0 })
+    })
+    act(() => {
+      fireEvent.pointerMove(window, { clientX: 150 })
+      fireEvent.pointerUp(window, { clientX: 150 })
+    })
+    press(body(container), 'x')
+    placeCursor(screen.getByLabelText('Alt 1 lane'), LANE_LABEL_PX + 20 * 6)
+
+    await pressAsync(body(container), 'v')
+    expect(
+      await screen.findByText('Could not paste the selection.'),
+    ).toBeInTheDocument()
+    await pressAsync(body(container), 'v')
+
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(onBenchToLane.mock.calls.map((call) => call[0])).toEqual([1, 2, 2])
+    expect(screen.queryByText('Could not paste the selection.')).toBeNull()
   })
 
   it('ignores cut while a text field has focus', () => {

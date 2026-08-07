@@ -49,6 +49,7 @@ export interface BlockOverride {
 }
 
 export type OverrideMap = Record<number, Partial<BlockOverride>>
+export type BenchOverrideMap = Record<string, Partial<BlockOverride>>
 
 export interface LaidBlock {
   entry: TracklistEntry
@@ -66,6 +67,8 @@ export interface LaidBlock {
 /** A benched candidate at its own free time on an alternative lane. */
 export interface BenchBlock {
   entry: PoolEntry
+  /** Lane-scoped identity; the same track in another lane must remain independent. */
+  placementKey: string
   t: number
   dur: number
   fallback: boolean
@@ -279,6 +282,17 @@ export function laneKeyOf(lane: SequencerLane): LaneKey {
   return lane.group?.id ?? 'default'
 }
 
+/** Stable lane-scoped key for persisted bench timing and preview state. */
+export function benchPlacementKey(lane: LaneKey, trackId: number): string {
+  return `${lane}:${trackId}`
+}
+
+export function sequencerTileKey(lane: LaneScope, trackId: number): string {
+  return lane === 'committed'
+    ? `committed:${trackId}`
+    : benchPlacementKey(lane, trackId)
+}
+
 /**
  * One drag contract for every Sequencer block. The payload names the source
  * lane so a drop can tell a reorder, a promotion, a bench move and a free-time
@@ -326,16 +340,28 @@ export function readBlockDrag(dt: DragData): BlockDragPayload | null {
  */
 export function layoutBench(
   entries: PoolEntry[],
-  times: Record<number, number>,
-  ov: OverrideMap,
+  times: Record<string, number>,
+  ov: BenchOverrideMap,
   startMin: number,
+  lane: LaneKey = 'default',
 ): BenchBlock[] {
   let cursor = startMin
   return entries.map((entry) => {
-    const dur = ov[entry.track_id]?.durOv ?? defaultPlayMinutes(entry.track)
-    const t = times[entry.track_id] ?? cursor
+    const placementKey = benchPlacementKey(lane, entry.track_id)
+    // Numeric keys are the pre-lane-scope format. Keep reading them so existing
+    // sets migrate naturally as soon as one placement is edited.
+    const legacyKey = String(entry.track_id)
+    const override = ov[placementKey] ?? ov[legacyKey]
+    const dur = override?.durOv ?? defaultPlayMinutes(entry.track)
+    const t = times[placementKey] ?? times[legacyKey] ?? cursor
     cursor = Math.max(cursor, t) + dur
-    return { entry, t, dur, fallback: !hasMeasuredDuration(entry.track) }
+    return {
+      entry,
+      placementKey,
+      t,
+      dur,
+      fallback: !hasMeasuredDuration(entry.track),
+    }
   })
 }
 
@@ -362,6 +388,8 @@ export const EMPTY_SELECTION: LaneSelection = {
 /** One track held between a cut and a paste. */
 export interface ClipboardTrack {
   trackId: number
+  /** Pool row identity, present while the source is an alternative lane. */
+  poolEntryId: number | null
   /** Laid-out play length at cut time, used to pack a bench paste. */
   playMinutes: number
   /** Committed overrides or bench preview values captured at cut time. */
@@ -373,6 +401,12 @@ export interface ClipboardTrack {
 export interface SequencerClipboard {
   source: LaneScope
   tracks: ClipboardTrack[]
+}
+
+/** The visible insertion point used by paste. */
+export interface SequencerCursor {
+  lane: LaneScope
+  minutes: number
 }
 
 interface TimedBlock {
@@ -396,6 +430,10 @@ export function blocksInMinuteRange<T extends TimedBlock>(
 
 /** Sorts after every Explorer bucket, so a track without a BPM lands last. */
 const NO_BPM_BUCKET = Number.MAX_SAFE_INTEGER
+/** Breathing room between adjacent tiles inside one BPM cohort. */
+export const BENCH_BLOCK_GAP_MIN = 0.5
+/** Additional visual break between adjacent Explorer BPM cohorts. */
+export const BPM_CLUSTER_GAP_MIN = 1.5
 
 function bpmBucketOf(block: BenchBlock): number {
   const bpm = block.entry.track?.bpm
@@ -418,22 +456,82 @@ function compareByTitle(a: BenchBlock, b: BenchBlock): number {
 export function arrangeLaneBlocks(
   blocks: BenchBlock[],
   committedEnd: number,
-): Record<number, number> {
-  const arranged = [...blocks].sort(
-    (a, b) => bpmBucketOf(a) - bpmBucketOf(b) || compareByTitle(a, b),
-  )
-  const times: Record<number, number> = {}
+  pinnedTiles: Record<string, boolean> = {},
+): Record<string, number> {
+  const arranged = blocks
+    .filter((block) => !pinnedTiles[block.placementKey])
+    .sort((a, b) => bpmBucketOf(a) - bpmBucketOf(b) || compareByTitle(a, b))
+  const reserved = blocks
+    .filter((block) => pinnedTiles[block.placementKey])
+    .map((block) => ({ start: block.t, end: block.t + block.dur }))
+    .sort((a, b) => a.start - b.start)
+  const times: Record<string, number> = {}
   let at = committedEnd
+  let previousBucket: number | null = null
   for (const block of arranged) {
-    times[block.entry.track_id] = at
-    at += block.dur
+    const bucket = bpmBucketOf(block)
+    if (previousBucket !== null && bucket !== previousBucket) {
+      at += BPM_CLUSTER_GAP_MIN
+    }
+    for (const span of reserved) {
+      if (at + block.dur + BENCH_BLOCK_GAP_MIN <= span.start) {
+        break
+      }
+      if (at < span.end + BENCH_BLOCK_GAP_MIN) {
+        at = span.end + BENCH_BLOCK_GAP_MIN
+      }
+    }
+    times[block.placementKey] = at
+    at += block.dur + BENCH_BLOCK_GAP_MIN
+    previousBucket = bucket
   }
   return times
 }
 
+export interface ReorderMove {
+  trackId: number
+  position: number
+}
+
+/**
+ * Minimal moves that insert the held tracks at an index among the tracks that
+ * remain. The simulation is important: moving each held id directly can
+ * displace an earlier move and silently scramble a multi-track paste.
+ */
+export function committedReorderMoves(
+  currentIds: number[],
+  heldIds: number[],
+  insertIndex: number,
+): ReorderMove[] {
+  const held = new Set(heldIds)
+  const available = currentIds.filter((id) => !held.has(id))
+  const at = Math.max(0, Math.min(insertIndex, available.length))
+  const finalOrder = [
+    ...available.slice(0, at),
+    ...heldIds,
+    ...available.slice(at),
+  ]
+  const working = [...currentIds]
+  const moves: ReorderMove[] = []
+  for (let position = 0; position < finalOrder.length; position++) {
+    const trackId = finalOrder[position]
+    if (working[position] === trackId) {
+      continue
+    }
+    const from = working.indexOf(trackId)
+    if (from < 0) {
+      continue
+    }
+    working.splice(from, 1)
+    working.splice(position, 0, trackId)
+    moves.push({ trackId, position })
+  }
+  return moves
+}
+
 /** Where a pasted track lands on a bench lane, with its preview length. */
 export interface BenchPlacement {
-  trackId: number
+  placementKey: string
   minutes: number
   override?: Partial<BlockOverride> | null
 }
@@ -450,11 +548,11 @@ export interface UseSequencerArgs {
   /** Rehydrates the set after a saved override. */
   onSaved?: () => void
   /** Bench lane positions and preview lengths, persisted on the set. */
-  benchTimes?: Record<number, number>
-  benchOverrides?: OverrideMap
+  benchTimes?: Record<string, number>
+  benchOverrides?: BenchOverrideMap
   onBenchChange?: (next: {
-    times: Record<number, number>
-    overrides: OverrideMap
+    times: Record<string, number>
+    overrides: BenchOverrideMap
   }) => void
 }
 
@@ -491,9 +589,12 @@ export function useSequencer({
   )
   const setBenchState = useCallback(
     (
-      fn: (prev: { times: Record<number, number>; overrides: OverrideMap }) => {
-        times: Record<number, number>
-        overrides: OverrideMap
+      fn: (prev: {
+        times: Record<string, number>
+        overrides: BenchOverrideMap
+      }) => {
+        times: Record<string, number>
+        overrides: BenchOverrideMap
       },
     ) => {
       onBenchChange?.(fn({ times: bench.times, overrides: bench.overrides }))
@@ -529,16 +630,26 @@ export function useSequencer({
           bench.times,
           bench.overrides,
           startMin,
+          laneKeyOf(lane),
         ),
       })),
     [lanes, bench.times, bench.overrides, startMin],
   )
 
   const setBenchTime = useCallback(
-    (trackId: number, minutes: number) => {
+    (
+      lane: LaneKey,
+      trackId: number,
+      minutes: number,
+      preserveExact = false,
+    ) => {
+      const key = benchPlacementKey(lane, trackId)
       setBenchState((prev) => ({
         ...prev,
-        times: { ...prev.times, [trackId]: snapMinutes(minutes) },
+        times: {
+          ...prev.times,
+          [key]: preserveExact ? minutes : snapMinutes(minutes),
+        },
       }))
     },
     [setBenchState],
@@ -546,7 +657,7 @@ export function useSequencer({
 
   /** Set exact bench times at once, so an arranged lane stays end to end. */
   const setBenchTimes = useCallback(
-    (entries: Record<number, number>) => {
+    (entries: Record<string, number>) => {
       setBenchState((prev) => ({
         ...prev,
         times: { ...prev.times, ...entries },
@@ -566,9 +677,9 @@ export function useSequencer({
         const times = { ...prev.times }
         const overrides = { ...prev.overrides }
         for (const placement of placements) {
-          times[placement.trackId] = snapMinutes(placement.minutes)
+          times[placement.placementKey] = snapMinutes(placement.minutes)
           if (placement.override) {
-            overrides[placement.trackId] = { ...placement.override }
+            overrides[placement.placementKey] = { ...placement.override }
           }
         }
         return { times, overrides }
@@ -578,12 +689,13 @@ export function useSequencer({
   )
 
   const patchBenchOverride = useCallback(
-    (trackId: number, patch: Partial<BlockOverride>) => {
+    (lane: LaneKey, trackId: number, patch: Partial<BlockOverride>) => {
+      const key = benchPlacementKey(lane, trackId)
       setBenchState((prev) => ({
         ...prev,
         overrides: {
           ...prev.overrides,
-          [trackId]: { ...(prev.overrides[trackId] ?? {}), ...patch },
+          [key]: { ...(prev.overrides[key] ?? {}), ...patch },
         },
       }))
     },
@@ -591,8 +703,12 @@ export function useSequencer({
   )
 
   const resetBenchOverride = useCallback(
-    (trackId: number) => {
-      patchBenchOverride(trackId, { durOv: null, endPin: null, bpmOv: null })
+    (lane: LaneKey, trackId: number) => {
+      patchBenchOverride(lane, trackId, {
+        durOv: null,
+        endPin: null,
+        bpmOv: null,
+      })
     },
     [patchBenchOverride],
   )

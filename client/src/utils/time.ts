@@ -45,3 +45,11 @@ export function parseMinutes(value: string): number | null {
 export function formatMinutes(minutes: number): string {
   return (Math.round(minutes * 10) / 10).toFixed(1)
 }
+
+/** Duration in whole seconds, rendered as mm:ss. */
+export function formatDuration(minutes: number): string {
+  const totalSeconds = Math.max(0, Math.round(minutes * 60))
+  const wholeMinutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(wholeMinutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}

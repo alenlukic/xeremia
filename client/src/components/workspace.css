@@ -19,6 +19,14 @@
 .ws-picker-item:hover { background: rgba(255, 255, 255, 0.05); }
 .ws-picker-item--on { background: rgba(108, 140, 255, 0.14); color: var(--accent-bright, #9db3ff); }
 .ws-picker-sep { height: 1px; margin: 3px 2px; background: var(--border, #2a2e3b); }
+.ws-picker-name-form { display: flex; flex-direction: column; gap: 5px; min-width: 190px; padding: 4px; }
+.ws-picker-name-input { width: 100%; height: 26px; padding: 0 7px; box-sizing: border-box; border-radius: 4px; border: 1px solid #3a4055; background: var(--bg, #0f1117); color: var(--text, #d8dae5); font: 400 11px/1 'DM Sans', sans-serif; outline: none; }
+.ws-picker-name-input:focus { border-color: var(--accent-bright, #9db3ff); }
+.ws-picker-name-error { color: #e38d9a; font: 400 9px/1.2 'DM Sans', sans-serif; }
+.ws-picker-name-actions { display: flex; justify-content: flex-end; gap: 5px; }
+.ws-picker-name-cancel, .ws-picker-name-save { height: 22px; padding: 0 8px; border-radius: 4px; border: 1px solid var(--border, #2a2e3b); background: transparent; color: var(--muted, #8b8fa3); font: 400 10px/1 'DM Sans', sans-serif; cursor: pointer; }
+.ws-picker-name-save { border-color: rgba(108, 140, 255, 0.5); color: var(--accent-bright, #9db3ff); }
+.ws-picker-name-save:disabled { opacity: 0.4; cursor: default; }
 .ws-pill { height: 24px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border, #2a2e3b); background: var(--panel, #1a1d27); color: var(--muted, #8b8fa3); font: 400 11px/1 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; }
 .ws-pill--on { border-color: rgba(108, 140, 255, 0.5); background: rgba(108, 140, 255, 0.14); color: var(--accent-bright, #9db3ff); }
 .ws-grid-wrap { position: relative; flex: 1; min-height: 0; padding: 8px; }
@@ -118,11 +126,13 @@
 
 /* Pinned to the left of the scrollport so it stays put as the lanes scroll,
    sized to the visible width so the track can centre inside it. */
-.sq-scrollbar { position: sticky; left: 0; z-index: 4; display: flex; justify-content: center; margin: 0 -8px; padding: 5px 0 6px; }
+.sq-scrollbar { position: sticky; top: 18px; left: 0; z-index: 4; display: flex; align-items: center; justify-content: center; gap: 7px; margin: 0 -8px; padding: 5px 0 6px; background: var(--panel, #1a1d27); }
 .sq-scrollbar-track { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.05); cursor: pointer; }
 .sq-scrollbar-thumb { height: 6px; border-radius: 3px; background: var(--border-strong, #3a4055); cursor: grab; }
 .sq-scrollbar-thumb:hover { background: rgba(108, 140, 255, 0.55); }
 .sq-scrollbar-thumb:active { cursor: grabbing; background: var(--accent-bright, #9db3ff); }
+.sq-scrollbar-end { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #6b7186; font: 400 12px/1 'JetBrains Mono', monospace; cursor: pointer; }
+.sq-scrollbar-end:hover { background: rgba(108, 140, 255, 0.12); color: var(--accent-bright, #9db3ff); }
 /* One thin row: the view switch and the run window, nothing else. */
 /* Equal breathing room either side of the rule: the controls do not crowd it
    from above and the ruler does not touch it from below. */
@@ -138,7 +148,7 @@
    custom scrollbar can measure it. Sizing to the content is what gives the
    sticky scrollbar room to travel. */
 .sq-lanes { position: relative; width: max-content; min-width: 100%; padding: 0 8px 8px; }
-.sq-ruler { position: sticky; top: 0; z-index: 3; height: 18px; background: var(--panel, #1a1d27); border-bottom: 1px solid var(--border, #2a2e3b); }
+.sq-ruler { position: sticky; top: 0; z-index: 3; height: 18px; background: var(--panel, #1a1d27); border-bottom: 1px solid var(--border, #2a2e3b); cursor: text; }
 .sq-tick { position: absolute; top: 4px; font: 400 8.5px/1 'JetBrains Mono', monospace; color: #5c6178; transform: translateX(-50%); }
 .sq-lane-actions { margin-top: 6px; }
 .sq-lane-delete { position: absolute; right: 6px; top: 6px; z-index: 2; border: 0; background: none; color: var(--muted, #8b8fa3); cursor: pointer; }
@@ -149,7 +159,7 @@
 .sq-block-sub { display: block; font: inherit; opacity: 0.75; white-space: nowrap; padding-left: 0; }
 /* Only the selected benched tile shows this, tucked into the corner so it
    never sits on top of the key or the BPM. */
-.sq-promote { position: absolute; right: 1px; top: 1px; z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 0; padding: 0; border-radius: 3px; background: rgba(15, 17, 23, 0.65); color: var(--accent-bright, #9db3ff); cursor: pointer; }
+.sq-promote { position: absolute; right: 1px; bottom: 1px; z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 0; padding: 0; border-radius: 3px; background: rgba(15, 17, 23, 0.65); color: var(--accent-bright, #9db3ff); cursor: pointer; }
 .sq-promote:hover { background: rgba(108, 140, 255, 0.35); }
 .sq-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 8px; }
 .sq-list-table { width: 100%; border-collapse: collapse; font: 400 11px/1 'JetBrains Mono', monospace; color: var(--text, #d8dae5); }
@@ -162,30 +172,38 @@
 .sq-col-key { width: 46px; }
 .sq-col-bpm { width: 56px; }
 .sq-col-time { width: 50px; }
-.sq-col-plays { width: 46px; }
 .sq-col-length { width: 66px; }
 .sq-bpm-input { width: 48px; height: 20px; text-align: center; border-radius: 4px; border: 1px solid #3a4055; background: var(--bg, #0f1117); color: var(--text, #d8dae5); font: 400 10.5px/1 'JetBrains Mono', monospace; }
 .sq-bpm-input--ov { border-color: var(--accent-bright, #9db3ff); }
 .sq-flag { margin-left: 6px; padding: 1px 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.06); font: 500 8.5px/1 'DM Sans', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted, #8b8fa3); }
-.sq-flag--scale, .sq-scale { color: #e8bb63; }
-.sq-scale { margin-left: 5px; font: 400 9.5px/1 'JetBrains Mono', monospace; }
-.sq-inspector-meta { flex: 0 0 auto; font: 400 10px/1 'JetBrains Mono', monospace; color: var(--muted, #8b8fa3); white-space: nowrap; }
 .sq-inspector-spacer { flex: 1; }
 .sq-lane { position: relative; height: 40px; margin-top: 4px; border-radius: 6px; border: 1px solid #232735; background: rgba(255, 255, 255, 0.012); }
 .sq-lane--committed { background: rgba(108, 140, 255, 0.05); border-color: rgba(108, 140, 255, 0.28); }
-.sq-lane-label { position: sticky; left: 6px; z-index: 2; display: inline-block; margin-top: 13px; padding: 2px 5px; border-radius: 3px; background: rgba(23, 26, 35, 0.85); pointer-events: none; font: 500 9px/1 'DM Sans', sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: #7c8296; }
+.sq-lane--alt { border-color: hsla(var(--sq-alt-hue), 46%, 54%, 0.28); background: hsla(var(--sq-alt-hue), 42%, 46%, 0.045); }
+.sq-lane-post-end { position: absolute; top: -1px; bottom: -1px; box-sizing: border-box; border: 1px dashed #34394a; border-left: 0; border-radius: 0 6px 6px 0; background: #191c25; pointer-events: none; }
+.sq-lane--committed > .sq-lane-post-end { border-color: rgba(108, 140, 255, 0.38); background: #191d29; }
+.sq-lane--alt > .sq-lane-post-end { border-color: hsla(var(--sq-alt-hue), 46%, 54%, 0.42); background: hsl(var(--sq-alt-hue) 12% 12%); }
+.sq-lane-label { position: sticky; left: 6px; z-index: 2; display: inline-flex; align-items: center; width: calc(var(--sq-lane-label-px, 110px) - 12px); box-sizing: border-box; margin-top: 11px; padding: 2px 5px; overflow: hidden; border-radius: 3px; background: rgba(23, 26, 35, 0.94); pointer-events: none; font: 500 9px/1 'DM Sans', sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: #7c8296; }
 /* Key over BPM, same size, left-aligned. Narrow blocks clip rather than
    ellipsise, which reads better than a stub like "0…". */
-.sq-block { position: absolute; top: 5px; height: 30px; border-radius: 4px; border: 1px solid rgba(108, 140, 255, 0.65); background: rgba(108, 140, 255, 0.28); color: #dfe6ff; font: 500 9.5px/1.15 'JetBrains Mono', monospace; overflow: hidden; white-space: nowrap; cursor: grab; text-align: left; padding: 2px 4px; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
-.sq-block--benched { opacity: 0.72; border-color: rgba(56, 178, 172, 0.4); background: rgba(56, 178, 172, 0.16); color: #c3c9d8; }
+.sq-block { position: absolute; top: 5px; box-sizing: border-box; height: 30px; border-radius: 4px; border: 1px solid rgba(108, 140, 255, 0.65); background: rgba(108, 140, 255, 0.28); color: #dfe6ff; font: 500 9.5px/1.15 'JetBrains Mono', monospace; overflow: hidden; white-space: nowrap; cursor: grab; text-align: left; padding: 2px 4px; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.sq-block--benched { opacity: 0.78; border-color: hsla(var(--sq-alt-hue, 174), 58%, 62%, 0.48); background: hsla(var(--sq-alt-hue, 174), 54%, 48%, 0.18); color: #c3c9d8; }
 .sq-block--sel { background: rgba(207, 224, 255, 0.92); border-color: #eef3ff; color: #0f1117; opacity: 1; }
+.sq-block--starred { opacity: 1; border-color: #f1ca64; background: #806019; color: #fff5cf; box-shadow: inset 0 0 0 1px rgba(255, 232, 157, 0.18); }
+.sq-star, .sq-pin { position: absolute; top: 1px; z-index: 3; display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; padding: 0; border: 0; background: transparent; color: #aeb4c5; opacity: 0; cursor: pointer; transition: opacity 100ms ease, color 100ms ease; }
+.sq-star { right: 1px; font: 400 11px/1 sans-serif; }
+.sq-pin { right: 14px; }
+.sq-block:hover .sq-star, .sq-star:focus-visible { opacity: 1; }
+.sq-block:hover .sq-pin, .sq-pin:focus-visible, .sq-pin[aria-pressed='true'] { opacity: 1; }
+.sq-star:hover, .sq-pin:hover { color: #f4f6ff; }
+.sq-star[aria-pressed='true'] { color: #f1ca64; }
+.sq-pin[aria-pressed='true'] { color: #dce3f7; }
 .sq-block--pinned { border-right: 3px solid var(--accent-bright, #9db3ff); }
-.sq-block--fallback { border-left: 3px dashed #d9a441; }
+.sq-block--fallback { border-left: 3px dashed #8b8fa3; }
 /* Label and field read as one group, with a wider gap between groups so the
    row does not run together. */
 .sq-inspector { flex: 0 0 auto; display: flex; align-items: center; gap: 14px; min-height: 36px; padding: 6px 12px; background: #171a23; border-top: 1px solid var(--border, #2a2e3b); font: 400 10px/1 'DM Sans', sans-serif; color: var(--muted, #8b8fa3); }
 .sq-inspector label { display: inline-flex; align-items: center; gap: 6px; font: 400 9px/1 'DM Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted, #8b8fa3); }
-.sq-inspector-unit { color: #6b7186; }
 .sq-inspector-label { flex: 0 1 auto; max-width: 34%; min-width: 0; font: 400 11px/1 'JetBrains Mono', monospace; color: var(--text, #d8dae5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sq-inspector input { width: 48px; height: 22px; text-align: center; border-radius: 5px; border: 1px solid #3a4055; background: var(--bg, #0f1117); color: var(--text, #d8dae5); font: 400 10.5px/1 'JetBrains Mono', monospace; outline: none; }
 
@@ -203,20 +221,20 @@
 
 /* Sits inside the lane label so it reads as part of it, matching the other
    small icon controls. */
-.sq-lane-sort { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 5px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: #6b7186; cursor: pointer; vertical-align: middle; pointer-events: auto; }
+.sq-lane-sort { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 5px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: #6b7186; cursor: pointer; vertical-align: middle; pointer-events: auto; }
 .sq-lane-sort:hover { background: rgba(108, 140, 255, 0.18); color: var(--accent-bright, #9db3ff); }
-
-/* The stretch of an alt lane past the committed end is queue space, not dead
-   space, so it is drawn rather than left blank. Click-through and behind the
-   blocks: it is a backdrop, never a target. */
-.sq-lane-tail { position: absolute; top: 3px; bottom: 3px; z-index: 0; border: 1px dashed rgba(108, 140, 255, 0.24); border-radius: 5px; background: rgba(108, 140, 255, 0.03); pointer-events: none; }
 
 /* The rectangle a selection drag paints across a lane. Click-through, so the
    drag keeps reaching the lane underneath it. */
 .sq-marquee { position: absolute; top: 3px; bottom: 3px; z-index: 1; border: 1px solid rgba(157, 179, 255, 0.7); border-radius: 4px; background: rgba(108, 140, 255, 0.16); pointer-events: none; }
 
+/* Audacity-style insertion cursor. It is lane-specific because pasting can
+   move a selection between the committed spine and an alternative lane. */
+.sq-paste-cursor { position: absolute; top: 2px; bottom: 2px; z-index: 3; width: 1px; background: rgba(238, 243, 255, 0.9); box-shadow: 0 0 0 1px rgba(15, 17, 23, 0.42); pointer-events: none; }
+.sq-paste-cursor::before { content: ''; position: absolute; top: -1px; left: -3px; border-left: 3px solid transparent; border-right: 3px solid transparent; border-top: 4px solid rgba(238, 243, 255, 0.9); }
+
 /* The label chip is click-through so it never eats a drop aimed at a block
    beneath it; its interactive children opt back in. */
-.sq-lane-name { cursor: grab; pointer-events: auto; }
+.sq-lane-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: grab; pointer-events: auto; }
 .sq-lane-name:hover { color: #a2a8bd; }
-.sq-lane-rename { pointer-events: auto; width: 78px; height: 16px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--accent-bright, #9db3ff); background: var(--bg, #0f1117); color: var(--text, #d8dae5); font: 500 9px/1 'DM Sans', sans-serif; outline: none; }
+.sq-lane-rename { flex: 1; min-width: 0; pointer-events: auto; width: 100%; height: 16px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--accent-bright, #9db3ff); background: var(--bg, #0f1117); color: var(--text, #d8dae5); font: 500 9px/1 'DM Sans', sans-serif; outline: none; }

@@ -9,11 +9,7 @@ import type { ReactNode } from 'react'
 import { LayoutPicker } from './LayoutPicker'
 import { WidgetFrame } from './WidgetFrame'
 import { WidgetTray } from './WidgetTray'
-import {
-  CUSTOM_PRESET,
-  WIDGET_IDS,
-  WIDGET_LABELS,
-} from '../hooks/useWorkspaceLayout'
+import { WIDGET_IDS, WIDGET_LABELS } from '../hooks/useWorkspaceLayout'
 import type {
   Edge,
   Placement,
@@ -177,9 +173,9 @@ export function WorkspaceGrid({
         <LayoutPicker
           preset={layout.preset}
           presetNames={presetNames}
-          dirty={layout.preset === CUSTOM_PRESET}
           onSelect={layout.selectPreset}
           onSaveCustom={layout.saveCustomPreset}
+          onRename={layout.renamePreset}
         />
         {layout.missing.length > 0 && (
           <WidgetTray

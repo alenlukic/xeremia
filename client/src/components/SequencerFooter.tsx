@@ -6,25 +6,19 @@ import {
   type LaidBlock,
   type OverrideMap,
 } from '../hooks/useSequencer'
-import {
-  formatHM,
-  formatMinutes,
-  parseMinutes,
-  parseTimeInput,
-} from '../utils/time'
+import { formatHM, parseTimeInput } from '../utils/time'
 
-// The 32px inspector footer for the selected block. Both block types get the
-// same controls; only a committed block's auto-scale factor is shown, and only
-// a committed block persists its overrides through the tracklist endpoint.
+// The inspector mirrors the Tracklist columns. Timing mechanics and scaling
+// remain internal rather than becoming user-facing concepts.
 
 interface Props {
   block: LaidBlock | null
   /** Set when the selection is a benched candidate rather than a committed block. */
   benched?: BenchBlock | null
   overrides: OverrideMap
-  benchOverrides: OverrideMap
   onPatch: (patch: Partial<BlockOverride>) => void
   onReset: () => void
+  onSetBenchTime: (minutes: number) => void
   onBench: () => void
   onCommit: () => void
   onRemove: () => void
@@ -34,9 +28,9 @@ export function SequencerFooter({
   block,
   benched,
   overrides,
-  benchOverrides,
   onPatch,
   onReset,
+  onSetBenchTime,
   onBench,
   onCommit,
   onRemove,
@@ -48,12 +42,10 @@ export function SequencerFooter({
       <BlockInspector
         key={`committed-${block.entry.track_id}`}
         title={block.entry.track?.title ?? ''}
-        meta={`${formatHM(block.t)}–${formatHM(block.t + block.dur)}`}
-        scale={block.scale}
         bpmSeed={effectivePlayedBpm(block, overrides)}
-        playsSeed={block.dur}
-        endsSeed={block.pinned ? block.t + block.dur : null}
-        override={overrides[block.entry.track_id] ?? {}}
+        inSeed={block.t}
+        outSeed={block.t + block.dur}
+        onOutChange={(minutes) => onPatch({ endPin: minutes })}
         stateAction="Bench"
         onPatch={onPatch}
         onReset={onReset}
@@ -71,12 +63,16 @@ export function SequencerFooter({
     <BlockInspector
       key={`benched-${benched.entry.track_id}`}
       title={benched.entry.track?.title ?? ''}
-      meta={`benched · ${formatHM(benched.t)}`}
-      scale={1}
       bpmSeed={benched.entry.track?.bpm ?? null}
-      playsSeed={benched.dur}
-      endsSeed={null}
-      override={benchOverrides[benched.entry.track_id] ?? {}}
+      inSeed={benched.t}
+      outSeed={benched.t + benched.dur}
+      onInChange={onSetBenchTime}
+      onOutChange={(minutes) =>
+        onPatch({
+          durOv:
+            minutes != null && minutes > benched.t ? minutes - benched.t : null,
+        })
+      }
       stateAction="Commit"
       onPatch={onPatch}
       onReset={onReset}
@@ -88,12 +84,11 @@ export function SequencerFooter({
 
 function BlockInspector({
   title,
-  meta,
-  scale,
   bpmSeed,
-  playsSeed,
-  endsSeed,
-  override,
+  inSeed,
+  outSeed,
+  onInChange,
+  onOutChange,
   stateAction,
   onPatch,
   onReset,
@@ -101,12 +96,11 @@ function BlockInspector({
   onRemove,
 }: {
   title: string
-  meta: string
-  scale: number
   bpmSeed: number | null
-  playsSeed: number
-  endsSeed: number | null
-  override: Partial<BlockOverride>
+  inSeed: number
+  outSeed: number
+  onInChange?: (minutes: number) => void
+  onOutChange: (minutes: number | null) => void
   stateAction: 'Bench' | 'Commit'
   onPatch: (patch: Partial<BlockOverride>) => void
   onReset: () => void
@@ -114,18 +108,14 @@ function BlockInspector({
   onRemove: () => void
 }) {
   const [bpm, setBpm] = useState(bpmSeed != null ? bpmSeed.toFixed(1) : '')
-  const [plays, setPlays] = useState(formatMinutes(playsSeed))
-  const [ends, setEnds] = useState(endsSeed != null ? formatHM(endsSeed) : '')
-
-  const scaled = Math.abs(scale - 1) > 0.005
+  const initialIn = formatHM(inSeed)
+  const initialOut = formatHM(outSeed)
+  const [inTime, setInTime] = useState(initialIn)
+  const [outTime, setOutTime] = useState(initialOut)
 
   return (
     <div className="sq-inspector">
       <span className="sq-inspector-label">{title}</span>
-      <span className="sq-inspector-meta mono">
-        {meta}
-        {scaled && <span className="sq-scale"> ×{scale.toFixed(2)}</span>}
-      </span>
       <label>
         bpm
         <input
@@ -141,29 +131,39 @@ function BlockInspector({
         />
       </label>
       <label>
-        plays
+        in
         <input
-          aria-label="Play length in minutes"
-          value={plays}
-          onChange={(e) => setPlays(e.target.value)}
-          onBlur={() => onPatch({ durOv: parseMinutes(plays) })}
+          aria-label="In time"
+          value={inTime}
+          readOnly={!onInChange}
+          onChange={(e) => setInTime(e.target.value)}
+          onBlur={() => {
+            if (!onInChange || inTime === initialIn) {
+              return
+            }
+            const parsed = parseTimeInput(inTime)
+            if (parsed == null) {
+              setInTime(initialIn)
+              return
+            }
+            onInChange(parsed)
+          }}
         />
-        <span className="sq-inspector-unit">m</span>
       </label>
       <label>
-        ends
+        out
         <input
-          aria-label="Pinned end time"
-          value={ends}
-          onChange={(e) => setEnds(e.target.value)}
-          onBlur={() => onPatch({ endPin: parseTimeInput(ends) })}
+          aria-label="Out time"
+          value={outTime}
+          onChange={(e) => setOutTime(e.target.value)}
+          onBlur={() => {
+            if (outTime === initialOut) {
+              return
+            }
+            onOutChange(parseTimeInput(outTime))
+          }}
         />
       </label>
-      {(override.durOv != null ||
-        override.endPin != null ||
-        override.bpmOv != null) && (
-        <span className="sq-inspector-meta">overridden</span>
-      )}
       <div className="sq-inspector-spacer" />
       <button className="ws-pill" onClick={onReset}>
         Reset

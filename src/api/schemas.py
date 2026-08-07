@@ -179,6 +179,14 @@ class SetSummary(BaseModel):
     sequencer: Optional[dict] = None
 
 
+class SequencerBenchOverride(BaseModel):
+    """Preview values for a track while it remains on an alternative lane."""
+
+    durOv: Optional[float] = None
+    endPin: Optional[float] = None
+    bpmOv: Optional[float] = None
+
+
 class SetSequencerRequest(BaseModel):
     """Sequencer view state. Every field is optional so a partial save works."""
 
@@ -187,6 +195,12 @@ class SetSequencerRequest(BaseModel):
     tick_minutes: Optional[int] = Field(default=None, ge=1, le=240)
     px_per_min: Optional[float] = Field(default=None, ge=0.5, le=200)
     view: Optional[str] = Field(default=None, max_length=32)
+    # Keys are lane-scoped placement ids (for example "12:417"). Legacy
+    # numeric track-id keys remain valid strings for backwards compatibility.
+    bench_times: Optional[Dict[str, float]] = None
+    bench_overrides: Optional[Dict[str, SequencerBenchOverride]] = None
+    starred_tiles: Optional[Dict[str, bool]] = None
+    pinned_tiles: Optional[Dict[str, bool]] = None
 
 
 class SetCreateRequest(BaseModel):

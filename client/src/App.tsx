@@ -349,18 +349,33 @@ export function App() {
   const handleMoveBench = useCallback(
     async (poolEntryId: number, from: number, to: number) => {
       if (from === to) {
-        return
+        return true
+      }
+      // Add first so a failed second write can only duplicate the track, never
+      // orphan it from every visible lane.
+      const added = await setBuilder.addSubgroupMember(to, poolEntryId)
+      if (!added) {
+        return false
       }
       await setBuilder.removeSubgroupMember(from, poolEntryId)
-      await setBuilder.addSubgroupMember(to, poolEntryId)
+      return true
     },
     [setBuilder],
   )
 
   const handlePromote = useCallback(
     async (trackId: number, position: number) => {
-      await setBuilder.movePoolToTracklist(trackId)
-      await setBuilder.reorderTracklist(trackId, position)
+      await setBuilder.movePoolToTracklist(trackId, true)
+      // Once the atomic pool→tracklist move succeeds, the track is safe. A
+      // reorder failure leaves it appended and is already surfaced by the
+      // builder; it must not leave a stale clipboard item that can never move
+      // from the pool again.
+      try {
+        await setBuilder.reorderTracklist(trackId, position, true)
+      } catch {
+        return true
+      }
+      return true
     },
     [setBuilder],
   )
@@ -543,7 +558,9 @@ export function App() {
             setBuilder.insertIntoTracklist(trackId, position, true)
           }
           onPromote={handlePromote}
-          onReorder={setBuilder.reorderTracklist}
+          onReorder={(trackId, position) =>
+            setBuilder.reorderTracklist(trackId, position, true)
+          }
           onBenchToLane={handleBenchToLane}
           onMoveBench={handleMoveBench}
           onRemove={(trackId) => setBuilder.removeFromTracklist(trackId, true)}

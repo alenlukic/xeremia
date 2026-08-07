@@ -373,8 +373,11 @@ export function useSetBuilder() {
   )
 
   const movePoolToTracklist = useCallback(
-    async (trackId: number) => {
+    async (trackId: number, rethrow = false) => {
       if (activeSetId === null) {
+        if (rethrow) {
+          throw new Error('No active set.')
+        }
         return
       }
       try {
@@ -385,6 +388,9 @@ export function useSetBuilder() {
           setErrorWithAutoClear(
             friendlyError(err, 'Could not move track to tracklist.'),
           )
+        }
+        if (rethrow) {
+          throw err
         }
       }
     },
@@ -600,8 +606,11 @@ export function useSetBuilder() {
   )
 
   const reorderTracklist = useCallback(
-    async (trackId: number, newPosition: number) => {
+    async (trackId: number, newPosition: number, rethrow = false) => {
       if (activeSetId === null) {
+        if (rethrow) {
+          throw new Error('No active set.')
+        }
         return
       }
       try {
@@ -612,6 +621,9 @@ export function useSetBuilder() {
           setErrorWithAutoClear(
             friendlyError(err, 'Could not reorder tracklist.'),
           )
+        }
+        if (rethrow) {
+          throw err
         }
       }
     },

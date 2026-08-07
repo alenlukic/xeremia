@@ -94,6 +94,36 @@ export function PromoteIcon({ size = 13 }: IconProps) {
   )
 }
 
+/** Push pin — fixes a freely positioned sequencer tile in place. */
+export function PinIcon({
+  size = 13,
+  pinned = false,
+}: IconProps & { pinned?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill={pinned ? 'currentColor' : 'none'}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="m5.1 2.7 6.2 6.2-1.7.5-1.8 1.8-.4 2-4.6-4.6 2-.4 1.8-1.8.5-1.7-2-2Z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m5.1 10.9-2.4 2.4"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 /** Funnel — "add filter". */
 export function FilterIcon({ size = 13 }: IconProps) {
   return (

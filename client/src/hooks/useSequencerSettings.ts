@@ -19,8 +19,10 @@ export interface SequencerView {
   tickMin: number
   pxPerMin: number
   view: 'lanes' | 'list'
-  benchTimes: Record<number, number>
-  benchOverrides: Record<number, Record<string, number | null>>
+  benchTimes: Record<string, number>
+  benchOverrides: Record<string, Record<string, number | null>>
+  starredTiles: Record<string, boolean>
+  pinnedTiles: Record<string, boolean>
 }
 
 export function defaultView(): SequencerView {
@@ -32,16 +34,17 @@ export function defaultView(): SequencerView {
     view: 'lanes',
     benchTimes: {},
     benchOverrides: {},
+    starredTiles: {},
+    pinnedTiles: {},
   }
 }
 
-/** Stored keys are strings; the app keys bench state by numeric track id. */
-function numericKeys<V>(raw: Record<string, V> | undefined): Record<number, V> {
-  const out: Record<number, V> = {}
+/** Preserve lane-scoped keys while accepting legacy numeric keys as strings. */
+function storedKeys<V>(raw: Record<string, V> | undefined): Record<string, V> {
+  const out: Record<string, V> = {}
   for (const [k, v] of Object.entries(raw ?? {})) {
-    const id = Number(k)
-    if (Number.isInteger(id)) {
-      out[id] = v
+    if (k) {
+      out[k] = v
     }
   }
   return out
@@ -61,8 +64,10 @@ export function fromSettings(raw: SequencerSettings | null | undefined) {
     tickMin: num(raw.tick_minutes, d.tickMin),
     pxPerMin: num(raw.px_per_min, d.pxPerMin),
     view: raw.view === 'list' ? ('list' as const) : ('lanes' as const),
-    benchTimes: numericKeys(raw.bench_times),
-    benchOverrides: numericKeys(raw.bench_overrides),
+    benchTimes: storedKeys(raw.bench_times),
+    benchOverrides: storedKeys(raw.bench_overrides),
+    starredTiles: storedKeys(raw.starred_tiles),
+    pinnedTiles: storedKeys(raw.pinned_tiles),
   }
 }
 
@@ -75,6 +80,8 @@ function toSettings(v: SequencerView): SequencerSettings {
     view: v.view,
     bench_times: v.benchTimes,
     bench_overrides: v.benchOverrides,
+    starred_tiles: v.starredTiles,
+    pinned_tiles: v.pinnedTiles,
   }
 }
 

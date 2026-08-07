@@ -12,6 +12,8 @@ const MIN_THUMB_PX = 32
 
 interface Props {
   scrollRef: RefObject<HTMLElement | null>
+  /** Content-space x coordinate of the committed sequence end. */
+  endOffset: number
 }
 
 interface Metrics {
@@ -20,7 +22,7 @@ interface Metrics {
   total: number
 }
 
-export function SequencerScrollbar({ scrollRef }: Props) {
+export function SequencerScrollbar({ scrollRef, endOffset }: Props) {
   const [m, setM] = useState<Metrics>({ left: 0, view: 0, total: 0 })
   const dragRef = useRef<{ x0: number; left0: number } | null>(null)
 
@@ -124,6 +126,25 @@ export function SequencerScrollbar({ scrollRef }: Props) {
           onPointerDown={onPointerDown}
         />
       </div>
+      <button
+        className="sq-scrollbar-end"
+        type="button"
+        aria-label="Jump to sequence end"
+        title="Jump to sequence end"
+        onClick={() => {
+          const el = scrollRef.current
+          if (el) {
+            const left = Math.min(
+              scrollable,
+              Math.max(0, endOffset - el.clientWidth + 24),
+            )
+            el.scrollLeft = left
+            setM((current) => ({ ...current, left }))
+          }
+        }}
+      >
+        →
+      </button>
     </div>
   )
 }

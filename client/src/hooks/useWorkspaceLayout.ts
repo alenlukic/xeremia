@@ -415,7 +415,8 @@ export interface WorkspaceLayout {
   /** Report the canvas size so placements clamp to what is on screen. */
   setBounds: (bounds: Bounds) => void
   selectPreset: (name: string) => void
-  saveCustomPreset: () => void
+  saveCustomPreset: (name: string) => void
+  renamePreset: (name: string) => void
   setShell: (shell: ShellId) => void
   toggleLock: (id: WidgetId) => void
   removeWidget: (id: WidgetId) => void
@@ -560,11 +561,49 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     setState((s) => ({ ...s, preset: CUSTOM_PRESET, place: fn(s.place) }))
   }, [])
 
-  const saveCustomPreset = useCallback(() => {
+  const saveCustomPreset = useCallback((requestedName: string) => {
     setState((s) => {
-      const name = `Custom ${Object.keys(s.custom).length + 1}`
+      const name = requestedName.trim()
+      const normalized = name.toLocaleLowerCase()
+      const reserved =
+        normalized === CUSTOM_PRESET.toLocaleLowerCase() ||
+        PRESET_NAMES.some(
+          (presetName) => presetName.toLocaleLowerCase() === normalized,
+        )
+      const duplicate = Object.keys(s.custom).some(
+        (customName) => customName.toLocaleLowerCase() === normalized,
+      )
+      if (!name || reserved || duplicate) {
+        return s
+      }
       const saved: SavedLayout = { place: s.place, locked: s.locked }
       return { ...s, preset: name, custom: { ...s.custom, [name]: saved } }
+    })
+  }, [])
+
+  const renamePreset = useCallback((requestedName: string) => {
+    setState((s) => {
+      const name = requestedName.trim()
+      const normalized = name.toLocaleLowerCase()
+      const reserved =
+        normalized === CUSTOM_PRESET.toLocaleLowerCase() ||
+        PRESET_NAMES.some(
+          (presetName) => presetName.toLocaleLowerCase() === normalized,
+        )
+      const duplicate = Object.keys(s.custom).some(
+        (customName) =>
+          customName !== s.preset &&
+          customName.toLocaleLowerCase() === normalized,
+      )
+      if (!name || name === s.preset || reserved || duplicate) {
+        return s
+      }
+      const custom = { ...s.custom }
+      if (custom[s.preset]) {
+        delete custom[s.preset]
+      }
+      custom[name] = { place: s.place, locked: s.locked }
+      return { ...s, preset: name, custom }
     })
   }, [])
 
@@ -660,6 +699,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     setBounds,
     selectPreset,
     saveCustomPreset,
+    renamePreset,
     setShell,
     toggleLock,
     removeWidget,

@@ -131,7 +131,7 @@ describe('WorkspaceGrid placement', () => {
     expect(rect('Pool')).toEqual(presetPlace('Pool curation', BOUNDS).pool)
   })
 
-  it('shows Custom in the picker after an edit and saves it as a preset', async () => {
+  it('creates a named layout from the picker after an edit', async () => {
     const layout = await renderGrid()
 
     await drag(handle('Browser', 'left'), { dx: -1 })
@@ -143,11 +143,42 @@ describe('WorkspaceGrid placement', () => {
       screen.getByRole('button', { name: 'Layout preset' }).click()
     })
     await act(async () => {
-      screen.getByRole('menuitem', { name: /Save Custom as preset/ }).click()
+      screen.getByRole('menuitem', { name: 'New layout…' }).click()
+    })
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('New layout name'), {
+        target: { value: 'My custom view' },
+      })
+    })
+    await act(async () => {
+      screen.getByRole('button', { name: 'Save' }).click()
     })
 
-    expect(layout().presets['Custom 1']).toEqual(layout().place)
-    expect(layout().preset).toBe('Custom 1')
+    expect(layout().presets['My custom view']).toEqual(layout().place)
+    expect(layout().preset).toBe('My custom view')
+  })
+
+  it('creates and renames a layout while a built-in is active', async () => {
+    const layout = await renderGrid()
+    const picker = screen.getByRole('button', { name: 'Layout preset' })
+
+    fireEvent.click(picker)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New layout…' }))
+    fireEvent.change(screen.getByLabelText('New layout name'), {
+      target: { value: 'Morning set' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(layout().preset).toBe('Morning set')
+
+    fireEvent.click(picker)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename layout…' }))
+    fireEvent.change(screen.getByLabelText('Rename layout'), {
+      target: { value: 'Evening set' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(layout().preset).toBe('Evening set')
+    expect(layout().presets['Morning set']).toBeUndefined()
   })
 })
 

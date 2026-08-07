@@ -76,7 +76,7 @@ describe('useWorkspaceLayout', () => {
       result.current.toggleLock('pool')
     })
     act(() => {
-      result.current.saveCustomPreset()
+      result.current.saveCustomPreset('Locked mix')
     })
     act(() => {
       result.current.selectPreset(DEFAULT_PRESET)
@@ -84,9 +84,58 @@ describe('useWorkspaceLayout', () => {
     expect(result.current.locked).toEqual({})
 
     act(() => {
-      result.current.selectPreset('Custom 1')
+      result.current.selectPreset('Locked mix')
     })
     expect(result.current.locked).toEqual({ pool: true })
+  })
+
+  it('creates a named layout from any current preset', async () => {
+    const { result } = await mounted()
+
+    act(() => {
+      result.current.saveCustomPreset('Festival view')
+    })
+
+    expect(result.current.preset).toBe('Festival view')
+    expect(result.current.presets['Festival view']).toEqual(result.current.place)
+  })
+
+  it('renames custom layouts and snapshots built-ins under a new name', async () => {
+    const { result } = await mounted()
+    act(() => {
+      result.current.saveCustomPreset('First name')
+    })
+    act(() => {
+      result.current.renamePreset('Second name')
+    })
+    expect(result.current.preset).toBe('Second name')
+    expect(result.current.presets['First name']).toBeUndefined()
+
+    act(() => {
+      result.current.selectPreset(DEFAULT_PRESET)
+      result.current.renamePreset('My explorer')
+    })
+    expect(result.current.preset).toBe('My explorer')
+    expect(result.current.presets[DEFAULT_PRESET]).toBeDefined()
+  })
+
+  it('rejects empty, reserved, built-in and duplicate layout names', async () => {
+    const { result } = await mounted()
+    act(() => {
+      result.current.saveCustomPreset('Existing')
+      result.current.saveCustomPreset('Another')
+    })
+    const before = result.current.presets
+
+    act(() => {
+      for (const name of ['', 'Custom', DEFAULT_PRESET, 'existing']) {
+        result.current.saveCustomPreset(name)
+        result.current.renamePreset(name)
+      }
+    })
+
+    expect(result.current.preset).toBe('Another')
+    expect(result.current.presets).toEqual(before)
   })
 
   it('takes a widget off the canvas and puts it back in free space', async () => {

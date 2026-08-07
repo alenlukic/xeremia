@@ -4,6 +4,8 @@ import { SequencerTracklist } from './SequencerTracklist'
 import { SequencerFooter } from './SequencerFooter'
 import {
   EMPTY_SELECTION,
+  benchPlacementKey,
+  committedReorderMoves,
   laneKeyOf,
   tickForZoom,
   useSequencer,
@@ -18,6 +20,7 @@ import type {
   LaneScope,
   LaneSelection,
   SequencerClipboard,
+  SequencerCursor,
 } from '../hooks/useSequencer'
 import {
   exportSetM3u8,
@@ -58,14 +61,14 @@ function isEditableTarget(target: EventTarget | null): boolean {
 interface Props {
   activeSet: HydratedSet | null
   onAddCommitted: (trackId: number, position: number) => MutationResult
-  onPromote: (trackId: number, position: number) => void
-  onReorder: (trackId: number, position: number) => void
+  onPromote: (trackId: number, position: number) => MutationResult
+  onReorder: (trackId: number, position: number) => MutationResult
   onBenchToLane: (
     trackId: number,
     lane: LaneKey,
     source: 'browse' | 'pool' | 'tracklist',
   ) => MutationResult
-  onMoveBench: (poolEntryId: number, from: number, to: number) => void
+  onMoveBench: (poolEntryId: number, from: number, to: number) => MutationResult
   onRemove: (trackId: number) => MutationResult
   onRemoveBenched: (trackId: number) => MutationResult
   onAddLane: () => void
@@ -102,8 +105,8 @@ export function Sequencer({
   const setView = useCallback((v: View) => patch({ view: v }), [patch])
   const [selection, setSelection] = useState<LaneSelection>(EMPTY_SELECTION)
   const [clipboard, setClipboard] = useState<SequencerClipboard | null>(null)
+  const [cursor, setCursor] = useState<SequencerCursor | null>(null)
   const [clipboardError, setClipboardError] = useState<string | null>(null)
-  const cutPromiseRef = useRef<Promise<boolean> | null>(null)
   const pasteInFlightRef = useRef(false)
   const [startDraft, setStartDraft] = useState(formatHM(DEFAULT_START_MIN))
   const [endDraft, setEndDraft] = useState(formatHM(DEFAULT_END_MIN))
@@ -129,8 +132,8 @@ export function Sequencer({
     benchOverrides: settings.benchOverrides,
     onBenchChange: useCallback(
       (next: {
-        times: Record<number, number>
-        overrides: Record<number, Partial<BlockOverride>>
+        times: Record<string, number>
+        overrides: Record<string, Partial<BlockOverride>>
       }) => patch({ benchTimes: next.times, benchOverrides: next.overrides }),
       [patch],
     ),
@@ -174,6 +177,45 @@ export function Sequencer({
     )
   }, [])
 
+  const placeCursor = useCallback((lane: LaneScope, minutes: number) => {
+    setCursor({ lane, minutes })
+    setSelection(EMPTY_SELECTION)
+    setClipboardError(null)
+  }, [])
+
+  const toggleStar = useCallback(
+    (tileKey: string) => {
+      const starredTiles = { ...settings.starredTiles }
+      if (starredTiles[tileKey]) {
+        delete starredTiles[tileKey]
+      } else {
+        starredTiles[tileKey] = true
+      }
+      patch({ starredTiles })
+    },
+    [patch, settings.starredTiles],
+  )
+
+  const togglePin = useCallback(
+    (tileKey: string) => {
+      const pinnedTiles = { ...settings.pinnedTiles }
+      if (pinnedTiles[tileKey]) {
+        delete pinnedTiles[tileKey]
+      } else {
+        pinnedTiles[tileKey] = true
+      }
+      patch({ pinnedTiles })
+    },
+    [patch, settings.pinnedTiles],
+  )
+
+  useEffect(() => {
+    setSelection(EMPTY_SELECTION)
+    setClipboard(null)
+    setCursor(null)
+    setClipboardError(null)
+  }, [activeSet?.set.id])
+
   const selectedBlock = useMemo(
     () =>
       selection.lane === 'committed'
@@ -194,7 +236,9 @@ export function Sequencer({
   }, [selection, sequencer.benchLanes])
 
   const focusTrack =
-    selectedBlock?.entry.track ?? benchedSelection?.entry.track ?? null
+    selection.ids.length === 1
+      ? (selectedBlock?.entry.track ?? benchedSelection?.entry.track ?? null)
+      : null
   useEffect(() => {
     onFocusTrack?.(focusTrack ?? null)
   }, [focusTrack, onFocusTrack])
@@ -203,6 +247,18 @@ export function Sequencer({
   const firstLane: LaneKey = sequencer.lanes.length
     ? laneKeyOf(sequencer.lanes[0])
     : 'default'
+
+  const timelineEnd = useMemo(
+    () =>
+      Math.max(
+        targetEndMin,
+        sequencer.endMinutes,
+        ...sequencer.benchLanes.flatMap((lane) =>
+          lane.blocks.map((block) => block.t + block.dur),
+        ),
+      ),
+    [sequencer.benchLanes, sequencer.endMinutes, targetEndMin],
+  )
 
   // Ctrl/Cmd + wheel zooms the timeline. Without the modifier the event is
   // left alone so the lanes still scroll normally.
@@ -250,11 +306,11 @@ export function Sequencer({
     }
   }, [activeSet, sequencer.blocks])
 
-  // Cut writes straight through to the server and keeps the removed values in
-  // memory, so a reload between a cut and a paste drops the clipboard while
-  // the tracks themselves stay in the library.
+  // A cut is intentionally non-destructive. The old implementation deleted
+  // every selected row before paste and could strand tracks after a partial
+  // failure. We keep the source rows in place until paste moves them.
   const cutSelection = useCallback(() => {
-    if (cutPromiseRef.current || pasteInFlightRef.current) {
+    if (pasteInFlightRef.current) {
       return
     }
     const { lane, ids } = selection
@@ -271,11 +327,14 @@ export function Sequencer({
       }
       tracks.push({
         trackId,
+        poolEntryId: committed ? null : block.entry.id,
         playMinutes: block.dur,
         override:
           (committed
             ? sequencer.overrides[trackId]
-            : sequencer.benchOverrides[trackId]) ?? null,
+            : (sequencer.benchOverrides[
+                benchPlacementKey(lane as LaneKey, trackId)
+              ] ?? sequencer.benchOverrides[String(trackId)])) ?? null,
         note: committed
           ? (activeSet?.tracklist.find((e) => e.track_id === trackId)?.note ??
             null)
@@ -287,49 +346,25 @@ export function Sequencer({
     }
     setClipboard({ source: lane, tracks })
     setClipboardError(null)
-    setSelection(EMPTY_SELECTION)
-    const removals = tracks.map((track) => {
-      let result: MutationResult
-      try {
-        result = committed
-          ? onRemove(track.trackId)
-          : onRemoveBenched(track.trackId)
-      } catch (err: unknown) {
-        return Promise.reject(err)
-      }
-      return Promise.resolve(result).then((succeeded) => {
-        if (succeeded === false) {
-          throw new Error('Could not cut the selection.')
-        }
-      })
-    })
-    const cutPromise = Promise.all(removals).then(
-      () => true,
-      (err: unknown) => {
-        setClipboard(null)
-        setClipboardError(
-          err instanceof Error ? err.message : 'Could not cut the selection.',
+    setCursor({
+      lane,
+      minutes: tracks.reduce((start, track) => {
+        const block = source.find(
+          (item) => item.entry.track_id === track.trackId,
         )
-        return false
-      },
-    )
-    cutPromiseRef.current = cutPromise
-    void cutPromise.finally(() => {
-      if (cutPromiseRef.current === cutPromise) {
-        cutPromiseRef.current = null
-      }
+        return block ? Math.min(start, block.t) : start
+      }, Number.POSITIVE_INFINITY),
     })
+    setSelection(EMPTY_SELECTION)
   }, [
     activeSet,
     blocksInLane,
-    onRemove,
-    onRemoveBenched,
     selection,
     sequencer.benchOverrides,
     sequencer.overrides,
   ])
 
-  /** Committed insert point: after the selection, otherwise the lane end. */
+  /** Committed insert point under the visible cursor, excluding held tracks. */
   const committedPasteIndex = useCallback(() => {
     const heldIds = new Set(
       clipboard?.source === 'committed'
@@ -339,86 +374,89 @@ export function Sequencer({
     const available = sequencer.blocks.filter(
       (block) => !heldIds.has(block.entry.track_id),
     )
-    if (selection.lane !== 'committed' || selection.ids.length === 0) {
+    if (!cursor) {
       return available.length
     }
-    const last = available.reduce(
-      (at, block, index) =>
-        selection.ids.includes(block.entry.track_id) ? index : at,
-      -1,
-    )
-    return last < 0 ? available.length : last + 1
-  }, [clipboard, selection, sequencer.blocks])
-
-  /** Bench insert time: after the selection, otherwise the lane end. */
-  const benchPasteStart = useCallback(
-    (lane: LaneScope) => {
-      const heldIds = new Set(
-        clipboard?.source === lane
-          ? clipboard.tracks.map((track) => track.trackId)
-          : [],
-      )
-      const source = blocksInLane(lane).filter(
-        (block) => !heldIds.has(block.entry.track_id),
-      )
-      const anchored =
-        selection.lane === lane && selection.ids.length > 0
-          ? source.filter((b) => selection.ids.includes(b.entry.track_id))
-          : source
-      return anchored.reduce(
-        (end, block) => Math.max(end, block.t + block.dur),
-        sequencer.endMinutes,
-      )
-    },
-    [blocksInLane, clipboard, selection, sequencer.endMinutes],
-  )
+    return available.filter(
+      (block) => block.t + block.dur / 2 <= cursor.minutes,
+    ).length
+  }, [clipboard, cursor, sequencer.blocks])
 
   const pasteClipboard = useCallback(async () => {
     if (!clipboard || !activeSet || pasteInFlightRef.current) {
       return
     }
     pasteInFlightRef.current = true
+    let completed = 0
+    const placements: BenchPlacement[] = []
     try {
-      const cutSucceeded = await (cutPromiseRef.current ??
-        Promise.resolve(true))
-      if (!cutSucceeded) {
-        return
+      const run = async (mutation: () => MutationResult) => {
+        const succeeded = await mutation()
+        if (succeeded === false) {
+          throw new Error('Could not paste the selection.')
+        }
       }
       const setId = activeSet.set.id
       const { source, tracks } = clipboard
-      if (source === 'committed') {
+      const target = cursor ?? {
+        lane: source,
+        minutes: blocksInLane(source).reduce(
+          (end, block) => Math.max(end, block.t + block.dur),
+          startMin,
+        ),
+      }
+
+      if (target.lane === 'committed') {
         const at = committedPasteIndex()
-        for (const [offset, track] of tracks.entries()) {
-          const inserted = await onAddCommitted(track.trackId, at + offset)
-          if (inserted === false) {
-            throw new Error('Could not paste the selection.')
+        if (source === 'committed') {
+          const moves = committedReorderMoves(
+            sequencer.blocks.map((block) => block.entry.track_id),
+            tracks.map((track) => track.trackId),
+            at,
+          )
+          for (const move of moves) {
+            await run(() => onReorder(move.trackId, move.position))
           }
+          completed = tracks.length
+        } else {
+          for (const [offset, track] of tracks.entries()) {
+            await run(() => onPromote(track.trackId, at + offset))
+            completed++
+            if (track.override) {
+              await tracklistSetOverrides(setId, track.trackId, {
+                play_minutes: track.override.durOv ?? null,
+                pinned_end_minutes: track.override.endPin ?? null,
+                bpm_override: track.override.bpmOv ?? null,
+              })
+            }
+            if (track.note !== null) {
+              await updateTracklistNote(setId, track.trackId, track.note)
+            }
+          }
+          onSaved?.()
         }
-        // The inserts above only carry position, so the captured values are
-        // written back once every track has a tracklist row again.
-        for (const track of tracks) {
-          if (track.override) {
-            await tracklistSetOverrides(setId, track.trackId, {
-              play_minutes: track.override.durOv ?? null,
-              pinned_end_minutes: track.override.endPin ?? null,
-              bpm_override: track.override.bpmOv ?? null,
-            })
-          }
-          if (track.note !== null) {
-            await updateTracklistNote(setId, track.trackId, track.note)
-          }
-        }
-        onSaved?.()
       } else {
-        let at = benchPasteStart(source)
-        const placements: BenchPlacement[] = []
+        const targetLane: LaneKey = target.lane
+        let at = target.minutes
         for (const track of tracks) {
-          const inserted = await onBenchToLane(track.trackId, source, 'browse')
-          if (inserted === false) {
-            throw new Error('Could not paste the selection.')
+          if (source === 'committed') {
+            await run(() =>
+              onBenchToLane(track.trackId, targetLane, 'tracklist'),
+            )
+          } else if (source !== target.lane) {
+            const poolEntryId = track.poolEntryId
+            if (
+              typeof source !== 'number' ||
+              typeof targetLane !== 'number' ||
+              poolEntryId == null
+            ) {
+              throw new Error('Could not move the selection between lanes.')
+            }
+            await run(() => onMoveBench(poolEntryId, source, targetLane))
           }
+          completed++
           placements.push({
-            trackId: track.trackId,
+            placementKey: benchPlacementKey(targetLane, track.trackId),
             minutes: at,
             override: track.override,
           })
@@ -429,6 +467,25 @@ export function Sequencer({
       setClipboard(null)
       setClipboardError(null)
     } catch (err: unknown) {
+      if (placements.length > 0) {
+        sequencer.applyBenchPlacements(placements)
+      }
+      if (completed > 0 && completed < clipboard.tracks.length) {
+        const remaining = clipboard.tracks.slice(completed)
+        setClipboard({ ...clipboard, tracks: remaining })
+        setCursor((current) =>
+          current
+            ? {
+                ...current,
+                minutes:
+                  current.minutes +
+                  clipboard.tracks
+                    .slice(0, completed)
+                    .reduce((sum, track) => sum + track.playMinutes, 0),
+              }
+            : current,
+        )
+      }
       setClipboardError(
         err instanceof Error ? err.message : 'Could not paste the selection.',
       )
@@ -437,17 +494,26 @@ export function Sequencer({
     }
   }, [
     activeSet,
-    benchPasteStart,
+    blocksInLane,
     clipboard,
     committedPasteIndex,
-    onAddCommitted,
+    cursor,
     onBenchToLane,
+    onMoveBench,
+    onPromote,
+    onReorder,
     onSaved,
     sequencer,
+    startMin,
   ])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'Escape' && !isEditableTarget(e.target)) {
+        e.preventDefault()
+        setSelection(EMPTY_SELECTION)
+        return
+      }
       if (!e.metaKey && !e.ctrlKey) {
         return
       }
@@ -546,12 +612,18 @@ export function Sequencer({
             blocks={sequencer.blocks}
             benchLanes={sequencer.benchLanes}
             startMin={startMin}
-            endMin={Math.max(targetEndMin, sequencer.endMinutes)}
+            endMin={timelineEnd}
             tickMin={tickMin}
             pxPerMin={pxPerMin}
             selection={selection}
+            cursor={cursor}
+            starredTiles={settings.starredTiles}
+            pinnedTiles={settings.pinnedTiles}
             onSelect={selectBlock}
             onSelectRange={selectRange}
+            onSetCursor={placeCursor}
+            onToggleStar={toggleStar}
+            onTogglePin={togglePin}
             onAddCommitted={onAddCommitted}
             onPromote={onPromote}
             onReorder={onReorder}
@@ -582,15 +654,14 @@ export function Sequencer({
         block={selectedBlock}
         benched={benchedSelection}
         overrides={sequencer.overrides}
-        benchOverrides={sequencer.benchOverrides}
         onPatch={(patch) => {
           if (selection.focus == null) {
             return
           }
           if (selectedBlock) {
             sequencer.patchOverride(selection.focus, patch)
-          } else {
-            sequencer.patchBenchOverride(selection.focus, patch)
+          } else if (selection.lane !== 'committed') {
+            sequencer.patchBenchOverride(selection.lane, selection.focus, patch)
           }
         }}
         onReset={() => {
@@ -599,8 +670,13 @@ export function Sequencer({
           }
           if (selectedBlock) {
             sequencer.resetOverrides(selection.focus)
-          } else {
-            sequencer.resetBenchOverride(selection.focus)
+          } else if (selection.lane !== 'committed') {
+            sequencer.resetBenchOverride(selection.lane, selection.focus)
+          }
+        }}
+        onSetBenchTime={(minutes) => {
+          if (selection.focus != null && selection.lane !== 'committed') {
+            sequencer.setBenchTime(selection.lane, selection.focus, minutes)
           }
         }}
         onBench={() => {

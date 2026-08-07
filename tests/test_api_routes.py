@@ -511,3 +511,57 @@ class TestTrackDurationSerialization:
             resp = client.get("/api/tracks")
         assert resp.status_code == 200
         assert resp.json()[0]["duration_seconds"] == pytest.approx(412.0)
+
+
+class TestSequencerSettingsContract:
+    def test_schema_keeps_bench_positions_and_overrides(self):
+        from src.api.schemas import SetSequencerRequest
+
+        request = SetSequencerRequest(
+            bench_times={"12:17": 402.5},
+            bench_overrides={
+                "12:17": {"durOv": 3.5, "endPin": None, "bpmOv": 128.0}
+            },
+            starred_tiles={"committed:17": True, "12:17": False},
+            pinned_tiles={"12:17": True},
+        )
+
+        assert request.model_dump(exclude_none=True) == {
+            "bench_times": {"12:17": 402.5},
+            "bench_overrides": {"12:17": {"durOv": 3.5, "bpmOv": 128.0}},
+            "starred_tiles": {"committed:17": True, "12:17": False},
+            "pinned_tiles": {"12:17": True},
+        }
+
+    def test_update_route_merges_bench_state_into_the_set(self):
+        from src.api.routes import api_update_set_sequencer
+        from src.api.schemas import SetSequencerRequest
+
+        dj_set = MagicMock()
+        dj_set.sequencer = {"start_minutes": 360}
+        session = MagicMock()
+        session.query.return_value.filter_by.return_value.one_or_none.return_value = (
+            dj_set
+        )
+        body = SetSequencerRequest(
+            bench_times={"12:17": 402.5},
+            bench_overrides={"12:17": {"durOv": 3.5}},
+            starred_tiles={"12:17": True},
+            pinned_tiles={"12:17": True},
+        )
+
+        with (
+            patch("src.api.routes._get_session", return_value=session),
+            patch("src.api.routes._serialize_set_summary", return_value={"id": 1}),
+        ):
+            result = api_update_set_sequencer(1, body)
+
+        assert result == {"id": 1}
+        assert dj_set.sequencer == {
+            "start_minutes": 360,
+            "bench_times": {"12:17": 402.5},
+            "bench_overrides": {"12:17": {"durOv": 3.5}},
+            "starred_tiles": {"12:17": True},
+            "pinned_tiles": {"12:17": True},
+        }
+        session.commit.assert_called_once()
