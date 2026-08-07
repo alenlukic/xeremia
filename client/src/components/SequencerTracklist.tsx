@@ -16,6 +16,51 @@ interface Props {
   selectedTrackId: number | null
   onSelect: (trackId: number) => void
   onBpmChange: (trackId: number, bpm: number | null) => void
+  onNoteChange: (trackId: number, note: string) => void
+}
+
+function NoteInput({
+  trackId,
+  title,
+  initialNote,
+  onSave,
+}: {
+  trackId: number
+  title: string
+  initialNote: string
+  onSave: (trackId: number, note: string) => void
+}) {
+  const [value, setValue] = useState(initialNote)
+  const [savedValue, setSavedValue] = useState(initialNote)
+  const [previousInitialNote, setPreviousInitialNote] = useState(initialNote)
+
+  if (initialNote !== previousInitialNote) {
+    setPreviousInitialNote(initialNote)
+    setSavedValue(initialNote)
+    setValue(initialNote)
+  }
+
+  return (
+    <input
+      className="sq-note-input"
+      aria-label={`Notes for ${title}`}
+      placeholder="Add note…"
+      value={value}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        if (value !== savedValue) {
+          setSavedValue(value)
+          onSave(trackId, value)
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur()
+        }
+      }}
+    />
+  )
 }
 
 export function SequencerTracklist({
@@ -24,6 +69,7 @@ export function SequencerTracklist({
   selectedTrackId,
   onSelect,
   onBpmChange,
+  onNoteChange,
 }: Props) {
   const [draft, setDraft] = useState<Record<number, string>>({})
 
@@ -39,6 +85,7 @@ export function SequencerTracklist({
             <th className="sq-col-time">In</th>
             <th className="sq-col-time">Out</th>
             <th className="sq-col-length">Length</th>
+            <th className="sq-col-note">Notes</th>
           </tr>
         </thead>
         <tbody>
@@ -101,6 +148,14 @@ export function SequencerTracklist({
                 </td>
                 <td className="sq-col-length mono">
                   {formatDuration(block.dur)}
+                </td>
+                <td className="sq-col-note">
+                  <NoteInput
+                    trackId={trackId}
+                    title={block.entry.track?.title ?? 'track'}
+                    initialNote={block.entry.note ?? ''}
+                    onSave={onNoteChange}
+                  />
                 </td>
               </tr>
             )

@@ -183,6 +183,21 @@ describe('WorkspaceGrid placement', () => {
 })
 
 describe('WorkspaceGrid resizing', () => {
+  it('reserves a bottom gutter so resize handles do not cover widget controls', async () => {
+    await renderGrid()
+
+    const browser = panel('Browser')
+    const body = browser.querySelector('.wf-body') as HTMLElement
+    const bottom = handle('Browser', 'bottom')
+    const bottomLeft = handle('Browser', 'bottom-left')
+    const bottomRight = handle('Browser', 'bottom-right')
+
+    expect(body).toHaveClass('wf-body--resize-safe')
+    expect(bottom).toHaveClass('ws-handle--s')
+    expect(bottomLeft).toHaveClass('ws-handle--sw')
+    expect(bottomRight).toHaveClass('ws-handle--se')
+  })
+
   it('offers a handle on every edge and corner', async () => {
     await renderGrid()
 

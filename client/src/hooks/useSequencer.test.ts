@@ -19,6 +19,7 @@ import {
   hasMeasuredDuration,
   layoutBench,
   layoutCommitted,
+  planBenchDrop,
   readBlockDrag,
   snapMinutes,
   trackLengthMinutes,
@@ -387,6 +388,57 @@ describe('blocksInMinuteRange', () => {
 
   it('takes nothing from a drag across empty lane space', () => {
     expect(blocksInMinuteRange(blocks, 372, 378)).toEqual([])
+  })
+})
+
+describe('planBenchDrop', () => {
+  function benchBlock(
+    trackId: number,
+    at: number,
+    dur: number = 4,
+    laneId: number = 5,
+  ): BenchBlock {
+    return {
+      entry: poolEntry(trackId, trackId),
+      placementKey: `${laneId}:${trackId}`,
+      t: at,
+      dur,
+      fallback: false,
+    }
+  }
+
+  it('keeps an exact fractional drop when no collision exists', () => {
+    const first = benchBlock(1, 400, 4)
+    expect(
+      planBenchDrop([first], { placementKey: '5:9', dur: 3.2 }, 405.37),
+    ).toEqual({
+      '5:9': 405.37,
+    })
+  })
+
+  it('pushes overlapping neighbors edge-to-edge', () => {
+    const first = benchBlock(1, 404, 4)
+    const second = benchBlock(2, 408, 4)
+    expect(
+      planBenchDrop([first, second], { placementKey: '5:9', dur: 4 }, 405),
+    ).toEqual({
+      '5:9': 405,
+      '5:1': 409,
+      '5:2': 413,
+    })
+  })
+
+  it('routes shifted tiles around pinned spans', () => {
+    const unpinned = benchBlock(1, 404, 4)
+    const pinned = benchBlock(2, 410, 3)
+    expect(
+      planBenchDrop([unpinned, pinned], { placementKey: '5:9', dur: 4 }, 405, {
+        '5:2': true,
+      }),
+    ).toEqual({
+      '5:9': 405,
+      '5:1': 413,
+    })
   })
 })
 

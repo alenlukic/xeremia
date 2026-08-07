@@ -306,6 +306,8 @@ export interface BlockDragPayload {
   /** Set when the block sits on an alternative lane. */
   poolEntryId?: number
   from: 'committed' | LaneKey
+  /** Pointer offset inside the tile, so a drop preserves the grabbed point. */
+  grabOffsetMinutes?: number
 }
 
 interface DragData {
@@ -398,7 +400,10 @@ export interface ClipboardTrack {
   note: string | null
 }
 
+export type ClipboardMode = 'cut' | 'copy'
+
 export interface SequencerClipboard {
+  mode: ClipboardMode
   source: LaneScope
   tracks: ClipboardTrack[]
 }
@@ -426,6 +431,70 @@ export function blocksInMinuteRange<T extends TimedBlock>(
   const lo = Math.min(from, to)
   const hi = Math.max(from, to)
   return blocks.filter((block) => block.t <= hi && block.t + block.dur >= lo)
+}
+
+export interface BenchDropSubject {
+  placementKey: string
+  dur: number
+}
+
+const DROP_EPSILON = 1e-6
+
+/**
+ * Plan an exact free-position drop. The dragged tile owns its requested span;
+ * any unpinned tiles it intersects ripple right edge-to-edge. Pinned spans
+ * always win and move the dragged/rippled tile just after themselves.
+ */
+export function planBenchDrop(
+  blocks: BenchBlock[],
+  moving: BenchDropSubject,
+  desiredStart: number,
+  pinnedTiles: Record<string, boolean> = {},
+): Record<string, number> {
+  const stationary = blocks.filter(
+    (block) => block.placementKey !== moving.placementKey,
+  )
+  const fixed = stationary
+    .filter((block) => pinnedTiles[block.placementKey])
+    .map((block) => ({ start: block.t, end: block.t + block.dur }))
+    .sort((a, b) => a.start - b.start)
+
+  const afterFixedSpans = (requested: number, dur: number) => {
+    let start = requested
+    for (const span of fixed) {
+      if (
+        start < span.end - DROP_EPSILON &&
+        start + dur > span.start + DROP_EPSILON
+      ) {
+        start = span.end
+      }
+    }
+    return start
+  }
+
+  const times: Record<string, number> = {}
+  const movingStart = afterFixedSpans(desiredStart, moving.dur)
+  times[moving.placementKey] = movingStart
+  let occupiedEnd = movingStart + moving.dur
+
+  for (const block of stationary
+    .filter((candidate) => !pinnedTiles[candidate.placementKey])
+    .sort((a, b) => a.t - b.t)) {
+    if (block.t + block.dur <= movingStart + DROP_EPSILON) {
+      continue
+    }
+    let next = block.t
+    if (next < occupiedEnd - DROP_EPSILON) {
+      next = occupiedEnd
+    }
+    next = afterFixedSpans(next, block.dur)
+    if (Math.abs(next - block.t) > DROP_EPSILON) {
+      times[block.placementKey] = next
+    }
+    occupiedEnd = Math.max(occupiedEnd, next + block.dur)
+  }
+
+  return times
 }
 
 /** Sorts after every Explorer bucket, so a track without a BPM lands last. */

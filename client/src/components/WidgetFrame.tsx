@@ -69,7 +69,7 @@ export function WidgetFrame({
           </button>
         </div>
       </div>
-      <div className="wf-body" data-widget={id}>
+      <div className="wf-body wf-body--resize-safe" data-widget={id}>
         {children}
       </div>
     </>

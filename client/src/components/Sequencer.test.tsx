@@ -413,10 +413,14 @@ describe('Sequencer block drag', () => {
     laneLabel: string,
     dt: ReturnType<typeof dataTransfer>,
     minute: number,
+    mods: Record<string, boolean> = {},
   ) {
     const lane = screen.getByLabelText(laneLabel)
     const event = createEvent.drop(lane, { dataTransfer: dt })
     Object.defineProperty(event, 'clientX', { value: clientXFor(minute) })
+    for (const [key, value] of Object.entries(mods)) {
+      Object.defineProperty(event, key, { value })
+    }
     act(() => {
       fireEvent(lane, event)
     })
@@ -475,6 +479,21 @@ describe('Sequencer block drag', () => {
     expect(onBenchToLane).toHaveBeenCalledWith(1, 7, 'tracklist')
   })
 
+  it('copies a committed block to an alternative lane with Option/Alt drag', () => {
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+    ]
+    const { onBenchToLane } = renderSequencer(
+      makeSet([makeEntry(first, 0)], [], subgroups),
+    )
+    const dt = dataTransfer()
+
+    dragBlock('Track 1', dt)
+    dropAt('Alt 1 lane', dt, 380, { altKey: true })
+
+    expect(onBenchToLane).toHaveBeenCalledWith(1, 7, 'browse')
+  })
+
   it('moves a benched block between two alternative lanes', () => {
     const pool = [makePoolEntry(second, 0)]
     const subgroups: PoolSubgroup[] = [
@@ -495,6 +514,27 @@ describe('Sequencer block drag', () => {
     expect(onMoveBench).toHaveBeenCalledWith(pool[0].id, 7, 8)
   })
 
+  it('copies a benched block between lanes with Option/Alt drag', () => {
+    const pool = [makePoolEntry(second, 0)]
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+      { id: 8, set_id: 1, name: 'Alt 2', display_order: 1 },
+    ]
+    const memberships: PoolSubgroupMembership[] = [
+      { id: 1, subgroup_id: 7, pool_entry_id: pool[0].id, display_order: 0 },
+    ]
+    const { onMoveBench, onBenchToLane } = renderSequencer(
+      makeSet([], pool, subgroups, memberships),
+    )
+    const dt = dataTransfer()
+
+    dragBlock('Track 2', dt)
+    dropAt('Alt 2 lane', dt, 390, { altKey: true })
+
+    expect(onBenchToLane).toHaveBeenCalledWith(2, 8, 'pool')
+    expect(onMoveBench).not.toHaveBeenCalled()
+  })
+
   it('moves a benched block to a new snapped time inside its own lane', () => {
     const pool = [makePoolEntry(second, 0)]
     const { onMoveBench, onBenchToLane } = renderSequencer(makeSet([], pool))
@@ -510,6 +550,35 @@ describe('Sequencer block drag', () => {
         (screen.getByLabelText('Track 2') as HTMLElement).style.left,
       ),
     ).toBeCloseTo(clientXFor(390), 3)
+  })
+
+  it('copies a benched block to committed with Option/Alt drag', () => {
+    const pool = [makePoolEntry(second, 0)]
+    const tracklist = [makeEntry(first, 0)]
+    const { onAddCommitted, onPromote } = renderSequencer(
+      makeSet(tracklist, pool),
+    )
+    const dt = dataTransfer()
+
+    dragBlock('Track 2', dt)
+    dropAt('Committed lane', dt, 372, { altKey: true })
+
+    expect(onAddCommitted).toHaveBeenCalledWith(2, 1)
+    expect(onPromote).not.toHaveBeenCalled()
+  })
+
+  it('links edge-to-edge tiles after resolving an overlapping drop', () => {
+    const pool = [
+      makePoolEntry(makeTrack(1, '08A', 128), 0),
+      makePoolEntry(makeTrack(2, '08A', 128), 1),
+    ]
+    const { container } = renderSequencer(makeSet([], pool))
+    const dt = dataTransfer()
+
+    dragBlock('Track 1', dt)
+    dropAt('Alt 1 lane', dt, 365)
+
+    expect(container.querySelector('.sq-lane-link')).not.toBeNull()
   })
 })
 
@@ -723,12 +792,36 @@ describe('Sequencer tracklist view', () => {
     return view
   }
 
-  it('renders the seven timing columns without redundant Plays', () => {
+  it('renders Notes with the timing columns and no redundant Plays', () => {
     openList(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
 
     expect(
       screen.getAllByRole('columnheader').map((th) => th.textContent),
-    ).toEqual(['#', 'Title', 'Key', 'BPM', 'In', 'Out', 'Length'])
+    ).toEqual(['#', 'Title', 'Key', 'BPM', 'In', 'Out', 'Length', 'Notes'])
+    expect(screen.getByLabelText('Notes for Track 1')).toBeInTheDocument()
+  })
+
+  it('saves an edited track note on blur', async () => {
+    const httpMod = await import('../api/http')
+    openList(
+      makeSet([
+        makeEntry(makeTrack(1, '08A', 128), 0, { note: 'Mix after breakdown' }),
+      ]),
+    )
+
+    const input = screen.getByLabelText('Notes for Track 1')
+    expect(input).toHaveValue('Mix after breakdown')
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'Loop intro' } })
+      fireEvent.blur(input)
+    })
+
+    expect(vi.mocked(httpMod.updateTracklistNote)).toHaveBeenCalledWith(
+      1,
+      1,
+      'Loop intro',
+    )
   })
 
   it('saves an edited BPM and marks the edited cell', async () => {
@@ -1379,6 +1472,55 @@ describe('Sequencer cut and paste', () => {
 
     expect(onRemove).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Paste cursor at 6:00')).toBeInTheDocument()
+  })
+
+  it('keeps a copied selection available for repeated pastes', async () => {
+    const tracklist = [makeEntry(makeTrack(1, '08A', 128), 0)]
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+    ]
+    const onBenchToLane = vi.fn()
+    const { container } = renderSequencer(makeSet(tracklist, [], subgroups), {
+      onBenchToLane,
+    })
+    const lane = screen.getByLabelText('Alt 1 lane')
+
+    fireEvent.click(screen.getByLabelText('Track 1'))
+    press(body(container), 'c')
+    placeCursor(lane, LANE_LABEL_PX + 12 * 6)
+    await pressAsync(body(container), 'v')
+    placeCursor(lane, LANE_LABEL_PX + 16 * 6)
+    await pressAsync(body(container), 'v')
+
+    expect(onBenchToLane).toHaveBeenCalledTimes(2)
+    expect(onBenchToLane).toHaveBeenNthCalledWith(1, 1, 7, 'browse')
+    expect(onBenchToLane).toHaveBeenNthCalledWith(2, 1, 7, 'browse')
+  })
+
+  it('copies a benched selection to another lane without moving the source lane', async () => {
+    const pool = [makePoolEntry(makeTrack(2, '08A', 128), 0)]
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+      { id: 8, set_id: 1, name: 'Alt 2', display_order: 1 },
+    ]
+    const memberships: PoolSubgroupMembership[] = [
+      { id: 1, subgroup_id: 7, pool_entry_id: pool[0].id, display_order: 0 },
+    ]
+    const onBenchToLane = vi.fn()
+    const onMoveBench = vi.fn()
+    const { container } = renderSequencer(
+      makeSet([], pool, subgroups, memberships),
+      { onBenchToLane, onMoveBench },
+    )
+
+    fireEvent.click(screen.getByLabelText('Track 2'))
+    press(body(container), 'c')
+    placeCursor(screen.getByLabelText('Alt 2 lane'), LANE_LABEL_PX + 10 * 6)
+    await pressAsync(body(container), 'v')
+
+    expect(onBenchToLane).toHaveBeenCalledWith(2, 8, 'pool')
+    expect(onMoveBench).not.toHaveBeenCalled()
+    expect(container.querySelectorAll('.sq-lane--alt')).toHaveLength(2)
   })
 
   it('moves a committed cut to the lane cursor without remove/add writes', async () => {

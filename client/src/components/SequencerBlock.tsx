@@ -34,6 +34,7 @@ interface Props {
   onTogglePin?: () => void
   onPromote?: () => void
   onDragStart?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
 }
 
 export function SequencerBlock({
@@ -56,6 +57,7 @@ export function SequencerBlock({
   onTogglePin,
   onPromote,
   onDragStart,
+  onDragEnd,
 }: Props) {
   const paint = relation && relation.p >= 0 ? harmonyPaint(relation.p) : null
   const style: React.CSSProperties = {
@@ -133,6 +135,7 @@ export function SequencerBlock({
       }}
       draggable={!!onDragStart}
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
     >
       <span className="sq-block-line">
         <span

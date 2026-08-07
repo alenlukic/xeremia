@@ -1705,6 +1705,20 @@ describe('Sequencer bench clipboard', () => {
     })
   }
 
+  function placeCursor(
+    sequencer: HTMLElement,
+    laneLabel: string,
+    clientX: number,
+  ) {
+    const lane = within(sequencer).getByLabelText(laneLabel)
+    act(() => {
+      fireEvent.pointerDown(lane, { clientX, button: 0 })
+    })
+    act(() => {
+      fireEvent.pointerUp(window, { clientX })
+    })
+  }
+
   // These cases count subgroup writes, so they start from a clean call log.
   beforeEach(() => {
     vi.clearAllMocks()
@@ -1755,5 +1769,52 @@ describe('Sequencer bench clipboard', () => {
     expect(httpMod.subgroupCreate).not.toHaveBeenCalled()
     expect(sequencer.querySelectorAll('.sq-lane--alt')).toHaveLength(1)
     expect(within(sequencer).getByLabelText('Track 1')).toBeInTheDocument()
+  })
+
+  it('copies a benched track to committed without removing it from the pool', async () => {
+    const httpMod = await import('./api/http')
+    await renderWithSequencerSet(makeTracks(1))
+    const sequencer = screen.getByLabelText('Sequencer')
+
+    act(() => {
+      within(sequencer).getByLabelText('Track 1').click()
+    })
+    await pressClipboardKey(sequencer, 'c')
+    placeCursor(sequencer, 'Committed lane', 120)
+    await pressClipboardKey(sequencer, 'v')
+
+    await waitFor(() => expect(httpMod.tracklistAdd).toHaveBeenCalledWith(1, 1))
+    expect(httpMod.poolMoveToTracklist).not.toHaveBeenCalled()
+  })
+
+  it('copies a benched track into another lane via subgroup drop', async () => {
+    const httpMod = await import('./api/http')
+    await renderWithSequencerSet(makeTracks(1))
+    const sequencer = screen.getByLabelText('Sequencer')
+
+    act(() => {
+      within(sequencer).getByLabelText('Track 1').click()
+    })
+    await pressClipboardKey(sequencer, 'c')
+    act(() => {
+      within(sequencer).getByLabelText('Add lane').click()
+    })
+    await waitFor(() =>
+      expect(
+        within(sequencer).getByLabelText('Alt 1 lane'),
+      ).toBeInTheDocument(),
+    )
+    placeCursor(sequencer, 'Alt 1 lane', 120)
+    await pressClipboardKey(sequencer, 'v')
+
+    await waitFor(() =>
+      expect(httpMod.subgroupDropTrack).toHaveBeenCalledWith(
+        1,
+        expect.any(Number),
+        1,
+        'pool',
+      ),
+    )
+    expect(httpMod.subgroupAddMember).not.toHaveBeenCalled()
   })
 })

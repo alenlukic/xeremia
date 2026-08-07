@@ -6,8 +6,10 @@ import { SequencerScrollbar } from './SequencerScrollbar'
 import {
   BLOCK_DRAG_MIME,
   arrangeLaneBlocks,
+  benchPlacementKey,
   blocksInMinuteRange,
   laneKeyOf,
+  planBenchDrop,
   readBlockDrag,
   sequencerTileKey,
   snapMinutes,
@@ -15,6 +17,7 @@ import {
 } from '../hooks/useSequencer'
 import type {
   BenchBlock,
+  BlockDragPayload,
   LaidBlock,
   LaneKey,
   LaneScope,
@@ -89,6 +92,7 @@ interface Props {
   pxPerMin: number
   selection: LaneSelection
   cursor: SequencerCursor | null
+  benchTimes: Record<string, number>
   starredTiles: Record<string, boolean>
   pinnedTiles: Record<string, boolean>
   onSelect: (lane: LaneScope, trackId: number | null) => void
@@ -129,6 +133,7 @@ export function SequencerLanes({
   pxPerMin,
   selection,
   cursor,
+  benchTimes,
   starredTiles,
   pinnedTiles,
   onSelect,
@@ -212,9 +217,9 @@ export function SequencerLanes({
   }, [startMin, endMin, tickMin])
 
   /**
-   * The snapped minute the drop x maps to inside a lane, or null when the drop
-   * carries no usable coordinate. A null minute means "no position information",
-   * so the caller appends rather than guessing.
+   * The exact minute the drop x maps to inside a lane, or null when the drop
+   * carries no usable coordinate. Tile motion is deliberately free-positioned;
+   * only the insertion cursor uses the coarser planning grid.
    */
   const minuteFromClientX = useCallback(
     (lane: Element, clientX: number) =>
@@ -226,7 +231,7 @@ export function SequencerLanes({
   const minuteAt = useCallback(
     (e: React.DragEvent): number | null => {
       const minute = minuteFromClientX(e.currentTarget, e.clientX)
-      return Number.isFinite(minute) ? snapMinutes(minute) : null
+      return Number.isFinite(minute) ? minute : null
     },
     [minuteFromClientX],
   )
@@ -327,6 +332,86 @@ export function SequencerLanes({
     [blocks, startMin],
   )
 
+  const [activeBlockDrag, setActiveBlockDrag] =
+    useState<BlockDragPayload | null>(null)
+  const [dropPreview, setDropPreview] = useState<{
+    lane: LaneKey
+    movingKey: string
+    times: Record<string, number>
+    durations: Record<string, number>
+  } | null>(null)
+
+  const clearBlockDrag = useCallback(() => {
+    setActiveBlockDrag(null)
+    setDropPreview(null)
+  }, [])
+
+  const benchDropPlan = useCallback(
+    (target: LaneKey, payload: BlockDragPayload, pointerMinute: number) => {
+      const source = blocksInLane(payload.from).find(
+        (block) => block.entry.track_id === payload.trackId,
+      )
+      if (!source) {
+        return null
+      }
+      const targetBlocks =
+        benchLanes.find(({ lane }) => laneKeyOf(lane) === target)?.blocks ?? []
+      const movingKey = benchPlacementKey(target, payload.trackId)
+      const desiredStart = Math.max(
+        startMin,
+        pointerMinute - (payload.grabOffsetMinutes ?? 0),
+      )
+      const times = planBenchDrop(
+        targetBlocks,
+        { placementKey: movingKey, dur: source.dur },
+        desiredStart,
+        pinnedTiles,
+      )
+      const durations = Object.fromEntries(
+        targetBlocks.map((block) => [block.placementKey, block.dur]),
+      )
+      durations[movingKey] = source.dur
+      return { lane: target, movingKey, times, durations }
+    },
+    [benchLanes, blocksInLane, pinnedTiles, startMin],
+  )
+
+  const previewLaneDrop = useCallback(
+    (target: LaneKey) => (e: React.DragEvent) => {
+      if (
+        !activeBlockDrag ||
+        !Array.from(e.dataTransfer.types ?? []).includes(BLOCK_DRAG_MIME)
+      ) {
+        return
+      }
+      const pointerMinute = minuteFromClientX(e.currentTarget, e.clientX)
+      if (!Number.isFinite(pointerMinute)) {
+        return
+      }
+      setDropPreview(benchDropPlan(target, activeBlockDrag, pointerMinute))
+    },
+    [activeBlockDrag, benchDropPlan, minuteFromClientX],
+  )
+
+  const beginBlockDrag = useCallback(
+    (
+      e: React.DragEvent,
+      payload: Omit<BlockDragPayload, 'grabOffsetMinutes'>,
+      dur: number,
+    ) => {
+      const rect = e.currentTarget.getBoundingClientRect()
+      const grabOffsetMinutes = Math.max(
+        0,
+        Math.min(dur, (e.clientX - rect.left) / pxPerMin),
+      )
+      const complete = { ...payload, grabOffsetMinutes }
+      setActiveBlockDrag(complete)
+      writeBlockDrag(e.dataTransfer, complete)
+      e.dataTransfer.effectAllowed = 'copyMove'
+    },
+    [pxPerMin],
+  )
+
   /**
    * Group the lane into the same BPM clusters the Explorer grid uses, then
    * order each cluster by title and pack it from the committed end.
@@ -350,6 +435,55 @@ export function SequencerLanes({
         }}
       />
     ) : null
+
+  const renderDropPreview = (lane: LaneKey) =>
+    dropPreview?.lane === lane
+      ? Object.entries(dropPreview.times).map(([placementKey, minutes]) => (
+          <span
+            key={placementKey}
+            className={[
+              'sq-drop-preview',
+              placementKey === dropPreview.movingKey
+                ? 'sq-drop-preview--moving'
+                : 'sq-drop-preview--shifted',
+            ].join(' ')}
+            aria-hidden="true"
+            style={{
+              left: LANE_LABEL_PX + (minutes - startMin) * pxPerMin,
+              width: dropPreview.durations[placementKey] * pxPerMin,
+            }}
+          />
+        ))
+      : null
+
+  const renderBenchLinks = (laneBlocks: BenchBlock[]) => {
+    const ordered = [...laneBlocks].sort((a, b) => a.t - b.t)
+    return ordered.slice(1).map((block, index) => {
+      const previous = ordered[index]
+      if (Math.abs(previous.t + previous.dur - block.t) > 1e-6) {
+        return null
+      }
+      if (
+        benchTimes[previous.placementKey] == null &&
+        benchTimes[block.placementKey] == null
+      ) {
+        return null
+      }
+      return (
+        <span
+          key={`${previous.placementKey}:${block.placementKey}`}
+          className="sq-lane-link"
+          aria-label={`Linked ${previous.entry.track?.title ?? 'track'} to ${block.entry.track?.title ?? 'track'}`}
+          title="Linked edge-to-edge"
+          style={{
+            left: LANE_LABEL_PX + (block.t - startMin) * pxPerMin,
+          }}
+        >
+          ⌁
+        </span>
+      )
+    })
+  }
 
   const renderMarquee = (lane: LaneScope) =>
     marquee && marquee.lane === lane ? (
@@ -396,6 +530,7 @@ export function SequencerLanes({
         return
       }
       e.preventDefault()
+      clearBlockDrag()
       const minute = minuteAt(e)
       if (external) {
         const position = positionAt(minute, null)
@@ -412,6 +547,7 @@ export function SequencerLanes({
         return
       }
       const position = positionAt(minute, payload.trackId)
+      const copyAcrossLane = e.altKey && payload.from !== 'committed'
       if (payload.from === 'committed') {
         const current = blocks.findIndex(
           (b) => b.entry.track_id === payload.trackId,
@@ -421,9 +557,21 @@ export function SequencerLanes({
         }
         return
       }
-      onPromote(payload.trackId, position)
+      if (copyAcrossLane) {
+        onAddCommitted(payload.trackId, position)
+      } else {
+        onPromote(payload.trackId, position)
+      }
     },
-    [blocks, minuteAt, onAddCommitted, onPromote, onReorder, positionAt],
+    [
+      blocks,
+      clearBlockDrag,
+      minuteAt,
+      onAddCommitted,
+      onPromote,
+      onReorder,
+      positionAt,
+    ],
   )
 
   const handleLaneDrop = useCallback(
@@ -432,6 +580,7 @@ export function SequencerLanes({
       const draggedLane = e.dataTransfer.getData(LANE_DRAG_MIME)
       if (draggedLane) {
         e.preventDefault()
+        clearBlockDrag()
         const from = Number(draggedLane)
         if (typeof target === 'number' && from !== target) {
           const order = benchLanes
@@ -450,10 +599,14 @@ export function SequencerLanes({
       }
       e.preventDefault()
       const minute = minuteAt(e)
+      const plan =
+        payload && minute != null
+          ? benchDropPlan(target, payload, minute)
+          : null
+      const copyAcrossLane = !!payload && e.altKey && payload.from !== target
+      clearBlockDrag()
       if (external) {
-        // A new arrival queues after the committed spine; dragging it later
-        // puts it anywhere.
-        onSetBenchTime(target, external.trackId, committedEnd)
+        onSetBenchTime(target, external.trackId, minute ?? committedEnd, true)
         onBenchToLane(external.trackId, target, external.source)
         return
       }
@@ -461,11 +614,17 @@ export function SequencerLanes({
         return
       }
       const trackId = payload.trackId
-      if (minute != null) {
-        onSetBenchTime(target, trackId, minute)
+      if (plan) {
+        onSetBenchTimes(plan.times)
+      } else if (minute != null) {
+        onSetBenchTime(target, trackId, minute, true)
       }
       if (payload.from === 'committed') {
-        onBenchToLane(payload.trackId, target, 'tracklist')
+        onBenchToLane(
+          payload.trackId,
+          target,
+          copyAcrossLane ? 'browse' : 'tracklist',
+        )
         return
       }
       if (
@@ -474,17 +633,24 @@ export function SequencerLanes({
         typeof target === 'number' &&
         payload.poolEntryId != null
       ) {
-        onMoveBench(payload.poolEntryId, payload.from, target)
+        if (copyAcrossLane) {
+          onBenchToLane(payload.trackId, target, 'pool')
+        } else {
+          onMoveBench(payload.poolEntryId, payload.from, target)
+        }
       }
     },
     [
       benchLanes,
+      benchDropPlan,
+      clearBlockDrag,
       committedEnd,
       minuteAt,
       onBenchToLane,
       onMoveBench,
       onReorderLanes,
       onSetBenchTime,
+      onSetBenchTimes,
     ],
   )
 
@@ -564,11 +730,16 @@ export function SequencerLanes({
               }
               onToggleStar={() => onToggleStar(tileKey)}
               onDragStart={(e) =>
-                writeBlockDrag(e.dataTransfer, {
-                  trackId: block.entry.track_id,
-                  from: 'committed',
-                })
+                beginBlockDrag(
+                  e,
+                  {
+                    trackId: block.entry.track_id,
+                    from: 'committed',
+                  },
+                  block.dur,
+                )
               }
+              onDragEnd={clearBlockDrag}
             />
           )
         })}
@@ -595,6 +766,16 @@ export function SequencerLanes({
                 hasLaneDrag(e.dataTransfer)
               ) {
                 e.preventDefault()
+                if (activeBlockDrag) {
+                  e.dataTransfer.dropEffect =
+                    e.altKey && activeBlockDrag.from !== key ? 'copy' : 'move'
+                }
+                previewLaneDrop(key)(e)
+              }
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setDropPreview(null)
               }
             }}
             onDrop={handleLaneDrop(key)}
@@ -660,6 +841,8 @@ export function SequencerLanes({
             </span>
             {renderMarquee(key)}
             {renderCursor(key)}
+            {renderDropPreview(key)}
+            {renderBenchLinks(benched)}
             {lane.group != null && (
               <button
                 className="sq-lane-delete"
@@ -697,12 +880,17 @@ export function SequencerLanes({
                     onTogglePin(tileKey)
                   }}
                   onDragStart={(e) =>
-                    writeBlockDrag(e.dataTransfer, {
-                      trackId: block.entry.track_id,
-                      poolEntryId: block.entry.id,
-                      from: key,
-                    })
+                    beginBlockDrag(
+                      e,
+                      {
+                        trackId: block.entry.track_id,
+                        poolEntryId: block.entry.id,
+                        from: key,
+                      },
+                      block.dur,
+                    )
                   }
+                  onDragEnd={clearBlockDrag}
                   onPromote={() =>
                     onPromote(block.entry.track_id, blocks.length)
                   }
