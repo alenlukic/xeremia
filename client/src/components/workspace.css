@@ -1,6 +1,9 @@
 /* Workspace v2 shell + Explorer matrix + Sequencer. Prefer existing tokens
    from styles.css :root; literals below are fallbacks matching the mock. */
-.ws-shell { display: flex; flex-direction: column; height: 100vh; min-width: 1280px; background: var(--bg, #0f1117); }
+/* The viewport is the column; the shell takes what is left after the playback
+   bar, which is what keeps the bar on screen. */
+.app-viewport { display: flex; flex-direction: column; height: 100vh; }
+.ws-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 1280px; background: var(--bg, #0f1117); }
 .ws-header { flex: 0 0 46px; display: flex; align-items: center; gap: 14px; padding: 0 12px; background: var(--panel-header, #14171f); border-bottom: 1px solid var(--border, #2a2e3b); }
 .ws-wordmark { font: 500 12px/1 'JetBrains Mono', monospace; letter-spacing: 0.18em; color: var(--muted, #8b8fa3); }
 .ws-header-rule { width: 1px; height: 20px; background: var(--border, #2a2e3b); }
@@ -103,26 +106,37 @@
 .xm-tip-title { font: 500 11px/1 'JetBrains Mono', monospace; color: var(--accent-bright, #9db3ff); }
 .xm-tip-sub { font: 400 10px/1.4 'DM Sans', sans-serif; color: var(--muted, #8b8fa3); margin-top: 4px; }
 .xm-tip-rel { margin-top: 7px; font: 400 9.5px/1 'JetBrains Mono', monospace; color: var(--text, #d8dae5); }
-.xm-tip-move { margin-top: 3px; font: 400 9.5px/1.2 'JetBrains Mono', monospace; color: var(--muted, #8b8fa3); }
 .xm-tip-note { margin-top: 6px; font: italic 400 10px/1.4 'DM Sans', sans-serif; color: #6b7186; }
 
 /* The rail sits beside the lanes; the lane area is the only thing that scrolls. */
-.sq-body { flex: 1; min-height: 0; display: grid; grid-template-columns: auto 1fr; grid-template-rows: 1fr auto; column-gap: 8px; }
-.sq-rail { grid-row: 1 / 2; position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 10px; width: 92px; padding: 8px; border-right: 1px solid var(--border, #2a2e3b); }
-.sq-rail-group { display: flex; flex-direction: column; gap: 4px; }
-.sq-rail .ws-pill { width: 100%; text-align: center; }
-.sq-rail .sq-time-field { display: flex; flex-direction: column; gap: 3px; font: 400 9px/1 'DM Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted, #8b8fa3); }
-.sq-rail .sq-time-field input { width: 100%; }
-.sq-main { grid-row: 1 / 2; min-width: 0; min-height: 0; overflow: auto; }
-.sq-body > .table-status { grid-column: 1 / -1; }
-.sq-body > .sq-inspector { grid-column: 1 / -1; }
-.sq-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 6px 10px; flex-wrap: wrap; }
-.sq-view-pills, .sq-tick-pills { display: flex; gap: 4px; }
+.sq-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* The native horizontal bar is replaced by .sq-scrollbar, which can sit where
+   a native one cannot. Vertical scrolling keeps its normal bar. */
+.sq-main { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding-top: 7px; scrollbar-width: none; }
+.sq-main::-webkit-scrollbar:horizontal { height: 0; }
+
+/* Pinned to the left of the scrollport so it stays put as the lanes scroll,
+   sized to the visible width so the track can centre inside it. */
+.sq-scrollbar { position: sticky; left: 0; z-index: 4; display: flex; justify-content: center; margin: 0 -8px; padding: 5px 0 6px; }
+.sq-scrollbar-track { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.05); cursor: pointer; }
+.sq-scrollbar-thumb { height: 6px; border-radius: 3px; background: var(--border-strong, #3a4055); cursor: grab; }
+.sq-scrollbar-thumb:hover { background: rgba(108, 140, 255, 0.55); }
+.sq-scrollbar-thumb:active { cursor: grabbing; background: var(--accent-bright, #9db3ff); }
+/* One thin row: the view switch and the run window, nothing else. */
+/* Equal breathing room either side of the rule: the controls do not crowd it
+   from above and the ruler does not touch it from below. */
+.sq-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 7px 8px; flex-wrap: nowrap; overflow-x: auto; border-bottom: 1px solid var(--border, #2a2e3b); }
+.sq-toolbar .sq-time-field { display: inline-flex; align-items: center; gap: 5px; font: 400 9px/1 'DM Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted, #8b8fa3); }
+.sq-toolbar .sq-time-field input { width: 52px; }
+.sq-view-pills { display: flex; gap: 4px; }
 .sq-total { padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border, #2a2e3b); font: 400 10px/1.4 'JetBrains Mono', monospace; color: var(--muted, #8b8fa3); }
 .sq-total--over { border-color: rgba(229, 57, 53, 0.55); color: #ff6b66; }
 .sq-time-field { display: inline-flex; align-items: center; gap: 4px; font: 400 10px/1 'DM Sans', sans-serif; color: var(--muted, #8b8fa3); }
 .sq-time-field input { width: 52px; height: 22px; text-align: center; border-radius: 5px; border: 1px solid #3a4055; background: var(--bg, #0f1117); color: var(--text, #d8dae5); font: 400 10.5px/1 'JetBrains Mono', monospace; }
-.sq-lanes { flex: 1; min-height: 0; overflow: auto; position: relative; padding: 0 8px 8px; }
+/* Deliberately not a scroll container: .sq-main is the only scrollport, so the
+   custom scrollbar can measure it. Sizing to the content is what gives the
+   sticky scrollbar room to travel. */
+.sq-lanes { position: relative; width: max-content; min-width: 100%; padding: 0 8px 8px; }
 .sq-ruler { position: sticky; top: 0; z-index: 3; height: 18px; background: var(--panel, #1a1d27); border-bottom: 1px solid var(--border, #2a2e3b); }
 .sq-tick { position: absolute; top: 4px; font: 400 8.5px/1 'JetBrains Mono', monospace; color: #5c6178; transform: translateX(-50%); }
 .sq-lane-actions { margin-top: 6px; }
@@ -132,7 +146,10 @@
 .sq-block-line { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
 .sq-block .key-dot { width: 6px; height: 6px; margin-right: 0; flex: 0 0 auto; }
 .sq-block-sub { display: block; font: inherit; opacity: 0.75; white-space: nowrap; padding-left: 9px; }
-.sq-promote { position: absolute; right: 2px; top: 2px; border: 0; padding: 0; background: none; color: inherit; cursor: pointer; }
+/* Only the selected benched tile shows this, tucked into the corner so it
+   never sits on top of the key or the BPM. */
+.sq-promote { position: absolute; right: 1px; top: 1px; z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 0; padding: 0; border-radius: 3px; background: rgba(15, 17, 23, 0.65); color: var(--accent-bright, #9db3ff); cursor: pointer; }
+.sq-promote:hover { background: rgba(108, 140, 255, 0.35); }
 .sq-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 8px; }
 .sq-list-table { width: 100%; border-collapse: collapse; font: 400 11px/1 'JetBrains Mono', monospace; color: var(--text, #d8dae5); }
 .sq-list-table th { text-align: left; padding: 4px 6px; font: 500 9px/1 'DM Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted, #8b8fa3); border-bottom: 1px solid var(--border, #2a2e3b); }
@@ -151,7 +168,7 @@
 .sq-flag { margin-left: 6px; padding: 1px 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.06); font: 500 8.5px/1 'DM Sans', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted, #8b8fa3); }
 .sq-flag--scale, .sq-scale { color: #e8bb63; }
 .sq-scale { margin-left: 5px; font: 400 9.5px/1 'JetBrains Mono', monospace; }
-.sq-inspector-meta { font: 400 10px/1 'JetBrains Mono', monospace; color: var(--muted, #8b8fa3); }
+.sq-inspector-meta { flex: 0 0 auto; font: 400 10px/1 'JetBrains Mono', monospace; color: var(--muted, #8b8fa3); white-space: nowrap; }
 .sq-inspector-spacer { flex: 1; }
 .sq-lane { position: relative; height: 40px; margin-top: 4px; border-radius: 6px; border: 1px solid #232735; background: rgba(255, 255, 255, 0.012); }
 .sq-lane--committed { background: rgba(108, 140, 255, 0.05); border-color: rgba(108, 140, 255, 0.28); }
@@ -163,8 +180,12 @@
 .sq-block--sel { background: rgba(207, 224, 255, 0.92); border-color: #eef3ff; color: #0f1117; opacity: 1; }
 .sq-block--pinned { border-right: 3px solid var(--accent-bright, #9db3ff); }
 .sq-block--fallback { border-left: 3px dashed #d9a441; }
-.sq-inspector { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 10px; background: #171a23; border-top: 1px solid var(--border, #2a2e3b); font: 400 10px/1 'DM Sans', sans-serif; color: var(--muted, #8b8fa3); }
-.sq-inspector-label { flex: 1; min-width: 0; font: 400 11px/1 'JetBrains Mono', monospace; color: var(--text, #d8dae5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Label and field read as one group, with a wider gap between groups so the
+   row does not run together. */
+.sq-inspector { flex: 0 0 auto; display: flex; align-items: center; gap: 14px; min-height: 36px; padding: 6px 12px; background: #171a23; border-top: 1px solid var(--border, #2a2e3b); font: 400 10px/1 'DM Sans', sans-serif; color: var(--muted, #8b8fa3); }
+.sq-inspector label { display: inline-flex; align-items: center; gap: 6px; font: 400 9px/1 'DM Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted, #8b8fa3); }
+.sq-inspector-unit { color: #6b7186; }
+.sq-inspector-label { flex: 0 1 auto; max-width: 34%; min-width: 0; font: 400 11px/1 'JetBrains Mono', monospace; color: var(--text, #d8dae5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sq-inspector input { width: 48px; height: 22px; text-align: center; border-radius: 5px; border: 1px solid #3a4055; background: var(--bg, #0f1117); color: var(--text, #d8dae5); font: 400 10.5px/1 'JetBrains Mono', monospace; outline: none; }
 
 .ws-header-gear { width: 24px; height: 24px; font-size: 13px; }
@@ -178,3 +199,19 @@
 /* A quiet square that matches the widget icon buttons. */
 .sq-add-lane { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin: 4px 0 0 6px; padding: 0; border-radius: 4px; border: 1px dashed var(--border-strong, #3a4055); background: transparent; color: var(--muted, #8b8fa3); font: 400 12px/1 'DM Sans', sans-serif; cursor: pointer; }
 .sq-add-lane:hover { border-color: rgba(108, 140, 255, 0.5); color: var(--accent-bright, #9db3ff); }
+
+/* Sits inside the lane label so it reads as part of it, matching the other
+   small icon controls. */
+.sq-lane-sort { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 5px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: #6b7186; cursor: pointer; vertical-align: middle; pointer-events: auto; }
+.sq-lane-sort:hover { background: rgba(108, 140, 255, 0.18); color: var(--accent-bright, #9db3ff); }
+
+/* The stretch of an alt lane past the committed end is queue space, not dead
+   space, so it is drawn rather than left blank. Click-through and behind the
+   blocks: it is a backdrop, never a target. */
+.sq-lane-tail { position: absolute; top: 3px; bottom: 3px; z-index: 0; border: 1px dashed rgba(108, 140, 255, 0.24); border-radius: 5px; background: rgba(108, 140, 255, 0.03); pointer-events: none; }
+
+/* The label chip is click-through so it never eats a drop aimed at a block
+   beneath it; its interactive children opt back in. */
+.sq-lane-name { cursor: grab; pointer-events: auto; }
+.sq-lane-name:hover { color: #a2a8bd; }
+.sq-lane-rename { pointer-events: auto; width: 78px; height: 16px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--accent-bright, #9db3ff); background: var(--bg, #0f1117); color: var(--text, #d8dae5); font: 500 9px/1 'DM Sans', sans-serif; outline: none; }

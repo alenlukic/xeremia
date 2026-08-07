@@ -54,6 +54,8 @@ export function App() {
   const [topSplit, setTopSplit] = useState<TopSplit>('split')
   const [rowSplit, setRowSplit] = useState<RowSplit>('split')
   const [adminOpen, setAdminOpen] = useState(false)
+  // The Sequencer's selected tile, so the Explorer can light its cell.
+  const [sequencerFocus, setSequencerFocus] = useState<Track | null>(null)
 
   useEffect(() => {
     if (!adminOpen) {
@@ -483,12 +485,16 @@ export function App() {
         <ExplorerMatrix
           pool={setBuilder.activeSet?.pool ?? []}
           onDropTrack={(trackId) => setBuilderAddToPool(trackId)}
+          focus={sequencerFocus}
         />
       ),
     },
     sequencer: {
       node: (
         <Sequencer
+          onFocusTrack={setSequencerFocus}
+          onRenameLane={(id, name) => void setBuilder.renameSubgroup(id, name)}
+          onReorderLanes={(ids) => void setBuilder.reorderSubgroups(ids)}
           activeSet={setBuilder.activeSet}
           onAddCommitted={setBuilder.insertIntoTracklist}
           onPromote={handlePromote}
@@ -594,17 +600,22 @@ export function App() {
   if (layout.shell === 'workspace') {
     return (
       <AudioPlayerProvider>
-        <WorkspaceGrid
-          layout={layout}
-          panels={workspacePanels}
-          headerExtras={
-            <>
-              {setPicker}
-              {renderAdminGear('ws-icon-btn ws-header-gear')}
-            </>
-          }
-          shellToggle={renderShellToggle('ws-pill')}
-        />
+        {/* The shell fills the viewport and the playback bar sits under it, so
+            they share one column rather than the bar being pushed off-screen. */}
+        <div className="app-viewport">
+          <WorkspaceGrid
+            layout={layout}
+            panels={workspacePanels}
+            headerExtras={
+              <>
+                {setPicker}
+                {renderAdminGear('ws-icon-btn ws-header-gear')}
+              </>
+            }
+            shellToggle={renderShellToggle('ws-pill')}
+          />
+          <PlaybackBar />
+        </div>
         {setBuilder.error && (
           <div className="set-toast" role="alert">
             <span>{setBuilder.error}</span>
@@ -617,7 +628,6 @@ export function App() {
             </button>
           </div>
         )}
-        <PlaybackBar />
         {adminControls}
       </AudioPlayerProvider>
     )

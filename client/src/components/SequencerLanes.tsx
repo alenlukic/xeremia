@@ -1,5 +1,8 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import type { RefObject } from 'react'
 import { SequencerBlock } from './SequencerBlock'
+import { SortIcon } from './table/icons'
+import { SequencerScrollbar } from './SequencerScrollbar'
 import {
   BLOCK_DRAG_MIME,
   laneKeyOf,
@@ -24,6 +27,8 @@ import { POOL_ROW_MIME, TRACKLIST_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 // default lane instead, and the first drop on it creates the subgroup.
 
 const LANE_LABEL_PX = 88
+
+const LANE_DRAG_MIME = 'text/sq-lane'
 
 type ExternalDropSource = 'browse' | 'pool' | 'tracklist'
 
@@ -53,12 +58,22 @@ function hasSupportedTrackDrag(dataTransfer: DataTransfer): boolean {
   )
 }
 
+/**
+ * A lane being dragged over another lane. The payload itself is unreadable
+ * until the drop, so the accept check goes by MIME alone.
+ */
+function hasLaneDrag(dataTransfer: DataTransfer): boolean {
+  return Array.from(dataTransfer.types ?? []).includes(LANE_DRAG_MIME)
+}
+
 export interface BenchLane {
   lane: SequencerLane
   blocks: BenchBlock[]
 }
 
 interface Props {
+  /** The horizontally scrolling viewport, for the custom scrollbar. */
+  scrollRef: RefObject<HTMLElement | null>
   blocks: LaidBlock[]
   benchLanes: BenchLane[]
   startMin: number
@@ -77,11 +92,15 @@ interface Props {
   ) => void
   onMoveBench: (poolEntryId: number, from: number, to: number) => void
   onSetBenchTime: (trackId: number, minutes: number) => void
+  onSetBenchTimes: (entries: Record<number, number>) => void
   onAddLane: () => void
+  onRenameLane: (subgroupId: number, name: string) => void
+  onReorderLanes: (subgroupIds: number[]) => void
   onDeleteLane: (subgroupId: number) => void
 }
 
 export function SequencerLanes({
+  scrollRef,
   blocks,
   benchLanes,
   startMin,
@@ -96,9 +115,15 @@ export function SequencerLanes({
   onBenchToLane,
   onMoveBench,
   onSetBenchTime,
+  onSetBenchTimes,
   onAddLane,
+  onRenameLane,
+  onReorderLanes,
   onDeleteLane,
 }: Props) {
+  /** Subgroup whose name is being edited inline. */
+  const [renaming, setRenaming] = useState<number | null>(null)
+
   const selectedTrack = useMemo<Track | null>(() => {
     if (selectedTrackId == null) {
       return null
@@ -164,6 +189,37 @@ export function SequencerLanes({
     [pxPerMin, startMin],
   )
 
+  /** End of the committed spine: where a fresh bench drop lands by default. */
+  const committedEnd = useMemo(
+    () => blocks.reduce((end, b) => Math.max(end, b.t + b.dur), startMin),
+    [blocks, startMin],
+  )
+
+  /**
+   * Alphabetical by the track's displayed title, which begins with its
+   * metadata tag, then packed end to end from the committed end.
+   */
+  const handleSortLane = useCallback(
+    (laneBlocks: BenchBlock[]) => {
+      const sorted = [...laneBlocks].sort((a, b) =>
+        (a.entry.track?.title ?? '').localeCompare(
+          b.entry.track?.title ?? '',
+          undefined,
+          { numeric: true, sensitivity: 'base' },
+        ),
+      )
+      let at = committedEnd
+      const next: Record<number, number> = {}
+      for (const block of sorted) {
+        next[block.entry.track_id] = snapMinutes(at)
+        at += block.dur
+      }
+      // One write, so the lane cannot overwrite itself block by block.
+      onSetBenchTimes(next)
+    },
+    [committedEnd, onSetBenchTimes],
+  )
+
   /** Committed position for a drop time: after every block that starts earlier. */
   const positionAt = useCallback(
     (minute: number | null, movingTrackId: number | null) => {
@@ -216,6 +272,21 @@ export function SequencerLanes({
 
   const handleLaneDrop = useCallback(
     (target: LaneKey) => (e: React.DragEvent) => {
+      // A lane dropped on a lane reorders; anything else is a track.
+      const draggedLane = e.dataTransfer.getData(LANE_DRAG_MIME)
+      if (draggedLane) {
+        e.preventDefault()
+        const from = Number(draggedLane)
+        if (typeof target === 'number' && from !== target) {
+          const order = benchLanes
+            .map(({ lane }) => lane.group?.id)
+            .filter((id): id is number => id != null)
+          const next = order.filter((id) => id !== from)
+          next.splice(order.indexOf(target), 0, from)
+          onReorderLanes(next)
+        }
+        return
+      }
       const payload = readBlockDrag(e.dataTransfer)
       const external = payload ? null : readExternalTrackDrag(e.dataTransfer)
       if (!payload && !external) {
@@ -224,9 +295,9 @@ export function SequencerLanes({
       e.preventDefault()
       const minute = minuteAt(e)
       if (external) {
-        if (minute != null) {
-          onSetBenchTime(external.trackId, minute)
-        }
+        // A new arrival queues after the committed spine; dragging it later
+        // puts it anywhere.
+        onSetBenchTime(external.trackId, committedEnd)
         onBenchToLane(external.trackId, target, external.source)
         return
       }
@@ -250,7 +321,15 @@ export function SequencerLanes({
         onMoveBench(payload.poolEntryId, payload.from, target)
       }
     },
-    [minuteAt, onBenchToLane, onMoveBench, onSetBenchTime],
+    [
+      benchLanes,
+      committedEnd,
+      minuteAt,
+      onBenchToLane,
+      onMoveBench,
+      onReorderLanes,
+      onSetBenchTime,
+    ],
   )
 
   return (
@@ -266,6 +345,7 @@ export function SequencerLanes({
           </span>
         ))}
       </div>
+      <SequencerScrollbar scrollRef={scrollRef} />
       <div
         className="sq-lane sq-lane--committed"
         style={{ width: width + LANE_LABEL_PX }}
@@ -319,13 +399,82 @@ export function SequencerLanes({
             data-lane={key}
             aria-label={`${lane.name} lane`}
             onDragOver={(e) => {
-              if (hasSupportedTrackDrag(e.dataTransfer)) {
+              if (
+                hasSupportedTrackDrag(e.dataTransfer) ||
+                hasLaneDrag(e.dataTransfer)
+              ) {
                 e.preventDefault()
               }
             }}
             onDrop={handleLaneDrop(key)}
           >
-            <span className="sq-lane-label">{lane.name}</span>
+            <span className="sq-lane-label">
+              {renaming === groupId && lane.group != null ? (
+                <input
+                  className="sq-lane-rename"
+                  aria-label={`Rename lane ${lane.name}`}
+                  autoFocus
+                  defaultValue={lane.name}
+                  onBlur={(e) => {
+                    const next = e.target.value.trim()
+                    if (next && next !== lane.name) {
+                      onRenameLane(groupId, next)
+                    }
+                    setRenaming(null)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.currentTarget.blur()
+                    } else if (e.key === 'Escape') {
+                      setRenaming(null)
+                    }
+                  }}
+                />
+              ) : (
+                <span
+                  className="sq-lane-name"
+                  draggable={lane.group != null}
+                  title={
+                    lane.group != null
+                      ? 'Double-click to rename; drag to reorder'
+                      : undefined
+                  }
+                  onDoubleClick={() =>
+                    lane.group != null && setRenaming(groupId)
+                  }
+                  onDragStart={(e) => {
+                    if (lane.group == null) {
+                      return
+                    }
+                    e.dataTransfer.setData(
+                      LANE_DRAG_MIME,
+                      String(lane.group.id),
+                    )
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                >
+                  {lane.name}
+                </span>
+              )}
+              <button
+                className="sq-lane-sort"
+                aria-label={`Sort lane ${lane.name}`}
+                title="Sort this lane alphabetically"
+                onClick={() => handleSortLane(benched)}
+              >
+                <SortIcon size={11} />
+              </button>
+            </span>
+            {committedEnd < endMin && (
+              <span
+                className="sq-lane-tail"
+                aria-hidden="true"
+                style={{
+                  left: LANE_LABEL_PX + (committedEnd - startMin) * pxPerMin,
+                  width: (endMin - committedEnd) * pxPerMin,
+                }}
+              />
+            )}
             {lane.group != null && (
               <button
                 className="sq-lane-delete"

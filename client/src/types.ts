@@ -139,6 +139,9 @@ export interface SequencerSettings {
   tick_minutes?: number
   px_per_min?: number
   view?: string
+  /** Bench lane positions by track id; a lane position is part of the plan. */
+  bench_times?: Record<string, number>
+  bench_overrides?: Record<string, Record<string, number | null>>
 }
 
 export interface SetSummary {

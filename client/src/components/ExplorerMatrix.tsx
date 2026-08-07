@@ -7,6 +7,7 @@ import {
   CELL_WIDTH_PX,
   useExplorerMatrix,
 } from '../hooks/useExplorerMatrix'
+import type { MatrixFocus } from '../hooks/useExplorerMatrix'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import { bucketLoBpm, harmonyPaint } from '../utils/harmonic'
 import type { PoolEntry } from '../types'
@@ -20,10 +21,12 @@ import { POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 interface Props {
   pool: PoolEntry[]
   onDropTrack: (trackId: number) => void
+  /** Track the workspace has focused, lit here as if its cell were clicked. */
+  focus?: MatrixFocus | null
 }
 
-export function ExplorerMatrix({ pool, onDropTrack }: Props) {
-  const matrix = useExplorerMatrix(pool)
+export function ExplorerMatrix({ pool, onDropTrack, focus }: Props) {
+  const matrix = useExplorerMatrix(pool, focus)
   const dropTargets = useMemo(
     () => [
       { mime: TRACK_DRAG_MIME, onDropTrack },

@@ -108,6 +108,14 @@ export function SequencerBlock({
       }}
       onPointerLeave={() => setPop(null)}
       onClick={onSelect}
+      onDoubleClick={
+        benched && onPromote
+          ? (e) => {
+              e.stopPropagation()
+              onPromote()
+            }
+          : undefined
+      }
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -141,7 +149,7 @@ export function SequencerBlock({
           </div>,
           document.body,
         )}
-      {benched && onPromote && (
+      {benched && selected && onPromote && (
         <button
           className="sq-promote"
           aria-label={`Promote ${track?.title ?? 'track'}`}

@@ -8,6 +8,8 @@ import type { CellRelation, MatrixCell } from '../hooks/useExplorerMatrix'
 /** Past this share of the viewport width the card flips to the cell's left. */
 export const FLIP_THRESHOLD = 0.62
 const CARD_WIDTH = 252
+/** Tallest the card gets, used to keep it clear of the viewport bottom. */
+const CARD_HEIGHT = 140
 
 interface Props {
   hover: MatrixCell & { rect: { l: number; r: number; t: number } }
@@ -36,7 +38,10 @@ export function ExplorerTooltip({
       role="tooltip"
       style={{
         left: flip ? hover.rect.l - (CARD_WIDTH + 10) : hover.rect.r + 10,
-        top: Math.max(10, Math.min(hover.rect.t - 8, viewportHeight - 170)),
+        top: Math.max(
+          10,
+          Math.min(hover.rect.t - 8, viewportHeight - CARD_HEIGHT),
+        ),
       }}
     >
       <div className="xm-tip-title">
@@ -53,44 +58,24 @@ export function ExplorerTooltip({
           : 'no tracks in cohort'}
       </div>
       {relation && relation.p >= 0 && (
-        <>
-          <div className="xm-tip-rel">
-            <span
-              className="xm-swatch xm-swatch--inline"
-              style={{
-                backgroundColor: paint
-                  ? `hsla(${paint.hue},${paint.sat}%,${paint.light}%,${paint.a})`
-                  : undefined,
-                borderStyle: relation.borderStyle,
-              }}
-            >
-              {PRIORITY_NAMES[relation.p]}
+        <div className="xm-tip-rel">
+          <span
+            className="xm-swatch xm-swatch--inline"
+            style={{
+              backgroundColor: paint
+                ? `hsla(${paint.hue},${paint.sat}%,${paint.light}%,${paint.a})`
+                : undefined,
+              borderStyle: relation.borderStyle,
+            }}
+          >
+            {PRIORITY_NAMES[relation.p]}
+          </span>
+          {relation.meet != null && (
+            <span className="xm-tip-meet">
+              meet ≈{relation.meet.toFixed(1)} BPM
             </span>
-            {relation.meet != null && (
-              <span className="xm-tip-meet">
-                meet ≈{relation.meet.toFixed(1)} BPM
-              </span>
-            )}
-          </div>
-          <div className="xm-tip-move">
-            <span>selected</span>
-            <span>
-              {relation.aName === 'as-is'
-                ? 'plays as-is →'
-                : `pitched ${relation.aName} one key →`}
-            </span>
-            <span className="mono">{relation.aCode}</span>
-          </div>
-          <div className="xm-tip-move">
-            <span>this cell</span>
-            <span>
-              {relation.bName === 'as-is'
-                ? 'plays as-is →'
-                : `pitched ${relation.bName} one key →`}
-            </span>
-            <span className="mono">{relation.bCode}</span>
-          </div>
-        </>
+          )}
+        </div>
       )}
       {relation && relation.p < 0 && (
         <div className="xm-tip-note">

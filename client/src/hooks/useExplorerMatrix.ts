@@ -60,12 +60,47 @@ export function bucketPool(pool: PoolEntry[]): Map<string, Track[]> {
   return buckets
 }
 
-export function useExplorerMatrix(pool: PoolEntry[]) {
+/** A track the rest of the workspace has focused, e.g. a selected lane tile. */
+export interface MatrixFocus {
+  camelot_code: string | null
+  bpm: number | null
+}
+
+export function useExplorerMatrix(
+  pool: PoolEntry[],
+  focus?: MatrixFocus | null,
+) {
   const [selected, setSelected] = useState<MatrixCell | null>(null)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [hover, setHover] = useState<
     (MatrixCell & { rect: { l: number; r: number; t: number } }) | null
   >(null)
+
+  // Light the grid for whatever the workspace has focused, exactly as if that
+  // cell had been clicked. Adjusted during render rather than in an effect so
+  // it lands in the same pass and never cascades.
+  const focusKey =
+    focus?.camelot_code && focus.bpm != null
+      ? `${focus.camelot_code}:${focus.bpm}`
+      : null
+  const [lastFocusKey, setLastFocusKey] = useState(focusKey)
+  // Remembered so dropping the focus only clears lighting that the focus put
+  // there, never a cell the DJ picked by hand.
+  const [focusDriven, setFocusDriven] = useState(false)
+  if (focusKey !== lastFocusKey) {
+    setLastFocusKey(focusKey)
+    if (focusKey && focus?.camelot_code && focus.bpm != null) {
+      const r = CAMELOT_ROWS.indexOf(focus.camelot_code)
+      if (r >= 0) {
+        // The inspector stays shut: this is a highlight, not a cell click.
+        setSelected({ r, c: colForBpm(focus.bpm) })
+        setFocusDriven(true)
+      }
+    } else if (focusDriven) {
+      setSelected(null)
+      setFocusDriven(false)
+    }
+  }
 
   const buckets = useMemo(() => bucketPool(pool), [pool])
 
@@ -108,6 +143,7 @@ export function useExplorerMatrix(pool: PoolEntry[]) {
       const isSelected = !!selected && selected.r === r && selected.c === c
       const populated = (buckets.get(cellKey(r, c)) ?? []).length > 0
       setSelected(isSelected ? null : { r, c })
+      setFocusDriven(false)
       // The inspector opens only from a populated cell, never on its own.
       setInspectorOpen(isSelected ? false : populated)
     },

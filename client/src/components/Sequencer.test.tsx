@@ -107,6 +107,8 @@ function makeHandlers() {
     onRemoveBenched: vi.fn(),
     onAddLane: vi.fn(),
     onDeleteLane: vi.fn(),
+    onRenameLane: vi.fn(),
+    onReorderLanes: vi.fn(),
   }
 }
 
@@ -124,6 +126,11 @@ function dataTransfer(seed: Record<string, string> = {}) {
   return {
     setData: (k: string, v: string) => void store.set(k, v),
     getData: (k: string) => store.get(k) ?? '',
+    // Drag-over accept checks go by MIME, since the payload is unreadable
+    // until the drop.
+    get types() {
+      return Array.from(store.keys())
+    },
   }
 }
 
@@ -227,6 +234,64 @@ describe('Sequencer lanes', () => {
     expect(onDeleteLane).toHaveBeenCalledWith(7)
   })
 
+  it('draws the alt lane stretch past the committed end', () => {
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+    ]
+    const committed = [makeEntry(makeTrack(1, '08A', 128), 0)]
+    const { container } = renderSequencer(makeSet(committed, [], subgroups))
+
+    const tail = container.querySelector('.sq-lane-tail') as HTMLElement
+    expect(tail).toBeTruthy()
+    // Starts where the committed spine ends, never at the lane origin.
+    expect(Number.parseFloat(tail.style.left)).toBeGreaterThan(0)
+    expect(Number.parseFloat(tail.style.width)).toBeGreaterThan(0)
+    // Committed lane keeps its solid frame.
+    expect(
+      container.querySelector('.sq-lane--committed .sq-lane-tail'),
+    ).toBeNull()
+  })
+
+  it('renames a lane from its double-clicked label', () => {
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+    ]
+    const { onRenameLane, container } = renderSequencer(
+      makeSet([], [], subgroups),
+    )
+
+    const name = container.querySelector('.sq-lane-name') as HTMLElement
+    fireEvent.doubleClick(name)
+    const input = screen.getByLabelText('Rename lane Alt 1')
+    fireEvent.change(input, { target: { value: 'Peak hour' } })
+    fireEvent.blur(input)
+
+    expect(onRenameLane).toHaveBeenCalledWith(7, 'Peak hour')
+  })
+
+  it('reorders lanes when one lane label is dragged onto another', () => {
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+      { id: 8, set_id: 1, name: 'Alt 2', display_order: 1 },
+    ]
+    const { onReorderLanes, container } = renderSequencer(
+      makeSet([], [], subgroups),
+    )
+
+    const [first] = Array.from(container.querySelectorAll('.sq-lane-name'))
+    expect(first).toHaveAttribute('draggable', 'true')
+
+    const dt = dataTransfer()
+    fireEvent.dragStart(first, { dataTransfer: dt })
+    const target = screen.getByLabelText('Alt 2 lane')
+    // The drop only lands if drag-over accepted the lane MIME.
+    const over = fireEvent.dragOver(target, { dataTransfer: dt })
+    expect(over).toBe(false)
+    fireEvent.drop(target, { dataTransfer: dt })
+
+    expect(onReorderLanes).toHaveBeenCalledWith([8, 7])
+  })
+
   it('benches a dropped track onto the lane it was dropped on', () => {
     const subgroups: PoolSubgroup[] = [
       { id: 7, set_id: 1, name: 'Alt 2', display_order: 0 },
@@ -279,6 +344,10 @@ describe('Sequencer lanes', () => {
       makeSet([], [makePoolEntry(track, 0)]),
     )
 
+    // The arrow appears on selection, so the block is clicked first.
+    act(() => {
+      screen.getByLabelText('Track 5').click()
+    })
     act(() => {
       screen.getByLabelText('Promote Track 5').click()
     })
@@ -469,7 +538,40 @@ describe('SequencerBlock sizing', () => {
     expect(block.style.width).toBe('9px')
   })
 
-  it('marks a benched block and offers the promote control', () => {
+  it('reveals the promote control only once the benched block is selected', () => {
+    const onPromote = vi.fn()
+    const { container, rerender } = render(
+      <SequencerBlock
+        track={track}
+        left={0}
+        width={120}
+        benched
+        selected={false}
+        onSelect={vi.fn()}
+        onPromote={onPromote}
+      />,
+    )
+
+    // Unselected, the arrow stays out of the way of the key and the BPM.
+    expect(container.querySelector('.sq-block--benched')).not.toBeNull()
+    expect(screen.queryByLabelText('Promote Track 1')).toBeNull()
+
+    rerender(
+      <SequencerBlock
+        track={track}
+        left={0}
+        width={120}
+        benched
+        selected
+        onSelect={vi.fn()}
+        onPromote={onPromote}
+      />,
+    )
+    expect(screen.getByLabelText('Promote Track 1')).toBeInTheDocument()
+  })
+
+  it('promotes a benched block on a double click', () => {
+    const onPromote = vi.fn()
     const { container } = render(
       <SequencerBlock
         track={track}
@@ -478,12 +580,13 @@ describe('SequencerBlock sizing', () => {
         benched
         selected={false}
         onSelect={vi.fn()}
-        onPromote={vi.fn()}
+        onPromote={onPromote}
       />,
     )
 
-    expect(container.querySelector('.sq-block--benched')).not.toBeNull()
-    expect(screen.getByLabelText('Promote Track 1')).toBeInTheDocument()
+    fireEvent.doubleClick(container.querySelector('.sq-block') as HTMLElement)
+
+    expect(onPromote).toHaveBeenCalled()
   })
 
   it('never shows the auto-scale factor on a block', () => {
@@ -748,5 +851,115 @@ describe('Sequencer without a set', () => {
     render(<Sequencer activeSet={null} {...NOOPS} />)
 
     expect(screen.getByText(/create or select one/i)).toBeInTheDocument()
+  })
+})
+
+describe('Sequencer scrollbar', () => {
+  it('replaces the native bar with a centred track above the lanes', () => {
+    const tracklist = Array.from({ length: 6 }, (_, i) =>
+      makeEntry(makeTrack(i + 1, '08A', 128), i),
+    )
+    const { container } = renderSequencer(makeSet(tracklist))
+
+    const main = container.querySelector('.sq-main') as HTMLElement
+    Object.defineProperty(main, 'clientWidth', {
+      value: 400,
+      configurable: true,
+    })
+    Object.defineProperty(main, 'scrollWidth', {
+      value: 1600,
+      configurable: true,
+    })
+    act(() => {
+      fireEvent.scroll(main)
+    })
+
+    const bar = container.querySelector('.sq-scrollbar') as HTMLElement
+    const track = container.querySelector('.sq-scrollbar-track') as HTMLElement
+    const thumb = container.querySelector('.sq-scrollbar-thumb') as HTMLElement
+
+    // It sits between the ruler and the first lane, not at the bottom.
+    const lanes = container.querySelector('.sq-lanes') as HTMLElement
+    const order = Array.from(lanes.children)
+    expect(order.indexOf(bar)).toBe(
+      order.indexOf(container.querySelector('.sq-ruler') as HTMLElement) + 1,
+    )
+    // Roughly 60% of the visible width, and the thumb is proportional.
+    expect(Number.parseFloat(track.style.width)).toBeCloseTo(240, 5)
+    expect(Number.parseFloat(thumb.style.width)).toBeCloseTo(60, 5)
+  })
+
+  it('scrolls the timeline when the thumb is dragged', () => {
+    const tracklist = Array.from({ length: 6 }, (_, i) =>
+      makeEntry(makeTrack(i + 1, '08A', 128), i),
+    )
+    const { container } = renderSequencer(makeSet(tracklist))
+
+    const main = container.querySelector('.sq-main') as HTMLElement
+    Object.defineProperty(main, 'clientWidth', {
+      value: 400,
+      configurable: true,
+    })
+    Object.defineProperty(main, 'scrollWidth', {
+      value: 1600,
+      configurable: true,
+    })
+    act(() => {
+      fireEvent.scroll(main)
+    })
+
+    const thumb = container.querySelector('.sq-scrollbar-thumb') as HTMLElement
+    act(() => {
+      fireEvent.pointerDown(thumb, { clientX: 0, button: 0 })
+      fireEvent.pointerMove(window, { clientX: 90 })
+      fireEvent.pointerUp(window)
+    })
+
+    // 90px along a 180px travel is half of the 1200px of scrollable width.
+    expect(main.scrollLeft).toBeCloseTo(600, 0)
+  })
+})
+
+describe('Sequencer bench lane defaults', () => {
+  it('queues a dropped track after the committed spine, not under the pointer', () => {
+    // Two committed tracks, so the spine ends well after the start time.
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '08A', 128), 1),
+    ]
+    const pool = [makePoolEntry(makeTrack(12, '09A', 128), 0)]
+    renderSequencer(makeSet(tracklist, pool))
+
+    const committedEnd = screen
+      .getByLabelText('Track 2')
+      .style.left.replace('px', '')
+
+    fireEvent.drop(screen.getByLabelText('Alt 1 lane'), {
+      dataTransfer: dataTransfer({ [TRACK_DRAG_MIME]: '12' }),
+    })
+
+    // It lands past where the last committed block starts.
+    const benched = screen.getByLabelText('Track 12')
+    expect(Number.parseFloat(benched.style.left)).toBeGreaterThan(
+      Number.parseFloat(committedEnd),
+    )
+  })
+
+  it('sorts a lane alphabetically from the lane header', () => {
+    const pool = [
+      makePoolEntry({ ...makeTrack(3, '08A', 128), title: 'Zulu' }, 0),
+      makePoolEntry({ ...makeTrack(4, '08A', 128), title: 'Alpha' }, 1),
+      makePoolEntry({ ...makeTrack(5, '08A', 128), title: 'Mike' }, 2),
+    ]
+    renderSequencer(makeSet([], pool))
+
+    act(() => {
+      screen.getByLabelText('Sort lane Alt 1').click()
+    })
+
+    const at = (label: string) =>
+      Number.parseFloat(screen.getByLabelText(label).style.left)
+    expect(at('Alpha')).toBeLessThan(at('Mike'))
+    expect(at('Mike')).toBeLessThan(at('Zulu'))
   })
 })

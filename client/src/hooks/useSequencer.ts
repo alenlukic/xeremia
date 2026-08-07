@@ -145,6 +145,10 @@ export function buildOverrideMap(
  * [base·(1−0.083), base·(1+0.0905)] — the BPM pitch window always wins. When
  * the clamp makes a pin unreachable, the next run continues from the length the
  * clamp allowed, so the lane never gains a gap or an overlap.
+ *
+ * `targetEndMin` scales the final unpinned run the same way, so changing the
+ * set's end time stretches or squeezes the tracks to fit it — within the pitch
+ * window, which still wins.
  */
 export function layoutCommitted(
   entries: TracklistEntry[],
@@ -152,6 +156,7 @@ export function layoutCommitted(
   startMin: number,
   durationOf: (e: TracklistEntry) => number = (e) =>
     trackLengthMinutes(e.track),
+  targetEndMin?: number | null,
 ): LaidBlock[] {
   const base = (e: TracklistEntry) =>
     ov[e.track_id]?.durOv ?? Math.round(PLAY_FRACTION * durationOf(e) * 10) / 10
@@ -196,13 +201,24 @@ export function layoutCommitted(
       }
       i = j + 1
     } else {
-      for (const e of list.slice(i)) {
-        const d = natural(e)
+      const seg = list.slice(i)
+      const nat = seg.reduce((s, e) => s + natural(e), 0)
+      // The set's end time behaves as a pin on the last run, so the tracks
+      // re-scale to fill the window rather than ignoring it.
+      const f =
+        targetEndMin != null && nat > 0
+          ? Math.max(0.05, (targetEndMin - cursor) / nat)
+          : 1
+      for (const e of seg) {
+        const n = natural(e)
+        const b = base(e)
+        const d =
+          f === 1 ? n : Math.max(b * DUR_MIN, Math.min(b * DUR_MAX, n * f))
         out.push({
           entry: e,
           t: cursor,
           dur: d,
-          scale: 1,
+          scale: n > 0 ? d / n : 1,
           pinned: false,
           fallback: !hasMeasuredDuration(e.track),
         })
@@ -330,8 +346,17 @@ export interface UseSequencerArgs {
   subgroups: PoolSubgroup[]
   memberships: PoolSubgroupMembership[]
   startMin: number
+  /** Target end of the set; scales the closing run to fit the window. */
+  endMin?: number | null
   /** Rehydrates the set after a saved override. */
   onSaved?: () => void
+  /** Bench lane positions and preview lengths, persisted on the set. */
+  benchTimes?: Record<number, number>
+  benchOverrides?: OverrideMap
+  onBenchChange?: (next: {
+    times: Record<number, number>
+    overrides: OverrideMap
+  }) => void
 }
 
 export function useSequencer({
@@ -341,7 +366,11 @@ export function useSequencer({
   subgroups,
   memberships,
   startMin,
+  endMin,
   onSaved,
+  benchTimes,
+  benchOverrides,
+  onBenchChange,
 }: UseSequencerArgs) {
   // Unsaved edits are stamped with the set they belong to, so a different set
   // never inherits them and no reset effect is needed.
@@ -354,19 +383,23 @@ export function useSequencer({
     [pendingState, setId],
   )
   const [saveError, setSaveError] = useState<string | null>(null)
-  // Benched candidates have no tracklist row, so their free times and their
-  // preview lengths stay view state until the DJ commits them.
-  const [benchState, setBenchState] = useState<{
-    setId: number | null
-    times: Record<number, number>
-    overrides: OverrideMap
-  }>({ setId, times: {}, overrides: {} })
+  // Benched candidates have no tracklist row, so their free times and preview
+  // lengths are stored on the set alongside the other sequencer settings —
+  // a lane position is part of the plan and has to survive a reload.
   const bench = useMemo(
-    () =>
-      benchState.setId === setId
-        ? benchState
-        : { setId, times: {}, overrides: {} },
-    [benchState, setId],
+    () => ({ setId, times: benchTimes ?? {}, overrides: benchOverrides ?? {} }),
+    [setId, benchTimes, benchOverrides],
+  )
+  const setBenchState = useCallback(
+    (
+      fn: (prev: { times: Record<number, number>; overrides: OverrideMap }) => {
+        times: Record<number, number>
+        overrides: OverrideMap
+      },
+    ) => {
+      onBenchChange?.(fn({ times: bench.times, overrides: bench.overrides }))
+    },
+    [bench.times, bench.overrides, onBenchChange],
   )
   const savedRef = useRef(onSaved)
   useEffect(() => {
@@ -379,8 +412,8 @@ export function useSequencer({
   )
 
   const blocks = useMemo(
-    () => layoutCommitted(tracklist, overrides, startMin),
-    [tracklist, overrides, startMin],
+    () => layoutCommitted(tracklist, overrides, startMin, undefined, endMin),
+    [tracklist, overrides, startMin, endMin],
   )
 
   const lanes = useMemo(
@@ -404,33 +437,40 @@ export function useSequencer({
 
   const setBenchTime = useCallback(
     (trackId: number, minutes: number) => {
-      setBenchState((prev) => {
-        const base =
-          prev.setId === setId ? prev : { setId, times: {}, overrides: {} }
-        return {
-          ...base,
-          setId,
-          times: { ...base.times, [trackId]: snapMinutes(minutes) },
-        }
-      })
+      setBenchState((prev) => ({
+        ...prev,
+        times: { ...prev.times, [trackId]: snapMinutes(minutes) },
+      }))
     },
-    [setId],
+    [setBenchState],
+  )
+
+  /** Set many bench times at once, e.g. when a lane is sorted. */
+  const setBenchTimes = useCallback(
+    (entries: Record<number, number>) => {
+      const snapped: Record<number, number> = {}
+      for (const [id, minutes] of Object.entries(entries)) {
+        snapped[Number(id)] = snapMinutes(minutes)
+      }
+      setBenchState((prev) => ({
+        ...prev,
+        times: { ...prev.times, ...snapped },
+      }))
+    },
+    [setBenchState],
   )
 
   const patchBenchOverride = useCallback(
     (trackId: number, patch: Partial<BlockOverride>) => {
-      setBenchState((prev) => {
-        const base =
-          prev.setId === setId ? prev : { setId, times: {}, overrides: {} }
-        const current = base.overrides[trackId] ?? {}
-        return {
-          ...base,
-          setId,
-          overrides: { ...base.overrides, [trackId]: { ...current, ...patch } },
-        }
-      })
+      setBenchState((prev) => ({
+        ...prev,
+        overrides: {
+          ...prev.overrides,
+          [trackId]: { ...(prev.overrides[trackId] ?? {}), ...patch },
+        },
+      }))
     },
-    [setId],
+    [setBenchState],
   )
 
   const resetBenchOverride = useCallback(
@@ -507,6 +547,7 @@ export function useSequencer({
     patchOverride,
     resetOverrides,
     setBenchTime,
+    setBenchTimes,
     patchBenchOverride,
     resetBenchOverride,
   }

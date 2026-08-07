@@ -48,7 +48,7 @@ export function SequencerFooter({
       <BlockInspector
         key={`committed-${block.entry.track_id}`}
         title={block.entry.track?.title ?? ''}
-        meta={`${block.entry.track?.camelot_code ?? '—'} · ${formatHM(block.t)}–${formatHM(block.t + block.dur)}`}
+        meta={`${formatHM(block.t)}–${formatHM(block.t + block.dur)}`}
         scale={block.scale}
         bpmSeed={effectivePlayedBpm(block, overrides)}
         playsSeed={block.dur}
@@ -71,7 +71,7 @@ export function SequencerFooter({
     <BlockInspector
       key={`benched-${benched.entry.track_id}`}
       title={benched.entry.track?.title ?? ''}
-      meta={`${benched.entry.track?.camelot_code ?? '—'} · benched · ${formatHM(benched.t)}`}
+      meta={`benched · ${formatHM(benched.t)}`}
       scale={1}
       bpmSeed={benched.entry.track?.bpm ?? null}
       playsSeed={benched.dur}
@@ -148,7 +148,7 @@ function BlockInspector({
           onChange={(e) => setPlays(e.target.value)}
           onBlur={() => onPatch({ durOv: parseMinutes(plays) })}
         />
-        m
+        <span className="sq-inspector-unit">m</span>
       </label>
       <label>
         ends

@@ -45,6 +45,38 @@ function renderMatrix(pool: PoolEntry[], onDropTrack = vi.fn()) {
   return { ...view, onDropTrack }
 }
 
+it('lights the grid for a track focused elsewhere in the workspace', () => {
+  const pool = [
+    makeEntry(makeTrack(1, '08A', 128), 1),
+    makeEntry(makeTrack(2, '09A', 128), 2),
+    makeEntry(makeTrack(3, '03B', 128), 3),
+  ]
+  const { rerender } = render(
+    <ExplorerMatrix pool={pool} onDropTrack={vi.fn()} focus={null} />,
+  )
+
+  // Nothing is lit until a tile elsewhere is selected.
+  expect(cellFor('09A', 128, 1).className).not.toContain('xm-cell--dim')
+
+  rerender(
+    <ExplorerMatrix
+      pool={pool}
+      onDropTrack={vi.fn()}
+      focus={{ camelot_code: '08A', bpm: 128 }}
+    />,
+  )
+
+  // Same lighting as clicking that cell: relatives paint, the rest dim.
+  const related = cellFor('09A', 128, 1)
+  expect(related.className).not.toContain('xm-cell--dim')
+  expect(related.style.backgroundColor).not.toBe('')
+  expect(cellFor('03B', 128, 1).className).toContain('xm-cell--dim')
+
+  // Clearing the focus puts the grid back.
+  rerender(<ExplorerMatrix pool={pool} onDropTrack={vi.fn()} focus={null} />)
+  expect(cellFor('03B', 128, 1).className).not.toContain('xm-cell--dim')
+})
+
 describe('ExplorerMatrix axes', () => {
   it('renders 24 literal Camelot rows and 26 BPM columns whatever the pool holds', () => {
     const { container } = renderMatrix([])
@@ -201,7 +233,9 @@ describe('ExplorerMatrix tooltip and legend', () => {
 
     const relTip = screen.getByRole('tooltip')
     expect(relTip.textContent).toContain('meet ≈')
-    expect(relTip.querySelectorAll('.xm-tip-move')).toHaveLength(2)
+    // The meet row is the last thing on the card; the pitch-move rows are gone.
+    expect(relTip.querySelectorAll('.xm-tip-move')).toHaveLength(0)
+    expect(relTip.textContent).not.toContain('plays as-is')
   })
 
   it('shows no legend, keeping the row it used for the matrix', () => {

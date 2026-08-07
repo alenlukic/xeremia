@@ -19,6 +19,8 @@ export interface SequencerView {
   tickMin: number
   pxPerMin: number
   view: 'lanes' | 'list'
+  benchTimes: Record<number, number>
+  benchOverrides: Record<number, Record<string, number | null>>
 }
 
 export function defaultView(): SequencerView {
@@ -28,7 +30,21 @@ export function defaultView(): SequencerView {
     tickMin: DEFAULT_TICK_MIN,
     pxPerMin: DEFAULT_PX_PER_MIN,
     view: 'lanes',
+    benchTimes: {},
+    benchOverrides: {},
   }
+}
+
+/** Stored keys are strings; the app keys bench state by numeric track id. */
+function numericKeys<V>(raw: Record<string, V> | undefined): Record<number, V> {
+  const out: Record<number, V> = {}
+  for (const [k, v] of Object.entries(raw ?? {})) {
+    const id = Number(k)
+    if (Number.isInteger(id)) {
+      out[id] = v
+    }
+  }
+  return out
 }
 
 /** Read the stored blob, falling back per field so a partial row still works. */
@@ -45,6 +61,8 @@ export function fromSettings(raw: SequencerSettings | null | undefined) {
     tickMin: num(raw.tick_minutes, d.tickMin),
     pxPerMin: num(raw.px_per_min, d.pxPerMin),
     view: raw.view === 'list' ? ('list' as const) : ('lanes' as const),
+    benchTimes: numericKeys(raw.bench_times),
+    benchOverrides: numericKeys(raw.bench_overrides),
   }
 }
 
@@ -55,6 +73,8 @@ function toSettings(v: SequencerView): SequencerSettings {
     tick_minutes: v.tickMin,
     px_per_min: v.pxPerMin,
     view: v.view,
+    bench_times: v.benchTimes,
+    bench_overrides: v.benchOverrides,
   }
 }
 

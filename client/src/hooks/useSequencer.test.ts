@@ -172,6 +172,36 @@ describe('layoutCommitted', () => {
     entry(3, 2, track(3, 124, 600)),
   ]
 
+  it('re-scales the closing run to reach the set end time', () => {
+    const ov = buildOverrideMap(tracks)
+    const natural = layoutCommitted(tracks, ov, START)
+    const naturalEnd = natural[2].t + natural[2].dur
+
+    // Ask for a shorter set: every block shrinks proportionally to fit.
+    const target = START + (naturalEnd - START) * 0.95
+    const tighter = layoutCommitted(tracks, ov, START, undefined, target)
+    expect(tighter[2].t + tighter[2].dur).toBeCloseTo(target, 5)
+    for (let i = 0; i < 3; i++) {
+      expect(tighter[i].dur).toBeLessThan(natural[i].dur)
+      expect(tighter[i].scale).toBeLessThan(1)
+    }
+  })
+
+  it('lets the pitch window beat an unreachable end time', () => {
+    const ov = buildOverrideMap(tracks)
+    const natural = layoutCommitted(tracks, ov, START)
+    const naturalEnd = natural[2].t + natural[2].dur
+
+    // Half the natural run is far outside the pitch bounds, so the blocks
+    // stop at the clamp and the set simply ends early.
+    const target = START + (naturalEnd - START) * 0.5
+    const clamped = layoutCommitted(tracks, ov, START, undefined, target)
+    expect(clamped[2].t + clamped[2].dur).toBeGreaterThan(target)
+    for (const block of clamped) {
+      expect(block.scale).toBeGreaterThanOrEqual(1 - 0.083 - 1e-9)
+    }
+  })
+
   it('packs blocks end to end from the start time', () => {
     const blocks = layoutCommitted(tracks, buildOverrideMap(tracks), START)
     expect(blocks).toHaveLength(3)
@@ -447,26 +477,55 @@ describe('useSequencer', () => {
     expect(result.current.blocks[0].dur).toBeCloseTo(7, 5)
   })
 
-  it('keeps benched free times and preview lengths as view state', () => {
-    const { result } = mount()
-    expect(result.current.benchLanes).toHaveLength(1)
+  it('reports benched free times and preview lengths for the caller to persist', () => {
+    // Bench positions live on the set, so the hook is controlled: it reads the
+    // stored values and reports edits rather than holding them itself.
+    const onBenchChange = vi.fn()
+    const { result, rerender } = renderHook(
+      (props: {
+        benchTimes?: Record<number, number>
+        benchOverrides?: Record<number, { durOv?: number | null }>
+      }) =>
+        useSequencer({
+          setId: 1,
+          tracklist,
+          pool: [poolEntry(10, 2)],
+          subgroups: [],
+          memberships: [],
+          startMin: START,
+          benchTimes: props.benchTimes,
+          benchOverrides: props.benchOverrides,
+          onBenchChange,
+        }),
+      { initialProps: {} },
+    )
+
     expect(result.current.benchLanes[0].blocks[0].t).toBe(START)
 
     act(() => {
       result.current.setBenchTime(2, 420.3)
     })
-    // A lane drag lands on the half-minute grid.
+    // A lane drag lands on the half-minute grid, reported not stored.
+    expect(onBenchChange).toHaveBeenCalledWith(
+      expect.objectContaining({ times: { 2: 420.5 } }),
+    )
+
+    // Fed back in, it lays the block out at that time.
+    rerender({ benchTimes: { 2: 420.5 } })
     expect(result.current.benchLanes[0].blocks[0].t).toBe(420.5)
 
     act(() => {
       result.current.patchBenchOverride(2, { durOv: 3 })
     })
-    expect(result.current.benchLanes[0].blocks[0].dur).toBe(3)
+    expect(onBenchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ overrides: { 2: { durOv: 3 } } }),
+    )
     expect(http.tracklistSetOverrides).not.toHaveBeenCalled()
 
-    act(() => {
-      result.current.resetBenchOverride(2)
-    })
+    rerender({ benchTimes: { 2: 420.5 }, benchOverrides: { 2: { durOv: 3 } } })
+    expect(result.current.benchLanes[0].blocks[0].dur).toBe(3)
+
+    rerender({ benchTimes: { 2: 420.5 }, benchOverrides: {} })
     expect(result.current.benchLanes[0].blocks[0].dur).toBeCloseTo(4.2, 5)
   })
 

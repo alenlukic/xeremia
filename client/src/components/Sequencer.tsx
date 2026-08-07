@@ -3,6 +3,7 @@ import { SequencerLanes } from './SequencerLanes'
 import { SequencerTracklist } from './SequencerTracklist'
 import { SequencerFooter } from './SequencerFooter'
 import { laneKeyOf, tickForZoom, useSequencer } from '../hooks/useSequencer'
+import type { BlockOverride } from '../hooks/useSequencer'
 import type { LaneKey } from '../hooks/useSequencer'
 import { exportSetM3u8 } from '../api/http'
 import {
@@ -11,7 +12,7 @@ import {
   DEFAULT_END_MIN,
 } from '../hooks/useSequencerSettings'
 import { formatHM, parseTimeInput } from '../utils/time'
-import type { HydratedSet } from '../types'
+import type { HydratedSet, Track } from '../types'
 
 // The Sequencer widget. It absorbs the tracklist: the committed lane is the
 // server tracklist, and the Tracklist view is the same data as a list.
@@ -36,7 +37,11 @@ interface Props {
   onRemoveBenched: (trackId: number) => void
   onAddLane: () => void
   onDeleteLane: (subgroupId: number) => void
+  onRenameLane: (subgroupId: number, name: string) => void
+  onReorderLanes: (subgroupIds: number[]) => void
   onSaved?: () => void
+  /** Reports the selected block's track so other widgets can follow it. */
+  onFocusTrack?: (track: Track | null) => void
 }
 
 export function Sequencer({
@@ -50,7 +55,10 @@ export function Sequencer({
   onRemoveBenched,
   onAddLane,
   onDeleteLane,
+  onRenameLane,
+  onReorderLanes,
   onSaved,
+  onFocusTrack,
 }: Props) {
   // Every one of these is persisted on the set, so a reload restores them.
   const settings = useSequencerSettings(
@@ -78,7 +86,17 @@ export function Sequencer({
     subgroups: activeSet?.pool_subgroups ?? [],
     memberships: activeSet?.pool_subgroup_memberships ?? [],
     startMin,
+    endMin: targetEndMin,
     onSaved,
+    benchTimes: settings.benchTimes,
+    benchOverrides: settings.benchOverrides,
+    onBenchChange: useCallback(
+      (next: {
+        times: Record<number, number>
+        overrides: Record<number, Partial<BlockOverride>>
+      }) => patch({ benchTimes: next.times, benchOverrides: next.overrides }),
+      [patch],
+    ),
   })
 
   // Clamp on read as well as on write: a value persisted before these limits
@@ -108,6 +126,12 @@ export function Sequencer({
     }
     return null
   }, [selectedBlock, selectedTrackId, sequencer.benchLanes])
+
+  const focusTrack =
+    selectedBlock?.entry.track ?? benchedSelection?.entry.track ?? null
+  useEffect(() => {
+    onFocusTrack?.(focusTrack ?? null)
+  }, [focusTrack, onFocusTrack])
 
   /** Where the footer's Bench action sends a committed block. */
   const firstLane: LaneKey = sequencer.lanes.length
@@ -170,11 +194,10 @@ export function Sequencer({
 
   return (
     <div className="sq-body">
-      {/* A narrow sticky rail beside the lanes: the view switch and the run
-          window. Everything else the toolbar carried is gone — the tick
-          follows the zoom and the zoom follows ctrl/cmd + wheel. */}
-      <div className="sq-rail">
-        <div className="sq-rail-group">
+      {/* One thin row: the view switch and the run window. The tick follows
+          the zoom, and the zoom follows ctrl/cmd + wheel. */}
+      <div className="sq-toolbar">
+        <div className="sq-view-pills">
           <button
             className={`ws-pill${view === 'lanes' ? ' ws-pill--on' : ''}`}
             aria-pressed={view === 'lanes'}
@@ -190,42 +213,40 @@ export function Sequencer({
             Tracklist
           </button>
         </div>
-        <div className="sq-rail-group">
-          <label className="sq-time-field">
-            start
-            <input
-              aria-label="Set start time"
-              value={startDraft}
-              onChange={(e) => setStartDraft(e.target.value)}
-              onBlur={() => {
-                const parsed = parseTimeInput(startDraft)
-                if (parsed != null) {
-                  patch({ startMin: parsed })
-                  setStartDraft(formatHM(parsed))
-                } else {
-                  setStartDraft(formatHM(startMin))
-                }
-              }}
-            />
-          </label>
-          <label className="sq-time-field">
-            end
-            <input
-              aria-label="Set end time"
-              value={endDraft}
-              onChange={(e) => setEndDraft(e.target.value)}
-              onBlur={() => {
-                const parsed = parseTimeInput(endDraft)
-                if (parsed != null) {
-                  patch({ endMin: parsed })
-                  setEndDraft(formatHM(parsed))
-                } else {
-                  setEndDraft(formatHM(targetEndMin))
-                }
-              }}
-            />
-          </label>
-        </div>
+        <label className="sq-time-field">
+          start
+          <input
+            aria-label="Set start time"
+            value={startDraft}
+            onChange={(e) => setStartDraft(e.target.value)}
+            onBlur={() => {
+              const parsed = parseTimeInput(startDraft)
+              if (parsed != null) {
+                patch({ startMin: parsed })
+                setStartDraft(formatHM(parsed))
+              } else {
+                setStartDraft(formatHM(startMin))
+              }
+            }}
+          />
+        </label>
+        <label className="sq-time-field">
+          end
+          <input
+            aria-label="Set end time"
+            value={endDraft}
+            onChange={(e) => setEndDraft(e.target.value)}
+            onBlur={() => {
+              const parsed = parseTimeInput(endDraft)
+              if (parsed != null) {
+                patch({ endMin: parsed })
+                setEndDraft(formatHM(parsed))
+              } else {
+                setEndDraft(formatHM(targetEndMin))
+              }
+            }}
+          />
+        </label>
         {view === 'list' && (
           <button className="ws-pill" onClick={handleExport}>
             Export
@@ -240,6 +261,7 @@ export function Sequencer({
         )}
         {view === 'lanes' ? (
           <SequencerLanes
+            scrollRef={mainRef}
             blocks={sequencer.blocks}
             benchLanes={sequencer.benchLanes}
             startMin={startMin}
@@ -254,8 +276,11 @@ export function Sequencer({
             onBenchToLane={onBenchToLane}
             onMoveBench={onMoveBench}
             onSetBenchTime={sequencer.setBenchTime}
+            onSetBenchTimes={sequencer.setBenchTimes}
             onAddLane={onAddLane}
             onDeleteLane={onDeleteLane}
+            onRenameLane={onRenameLane}
+            onReorderLanes={onReorderLanes}
           />
         ) : (
           <SequencerTracklist
