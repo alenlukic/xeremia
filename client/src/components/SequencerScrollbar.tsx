@@ -24,7 +24,12 @@ interface Metrics {
 
 export function SequencerScrollbar({ scrollRef, endOffset }: Props) {
   const [m, setM] = useState<Metrics>({ left: 0, view: 0, total: 0 })
-  const dragRef = useRef<{ x0: number; left0: number } | null>(null)
+  const dragRef = useRef<{
+    x0: number
+    left0: number
+    pointerId: number
+    captureEl: HTMLElement
+  } | null>(null)
 
   useEffect(() => {
     const el = scrollRef.current
@@ -67,7 +72,20 @@ export function SequencerScrollbar({ scrollRef, endOffset }: Props) {
         return
       }
       e.preventDefault()
-      dragRef.current = { x0: e.clientX, left0: m.left }
+      const captureEl = e.currentTarget
+      if (typeof captureEl.setPointerCapture === 'function') {
+        try {
+          captureEl.setPointerCapture(e.pointerId)
+        } catch {
+          /* jsdom and some UAs may not support pointer capture */
+        }
+      }
+      dragRef.current = {
+        x0: e.clientX,
+        left0: m.left,
+        pointerId: e.pointerId,
+        captureEl,
+      }
     },
     [m.left],
   )
@@ -81,14 +99,40 @@ export function SequencerScrollbar({ scrollRef, endOffset }: Props) {
       }
       el.scrollLeft = z.left0 + ((e.clientX - z.x0) / travel) * scrollable
     }
+    function releaseCapture() {
+      const drag = dragRef.current
+      if (!drag) {
+        return
+      }
+      if (
+        typeof drag.captureEl.hasPointerCapture !== 'function' ||
+        typeof drag.captureEl.releasePointerCapture !== 'function'
+      ) {
+        return
+      }
+      try {
+        if (drag.captureEl.hasPointerCapture(drag.pointerId)) {
+          drag.captureEl.releasePointerCapture(drag.pointerId)
+        }
+      } catch {
+        /* capture may already be released */
+      }
+    }
     function onUp() {
+      releaseCapture()
+      dragRef.current = null
+    }
+    function onCancel() {
+      releaseCapture()
       dragRef.current = null
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
     }
   }, [scrollRef, travel, scrollable])
 

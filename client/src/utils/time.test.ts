@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDuration,
   formatHM,
-  formatMinutes,
-  parseMinutes,
   parseTimeInput,
 } from './time'
 
@@ -36,24 +34,6 @@ describe('parseTimeInput', () => {
     expect(parseTimeInput('')).toBeNull()
     expect(parseTimeInput('later')).toBeNull()
     expect(parseTimeInput('6:75')).toBeNull()
-  })
-})
-
-describe('parseMinutes', () => {
-  it('accepts decimals and rounds to a tenth', () => {
-    expect(parseMinutes('6.53')).toBe(6.5)
-  })
-
-  it('rejects zero, negatives, and text', () => {
-    expect(parseMinutes('0')).toBeNull()
-    expect(parseMinutes('-3')).toBeNull()
-    expect(parseMinutes('abc')).toBeNull()
-  })
-})
-
-describe('formatMinutes', () => {
-  it('renders one decimal place', () => {
-    expect(formatMinutes(6.44)).toBe('6.4')
   })
 })
 

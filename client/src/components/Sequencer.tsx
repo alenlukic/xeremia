@@ -35,6 +35,12 @@ import {
 } from '../hooks/useSequencerSettings'
 import { formatHM, parseTimeInput } from '../utils/time'
 import type { HydratedSet, Track } from '../types'
+import {
+  SET_END_MAX,
+  SET_END_MIN,
+  SET_START_MAX,
+  SET_START_MIN,
+} from '../constants/sequencer'
 
 // The Sequencer widget. It absorbs the tracklist: the committed lane is the
 // server tracklist, and the Tracklist view is the same data as a list.
@@ -59,6 +65,44 @@ function isEditableTarget(target: EventTarget | null): boolean {
   )
 }
 
+function migrateDefaultLaneKeys<T>(
+  source: Record<string, T>,
+  laneId: number,
+): Record<string, T> {
+  const next: Record<string, T> = {}
+  for (const [key, value] of Object.entries(source)) {
+    if (!key.startsWith('default:')) {
+      next[key] = value
+      continue
+    }
+    const migratedKey = `${laneId}:${key.slice('default:'.length)}`
+    next[migratedKey] = next[migratedKey] ?? value
+  }
+  return next
+}
+
+function pickKeys<T>(
+  source: Record<string, T>,
+  allowed: Set<string>,
+): Record<string, T> {
+  const next: Record<string, T> = {}
+  for (const [key, value] of Object.entries(source)) {
+    if (allowed.has(key)) {
+      next[key] = value
+    }
+  }
+  return next
+}
+
+function sameRecord<T>(a: Record<string, T>, b: Record<string, T>): boolean {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) {
+    return false
+  }
+  return aKeys.every((key) => Object.is(a[key], b[key]))
+}
+
 interface Props {
   activeSet: HydratedSet | null
   onAddCommitted: (trackId: number, position: number) => MutationResult
@@ -79,6 +123,8 @@ interface Props {
   onSaved?: () => void
   /** Reports the selected block's track so other widgets can follow it. */
   onFocusTrack?: (track: Track | null) => void
+  /** Surfaces non-inline errors through the workspace-level toast. */
+  onUiError?: (message: string | null) => void
 }
 
 export function Sequencer({
@@ -96,6 +142,7 @@ export function Sequencer({
   onReorderLanes,
   onSaved,
   onFocusTrack,
+  onUiError,
 }: Props) {
   // Every one of these is persisted on the set, so a reload restores them.
   const settings = useSequencerSettings(
@@ -111,6 +158,40 @@ export function Sequencer({
   const pasteInFlightRef = useRef(false)
   const [startDraft, setStartDraft] = useState(formatHM(DEFAULT_START_MIN))
   const [endDraft, setEndDraft] = useState(formatHM(DEFAULT_END_MIN))
+
+  const commitStartDraft = useCallback(() => {
+    const parsed = parseTimeInput(startDraft)
+    if (parsed == null) {
+      setStartDraft(formatHM(startMin))
+      return
+    }
+    const clamped = Math.min(SET_START_MAX, Math.max(SET_START_MIN, parsed))
+    if (clamped >= targetEndMin) {
+      setClipboardError('Start time must be before end time.')
+      setStartDraft(formatHM(startMin))
+      return
+    }
+    patch({ startMin: clamped })
+    setStartDraft(formatHM(clamped))
+    setClipboardError(null)
+  }, [patch, startDraft, startMin, targetEndMin])
+
+  const commitEndDraft = useCallback(() => {
+    const parsed = parseTimeInput(endDraft)
+    if (parsed == null) {
+      setEndDraft(formatHM(targetEndMin))
+      return
+    }
+    const clamped = Math.min(SET_END_MAX, Math.max(SET_END_MIN, parsed))
+    if (clamped <= startMin) {
+      setClipboardError('End time must be after start time.')
+      setEndDraft(formatHM(targetEndMin))
+      return
+    }
+    patch({ endMin: clamped })
+    setEndDraft(formatHM(clamped))
+    setClipboardError(null)
+  }, [endDraft, patch, startMin, targetEndMin])
 
   // Keep the text inputs in step with the stored values.
   useEffect(() => {
@@ -139,6 +220,59 @@ export function Sequencer({
       [patch],
     ),
   })
+
+  useEffect(() => {
+    const firstRealLaneId = sequencer.lanes[0]?.group?.id ?? null
+    const maybeMigrate = <T,>(source: Record<string, T>) =>
+      firstRealLaneId == null
+        ? source
+        : migrateDefaultLaneKeys(source, firstRealLaneId)
+
+    const migratedBenchTimes = maybeMigrate(settings.benchTimes)
+    const migratedBenchOverrides = maybeMigrate(settings.benchOverrides)
+    const migratedStarredTiles = maybeMigrate(settings.starredTiles)
+    const migratedPinnedTiles = maybeMigrate(settings.pinnedTiles)
+
+    const validBenchKeys = new Set(
+      sequencer.benchLanes.flatMap((lane) =>
+        lane.blocks.map((block) => block.placementKey),
+      ),
+    )
+    const validTileKeys = new Set<string>([
+      ...sequencer.blocks.map((block) => `committed:${block.entry.track_id}`),
+      ...validBenchKeys,
+    ])
+
+    const nextBenchTimes = pickKeys(migratedBenchTimes, validBenchKeys)
+    const nextBenchOverrides = pickKeys(migratedBenchOverrides, validBenchKeys)
+    const nextStarredTiles = pickKeys(migratedStarredTiles, validTileKeys)
+    const nextPinnedTiles = pickKeys(migratedPinnedTiles, validTileKeys)
+
+    if (
+      sameRecord(nextBenchTimes, settings.benchTimes) &&
+      sameRecord(nextBenchOverrides, settings.benchOverrides) &&
+      sameRecord(nextStarredTiles, settings.starredTiles) &&
+      sameRecord(nextPinnedTiles, settings.pinnedTiles)
+    ) {
+      return
+    }
+
+    patch({
+      benchTimes: nextBenchTimes,
+      benchOverrides: nextBenchOverrides,
+      starredTiles: nextStarredTiles,
+      pinnedTiles: nextPinnedTiles,
+    })
+  }, [
+    patch,
+    sequencer.benchLanes,
+    sequencer.blocks,
+    sequencer.lanes,
+    settings.benchOverrides,
+    settings.benchTimes,
+    settings.pinnedTiles,
+    settings.starredTiles,
+  ])
 
   // Clamp on read as well as on write: a value persisted before these limits
   // existed must not survive as an unusable zoom.
@@ -303,9 +437,15 @@ export function Sequencer({
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      /* export failure is non-critical */
+      onUiError?.('Could not export playlist.')
     }
-  }, [activeSet, sequencer.blocks])
+  }, [activeSet, onUiError, sequencer.blocks])
+
+  useEffect(() => {
+    if (sequencer.saveError) {
+      onUiError?.(sequencer.saveError)
+    }
+  }, [onUiError, sequencer.saveError])
 
   const captureSelection = useCallback(
     (mode: ClipboardMode) => {
@@ -614,13 +754,12 @@ export function Sequencer({
             aria-label="Set start time"
             value={startDraft}
             onChange={(e) => setStartDraft(e.target.value)}
-            onBlur={() => {
-              const parsed = parseTimeInput(startDraft)
-              if (parsed != null) {
-                patch({ startMin: parsed })
-                setStartDraft(formatHM(parsed))
-              } else {
-                setStartDraft(formatHM(startMin))
+            onBlur={commitStartDraft}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitStartDraft()
+                e.currentTarget.blur()
               }
             }}
           />
@@ -631,13 +770,12 @@ export function Sequencer({
             aria-label="Set end time"
             value={endDraft}
             onChange={(e) => setEndDraft(e.target.value)}
-            onBlur={() => {
-              const parsed = parseTimeInput(endDraft)
-              if (parsed != null) {
-                patch({ endMin: parsed })
-                setEndDraft(formatHM(parsed))
-              } else {
-                setEndDraft(formatHM(targetEndMin))
+            onBlur={commitEndDraft}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitEndDraft()
+                e.currentTarget.blur()
               }
             }}
           />
@@ -704,6 +842,9 @@ export function Sequencer({
                 () => onSaved?.(),
               )
             }}
+            onReorder={onReorder}
+            onAddCommitted={onAddCommitted}
+            onPromote={onPromote}
           />
         )}
       </div>

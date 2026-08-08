@@ -883,6 +883,56 @@ describe('Sequencer tracklist view', () => {
       'Night Set',
     )
   })
+
+  it('reorders a tracklist row dropped onto another row', () => {
+    const onReorder = vi.fn()
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '09A', 128), 1),
+      makeEntry(makeTrack(3, '10A', 128), 2),
+    ]
+    const { container } = renderSequencer(makeSet(tracklist), { onReorder })
+    act(() => {
+      screen.getByRole('button', { name: 'Tracklist' }).click()
+    })
+    const rows = container.querySelectorAll('.sq-list-row')
+    const dt = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+      types: [] as string[],
+      getData: () => '',
+    }
+    fireEvent.dragStart(rows[0], { dataTransfer: dt })
+    fireEvent.dragOver(rows[2], { dataTransfer: dt })
+    fireEvent.drop(rows[2], { dataTransfer: dt })
+    expect(onReorder).toHaveBeenCalledWith(1, 2)
+  })
+
+  it('inserts a browse track dropped onto a tracklist row', () => {
+    const onAddCommitted = vi.fn()
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '09A', 128), 1),
+    ]
+    const { container } = renderSequencer(makeSet(tracklist), {
+      onAddCommitted,
+    })
+    act(() => {
+      screen.getByRole('button', { name: 'Tracklist' }).click()
+    })
+    const rows = container.querySelectorAll('.sq-list-row')
+    fireEvent.drop(rows[1], {
+      dataTransfer: {
+        types: [TRACK_DRAG_MIME],
+        getData: (m: string) => (m === TRACK_DRAG_MIME ? '99' : ''),
+        setData: vi.fn(),
+        effectAllowed: '',
+        dropEffect: '',
+      },
+    })
+    expect(onAddCommitted).toHaveBeenCalledWith(99, 1)
+  })
 })
 
 describe('Sequencer inspector footer', () => {

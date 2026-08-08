@@ -15,15 +15,20 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import sys
 from typing import List, Optional, Tuple
 
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 
 from src.config import PROCESSED_MUSIC_DIR
 from src.data_management.audio_file import read_duration_seconds
 from src.db import database
 from src.models.track import Track
+from src.scripts.migration_utils import (
+    column_names,
+    print_errors,
+    run_migration_cli,
+    table_exists,
+)
 from src.utils.audio_path import resolve_audio_path
 
 _TABLE = "track"
@@ -31,11 +36,11 @@ _COLUMN = "duration_seconds"
 
 
 def _table_exists() -> bool:
-    return _TABLE in inspect(database.engine).get_table_names()
+    return table_exists(database.engine, _TABLE)
 
 
 def _column_names() -> set[str]:
-    return {col["name"] for col in inspect(database.engine).get_columns(_TABLE)}
+    return column_names(database.engine, _TABLE)
 
 
 def _add_column() -> None:
@@ -100,41 +105,39 @@ def verify() -> list[str]:
     return errors
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Apply or verify the track duration migration."
-    )
-    parser.add_argument(
-        "--verify-only",
-        action="store_true",
-        help="Exit 1 when the track duration column is absent.",
-    )
+def _configure_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--refresh-all",
         action="store_true",
         help="Re-read every track instead of only rows with a null duration.",
     )
-    args = parser.parse_args(argv)
 
-    if args.verify_only:
-        errors = verify()
-        if errors:
-            for err in errors:
-                print(err, file=sys.stderr)
-            return 1
-        print("track duration migration verified.")
-        return 0
 
-    updated, skipped = apply(refresh_all=args.refresh_all)
-    errors = verify()
-    if errors:
-        for err in errors:
-            print(err, file=sys.stderr)
-        return 1
-    print(f"track duration migration applied: {updated} updated, {len(skipped)} skipped")
-    for file_name in skipped:
-        print(f"skipped (no readable duration): {file_name}", file=sys.stderr)
-    return 0
+def _apply_from_args(args: argparse.Namespace) -> Tuple[int, List[str]]:
+    return apply(refresh_all=args.refresh_all)
+
+
+def _on_apply_success(result: Tuple[int, List[str]]) -> None:
+    updated, skipped = result
+    print(f"track duration migration summary: {updated} updated, {len(skipped)} skipped")
+    if skipped:
+        print_errors(
+            f"skipped (no readable duration): {file_name}" for file_name in skipped
+        )
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_migration_cli(
+        argv,
+        description="Apply or verify the track duration migration.",
+        verify_help="Exit 1 when the track duration column is absent.",
+        verify_fn=verify,
+        apply_fn=_apply_from_args,
+        verified_message="track duration migration verified.",
+        applied_message="track duration migration applied.",
+        configure_parser=_configure_parser,
+        on_apply_success=_on_apply_success,
+    )
 
 
 if __name__ == "__main__":

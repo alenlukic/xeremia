@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 import type { WidgetId } from '../hooks/useWorkspaceLayout'
 
@@ -14,11 +14,32 @@ interface Props {
 export function WidgetTray({ available, labels, onAdd }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
-  useDismissOnOutsideClick(ref, open, () => setOpen(false))
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  useDismissOnOutsideClick(ref, open, () => {
+    setOpen(false)
+    triggerRef.current?.focus()
+  })
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+      event.preventDefault()
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open])
 
   return (
     <div className="ws-picker" ref={ref}>
       <button
+        ref={triggerRef}
         className={`ws-pill ws-picker-button${open ? ' ws-pill--on' : ''}`}
         aria-label="Add widget"
         aria-haspopup="menu"

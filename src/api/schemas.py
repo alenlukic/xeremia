@@ -1,7 +1,33 @@
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+import re
+from typing import Any, Dict, List, Literal, Optional, Pattern
 
 from pydantic import BaseModel, Field, validator
+
+_SEQUENCER_BENCH_KEY_RE = re.compile(r"^\d+:\d+$")
+_SEQUENCER_TILE_KEY_RE = re.compile(r"^(?:\d+|(?:\d+|committed):\d+)$")
+_MAX_SEQUENCER_MAP_ENTRIES = 4096
+
+
+def _validate_sequencer_map_keys(
+    value: Optional[Dict[str, Any]],
+    field_name: str,
+    *,
+    key_pattern: Pattern[str],
+    key_description: str,
+) -> Optional[Dict[str, Any]]:
+    if value is None:
+        return value
+    if len(value) > _MAX_SEQUENCER_MAP_ENTRIES:
+        raise ValueError(
+            f"{field_name} may not contain more than {_MAX_SEQUENCER_MAP_ENTRIES} entries"
+        )
+    for key in value.keys():
+        if not key_pattern.match(key):
+            raise ValueError(
+                f"{field_name} keys must be {key_description}"
+            )
+    return value
 
 
 class TrackResponse(BaseModel):
@@ -182,9 +208,9 @@ class SetSummary(BaseModel):
 class SequencerBenchOverride(BaseModel):
     """Preview values for a track while it remains on an alternative lane."""
 
-    durOv: Optional[float] = None
-    endPin: Optional[float] = None
-    bpmOv: Optional[float] = None
+    durOv: Optional[float] = Field(default=None, ge=0.1, le=600)
+    endPin: Optional[float] = Field(default=None, ge=0, le=2880)
+    bpmOv: Optional[float] = Field(default=None, ge=40, le=300)
 
 
 class SetSequencerRequest(BaseModel):
@@ -201,6 +227,73 @@ class SetSequencerRequest(BaseModel):
     bench_overrides: Optional[Dict[str, SequencerBenchOverride]] = None
     starred_tiles: Optional[Dict[str, bool]] = None
     pinned_tiles: Optional[Dict[str, bool]] = None
+
+    @validator("end_minutes")
+    def validate_time_window(
+        cls,
+        value: Optional[float],
+        values: Dict[str, Any],
+    ) -> Optional[float]:
+        start = values.get("start_minutes")
+        if start is not None and value is not None and value <= start:
+            raise ValueError("end_minutes must be greater than start_minutes")
+        return value
+
+    @validator("bench_times")
+    def validate_bench_times(
+        cls,
+        value: Optional[Dict[str, float]],
+    ) -> Optional[Dict[str, float]]:
+        typed = _validate_sequencer_map_keys(
+            value,
+            "bench_times",
+            key_pattern=_SEQUENCER_BENCH_KEY_RE,
+            key_description="'<laneId>:<trackId>'",
+        )
+        if typed is None:
+            return typed
+        for key, minute in typed.items():
+            minute_value = float(minute)
+            if minute_value < 0 or minute_value > 2880:
+                raise ValueError(f"bench_times[{key}] must be between 0 and 2880")
+            typed[key] = minute_value
+        return typed
+
+    @validator("bench_overrides")
+    def validate_bench_overrides(
+        cls,
+        value: Optional[Dict[str, SequencerBenchOverride]],
+    ) -> Optional[Dict[str, SequencerBenchOverride]]:
+        return _validate_sequencer_map_keys(
+            value,
+            "bench_overrides",
+            key_pattern=_SEQUENCER_BENCH_KEY_RE,
+            key_description="'<laneId>:<trackId>'",
+        )
+
+    @validator("starred_tiles")
+    def validate_starred_tiles(
+        cls,
+        value: Optional[Dict[str, bool]],
+    ) -> Optional[Dict[str, bool]]:
+        return _validate_sequencer_map_keys(
+            value,
+            "starred_tiles",
+            key_pattern=_SEQUENCER_TILE_KEY_RE,
+            key_description="'committed:<trackId>', '<laneId>:<trackId>', or '<trackId>'",
+        )
+
+    @validator("pinned_tiles")
+    def validate_pinned_tiles(
+        cls,
+        value: Optional[Dict[str, bool]],
+    ) -> Optional[Dict[str, bool]]:
+        return _validate_sequencer_map_keys(
+            value,
+            "pinned_tiles",
+            key_pattern=_SEQUENCER_TILE_KEY_RE,
+            key_description="'committed:<trackId>', '<laneId>:<trackId>', or '<trackId>'",
+        )
 
 
 class SetCreateRequest(BaseModel):
@@ -246,6 +339,17 @@ class TracklistOverridesRequest(BaseModel):
     play_minutes: Optional[float] = Field(default=None, ge=0.1, le=600)
     pinned_end_minutes: Optional[float] = Field(default=None, ge=0, le=2880)
     bpm_override: Optional[float] = Field(default=None, ge=40, le=300)
+
+    @validator("pinned_end_minutes")
+    def validate_pinned_vs_play(
+        cls,
+        value: Optional[float],
+        values: Dict[str, Any],
+    ) -> Optional[float]:
+        play_minutes = values.get("play_minutes")
+        if play_minutes is not None and value is not None and value < play_minutes:
+            raise ValueError("pinned_end_minutes must be greater than play_minutes")
+        return value
 
 
 class PoolSubgroupResponse(BaseModel):

@@ -6,6 +6,19 @@ system, what each pipeline does, and how users interact with the application.
 For the structural overview (layering, dependency rules, module map), see
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Schema upgrades for existing installs
+
+`python -m src.scripts.init_db` is for fresh databases only. Existing databases should apply the one-time workspace/sequencer migrations in order:
+
+```bash
+python -m src.scripts.migrate_table_preferences
+python -m src.scripts.migrate_set_sequencer
+python -m src.scripts.migrate_tracklist_overrides
+python -m src.scripts.migrate_track_duration
+```
+
+Use each script's `--verify-only` mode when you only need to validate schema state.
+
 ---
 
 ## 1. Metadata Agent

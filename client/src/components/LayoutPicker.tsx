@@ -1,6 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
-import { CUSTOM_PRESET } from '../hooks/useWorkspaceLayout'
+import {
+  hasDuplicatePresetName,
+  isReservedPresetName,
+} from '../utils/workspaceGeometry'
 
 // The header's layout control: one pill showing the active preset that opens a
 // menu of every preset. Replaces the row of pills, which grew unreadable once
@@ -25,18 +28,36 @@ export function LayoutPicker({
   const [mode, setMode] = useState<'create' | 'rename' | null>(null)
   const [draft, setDraft] = useState('')
   const ref = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
   useDismissOnOutsideClick(ref, open, () => {
     setOpen(false)
     setMode(null)
+    triggerRef.current?.focus()
   })
 
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return
+      }
+      event.preventDefault()
+      setOpen(false)
+      setMode(null)
+      triggerRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open])
+
   const trimmed = draft.trim()
-  const reserved =
-    trimmed.toLocaleLowerCase() === CUSTOM_PRESET.toLocaleLowerCase()
-  const duplicate = presetNames.some(
-    (name) =>
-      name.toLocaleLowerCase() === trimmed.toLocaleLowerCase() &&
-      (mode !== 'rename' || name !== preset),
+  const reserved = isReservedPresetName(trimmed)
+  const duplicate = hasDuplicatePresetName(
+    presetNames,
+    trimmed,
+    mode === 'rename' ? preset : undefined,
   )
   const canSubmit =
     trimmed.length > 0 &&
@@ -65,6 +86,7 @@ export function LayoutPicker({
   return (
     <div className="ws-picker" ref={ref}>
       <button
+        ref={triggerRef}
         className={`ws-pill ws-picker-button${open ? ' ws-pill--on' : ''}`}
         aria-label="Layout preset"
         aria-haspopup="menu"
@@ -114,7 +136,9 @@ export function LayoutPicker({
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {
                     event.preventDefault()
+                    setOpen(false)
                     setMode(null)
+                    triggerRef.current?.focus()
                   }
                 }}
               />

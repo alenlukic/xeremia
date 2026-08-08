@@ -8,25 +8,23 @@ Usage::
 
 from __future__ import annotations
 
-import argparse
-import sys
+from argparse import Namespace
 
 from src.db import database
 from src.models.table_preference import GLOBAL_DEVICE_HASH, TablePreference
+from src.scripts.migration_utils import (
+    column_names,
+    run_migration_cli,
+    table_exists as migration_table_exists,
+)
 
 
-def table_exists() -> bool:
-    from sqlalchemy import inspect
-
-    inspector = inspect(database.engine)
-    return "table_preference" in inspector.get_table_names()
+def _table_exists() -> bool:
+    return migration_table_exists(database.engine, "table_preference")
 
 
 def _column_names() -> set[str]:
-    from sqlalchemy import inspect
-
-    inspector = inspect(database.engine)
-    return {col["name"] for col in inspector.get_columns("table_preference")}
+    return column_names(database.engine, "table_preference")
 
 
 def _add_device_scope() -> None:
@@ -72,7 +70,7 @@ def _add_layout_column() -> None:
 
 
 def apply() -> None:
-    if not table_exists():
+    if not _table_exists():
         TablePreference.__table__.create(bind=database.engine, checkfirst=True)
         return
     columns = _column_names()
@@ -84,7 +82,7 @@ def apply() -> None:
 
 def verify() -> list[str]:
     errors: list[str] = []
-    if not table_exists():
+    if not _table_exists():
         errors.append("table_preference table is missing")
         return errors
     columns = _column_names()
@@ -94,34 +92,20 @@ def verify() -> list[str]:
     return errors
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Apply or verify the table_preference migration."
-    )
-    parser.add_argument(
-        "--verify-only",
-        action="store_true",
-        help="Exit 1 when the table_preference table is absent.",
-    )
-    args = parser.parse_args(argv)
-
-    if args.verify_only:
-        errors = verify()
-        if errors:
-            for err in errors:
-                print(err, file=sys.stderr)
-            return 1
-        print("table_preference migration verified.")
-        return 0
-
+def _apply_from_args(_: Namespace) -> None:
     apply()
-    errors = verify()
-    if errors:
-        for err in errors:
-            print(err, file=sys.stderr)
-        return 1
-    print("table_preference migration applied.")
-    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_migration_cli(
+        argv,
+        description="Apply or verify the table_preference migration.",
+        verify_help="Exit 1 when the table_preference table is absent.",
+        verify_fn=verify,
+        apply_fn=_apply_from_args,
+        verified_message="table_preference migration verified.",
+        applied_message="table_preference migration applied.",
+    )
 
 
 if __name__ == "__main__":

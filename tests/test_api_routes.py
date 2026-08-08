@@ -28,10 +28,7 @@ def _reset_weight_singleton():
 @pytest.fixture()
 def weight_patches():
     """Keep WeightService DB calls mocked for the duration of a test."""
-    with (
-        patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
-        patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
-    ):
+    with patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
         from src.harmonic_mixing.weight_service import WeightService
 
         WeightService._instance = None
@@ -92,10 +89,7 @@ class TestCacheStatsEndpoint:
         finder = MagicMock()
         finder.cosine_cache = cache
 
-        with (
-            patch("src.api.routes._get_match_finder", return_value=finder),
-            patch("src.api.routes._build_cache_distributions", return_value=([], [])),
-        ):
+        with patch("src.api.routes._get_match_finder", return_value=finder), patch("src.api.routes._build_cache_distributions", return_value=([], [])):
             from src.api.app import create_app
 
             with TestClient(create_app()) as tc:
@@ -117,10 +111,7 @@ class TestCacheStatsEndpoint:
         finder = MagicMock()
         finder.cosine_cache = cache
 
-        with (
-            patch("src.api.routes._get_match_finder", return_value=finder),
-            patch("src.api.routes._build_cache_distributions", return_value=([], [])),
-        ):
+        with patch("src.api.routes._get_match_finder", return_value=finder), patch("src.api.routes._build_cache_distributions", return_value=([], [])):
             from src.api.app import create_app
 
             with TestClient(create_app()) as tc:
@@ -175,12 +166,7 @@ class TestTrackTraitsEndpoint:
         finder.cosine_cache = None
         finder._sync_effective_weights = MagicMock()
 
-        with (
-            patch("src.api.routes._get_match_finder", return_value=finder),
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
-            patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
-        ):
+        with patch("src.api.routes._get_match_finder", return_value=finder), patch("src.api.routes._get_session", return_value=mock_session), patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
             from src.api.app import create_app
 
             with TestClient(create_app()) as tc:
@@ -207,12 +193,7 @@ class TestTrackTraitsEndpoint:
         finder.cosine_cache = None
         finder._sync_effective_weights = MagicMock()
 
-        with (
-            patch("src.api.routes._get_match_finder", return_value=finder),
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"),
-            patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"),
-        ):
+        with patch("src.api.routes._get_match_finder", return_value=finder), patch("src.api.routes._get_session", return_value=mock_session), patch("src.harmonic_mixing.weight_service.WeightService._load_from_db"), patch("src.harmonic_mixing.weight_service.WeightService._persist_to_db"):
             from src.api.app import create_app
 
             with TestClient(create_app()) as tc:
@@ -361,10 +342,7 @@ class TestAudioEndpoint:
 
     def test_returns_404_when_track_missing(self, client):
         mock_session = self._session_with_track(None)
-        with (
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.config.PROCESSED_MUSIC_DIR", "/music"),
-        ):
+        with patch("src.api.routes._get_session", return_value=mock_session), patch("src.config.PROCESSED_MUSIC_DIR", "/music"):
             resp = client.get("/api/tracks/42/audio")
         assert resp.status_code == 404
 
@@ -372,10 +350,7 @@ class TestAudioEndpoint:
         track = MagicMock()
         track.file_name = None
         mock_session = self._session_with_track(track)
-        with (
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.config.PROCESSED_MUSIC_DIR", "/music"),
-        ):
+        with patch("src.api.routes._get_session", return_value=mock_session), patch("src.config.PROCESSED_MUSIC_DIR", "/music"):
             resp = client.get("/api/tracks/42/audio")
         assert resp.status_code == 404
 
@@ -383,10 +358,7 @@ class TestAudioEndpoint:
         track = MagicMock()
         track.file_name = "song.flac"
         mock_session = self._session_with_track(track)
-        with (
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.config.PROCESSED_MUSIC_DIR", "/music"),
-        ):
+        with patch("src.api.routes._get_session", return_value=mock_session), patch("src.config.PROCESSED_MUSIC_DIR", "/music"):
             resp = client.get("/api/tracks/42/audio")
         assert resp.status_code == 415
 
@@ -394,10 +366,7 @@ class TestAudioEndpoint:
         track = MagicMock()
         track.file_name = "song.aiff"
         mock_session = self._session_with_track(track)
-        with (
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.config.PROCESSED_MUSIC_DIR", "/nonexistent-music-dir"),
-        ):
+        with patch("src.api.routes._get_session", return_value=mock_session), patch("src.config.PROCESSED_MUSIC_DIR", "/nonexistent-music-dir"):
             resp = client.head("/api/tracks/42/audio")
         assert resp.status_code == 404
 
@@ -407,10 +376,7 @@ class TestAudioEndpoint:
         (tmp_path / "song.mp3").write_bytes(b"audio-bytes")
 
         mock_session = self._session_with_track(track)
-        with (
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)),
-        ):
+        with patch("src.api.routes._get_session", return_value=mock_session), patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)):
             resp = client.head("/api/tracks/42/audio")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("audio/mpeg")
@@ -421,10 +387,7 @@ class TestAudioEndpoint:
         (tmp_path / "song.wav").write_bytes(b"wav-bytes")
 
         mock_session = self._session_with_track(track)
-        with (
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)),
-        ):
+        with patch("src.api.routes._get_session", return_value=mock_session), patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)):
             resp = client.get("/api/tracks/42/audio")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("audio/wav")
@@ -439,10 +402,7 @@ class TestAudioEndpoint:
         (tmp_path / disk_name).write_bytes(b"normalized-audio")
 
         mock_session = self._session_with_track(track)
-        with (
-            patch("src.api.routes._get_session", return_value=mock_session),
-            patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)),
-        ):
+        with patch("src.api.routes._get_session", return_value=mock_session), patch("src.config.PROCESSED_MUSIC_DIR", str(tmp_path)):
             resp = client.get("/api/tracks/42/audio")
 
         assert resp.status_code == 200
@@ -540,9 +500,9 @@ class TestSequencerSettingsContract:
         dj_set = MagicMock()
         dj_set.sequencer = {"start_minutes": 360}
         session = MagicMock()
-        session.query.return_value.filter_by.return_value.one_or_none.return_value = (
-            dj_set
-        )
+        query = session.query.return_value
+        filtered = query.filter_by.return_value
+        filtered.with_for_update.return_value.one_or_none.return_value = dj_set
         body = SetSequencerRequest(
             bench_times={"12:17": 402.5},
             bench_overrides={"12:17": {"durOv": 3.5}},
@@ -550,10 +510,7 @@ class TestSequencerSettingsContract:
             pinned_tiles={"12:17": True},
         )
 
-        with (
-            patch("src.api.routes._get_session", return_value=session),
-            patch("src.api.routes._serialize_set_summary", return_value={"id": 1}),
-        ):
+        with patch("src.api.routes._get_session", return_value=session), patch("src.api.routes._serialize_set_summary", return_value={"id": 1}):
             result = api_update_set_sequencer(1, body)
 
         assert result == {"id": 1}
@@ -565,3 +522,81 @@ class TestSequencerSettingsContract:
             "pinned_tiles": {"12:17": True},
         }
         session.commit.assert_called_once()
+
+
+class TestSetWorkspaceEndpointErrors:
+    def test_put_set_sequencer_returns_404_for_missing_set(self, client):
+        session = MagicMock()
+        svc = MagicMock()
+        svc.update_set_sequencer.return_value = None
+        with patch("src.api.routes._get_session", return_value=session), patch("src.set_workspace.service.SetWorkspaceService", return_value=svc):
+            resp = client.put("/api/sets/999/sequencer", json={})
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Set not found"
+        session.commit.assert_not_called()
+
+    def test_put_set_sequencer_returns_422_for_invalid_time_window(self, client):
+        resp = client.put(
+            "/api/sets/1/sequencer",
+            json={"start_minutes": 800, "end_minutes": 700},
+        )
+        assert resp.status_code == 422
+
+    def test_put_set_sequencer_rolls_back_on_unexpected_error(self, client):
+        session = MagicMock()
+        svc = MagicMock()
+        svc.update_set_sequencer.side_effect = RuntimeError("boom")
+        with patch("src.api.routes._get_session", return_value=session), patch("src.set_workspace.service.SetWorkspaceService", return_value=svc):
+            resp = client.put("/api/sets/1/sequencer", json={"view": "lanes"})
+
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Sequencer settings update failed"
+        session.rollback.assert_called_once()
+
+    def test_put_tracklist_overrides_returns_404_for_missing_row(self, client):
+        session = MagicMock()
+        svc = MagicMock()
+        svc.set_tracklist_overrides.return_value = (False, "Track not found")
+        with patch("src.api.routes._get_session", return_value=session), patch("src.set_workspace.service.SetWorkspaceService", return_value=svc):
+            resp = client.put(
+                "/api/sets/1/tracklist/77/overrides",
+                json={
+                    "play_minutes": 3.0,
+                    "pinned_end_minutes": 4.0,
+                    "bpm_override": 120.0,
+                },
+            )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Track not found"
+        session.commit.assert_not_called()
+
+    def test_put_tracklist_overrides_returns_422_for_out_of_range_bpm(self, client):
+        resp = client.put(
+            "/api/sets/1/tracklist/2/overrides",
+            json={
+                "play_minutes": 3.0,
+                "pinned_end_minutes": 4.0,
+                "bpm_override": 301.0,
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_put_tracklist_overrides_rolls_back_on_unexpected_error(self, client):
+        session = MagicMock()
+        svc = MagicMock()
+        svc.set_tracklist_overrides.side_effect = RuntimeError("boom")
+        with patch("src.api.routes._get_session", return_value=session), patch("src.set_workspace.service.SetWorkspaceService", return_value=svc):
+            resp = client.put(
+                "/api/sets/1/tracklist/2/overrides",
+                json={
+                    "play_minutes": 3.0,
+                    "pinned_end_minutes": 4.0,
+                    "bpm_override": 120.0,
+                },
+            )
+
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Override update failed"
+        session.rollback.assert_called_once()

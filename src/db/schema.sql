@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS public.dj_set (
     id integer NOT NULL,
     name character varying(256) NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    sequencer jsonb
 );
 
 
@@ -236,6 +237,7 @@ CREATE TABLE IF NOT EXISTS public.table_preference (
     column_order jsonb NOT NULL,
     column_visibility jsonb NOT NULL,
     column_widths jsonb NOT NULL,
+    layout jsonb,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
@@ -439,7 +441,10 @@ CREATE TABLE IF NOT EXISTS public.set_tracklist_entry (
     track_id integer NOT NULL,
     "position" integer DEFAULT 0 NOT NULL,
     added_at timestamp without time zone DEFAULT now() NOT NULL,
-    note text DEFAULT ''::text NOT NULL
+    note text DEFAULT ''::text NOT NULL,
+    play_minutes numeric(6,2),
+    pinned_end_minutes numeric(7,2),
+    bpm_override numeric(5,2)
 );
 
 
@@ -478,7 +483,8 @@ CREATE TABLE IF NOT EXISTS public.track (
     genre character varying,
     label character varying,
     date_added character varying,
-    comment character varying
+    comment character varying,
+    duration_seconds numeric(7,2)
 );
 
 

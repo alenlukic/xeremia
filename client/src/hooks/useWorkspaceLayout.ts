@@ -1,5 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchWorkspaceLayout, saveWorkspaceLayout } from '../api/http'
+import {
+  CUSTOM_PRESET,
+  DEFAULT_PRESET,
+  FALLBACK_BOUNDS,
+  MIN_H,
+  MIN_W,
+  PRESET_NAMES,
+  UNIT_PX,
+  WIDGET_IDS,
+  WIDGET_LABELS,
+  clampRect,
+  firstFree,
+  hasDuplicatePresetName,
+  isReservedPresetName,
+  moveRect,
+  overlaps,
+  presetPlace,
+  resizeRect,
+  scaleRect,
+  type Bounds,
+  type Edge,
+} from '../utils/workspaceGeometry'
 import type {
   LayoutPlace,
   LockedWidgets,
@@ -19,103 +41,25 @@ export type {
   WidgetId,
 }
 
-export const WIDGET_IDS: WidgetId[] = [
-  'browser',
-  'matches',
-  'pool',
-  'explorer',
-  'sequencer',
-]
-
-export const WIDGET_LABELS: Record<WidgetId, string> = {
-  browser: 'Browser',
-  matches: 'Matches',
-  pool: 'Pool',
-  explorer: 'Explorer',
-  sequencer: 'Sequencer',
+export {
+  CUSTOM_PRESET,
+  DEFAULT_PRESET,
+  FALLBACK_BOUNDS,
+  MIN_H,
+  MIN_W,
+  PRESET_NAMES,
+  UNIT_PX,
+  WIDGET_IDS,
+  WIDGET_LABELS,
+  clampRect,
+  firstFree,
+  moveRect,
+  overlaps,
+  presetPlace,
+  resizeRect,
+  scaleRect,
 }
-
-/**
- * Widgets are free-form rectangles measured in 8px units: an edge drag snaps to
- * the nearest unit, so sizes are arbitrary but always land on the same 8px
- * rhythm. Bounds come from the live canvas, so the grid is as large as the
- * window allows rather than a fixed number of panes.
- */
-export const UNIT_PX = 8
-export const MIN_W = 24
-export const MIN_H = 12
-
-/** The canvas size in units, measured from the rendered element. */
-export interface Bounds {
-  cols: number
-  rows: number
-}
-
-export const FALLBACK_BOUNDS: Bounds = { cols: 158, rows: 117 }
-
-/** A preset as fractions of the canvas, so it fits whatever the window is. */
-type FractionRect = { fx: number; fy: number; fw: number; fh: number }
-
-const PRESET_FRACTIONS: Record<string, Record<string, FractionRect>> = {
-  'Track DND fanout': {
-    browser: { fx: 0, fy: 0, fw: 2 / 3, fh: 1 / 2 },
-    pool: { fx: 2 / 3, fy: 0, fw: 1 / 3, fh: 1 / 2 },
-    matches: { fx: 0, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-    explorer: { fx: 1 / 3, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-    sequencer: { fx: 2 / 3, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-  },
-  'Pool curation': {
-    pool: { fx: 0, fy: 0, fw: 2 / 3, fh: 1 / 2 },
-    browser: { fx: 2 / 3, fy: 0, fw: 1 / 3, fh: 1 / 2 },
-    sequencer: { fx: 0, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-    explorer: { fx: 1 / 3, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-    matches: { fx: 2 / 3, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-  },
-  'Explorer sandbox': {
-    explorer: { fx: 0, fy: 0, fw: 2 / 3, fh: 1 / 2 },
-    browser: { fx: 2 / 3, fy: 0, fw: 1 / 3, fh: 1 / 2 },
-    sequencer: { fx: 0, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-    pool: { fx: 1 / 3, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-    matches: { fx: 2 / 3, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-  },
-  'Sequencer run': {
-    browser: { fx: 0, fy: 0, fw: 1 / 3, fh: 1 / 2 },
-    pool: { fx: 1 / 3, fy: 0, fw: 1 / 3, fh: 1 / 2 },
-    explorer: { fx: 2 / 3, fy: 0, fw: 1 / 3, fh: 1 / 2 },
-    sequencer: { fx: 0, fy: 1 / 2, fw: 2 / 3, fh: 1 / 2 },
-    matches: { fx: 2 / 3, fy: 1 / 2, fw: 1 / 3, fh: 1 / 2 },
-  },
-}
-
-export const PRESET_NAMES = Object.keys(PRESET_FRACTIONS)
-
-/** Materialise a preset at the current canvas size, snapped to whole units. */
-export function presetPlace(name: string, bounds: Bounds): LayoutPlace {
-  const spec = PRESET_FRACTIONS[name]
-  if (!spec) {
-    return {}
-  }
-  const place: LayoutPlace = {}
-  for (const id of WIDGET_IDS) {
-    const f = spec[id]
-    if (!f) {
-      continue
-    }
-    const x = Math.round(f.fx * bounds.cols)
-    const y = Math.round(f.fy * bounds.rows)
-    place[id] = {
-      x,
-      y,
-      // Snap the far edge too, so adjacent widgets meet exactly.
-      w: Math.max(MIN_W, Math.round((f.fx + f.fw) * bounds.cols) - x),
-      h: Math.max(MIN_H, Math.round((f.fy + f.fh) * bounds.rows) - y),
-    }
-  }
-  return place
-}
-
-export const DEFAULT_PRESET = 'Explorer sandbox'
-export const CUSTOM_PRESET = 'Custom'
+export type { Bounds, Edge }
 
 // The server row is the source of truth; localStorage only avoids a layout
 // flash on the next cold start of the same device.
@@ -129,32 +73,6 @@ function defaultState(): WorkspaceLayoutState {
     custom: {},
     shell: 'workspace',
     locked: {},
-  }
-}
-
-/** Rescale a rectangle from the canvas it was authored at onto a new one. */
-export function scaleRect(p: Placement, from: Bounds, to: Bounds): Placement {
-  const sx = to.cols / from.cols
-  const sy = to.rows / from.rows
-  return clampRect(
-    {
-      x: Math.round(p.x * sx),
-      y: Math.round(p.y * sy),
-      w: Math.round(p.w * sx),
-      h: Math.round(p.h * sy),
-    },
-    to,
-  )
-}
-
-export function clampRect(p: Placement, bounds: Bounds): Placement {
-  const w = Math.min(Math.max(Math.round(p.w), MIN_W), bounds.cols)
-  const h = Math.min(Math.max(Math.round(p.h), MIN_H), bounds.rows)
-  return {
-    w,
-    h,
-    x: Math.min(Math.max(Math.round(p.x), 0), bounds.cols - w),
-    y: Math.min(Math.max(Math.round(p.y), 0), bounds.rows - h),
   }
 }
 
@@ -178,47 +96,6 @@ function isRect(value: unknown): value is Placement {
 /** Read a stored rectangle, ignoring anything that is not one. */
 function readPlacement(raw: unknown): Placement | null {
   return isRect(raw) ? { ...raw } : null
-}
-
-export function overlaps(a: Placement, b: Placement): boolean {
-  return (
-    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
-  )
-}
-
-/** First free spot that fits `w`×`h`, scanning top-left to bottom-right. */
-export function firstFree(
-  place: LayoutPlace,
-  w: number,
-  h: number,
-  bounds: Bounds,
-): Placement | null {
-  // A gap can only start at the canvas edge or where another widget ends, so
-  // those are the only positions worth testing.
-  const seated = WIDGET_IDS.map((id) => place[id]).filter(
-    (p): p is Placement => !!p,
-  )
-  const xs = [0, ...seated.map((p) => p.x + p.w)].sort((a, b) => a - b)
-  const ys = [0, ...seated.map((p) => p.y + p.h)].sort((a, b) => a - b)
-  for (const y of ys) {
-    if (y + h > bounds.rows) {
-      continue
-    }
-    for (const x of xs) {
-      if (x + w > bounds.cols) {
-        continue
-      }
-      const candidate = { x, y, w, h }
-      const clash = WIDGET_IDS.some((id) => {
-        const other = place[id]
-        return !!other && overlaps(candidate, other)
-      })
-      if (!clash) {
-        return candidate
-      }
-    }
-  }
-  return null
 }
 
 function normalizeLocked(raw: unknown): LockedWidgets {
@@ -293,7 +170,7 @@ export function normalizeLayout(raw: unknown): WorkspaceLayoutState {
     preset: typeof source.preset === 'string' ? source.preset : defaults.preset,
     place: Object.keys(place).length > 0 ? place : defaults.place,
     custom,
-    shell: source.shell === 'legacy' ? 'legacy' : 'workspace',
+    shell: 'workspace',
     locked: normalizeLocked(source.locked),
   }
 }
@@ -318,87 +195,6 @@ function writeCache(state: WorkspaceLayoutState) {
   }
 }
 
-export type Edge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
-
-/**
- * Apply an edge drag in grid units. The moving edges stop against whatever
- * blocks them — the canvas border or a neighbour — so a drag never overlaps
- * and never inverts the rectangle.
- */
-export function resizeRect(
-  place: LayoutPlace,
-  id: WidgetId,
-  edge: Edge,
-  start: Placement,
-  dx: number,
-  dy: number,
-  bounds: Bounds,
-): Placement {
-  const others = WIDGET_IDS.filter((other) => other !== id)
-    .map((other) => place[other])
-    .filter((p): p is Placement => !!p)
-
-  let { x, y, w, h } = start
-  if (edge.includes('w')) {
-    const nx = Math.min(Math.max(start.x + dx, 0), start.x + start.w - MIN_W)
-    w = start.x + start.w - nx
-    x = nx
-  }
-  if (edge.includes('e')) {
-    w = Math.min(Math.max(start.w + dx, MIN_W), bounds.cols - start.x)
-  }
-  if (edge.includes('n')) {
-    const ny = Math.min(Math.max(start.y + dy, 0), start.y + start.h - MIN_H)
-    h = start.y + start.h - ny
-    y = ny
-  }
-  if (edge.includes('s')) {
-    h = Math.min(Math.max(start.h + dy, MIN_H), bounds.rows - start.y)
-  }
-
-  // Back the moving edge off until it clears every neighbour.
-  const blocked = (r: Placement) => others.some((o) => overlaps(r, o))
-  while (blocked({ x, y, w, h })) {
-    if (edge.includes('w') && x < start.x) {
-      x++
-      w--
-    } else if (edge.includes('e') && w > MIN_W) {
-      w--
-    } else if (edge.includes('n') && y < start.y) {
-      y++
-      h--
-    } else if (edge.includes('s') && h > MIN_H) {
-      h--
-    } else {
-      return start
-    }
-    if (w < MIN_W || h < MIN_H) {
-      return start
-    }
-  }
-  return { x, y, w, h }
-}
-
-/** Move a widget to `x`,`y`; refuses a spot that would overlap a neighbour. */
-export function moveRect(
-  place: LayoutPlace,
-  id: WidgetId,
-  start: Placement,
-  x: number,
-  y: number,
-  bounds: Bounds,
-): Placement {
-  const target = clampRect({ ...start, x, y }, bounds)
-  const clash = WIDGET_IDS.some((other) => {
-    if (other === id) {
-      return false
-    }
-    const o = place[other]
-    return !!o && overlaps(target, o)
-  })
-  return clash ? start : target
-}
-
 export interface WorkspaceLayout {
   preset: string
   presets: Record<string, LayoutPlace>
@@ -409,6 +205,7 @@ export interface WorkspaceLayout {
   shell: ShellId
   hydrated: boolean
   saveError: string | null
+  clearSaveError: () => void
   /** Widgets that are not on the canvas. */
   missing: WidgetId[]
   locked: LockedWidgets
@@ -438,6 +235,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
   const [hydrated, setHydrated] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const localMutationRef = useRef(false)
   // Skip the save that the hydration itself triggers.
   const skipNextSaveRef = useRef(true)
 
@@ -449,6 +247,9 @@ export function useWorkspaceLayout(): WorkspaceLayout {
           return
         }
         if (layout) {
+          if (localMutationRef.current) {
+            return
+          }
           skipNextSaveRef.current = true
           setState(normalizeLayout(layout))
         }
@@ -467,16 +268,17 @@ export function useWorkspaceLayout(): WorkspaceLayout {
   }, [])
 
   useEffect(() => {
-    writeCache(state)
-    if (skipNextSaveRef.current) {
-      skipNextSaveRef.current = false
-      return
-    }
     if (timerRef.current) {
       clearTimeout(timerRef.current)
     }
+    const skipSave = skipNextSaveRef.current
+    skipNextSaveRef.current = false
     timerRef.current = setTimeout(() => {
       timerRef.current = null
+      writeCache(state)
+      if (skipSave) {
+        return
+      }
       saveWorkspaceLayout(state)
         .then(() => setSaveError(null))
         .catch((err: unknown) =>
@@ -492,6 +294,14 @@ export function useWorkspaceLayout(): WorkspaceLayout {
       }
     }
   }, [state])
+
+  const mutateState = useCallback(
+    (updater: (current: WorkspaceLayoutState) => WorkspaceLayoutState) => {
+      localMutationRef.current = true
+      setState(updater)
+    },
+    [],
+  )
 
   const setBounds = useCallback((next: Bounds) => {
     const prev = boundsRef.current
@@ -533,7 +343,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
   }
 
   const selectPreset = useCallback((name: string) => {
-    setState((s) => {
+    mutateState((s) => {
       const saved = s.custom[name]
       if (saved) {
         return {
@@ -555,46 +365,34 @@ export function useWorkspaceLayout(): WorkspaceLayout {
         locked: {},
       }
     })
-  }, [])
+  }, [mutateState])
 
   const setPlace = useCallback((fn: (place: LayoutPlace) => LayoutPlace) => {
-    setState((s) => ({ ...s, preset: CUSTOM_PRESET, place: fn(s.place) }))
-  }, [])
+    mutateState((s) => ({ ...s, preset: CUSTOM_PRESET, place: fn(s.place) }))
+  }, [mutateState])
 
   const saveCustomPreset = useCallback((requestedName: string) => {
-    setState((s) => {
+    mutateState((s) => {
       const name = requestedName.trim()
-      const normalized = name.toLocaleLowerCase()
-      const reserved =
-        normalized === CUSTOM_PRESET.toLocaleLowerCase() ||
-        PRESET_NAMES.some(
-          (presetName) => presetName.toLocaleLowerCase() === normalized,
-        )
-      const duplicate = Object.keys(s.custom).some(
-        (customName) => customName.toLocaleLowerCase() === normalized,
-      )
+      const duplicate = hasDuplicatePresetName(Object.keys(s.custom), name)
+      const reserved = isReservedPresetName(name)
       if (!name || reserved || duplicate) {
         return s
       }
       const saved: SavedLayout = { place: s.place, locked: s.locked }
       return { ...s, preset: name, custom: { ...s.custom, [name]: saved } }
     })
-  }, [])
+  }, [mutateState])
 
   const renamePreset = useCallback((requestedName: string) => {
-    setState((s) => {
+    mutateState((s) => {
       const name = requestedName.trim()
-      const normalized = name.toLocaleLowerCase()
-      const reserved =
-        normalized === CUSTOM_PRESET.toLocaleLowerCase() ||
-        PRESET_NAMES.some(
-          (presetName) => presetName.toLocaleLowerCase() === normalized,
-        )
-      const duplicate = Object.keys(s.custom).some(
-        (customName) =>
-          customName !== s.preset &&
-          customName.toLocaleLowerCase() === normalized,
+      const duplicate = hasDuplicatePresetName(
+        Object.keys(s.custom),
+        name,
+        s.preset,
       )
+      const reserved = isReservedPresetName(name)
       if (!name || name === s.preset || reserved || duplicate) {
         return s
       }
@@ -605,14 +403,14 @@ export function useWorkspaceLayout(): WorkspaceLayout {
       custom[name] = { place: s.place, locked: s.locked }
       return { ...s, preset: name, custom }
     })
-  }, [])
+  }, [mutateState])
 
   const setShell = useCallback((shell: ShellId) => {
-    setState((s) => (s.shell === shell ? s : { ...s, shell }))
-  }, [])
+    mutateState((s) => (s.shell === shell ? s : { ...s, shell }))
+  }, [mutateState])
 
   const toggleLock = useCallback((id: WidgetId) => {
-    setState((s) => {
+    mutateState((s) => {
       const locked = { ...s.locked }
       if (locked[id]) {
         delete locked[id]
@@ -621,7 +419,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
       }
       return { ...s, locked }
     })
-  }, [])
+  }, [mutateState])
 
   const removeWidget = useCallback(
     (id: WidgetId) => {
@@ -685,6 +483,10 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     [state.place],
   )
 
+  const clearSaveError = useCallback(() => {
+    setSaveError(null)
+  }, [])
+
   return {
     preset: state.preset,
     presets,
@@ -694,6 +496,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     shell: state.shell,
     hydrated,
     saveError,
+    clearSaveError,
     missing,
     locked: state.locked ?? {},
     setBounds,

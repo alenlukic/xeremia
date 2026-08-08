@@ -16,10 +16,10 @@ from os import PathLike
 from os.path import dirname, isfile, join
 import re
 import unicodedata
-from typing import Union
+from typing import Dict, Tuple, Union
 
-PathInput = Union[str, PathLike[str]]
-AudioNameIndex = dict[str, tuple[str, ...]]
+PathInput = Union[str, PathLike]
+AudioNameIndex = Dict[str, Tuple[str, ...]]
 
 # Bounded LRU of directory indexes. Without a cap, a long-running server that
 # serves audio from many distinct directories would accumulate a permanent

@@ -120,6 +120,30 @@ class SetWorkspaceService:
         self.session.flush()
         return dj_set
 
+    def update_set_sequencer(
+        self,
+        set_id: int,
+        patch: Dict[str, Any],
+    ) -> Optional[DjSet]:
+        """Merge Sequencer view state while locking the set row."""
+        dj_set = (
+            self.session.query(DjSet)
+            .filter_by(id=set_id)
+            .with_for_update()
+            .one_or_none()
+        )
+        if dj_set is None:
+            return None
+        merged = dict(dj_set.sequencer or {})
+        for key, value in patch.items():
+            if value is None:
+                merged.pop(key, None)
+            else:
+                merged[key] = value
+        dj_set.sequencer = merged or None
+        self.session.flush()
+        return dj_set
+
     def delete_set(self, set_id: int) -> bool:
         dj_set = self.get_set(set_id)
         if dj_set is None:

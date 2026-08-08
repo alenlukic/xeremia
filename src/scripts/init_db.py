@@ -56,6 +56,14 @@ EXPECTED_TABLES = frozenset(
 )
 
 EXPECTED_EXTENSIONS = frozenset({"pg_trgm"})
+EXPECTED_COLUMNS = {
+    "track": frozenset({"duration_seconds"}),
+    "dj_set": frozenset({"sequencer"}),
+    "set_tracklist_entry": frozenset(
+        {"play_minutes", "pinned_end_minutes", "bpm_override"}
+    ),
+    "table_preference": frozenset({"layout"}),
+}
 
 
 def _load_env() -> None:
@@ -105,6 +113,19 @@ def _extension_names(conn) -> set[str]:
         return {row[0] for row in cur.fetchall()}
 
 
+def _column_names(conn, table_name: str) -> set[str]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s
+            """,
+            (table_name,),
+        )
+        return {row[0] for row in cur.fetchall()}
+
+
 def is_initialized(conn) -> bool:
     return "track" in _table_names(conn)
 
@@ -120,6 +141,15 @@ def verify_schema(conn) -> list[str]:
     missing_extensions = sorted(EXPECTED_EXTENSIONS - extensions)
     if missing_extensions:
         errors.append("missing extensions: %s" % ", ".join(missing_extensions))
+
+    for table_name, expected_columns in EXPECTED_COLUMNS.items():
+        present_columns = _column_names(conn, table_name)
+        missing_columns = sorted(expected_columns - present_columns)
+        if missing_columns:
+            errors.append(
+                "missing columns on %s: %s"
+                % (table_name, ", ".join(missing_columns))
+            )
 
     with conn.cursor() as cur:
         cur.execute(

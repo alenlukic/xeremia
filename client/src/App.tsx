@@ -1,10 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import {
-  QuadrantDivider,
-  QuadrantExpandBar,
-} from './components/QuadrantControls'
 import { AdminDashboard } from './components/AdminDashboard'
-import { SetBuilder } from './components/SetBuilder'
 import { SetPickerControls } from './components/SetPickerControls'
 import { PlaybackBar } from './components/PlaybackBar'
 import { BrowserWidget } from './components/BrowserWidget'
@@ -27,17 +22,13 @@ import { useTablePreferences } from './hooks/useTablePreferences'
 import { AudioPlayerProvider } from './hooks/useAudioPlayer'
 import { visibleColumnIds, TABLE_REGISTRIES } from './tablePreferences'
 import { readTableViewState, usePersistTableViewSlice } from './tableViewState'
+import { displayTitle } from './utils/trackTitle'
 import type {
   Track,
   SearchSuggestion,
   TransitionMatch,
   TransitionChainEntry,
 } from './types'
-
-/** Top row: track browser (left) vs. matches (right). */
-type TopSplit = 'split' | 'browser-collapsed' | 'matches-collapsed'
-/** Whole-row collapse: top (browser + matches) vs. bottom (set workspace). */
-type RowSplit = 'split' | 'top-collapsed' | 'bottom-collapsed'
 
 export function App() {
   const {
@@ -51,9 +42,8 @@ export function App() {
   const tablePrefs = useTablePreferences()
   const layout = useWorkspaceLayout()
 
-  const [topSplit, setTopSplit] = useState<TopSplit>('split')
-  const [rowSplit, setRowSplit] = useState<RowSplit>('split')
   const [adminOpen, setAdminOpen] = useState(false)
+  const [workspaceUiError, setWorkspaceUiError] = useState<string | null>(null)
   // The Sequencer's selected tile, so the Explorer can light its cell.
   const [sequencerFocus, setSequencerFocus] = useState<Track | null>(null)
 
@@ -71,7 +61,7 @@ export function App() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [adminOpen])
 
-  const initialSearchView = readTableViewState().search
+  const [initialSearchView] = useState(() => readTableViewState().search)
 
   const [detailMatch, setDetailMatch] = useState<TransitionMatch | null>(null)
   const [searchText, setSearchText] = useState(initialSearchView.searchText)
@@ -147,6 +137,13 @@ export function App() {
     [browseSelection, allTracks, filteredTracks],
   )
 
+  // Lets the matches quadrant read candidate attributes (key/BPM/genre), which
+  // the match payload itself does not carry.
+  const trackIndex = useMemo(
+    () => new Map(allTracks.map((t) => [t.id, t])),
+    [allTracks],
+  )
+
   const handleSelectTrack = useCallback(
     (track: Track | SearchSuggestion) => {
       setDetailMatch(null)
@@ -173,7 +170,7 @@ export function App() {
       if (!matchSource) {
         return
       }
-      const candidate = allTracks.find((t) => t.id === candidateId)
+      const candidate = trackIndex.get(candidateId)
       if (!candidate) {
         return
       }
@@ -184,7 +181,7 @@ export function App() {
       }
       selectMatchSource(candidate)
     },
-    [matchSource, allTracks, selectMatchSource],
+    [matchSource, trackIndex, selectMatchSource],
   )
 
   const handleTrackDropAsSource = useCallback(
@@ -192,18 +189,11 @@ export function App() {
     [handleUseAsSource],
   )
 
-  // Lets the matches quadrant read candidate attributes (key/BPM/genre), which
-  // the match payload itself does not carry.
-  const trackIndex = useMemo(
-    () => new Map(allTracks.map((t) => [t.id, t])),
-    [allTracks],
-  )
-
   // Dropping a track on the matches quadrant loads its matches outright: this is
   // a fresh source selection, not a step in the current transition chain.
   const handleMatchSourceDrop = useCallback(
     (trackId: number) => {
-      const track = allTracks.find((t) => t.id === trackId)
+      const track = trackIndex.get(trackId)
       if (!track) {
         return
       }
@@ -211,7 +201,7 @@ export function App() {
       setTransitionChain([])
       selectMatchSource(track)
     },
-    [allTracks, selectMatchSource],
+    [trackIndex, selectMatchSource],
   )
 
   const handleChainNavigate = useCallback(
@@ -241,22 +231,22 @@ export function App() {
 
   const handleAddToPool = useCallback(
     (candidateId: number) => {
-      const track = allTracks.find((t) => t.id === candidateId)
+      const track = trackIndex.get(candidateId)
       if (track) {
         setBuilderAddToPool(track.id, track.title)
       }
     },
-    [allTracks, setBuilderAddToPool],
+    [setBuilderAddToPool, trackIndex],
   )
 
   const handleAddToTracklist = useCallback(
     (candidateId: number) => {
-      const track = allTracks.find((t) => t.id === candidateId)
+      const track = trackIndex.get(candidateId)
       if (track) {
         setBuilderAddToTracklist(track.id, track.title)
       }
     },
-    [allTracks, setBuilderAddToTracklist],
+    [setBuilderAddToTracklist, trackIndex],
   )
 
   const setPicker = (
@@ -300,6 +290,7 @@ export function App() {
   // it just created, so the effect below drops the id once it is gone.
   const subgroups = setBuilder.activeSet?.pool_subgroups
   const materializedLaneRef = useRef<number | null>(null)
+  const laneCreationRef = useRef<Promise<number | null> | null>(null)
   useEffect(() => {
     const materialized = materializedLaneRef.current
     if (
@@ -318,15 +309,21 @@ export function App() {
       if (materializedLaneRef.current !== null) {
         return materializedLaneRef.current
       }
-      const created = await setBuilder.createSubgroupWithEntries(
-        `Alt ${laneCount + 1}`,
-        poolEntryIds,
-      )
-      if (!created) {
-        return null
+      if (!laneCreationRef.current) {
+        laneCreationRef.current = setBuilder
+          .createSubgroupWithEntries(`Alt ${laneCount + 1}`, poolEntryIds)
+          .then((created) => {
+            if (!created) {
+              return null
+            }
+            materializedLaneRef.current = created.id
+            return created.id
+          })
+          .finally(() => {
+            laneCreationRef.current = null
+          })
       }
-      materializedLaneRef.current = created.id
-      return created.id
+      return laneCreationRef.current
     },
     [laneCount, poolEntryIds, setBuilder],
   )
@@ -409,14 +406,16 @@ export function App() {
             <button
               className="chain-entry"
               onClick={() => handleChainNavigate(i)}
-              title={`Return to ${entry.track.title}`}
+              title={`Return to ${displayTitle(entry.track, entry.track.id)}`}
             >
-              {entry.track.title}
+              {displayTitle(entry.track, entry.track.id)}
             </button>
             <span className="chain-arrow">→</span>
           </span>
         ))}
-        <span className="chain-current">{matchSource.title}</span>
+        <span className="chain-current">
+          {displayTitle(matchSource, matchSource.id)}
+        </span>
       </div>
     ) : undefined
 
@@ -457,7 +456,7 @@ export function App() {
       onColumnWidthFlush={(id, width) =>
         tablePrefs.flushColumnWidth('search', id, width)
       }
-      scrollRestorationKey={`${layout.shell}:${topSplit}:${rowSplit}`}
+      scrollRestorationKey="workspace"
     />
   )
 
@@ -498,106 +497,125 @@ export function App() {
     />
   )
 
-  const workspacePanels: Partial<Record<WidgetId, WorkspacePanel>> = {
-    browser: { node: browserStack },
-    matches: { node: matchesStack },
-    pool: {
-      node: (
-        <PoolWidget
-          allTracks={allTracks}
-          activeSet={setBuilder.activeSet}
-          tableConfig={tablePrefs.configs.pool}
-          onToggleColumn={(id) => tablePrefs.toggleVisibility('pool', id)}
-          onReorderColumn={(draggedId, targetId) =>
-            tablePrefs.reorderColumn('pool', draggedId, targetId)
-          }
-          onInsertColumnAfter={(afterId, columnId) =>
-            tablePrefs.insertColumnAfter('pool', afterId, columnId)
-          }
-          onColumnWidthChange={(id, width) =>
-            tablePrefs.setColumnWidth('pool', id, width)
-          }
-          onColumnWidthFlush={(id, width) =>
-            tablePrefs.flushColumnWidth('pool', id, width)
-          }
-          onRemove={setBuilder.removeFromPool}
-          onReorder={setBuilder.reorderPool}
-          onSetHighlight={setBuilder.setPoolHighlight}
-          onAddTrack={setBuilder.addToPool}
-          onCreateSubgroup={setBuilder.createSubgroup}
-          onRenameSubgroup={setBuilder.renameSubgroup}
-          onDeleteSubgroup={setBuilder.deleteSubgroup}
-          onReorderSubgroups={setBuilder.reorderSubgroups}
-          onReorderSubgroupMember={setBuilder.reorderSubgroupMember}
-          onAddSubgroupMember={setBuilder.addSubgroupMember}
-          onRemoveSubgroupMember={setBuilder.removeSubgroupMember}
-          onDropTrackToSubgroup={setBuilder.dropTrackToSubgroup}
-          onDropFromTracklist={setBuilder.moveTracklistToPool}
-        />
-      ),
-    },
-    explorer: {
-      node: (
-        <ExplorerMatrix
-          pool={setBuilder.activeSet?.pool ?? []}
-          onDropTrack={(trackId) => setBuilderAddToPool(trackId)}
-          focus={sequencerFocus}
-          committedTrackIds={committedTrackIds}
-          onRemoveTracks={setBuilder.removeManyFromPool}
-        />
-      ),
-    },
-    sequencer: {
-      node: (
-        <Sequencer
-          onFocusTrack={setSequencerFocus}
-          onRenameLane={(id, name) => void setBuilder.renameSubgroup(id, name)}
-          onReorderLanes={(ids) => void setBuilder.reorderSubgroups(ids)}
-          activeSet={setBuilder.activeSet}
-          onAddCommitted={(trackId, position) =>
-            setBuilder.insertIntoTracklist(trackId, position, true)
-          }
-          onPromote={handlePromote}
-          onReorder={(trackId, position) =>
-            setBuilder.reorderTracklist(trackId, position, true)
-          }
-          onBenchToLane={handleBenchToLane}
-          onMoveBench={handleMoveBench}
-          onRemove={(trackId) => setBuilder.removeFromTracklist(trackId, true)}
-          onRemoveBenched={(trackId) =>
-            setBuilder.removeFromPool(trackId, true)
-          }
-          onAddLane={handleAddLane}
-          onDeleteLane={(subgroupId) => {
-            void setBuilder.deleteSubgroup(subgroupId)
-          }}
-          onSaved={setBuilder.refreshActive}
-        />
-      ),
-    },
-  }
-
-  // The workspace shell carries this in its header; the legacy quadrants have
-  // no header, so there it stays a floating control.
-  const renderShellToggle = (className: string) => (
-    <button
-      className={className}
-      aria-pressed={layout.shell === 'legacy'}
-      title={
-        layout.shell === 'workspace'
-          ? 'Switch to the legacy quadrant shell'
-          : 'Switch to the set builder workspace'
-      }
-      onClick={() =>
-        layout.setShell(layout.shell === 'workspace' ? 'legacy' : 'workspace')
-      }
-    >
-      {layout.shell === 'workspace' ? 'Legacy shell' : 'Workspace shell'}
-    </button>
+  const workspacePanels = useMemo<Partial<Record<WidgetId, WorkspacePanel>>>(
+    () => ({
+      browser: { node: browserStack },
+      matches: { node: matchesStack },
+      pool: {
+        node: (
+          <PoolWidget
+            allTracks={allTracks}
+            activeSet={setBuilder.activeSet}
+            tableConfig={tablePrefs.configs.pool}
+            onToggleColumn={(id) => tablePrefs.toggleVisibility('pool', id)}
+            onReorderColumn={(draggedId, targetId) =>
+              tablePrefs.reorderColumn('pool', draggedId, targetId)
+            }
+            onInsertColumnAfter={(afterId, columnId) =>
+              tablePrefs.insertColumnAfter('pool', afterId, columnId)
+            }
+            onColumnWidthChange={(id, width) =>
+              tablePrefs.setColumnWidth('pool', id, width)
+            }
+            onColumnWidthFlush={(id, width) =>
+              tablePrefs.flushColumnWidth('pool', id, width)
+            }
+            onRemove={setBuilder.removeFromPool}
+            onReorder={setBuilder.reorderPool}
+            onSetHighlight={setBuilder.setPoolHighlight}
+            onAddTrack={setBuilder.addToPool}
+            onCreateSubgroup={setBuilder.createSubgroup}
+            onRenameSubgroup={setBuilder.renameSubgroup}
+            onDeleteSubgroup={setBuilder.deleteSubgroup}
+            onReorderSubgroups={setBuilder.reorderSubgroups}
+            onReorderSubgroupMember={setBuilder.reorderSubgroupMember}
+            onAddSubgroupMember={setBuilder.addSubgroupMember}
+            onRemoveSubgroupMember={setBuilder.removeSubgroupMember}
+            onDropTrackToSubgroup={setBuilder.dropTrackToSubgroup}
+            onDropFromTracklist={setBuilder.moveTracklistToPool}
+          />
+        ),
+      },
+      explorer: {
+        node: (
+          <ExplorerMatrix
+            pool={setBuilder.activeSet?.pool ?? []}
+            hasActiveSet={!!setBuilder.activeSet}
+            onDropTrack={(trackId) => setBuilderAddToPool(trackId)}
+            focus={sequencerFocus}
+            committedTrackIds={committedTrackIds}
+            onRemoveTracks={setBuilder.removeManyFromPool}
+          />
+        ),
+      },
+      sequencer: {
+        node: (
+          <Sequencer
+            onFocusTrack={setSequencerFocus}
+            onRenameLane={(id, name) => void setBuilder.renameSubgroup(id, name)}
+            onReorderLanes={(ids) => void setBuilder.reorderSubgroups(ids)}
+            activeSet={setBuilder.activeSet}
+            onAddCommitted={(trackId, position) =>
+              setBuilder.insertIntoTracklist(trackId, position, true)
+            }
+            onPromote={handlePromote}
+            onReorder={(trackId, position) =>
+              setBuilder.reorderTracklist(trackId, position, true)
+            }
+            onBenchToLane={handleBenchToLane}
+            onMoveBench={handleMoveBench}
+            onRemove={(trackId) => setBuilder.removeFromTracklist(trackId, true)}
+            onRemoveBenched={(trackId) =>
+              setBuilder.removeFromPool(trackId, true)
+            }
+            onAddLane={handleAddLane}
+            onDeleteLane={(subgroupId) => {
+              void setBuilder.deleteSubgroup(subgroupId)
+            }}
+            onSaved={setBuilder.refreshActive}
+            onUiError={setWorkspaceUiError}
+          />
+        ),
+      },
+    }),
+    [
+      allTracks,
+      browserStack,
+      committedTrackIds,
+      handleAddLane,
+      handleBenchToLane,
+      handleMoveBench,
+      handlePromote,
+      matchesStack,
+      sequencerFocus,
+      setBuilderAddToPool,
+      setBuilder.activeSet,
+      setBuilder.addToPool,
+      setBuilder.addSubgroupMember,
+      setBuilder.createSubgroup,
+      setBuilder.deleteSubgroup,
+      setBuilder.dropTrackToSubgroup,
+      setBuilder.insertIntoTracklist,
+      setBuilder.moveTracklistToPool,
+      setBuilder.refreshActive,
+      setBuilder.removeFromPool,
+      setBuilder.removeFromTracklist,
+      setBuilder.removeManyFromPool,
+      setBuilder.renameSubgroup,
+      setBuilder.reorderPool,
+      setBuilder.reorderSubgroupMember,
+      setBuilder.reorderSubgroups,
+      setBuilder.reorderTracklist,
+      setBuilder.setPoolHighlight,
+      tablePrefs.configs.pool,
+      tablePrefs.flushColumnWidth,
+      tablePrefs.insertColumnAfter,
+      tablePrefs.reorderColumn,
+      tablePrefs.setColumnWidth,
+      tablePrefs.toggleVisibility,
+    ],
   )
 
-  // The workspace shell carries the gear in its header; the legacy quadrants
-  // have no header, so there it stays a floating control.
   const renderAdminGear = (className: string) => (
     <button
       className={className}
@@ -613,60 +631,58 @@ export function App() {
     </button>
   )
 
-  const adminControls = (
-    <>
-      {layout.shell === 'legacy' && (
-        <>
-          {renderShellToggle('shell-toggle')}
-          {renderAdminGear('admin-gear')}
-        </>
-      )}
-      {adminOpen && (
-        <div
-          className="admin-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Admin dashboard"
+  const toastMessage = workspaceUiError ?? layout.saveError ?? setBuilder.error
+
+  const dismissToast = useCallback(() => {
+    setWorkspaceUiError(null)
+    setBuilder.clearError()
+    layout.clearSaveError()
+  }, [layout, setBuilder])
+
+  const adminOverlay = adminOpen && (
+    <div
+      className="admin-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Admin dashboard"
+    >
+      <div className="admin-overlay-header">
+        <h2 className="admin-overlay-title">Admin</h2>
+        <button
+          className="admin-overlay-close"
+          aria-label="Close admin"
+          title="Close admin"
+          onClick={() => setAdminOpen(false)}
         >
-          <div className="admin-overlay-header">
-            <h2 className="admin-overlay-title">Admin</h2>
-            <button
-              className="admin-overlay-close"
-              aria-label="Close admin"
-              title="Close admin"
-              onClick={() => setAdminOpen(false)}
-            >
-              ×
-            </button>
-          </div>
-          <AdminDashboard
-            stats={cacheStats}
-            loading={cacheLoading}
-            error={cacheError}
-            weights={weights}
-            weightsLoading={weightsLoading}
-            setWeight={setWeight}
-            weightsSaving={weightsSaving}
-            weightsSaveSuccess={weightsSaveSuccess}
-            weightsError={weightsError}
-            weightsWarning={weightsWarning}
-            normalizeWeights={normalizeWeights}
-            resetWeights={resetWeights}
-            isSumValid={isSumValid}
-            rawSum={rawSum}
-            tablePrefs={tablePrefs}
-          />
-        </div>
-      )}
-    </>
+          ×
+        </button>
+      </div>
+      <AdminDashboard
+        stats={cacheStats}
+        loading={cacheLoading}
+        error={cacheError}
+        weights={weights}
+        weightsLoading={weightsLoading}
+        setWeight={setWeight}
+        weightsSaving={weightsSaving}
+        weightsSaveSuccess={weightsSaveSuccess}
+        weightsError={weightsError}
+        weightsWarning={weightsWarning}
+        normalizeWeights={normalizeWeights}
+        resetWeights={resetWeights}
+        isSumValid={isSumValid}
+        rawSum={rawSum}
+        tablePrefs={tablePrefs}
+      />
+    </div>
   )
 
-  if (layout.shell === 'workspace') {
-    return (
-      <AudioPlayerProvider>
-        {/* The shell fills the viewport and the playback bar sits under it, so
-            they share one column rather than the bar being pushed off-screen. */}
-        <div className="app-viewport">
+  return (
+    <AudioPlayerProvider>
+      {/* The shell fills the viewport and the playback bar sits under it, so
+          they share one column rather than the bar being pushed off-screen. */}
+      <div className="app-viewport">
+        {layout.hydrated ? (
           <WorkspaceGrid
             layout={layout}
             panels={workspacePanels}
@@ -676,178 +692,27 @@ export function App() {
                 {renderAdminGear('ws-icon-btn ws-header-gear')}
               </>
             }
-            shellToggle={renderShellToggle('ws-pill')}
           />
-          <PlaybackBar />
-        </div>
-        {setBuilder.error && (
-          <div className="set-toast" role="alert">
-            <span>{setBuilder.error}</span>
-            <button
-              className="set-toast-dismiss"
-              onClick={setBuilder.clearError}
-              aria-label="Dismiss"
-            >
-              ×
-            </button>
+        ) : (
+          <div className="ws-shell">
+            <p className="table-status">Loading workspace layout...</p>
           </div>
         )}
-        {adminControls}
-      </AudioPlayerProvider>
-    )
-  }
-
-  return (
-    <AudioPlayerProvider>
-      <div className="app-shell-v2">
-        {rowSplit === 'top-collapsed' && (
-          <QuadrantExpandBar
-            edge="top"
-            label="Track Browser · Matches"
-            ariaLabel="Expand top panels"
-            onExpand={() => setRowSplit('split')}
-          />
-        )}
-        <div
-          className="quad-row quad-row--top"
-          hidden={rowSplit === 'top-collapsed'}
-        >
-          {topSplit === 'browser-collapsed' && (
-            <QuadrantExpandBar
-              edge="left"
-              label="Track Browser"
-              ariaLabel="Expand track browser"
-              onExpand={() => setTopSplit('split')}
-            />
-          )}
-          <section
-            className="quadrant browse-quadrant"
-            aria-label="Track browser"
-            hidden={topSplit === 'browser-collapsed'}
-          >
-            {browserStack}
-          </section>
-          {topSplit === 'split' && (
-            <QuadrantDivider
-              orientation="vertical"
-              beforeLabel="Collapse track browser"
-              afterLabel="Collapse matches"
-              onCollapseBefore={() => setTopSplit('browser-collapsed')}
-              onCollapseAfter={() => setTopSplit('matches-collapsed')}
-            />
-          )}
-          <section
-            className={`quadrant matches-quadrant${topSplit === 'browser-collapsed' ? ' matches-quadrant--full' : ''}`}
-            aria-label="Matches"
-            hidden={topSplit === 'matches-collapsed'}
-          >
-            {matchesStack}
-          </section>
-          {topSplit === 'matches-collapsed' && (
-            <QuadrantExpandBar
-              edge="right"
-              label="Matches"
-              ariaLabel="Expand matches"
-              onExpand={() => setTopSplit('split')}
-            />
-          )}
-        </div>
-
-        {rowSplit === 'split' && (
-          <QuadrantDivider
-            orientation="horizontal"
-            beforeLabel="Collapse top panels"
-            afterLabel="Collapse bottom panels"
-            onCollapseBefore={() => setRowSplit('top-collapsed')}
-            onCollapseAfter={() => setRowSplit('bottom-collapsed')}
-          />
-        )}
-
-        <div
-          className="quad-row quad-row--bottom"
-          hidden={rowSplit === 'bottom-collapsed'}
-        >
-          <SetBuilder
-            allTracks={allTracks}
-            activeSet={setBuilder.activeSet}
-            loading={setBuilder.loading}
-            error={setBuilder.error}
-            setPicker={setPicker}
-            tracklistConfig={tablePrefs.configs.tracklist}
-            poolConfig={tablePrefs.configs.pool}
-            onTracklistToggleColumn={(id) =>
-              tablePrefs.toggleVisibility('tracklist', id)
-            }
-            onTracklistReorderColumn={(draggedId, targetId) =>
-              tablePrefs.reorderColumn('tracklist', draggedId, targetId)
-            }
-            onTracklistInsertColumnAfter={(afterId, columnId) =>
-              tablePrefs.insertColumnAfter('tracklist', afterId, columnId)
-            }
-            onTracklistColumnWidthChange={(id, width) =>
-              tablePrefs.setColumnWidth('tracklist', id, width)
-            }
-            onTracklistColumnWidthFlush={(id, width) =>
-              tablePrefs.flushColumnWidth('tracklist', id, width)
-            }
-            onPoolToggleColumn={(id) => tablePrefs.toggleVisibility('pool', id)}
-            onPoolReorderColumn={(draggedId, targetId) =>
-              tablePrefs.reorderColumn('pool', draggedId, targetId)
-            }
-            onPoolInsertColumnAfter={(afterId, columnId) =>
-              tablePrefs.insertColumnAfter('pool', afterId, columnId)
-            }
-            onPoolColumnWidthChange={(id, width) =>
-              tablePrefs.setColumnWidth('pool', id, width)
-            }
-            onPoolColumnWidthFlush={(id, width) =>
-              tablePrefs.flushColumnWidth('pool', id, width)
-            }
-            removeFromPool={setBuilder.removeFromPool}
-            movePoolToTracklist={setBuilder.movePoolToTracklist}
-            reorderPool={setBuilder.reorderPool}
-            setPoolHighlight={setBuilder.setPoolHighlight}
-            addToPool={setBuilder.addToPool}
-            createSubgroup={setBuilder.createSubgroup}
-            renameSubgroup={setBuilder.renameSubgroup}
-            deleteSubgroup={setBuilder.deleteSubgroup}
-            reorderSubgroups={setBuilder.reorderSubgroups}
-            reorderSubgroupMember={setBuilder.reorderSubgroupMember}
-            addSubgroupMember={setBuilder.addSubgroupMember}
-            removeSubgroupMember={setBuilder.removeSubgroupMember}
-            dropTrackToSubgroup={setBuilder.dropTrackToSubgroup}
-            removeFromTracklist={setBuilder.removeFromTracklist}
-            moveTracklistToPool={setBuilder.moveTracklistToPool}
-            reorderTracklist={setBuilder.reorderTracklist}
-            updateTracklistNote={setBuilder.updateTracklistNote}
-            addToTracklist={setBuilder.addToTracklist}
-            insertIntoTracklist={setBuilder.insertIntoTracklist}
-            addExplorerNode={setBuilder.addExplorerNode}
-            moveExplorerNode={setBuilder.moveExplorerNode}
-            setExplorerPositions={setBuilder.setExplorerPositions}
-            deleteExplorerNode={setBuilder.deleteExplorerNode}
-            addExplorerEdge={setBuilder.addExplorerEdge}
-            deleteExplorerEdge={setBuilder.deleteExplorerEdge}
-            swapExplorerNodes={setBuilder.swapExplorerNodes}
-            explorerNodeAddToTracklist={setBuilder.explorerNodeAddToTracklist}
-            addNodeWithParents={setBuilder.addNodeWithParents}
-            fetchEdgeScores={setBuilder.fetchEdgeScores}
-            clearError={setBuilder.clearError}
-          />
-        </div>
-        {rowSplit === 'bottom-collapsed' && (
-          <QuadrantExpandBar
-            edge="bottom"
-            label="Tracklist · Pool"
-            ariaLabel="Expand bottom panels"
-            onExpand={() => setRowSplit('split')}
-          />
-        )}
-
         <PlaybackBar />
-
-        {adminControls}
       </div>
+      {toastMessage && (
+        <div className="set-toast" role="alert">
+          <span>{toastMessage}</span>
+          <button
+            className="set-toast-dismiss"
+            onClick={dismissToast}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {adminOverlay}
     </AudioPlayerProvider>
   )
 }

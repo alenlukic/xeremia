@@ -20,6 +20,7 @@ import { POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 
 interface Props {
   pool: PoolEntry[]
+  hasActiveSet?: boolean
   onDropTrack: (trackId: number) => void
   /** Track the workspace has focused, lit here as if its cell were clicked. */
   focus?: MatrixFocus | null
@@ -31,6 +32,7 @@ interface Props {
 
 export function ExplorerMatrix({
   pool,
+  hasActiveSet = true,
   onDropTrack,
   focus,
   committedTrackIds,
@@ -49,6 +51,7 @@ export function ExplorerMatrix({
   // Clear empties every cohort, so it asks once in the toolbar rather than
   // relying on an undo the workspace does not have.
   const [confirmingClear, setConfirmingClear] = useState(false)
+  const [confirmingPrune, setConfirmingPrune] = useState(false)
   const prunableIds = useMemo(
     () =>
       pool
@@ -67,20 +70,24 @@ export function ExplorerMatrix({
       <div className="xm-scroll">
         {/* No legend: the relation colours read on their own, and the row
             it occupied is vertical space the matrix needs more. */}
-        {(matrix.selected || onRemoveTracks) && (
+        {hasActiveSet && (matrix.selected || onRemoveTracks) && (
           <div className="xm-toolbar">
             {matrix.selected && (
               <button className="ws-pill" onClick={matrix.clearSelection}>
                 Clear selection
               </button>
             )}
-            {onRemoveTracks && !confirmingClear && (
+            {onRemoveTracks && !confirmingClear && !confirmingPrune && (
               <>
                 <button
                   className="ws-pill"
                   title="Remove pool tracks the committed lane already holds"
                   disabled={prunableIds.length === 0}
-                  onClick={() => onRemoveTracks(prunableIds)}
+                  onClick={() => {
+                    if (prunableIds.length > 0) {
+                      setConfirmingPrune(true)
+                    }
+                  }}
                 >
                   Prune
                 </button>
@@ -88,9 +95,34 @@ export function ExplorerMatrix({
                   className="ws-pill"
                   title="Remove every track from the pool"
                   disabled={pool.length === 0}
-                  onClick={() => setConfirmingClear(true)}
+                  onClick={() => {
+                    setConfirmingPrune(false)
+                    setConfirmingClear(true)
+                  }}
                 >
                   Clear
+                </button>
+              </>
+            )}
+            {onRemoveTracks && confirmingPrune && (
+              <>
+                <span className="xm-confirm">Remove committed duplicates?</span>
+                <button
+                  className="ws-pill"
+                  aria-label="Confirm prune"
+                  onClick={() => {
+                    setConfirmingPrune(false)
+                    onRemoveTracks(prunableIds)
+                  }}
+                >
+                  Confirm
+                </button>
+                <button
+                  className="ws-pill"
+                  aria-label="Cancel prune"
+                  onClick={() => setConfirmingPrune(false)}
+                >
+                  Cancel
                 </button>
               </>
             )}
@@ -101,6 +133,7 @@ export function ExplorerMatrix({
                   className="ws-pill"
                   aria-label="Confirm clear"
                   onClick={() => {
+                    setConfirmingPrune(false)
                     setConfirmingClear(false)
                     onRemoveTracks(pool.map((entry) => entry.track_id))
                   }}
@@ -118,6 +151,15 @@ export function ExplorerMatrix({
             )}
           </div>
         )}
+        {!hasActiveSet ? (
+          <p className="table-status">
+            No active set — create or select one to build a pool.
+          </p>
+        ) : pool.length === 0 ? (
+          <p className="table-status">
+            No tracks in pool yet — add tracks to build cohorts.
+          </p>
+        ) : null}
         <div className="xm-col-heads" style={{ gap: CELL_GAP_PX }}>
           {Array.from({ length: matrix.cols }, (_, c) => (
             <span

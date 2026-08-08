@@ -526,3 +526,52 @@ describe('useSetBuilder reorderSubgroupMember', () => {
     expect(http.fetchHydratedSet).toHaveBeenCalled()
   })
 })
+
+describe('useSetBuilder rethrow branches', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    const http = await import('../api/http')
+    vi.mocked(http.fetchSets).mockResolvedValue([])
+    vi.mocked(http.fetchHydratedSet).mockResolvedValue(makeHydratedSet())
+    vi.mocked(http.tracklistAdd).mockResolvedValue(undefined)
+    vi.mocked(http.tracklistReorder).mockResolvedValue(undefined)
+    vi.mocked(http.poolRemove).mockResolvedValue(undefined)
+  })
+
+  it('throws immediately when no active set and rethrow=true', async () => {
+    const { result } = renderHook(() => useSetBuilder())
+
+    await act(async () => {
+      await expect(result.current.insertIntoTracklist(7, 0, true)).rejects.toThrow(
+        'No active set.',
+      )
+      await expect(result.current.removeFromPool(7, true)).rejects.toThrow(
+        'No active set.',
+      )
+    })
+  })
+
+  it('rethrows mutation failures for clipboard callers', async () => {
+    const http = await import('../api/http')
+    vi.mocked(http.tracklistAdd).mockRejectedValue(new Error('insert failed'))
+    vi.mocked(http.poolRemove).mockRejectedValue(new Error('remove failed'))
+
+    const { result } = renderHook(() => useSetBuilder())
+    await act(async () => {
+      result.current.selectSet(1)
+    })
+    await waitFor(() => expect(result.current.activeSetId).toBe(1))
+
+    await act(async () => {
+      await expect(result.current.insertIntoTracklist(7, 0, true)).rejects.toThrow(
+        'insert failed',
+      )
+      await expect(result.current.removeFromPool(7, true)).rejects.toThrow(
+        'remove failed',
+      )
+    })
+
+    expect(result.current.error).toBe('Could not remove track from pool.')
+  })
+})

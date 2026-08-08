@@ -6,6 +6,8 @@ import {
   type LaidBlock,
   type OverrideMap,
 } from '../hooks/useSequencer'
+import { BPM_OVERRIDE_MAX, BPM_OVERRIDE_MIN } from '../constants/sequencer'
+import { displayTitle } from '../utils/trackTitle'
 import { formatHM, parseTimeInput } from '../utils/time'
 
 // The inspector mirrors the Tracklist columns. Timing mechanics and scaling
@@ -41,7 +43,7 @@ export function SequencerFooter({
       // store while one block stays selected.
       <BlockInspector
         key={`committed-${block.entry.track_id}`}
-        title={block.entry.track?.title ?? ''}
+        title={displayTitle(block.entry.track, block.entry.track_id)}
         bpmSeed={effectivePlayedBpm(block, overrides)}
         inSeed={block.t}
         outSeed={block.t + block.dur}
@@ -62,7 +64,7 @@ export function SequencerFooter({
   return (
     <BlockInspector
       key={`benched-${benched.entry.track_id}`}
-      title={benched.entry.track?.title ?? ''}
+      title={displayTitle(benched.entry.track, benched.entry.track_id)}
       bpmSeed={benched.entry.track?.bpm ?? null}
       inSeed={benched.t}
       outSeed={benched.t + benched.dur}
@@ -125,7 +127,12 @@ function BlockInspector({
           onBlur={() => {
             const parsed = Number.parseFloat(bpm)
             onPatch({
-              bpmOv: Number.isFinite(parsed) && parsed >= 40 ? parsed : null,
+              bpmOv:
+                Number.isFinite(parsed) &&
+                parsed >= BPM_OVERRIDE_MIN &&
+                parsed <= BPM_OVERRIDE_MAX
+                  ? parsed
+                  : null,
             })
           }}
         />

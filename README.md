@@ -107,6 +107,26 @@ This creates tables, indexes, constraints, sequences, the `pg_trgm` extension, a
 
 The `pg_trgm` extension must be installable by your database user (superuser on fresh local installs; may require an admin on managed Postgres).
 
+### Upgrading an existing database
+
+If your database was initialized before the workspace/sequencer schema changes, run these one-time migrations:
+
+```bash
+python -m src.scripts.migrate_table_preferences
+python -m src.scripts.migrate_set_sequencer
+python -m src.scripts.migrate_tracklist_overrides
+python -m src.scripts.migrate_track_duration
+```
+
+Optional verification-only checks:
+
+```bash
+python -m src.scripts.migrate_table_preferences --verify-only
+python -m src.scripts.migrate_set_sequencer --verify-only
+python -m src.scripts.migrate_tracklist_overrides --verify-only
+python -m src.scripts.migrate_track_duration --verify-only
+```
+
 ---
 
 ## Testing

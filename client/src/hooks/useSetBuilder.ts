@@ -83,6 +83,7 @@ export function useSetBuilder() {
   const [pendingAdd, setPendingAdd] = useState<PendingAdd | null>(null)
   const mountedRef = useRef(true)
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hydrateRequestIdRef = useRef(0)
 
   const setErrorWithAutoClear = useCallback((msg: string) => {
     if (errorTimerRef.current) {
@@ -120,20 +121,21 @@ export function useSetBuilder() {
 
   const hydrateSet = useCallback(
     async (setId: number) => {
+      const requestId = ++hydrateRequestIdRef.current
       setLoading(true)
       setError(null)
       try {
         const data = await fetchHydratedSet(setId)
-        if (mountedRef.current) {
+        if (mountedRef.current && requestId === hydrateRequestIdRef.current) {
           setActiveSet(data)
           setActiveSetId(setId)
         }
       } catch (err) {
-        if (mountedRef.current) {
+        if (mountedRef.current && requestId === hydrateRequestIdRef.current) {
           setErrorWithAutoClear(friendlyError(err, 'Failed to load set.'))
         }
       } finally {
-        if (mountedRef.current) {
+        if (mountedRef.current && requestId === hydrateRequestIdRef.current) {
           setLoading(false)
         }
       }

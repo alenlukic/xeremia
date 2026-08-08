@@ -239,6 +239,10 @@ describe('ExplorerMatrix bulk pool actions', () => {
     const { onRemoveTracks } = renderWithActions(pool, [1, 3, 99])
 
     fireEvent.click(screen.getByRole('button', { name: 'Prune' }))
+    expect(
+      screen.getByText('Remove committed duplicates?'),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Confirm prune'))
 
     // Track 99 is committed but not pooled, so it is not part of the removal.
     expect(onRemoveTracks).toHaveBeenCalledWith([1, 3])

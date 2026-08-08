@@ -16,6 +16,7 @@ import type {
   WidgetId,
   WorkspaceLayout,
 } from '../hooks/useWorkspaceLayout'
+import { moveRect, resizeRect } from '../hooks/useWorkspaceLayout'
 import './workspace.css'
 
 // The v2 shell: a discretized free-form canvas. Widgets are rectangles in grid
@@ -54,30 +55,8 @@ interface Drag {
   start: Placement
   x0: number
   y0: number
-}
-
-/** The snapped rectangle a drag is aiming at, before any clamping. */
-function previewOf(z: Drag, dx: number, dy: number): Placement {
-  const s = z.start
-  if (z.kind === 'move') {
-    return { ...s, x: s.x + dx, y: s.y + dy }
-  }
-  let { x, y, w, h } = s
-  if (z.kind.includes('w')) {
-    x = s.x + dx
-    w = s.w - dx
-  }
-  if (z.kind.includes('e')) {
-    w = s.w + dx
-  }
-  if (z.kind.includes('n')) {
-    y = s.y + dy
-    h = s.h - dy
-  }
-  if (z.kind.includes('s')) {
-    h = s.h + dy
-  }
-  return { x, y, w, h }
+  pointerId: number
+  captureEl: HTMLElement
 }
 
 export function WorkspaceGrid({
@@ -89,6 +68,7 @@ export function WorkspaceGrid({
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const { setBounds, unitPx } = layout
   const dragRef = useRef<Drag | null>(null)
+  const dragDeltaRef = useRef({ dx: 0, dy: 0 })
   const [dragging, setDragging] = useState<WidgetId | null>(null)
   // The rectangle the drag would land on, drawn as a dashed outline while the
   // pointer moves so the snap target is visible before the pointer is released.
@@ -120,34 +100,81 @@ export function WorkspaceGrid({
         dy: Math.round((e.clientY - z.y0) / unitPx),
       }
     }
+    function previewRect(z: Drag, dx: number, dy: number): Placement {
+      if (z.kind === 'move') {
+        return moveRect(
+          layout.place,
+          z.id,
+          z.start,
+          z.start.x + dx,
+          z.start.y + dy,
+          layout.bounds,
+        )
+      }
+      return resizeRect(layout.place, z.id, z.kind, z.start, dx, dy, layout.bounds)
+    }
+    function commit(z: Drag, dx: number, dy: number) {
+      if (z.kind === 'move') {
+        moveWidget(z.id, z.start, z.start.x + dx, z.start.y + dy)
+      } else {
+        resizeWidget(z.id, z.kind, z.start, dx, dy)
+      }
+    }
+    function clearCapture(z: Drag | null) {
+      if (!z) {
+        return
+      }
+      if (
+        typeof z.captureEl.hasPointerCapture !== 'function' ||
+        typeof z.captureEl.releasePointerCapture !== 'function'
+      ) {
+        return
+      }
+      try {
+        if (z.captureEl.hasPointerCapture(z.pointerId)) {
+          z.captureEl.releasePointerCapture(z.pointerId)
+        }
+      } catch {
+        /* pointer capture may already be gone */
+      }
+    }
     function onMove(e: PointerEvent) {
       const z = dragRef.current
       if (!z) {
         return
       }
       const d = unitsOf(e, z)
-      if (!d) {
-        return
-      }
-      if (z.kind === 'move') {
-        moveWidget(z.id, z.start, z.start.x + d.dx, z.start.y + d.dy)
-      } else {
-        resizeWidget(z.id, z.kind, z.start, d.dx, d.dy)
-      }
-      setPreview(previewOf(z, d.dx, d.dy))
+      dragDeltaRef.current = d
+      setPreview(previewRect(z, d.dx, d.dy))
     }
     function onUp() {
+      const z = dragRef.current
+      if (z) {
+        const d = dragDeltaRef.current
+        commit(z, d.dx, d.dy)
+      }
+      clearCapture(z)
       dragRef.current = null
+      dragDeltaRef.current = { dx: 0, dy: 0 }
+      setDragging(null)
+      setPreview(null)
+    }
+    function onCancel() {
+      clearCapture(dragRef.current)
+      dragRef.current = null
+      dragDeltaRef.current = { dx: 0, dy: 0 }
       setDragging(null)
       setPreview(null)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
     }
-  }, [resizeWidget, moveWidget, unitPx])
+  }, [layout.bounds, layout.place, moveWidget, resizeWidget, unitPx])
 
   const startDrag = useCallback(
     (id: WidgetId, kind: 'move' | Edge, start: Placement) =>
@@ -156,8 +183,26 @@ export function WorkspaceGrid({
           return
         }
         e.preventDefault()
-        dragRef.current = { id, kind, start, x0: e.clientX, y0: e.clientY }
+        const captureEl = e.currentTarget
+        if (typeof captureEl.setPointerCapture === 'function') {
+          try {
+            captureEl.setPointerCapture(e.pointerId)
+          } catch {
+            /* jsdom may not fully implement pointer capture */
+          }
+        }
+        dragRef.current = {
+          id,
+          kind,
+          start,
+          x0: e.clientX,
+          y0: e.clientY,
+          pointerId: e.pointerId,
+          captureEl,
+        }
+        dragDeltaRef.current = { dx: 0, dy: 0 }
         setDragging(id)
+        setPreview(start)
       },
     [],
   )
@@ -228,10 +273,14 @@ export function WorkspaceGrid({
                 className={`ws-panel${dragging === id ? ' ws-panel--dragging' : ''}`}
                 aria-label={WIDGET_LABELS[id]}
                 style={{
-                  left: p.x * unitPx,
-                  top: p.y * unitPx,
-                  width: p.w * unitPx,
-                  height: p.h * unitPx,
+                  left:
+                    dragging === id && preview ? preview.x * unitPx : p.x * unitPx,
+                  top:
+                    dragging === id && preview ? preview.y * unitPx : p.y * unitPx,
+                  width:
+                    dragging === id && preview ? preview.w * unitPx : p.w * unitPx,
+                  height:
+                    dragging === id && preview ? preview.h * unitPx : p.h * unitPx,
                 }}
               >
                 <WidgetFrame

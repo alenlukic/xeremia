@@ -32,20 +32,6 @@ export function parseTimeInput(value: string): number | null {
   return null
 }
 
-/** Parse a play length in minutes; accepts a decimal such as 6.5. */
-export function parseMinutes(value: string): number | null {
-  const parsed = Number.parseFloat(value.trim())
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null
-  }
-  return Math.round(parsed * 10) / 10
-}
-
-/** Minutes rendered as a compact length, e.g. 6.5. */
-export function formatMinutes(minutes: number): string {
-  return (Math.round(minutes * 10) / 10).toFixed(1)
-}
-
 /** Duration in whole seconds, rendered as mm:ss. */
 export function formatDuration(minutes: number): string {
   const totalSeconds = Math.max(0, Math.round(minutes * 60))

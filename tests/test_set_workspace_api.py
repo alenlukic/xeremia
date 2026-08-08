@@ -1090,6 +1090,33 @@ class TestTracklistOverrides:
         assert dumped["bpm_override"] == pytest.approx(126.5)
 
 
+class TestSetSequencerState:
+    def test_update_set_sequencer_merges_and_clears_fields(
+        self, svc: SetWorkspaceService, session: Session
+    ):
+        dj_set = svc.create_set("S")
+        dj_set.sequencer = {
+            "start_minutes": 360,
+            "bench_times": {"default:10": 400.0},
+        }
+        session.commit()
+
+        updated = svc.update_set_sequencer(
+            dj_set.id,
+            {
+                "end_minutes": 510,
+                "bench_times": None,
+            },
+        )
+        session.commit()
+
+        assert updated is not None
+        assert updated.sequencer == {"start_minutes": 360, "end_minutes": 510}
+
+    def test_update_set_sequencer_returns_none_for_unknown_set(self, svc: SetWorkspaceService):
+        assert svc.update_set_sequencer(9999, {"start_minutes": 360}) is None
+
+
 class TestEdgeScoreRequestShape:
     """Verify the add-edge service method validates properly."""
 

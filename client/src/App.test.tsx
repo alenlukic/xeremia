@@ -149,19 +149,10 @@ class ResizeObserverMock {
   disconnect = vi.fn()
 }
 
-// The workspace shell is the default, so the quadrant suites below seed the
-// layout cache with the legacy shell the toggle reaches.
-const LAYOUT_CACHE_KEY = 'xeremia:workspace-layout:v2'
-
-function seedShell(shell: 'workspace' | 'legacy') {
-  localStorage.setItem(LAYOUT_CACHE_KEY, JSON.stringify({ shell }))
-}
-
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock)
   localStorage.clear()
   sessionStorage.clear()
-  seedShell('legacy')
   vi.mocked(useCollectionCache).mockReturnValue({
     allTracks: makeTracks(600),
     traitMap: new Map(),
@@ -180,6 +171,9 @@ function getRowCount(): number {
 async function openBrowseTab() {
   await act(async () => {
     render(<App />)
+  })
+  await waitFor(() => {
+    expect(screen.getByPlaceholderText('Search tracks…')).toBeInTheDocument()
   })
 }
 
@@ -314,74 +308,34 @@ describe('Reset Weights', () => {
   })
 })
 
-describe('Quadrant collapse', () => {
-  it('renders dividers with collapse buttons for both axes when split', async () => {
+describe('Workspace widgets', () => {
+  it('lets users remove Browser and exposes it in Add widget menu', async () => {
     await openBrowseTab()
-    expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
-    expect(screen.getByLabelText('Collapse matches')).toBeInTheDocument()
-    expect(screen.getByLabelText('Collapse top panels')).toBeInTheDocument()
-    expect(screen.getByLabelText('Collapse bottom panels')).toBeInTheDocument()
+    expect(screen.getByLabelText('Browser')).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Remove Browser' }).click()
+    })
+    expect(screen.queryByLabelText('Browser')).toBeNull()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Add widget' }).click()
+    })
+    expect(screen.getByRole('menuitem', { name: 'Browser' })).toBeInTheDocument()
   })
 
-  it('collapsing the browser hides it behind an expand bar', async () => {
+  it('toggles widget lock state from the header controls', async () => {
     await openBrowseTab()
-    await act(async () => {
-      screen.getByLabelText('Collapse track browser').click()
-    })
-
-    expect(document.querySelector('.browse-quadrant')).not.toBeVisible()
-    expect(screen.getByLabelText('Expand track browser')).toBeInTheDocument()
+    const lockButton = screen.getByRole('button', { name: 'Lock Browser' })
+    expect(lockButton).toHaveAttribute('aria-pressed', 'false')
 
     await act(async () => {
-      screen.getByLabelText('Expand track browser').click()
+      lockButton.click()
     })
-    expect(document.querySelector('.browse-quadrant')).toBeVisible()
-  })
-
-  it('collapsing the matches quadrant hides it behind an expand bar', async () => {
-    await openBrowseTab()
-    await act(async () => {
-      screen.getByLabelText('Collapse matches').click()
-    })
-
-    expect(document.querySelector('.matches-quadrant')).not.toBeVisible()
-    expect(screen.getByLabelText('Expand matches')).toBeInTheDocument()
-
-    await act(async () => {
-      screen.getByLabelText('Expand matches').click()
-    })
-    expect(document.querySelector('.matches-quadrant')).toBeVisible()
-  })
-
-  it('collapsing the top row hides both top quadrants behind an expand bar', async () => {
-    await openBrowseTab()
-    await act(async () => {
-      screen.getByLabelText('Collapse top panels').click()
-    })
-
-    expect(document.querySelector('.browse-quadrant')).not.toBeVisible()
-    expect(document.querySelector('.matches-quadrant')).not.toBeVisible()
-    expect(screen.getByLabelText('Expand top panels')).toBeInTheDocument()
-
-    await act(async () => {
-      screen.getByLabelText('Expand top panels').click()
-    })
-    expect(document.querySelector('.browse-quadrant')).toBeVisible()
-  })
-
-  it('collapsing the bottom row hides the set workspace behind an expand bar', async () => {
-    await openBrowseTab()
-    await act(async () => {
-      screen.getByLabelText('Collapse bottom panels').click()
-    })
-
-    expect(document.querySelector('.quad-row--bottom')).not.toBeVisible()
-    expect(screen.getByLabelText('Expand bottom panels')).toBeInTheDocument()
-
-    await act(async () => {
-      screen.getByLabelText('Expand bottom panels').click()
-    })
-    expect(document.querySelector('.quad-row--bottom')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Unlock Browser' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 })
 
@@ -492,7 +446,7 @@ describe('Browse table', () => {
     expect(wrapper.scrollTop).toBe(440)
   })
 
-  it('restores scroll after quadrant collapses and expands', async () => {
+  it('keeps browse table mounted after remount', async () => {
     vi.mocked(useCollectionCache).mockReturnValue({
       allTracks: makeTracks(10),
       traitMap: new Map(),
@@ -500,44 +454,17 @@ describe('Browse table', () => {
       tracksError: null,
       traitsError: null,
     })
-    await openBrowseTab()
+    const { unmount } = render(<App />)
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText('Search tracks…')).toBeInTheDocument(),
+    )
 
-    const wrapper = document.querySelector<HTMLElement>('.track-table-wrapper')!
-    const geometry = { scrollHeight: 1_200, clientHeight: 200 }
-    Object.defineProperties(wrapper, {
-      scrollHeight: {
-        configurable: true,
-        get: () => geometry.scrollHeight,
-      },
-      clientHeight: {
-        configurable: true,
-        get: () => geometry.clientHeight,
-      },
-    })
-    wrapper.scrollTop = 700
-    fireEvent.scroll(wrapper)
-
-    // Collapsing matches gives the browser more room, so the browser's
-    // content clamps to a smaller scroll range in this simulation.
-    geometry.clientHeight = 600
-    await userEvent.click(screen.getByLabelText('Collapse matches'))
-    wrapper.scrollTop = 600
-    fireEvent.scroll(wrapper)
-
-    geometry.clientHeight = 200
-    await userEvent.click(screen.getByLabelText('Expand matches'))
-    expect(wrapper.scrollTop).toBe(700)
-
-    geometry.scrollHeight = 0
-    geometry.clientHeight = 0
-    await userEvent.click(screen.getByLabelText('Collapse track browser'))
-    wrapper.scrollTop = 0
-    fireEvent.scroll(wrapper)
-
-    geometry.scrollHeight = 1_200
-    geometry.clientHeight = 200
-    await userEvent.click(screen.getByLabelText('Expand track browser'))
-    expect(wrapper.scrollTop).toBe(700)
+    unmount()
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText('Search tracks…')).toBeInTheDocument(),
+    )
+    expect(getRowCount()).toBe(10)
   })
 })
 
@@ -556,7 +483,7 @@ describe('Error state handling', () => {
       traitsError: null,
     })
 
-    render(<App />)
+    await openBrowseTab()
 
     await act(async () => {
       screen.getByText('Track 1').click()
@@ -586,7 +513,7 @@ describe('Error state handling', () => {
       traitsError: null,
     })
 
-    render(<App />)
+    await openBrowseTab()
 
     await act(async () => {
       screen.getByText('Track 1').click()
@@ -610,9 +537,12 @@ describe('Error state handling', () => {
       traitsError: null,
     })
 
-    render(<App />)
-
-    expect(screen.getByText(/Failed to load tracks/)).toBeInTheDocument()
+    await act(async () => {
+      render(<App />)
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load tracks/)).toBeInTheDocument()
+    })
     expect(screen.getByText(/Failed to fetch tracks: 503/)).toBeInTheDocument()
     expect(screen.queryByText('No tracks found')).not.toBeInTheDocument()
   })
@@ -626,9 +556,12 @@ describe('Error state handling', () => {
       traitsError: null,
     })
 
-    render(<App />)
-
-    expect(screen.getByText('No tracks found')).toBeInTheDocument()
+    await act(async () => {
+      render(<App />)
+    })
+    await waitFor(() => {
+      expect(screen.getByText('No tracks found')).toBeInTheDocument()
+    })
     expect(screen.queryByText(/Failed to load tracks/)).not.toBeInTheDocument()
   })
 
@@ -641,9 +574,12 @@ describe('Error state handling', () => {
       traitsError: 'Failed to fetch track traits: 502',
     })
 
-    render(<App />)
-
-    expect(screen.getByText(/Failed to load track traits/)).toBeInTheDocument()
+    await act(async () => {
+      render(<App />)
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load track traits/)).toBeInTheDocument()
+    })
     expect(
       screen.getByText(/Failed to fetch track traits: 502/),
     ).toBeInTheDocument()
@@ -1112,11 +1048,11 @@ describe('Admin overlay', () => {
   })
 })
 
-describe('Browse quadrant', () => {
-  it('is always visible alongside the matches quadrant and set workspace', async () => {
+describe('Browse widget', () => {
+  it('is visible in the default workspace layout', async () => {
     await openBrowseTab()
 
-    expect(document.querySelector('.browse-quadrant')).toBeInTheDocument()
+    expect(screen.getByLabelText('Browser')).toBeInTheDocument()
     expect(getRowCount()).toBe(600)
     expect(
       screen.getByText('Select a track to see matches'),
@@ -1149,7 +1085,7 @@ describe('Browse quadrant', () => {
 
 describe('Cross-region drag and drop', () => {
   const TRACK_MIME = 'application/x-xeremia-track'
-  const TRACKLIST_ROW_MIME = 'application/x-xeremia-tracklist-row'
+  const POOL_ROW_MIME = 'application/x-xeremia-pool-row'
 
   function makeDataTransfer(data: Record<string, string> = {}) {
     const dt = {
@@ -1186,7 +1122,7 @@ describe('Cross-region drag and drop', () => {
       render(<App />)
     })
     await waitFor(() => {
-      expect(document.querySelector('.set-tracklist')).toBeInTheDocument()
+      expect(document.querySelector('.set-pool')).toBeInTheDocument()
     })
     return httpMod
   }
@@ -1226,7 +1162,7 @@ describe('Cross-region drag and drop', () => {
     expect(getRowCount()).toBe(1)
   })
 
-  it('dropping a browse row adds to the tracklist and pool when Set view is active', async () => {
+  it('dropping a browse row adds to sequencer and pool when Set view is active', async () => {
     const httpMod = await renderWithActiveSet()
     vi.mocked(httpMod.tracklistAdd).mockClear()
     vi.mocked(httpMod.poolAdd).mockClear()
@@ -1237,11 +1173,10 @@ describe('Cross-region drag and drop', () => {
     fireEvent.dragStart(row3, { dataTransfer: dt })
     expect(dt.getData(TRACK_MIME)).toBe('3')
 
-    const tracklist = document.querySelector<HTMLElement>('.set-tracklist')!
-    fireEvent.dragOver(tracklist, { dataTransfer: dt })
-    expect(tracklist.className).toContain('set-drop-active')
+    const committedLane = screen.getByLabelText('Committed lane')
+    fireEvent.dragOver(committedLane, { dataTransfer: dt })
     await act(async () => {
-      fireEvent.drop(tracklist, { dataTransfer: dt })
+      fireEvent.drop(committedLane, { dataTransfer: dt })
     })
     await waitFor(() => {
       expect(httpMod.tracklistAdd).toHaveBeenCalledWith(1, 3)
@@ -1262,7 +1197,7 @@ describe('Cross-region drag and drop', () => {
     })
   })
 
-  it('dropping a tracklist row on the matches quadrant loads its matches', async () => {
+  it('dropping a pool row on the matches quadrant loads its matches', async () => {
     const httpMod = await import('./api/http')
     const [track3] = makeTracks(3).slice(2)
     vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
@@ -1271,24 +1206,31 @@ describe('Cross-region drag and drop', () => {
         name: 'Test',
         created_at: '',
         updated_at: '',
-        pool_count: 0,
-        tracklist_count: 1,
+        pool_count: 1,
+        tracklist_count: 0,
       },
-      pool: [],
-      tracklist: [
-        { id: 10, set_id: 1, track_id: 3, position: 0, track: track3 },
+      pool: [
+        {
+          id: 10,
+          set_id: 1,
+          track_id: 3,
+          insertion_order: 0,
+          highlight_color: null,
+          track: track3,
+        },
       ],
+      tracklist: [],
       explorer_nodes: [],
       explorer_edges: [],
     })
     await renderWithActiveSet()
     vi.mocked(httpMod.fetchMatches).mockClear()
 
-    const tracklist = document.querySelector<HTMLElement>('.set-tracklist')!
-    const row = within(tracklist).getByText('Track 3').closest('tr')!
+    const pool = document.querySelector<HTMLElement>('.set-pool')!
+    const row = within(pool).getByText('Track 3').closest('tr')!
     const dt = makeDataTransfer()
     fireEvent.dragStart(row, { dataTransfer: dt })
-    expect(dt.getData(TRACKLIST_ROW_MIME)).toBe('3')
+    expect(dt.getData(POOL_ROW_MIME)).toBe('3')
 
     const panel = document.querySelector<HTMLElement>('.matches-panel')!
     fireEvent.dragOver(panel, { dataTransfer: dt })
@@ -1306,16 +1248,16 @@ describe('Cross-region drag and drop', () => {
 
   it('ignores text/plain-only drags on the set drop targets', async () => {
     const httpMod = await renderWithActiveSet()
-    vi.mocked(httpMod.tracklistAdd).mockClear()
+    vi.mocked(httpMod.poolAdd).mockClear()
 
-    const tracklist = document.querySelector<HTMLElement>('.set-tracklist')!
+    const pool = document.querySelector<HTMLElement>('.set-pool')!
     const dt = makeDataTransfer({ 'text/plain': '7' })
-    fireEvent.dragOver(tracklist, { dataTransfer: dt })
-    expect(tracklist.className).not.toContain('set-drop-active')
+    fireEvent.dragOver(pool, { dataTransfer: dt })
+    expect(pool.className).not.toContain('set-drop-active')
     await act(async () => {
-      fireEvent.drop(tracklist, { dataTransfer: dt })
+      fireEvent.drop(pool, { dataTransfer: dt })
     })
-    expect(httpMod.tracklistAdd).not.toHaveBeenCalled()
+    expect(httpMod.poolAdd).not.toHaveBeenCalled()
   })
 })
 
@@ -1347,15 +1289,19 @@ describe('session table view state', () => {
     )
 
     const { unmount } = render(<App />)
-    expect(
-      (screen.getByPlaceholderText(/search/i) as HTMLInputElement).value,
-    ).toBe('alpha')
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText(/search/i) as HTMLInputElement).value,
+      ).toBe('alpha'),
+    )
     unmount()
 
     render(<App />)
-    expect(
-      (screen.getByPlaceholderText(/search/i) as HTMLInputElement).value,
-    ).toBe('alpha')
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText(/search/i) as HTMLInputElement).value,
+      ).toBe('alpha'),
+    )
   })
 })
 
@@ -1366,8 +1312,9 @@ describe('Shell toggle', () => {
       render(<App />)
     })
 
-    expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Collapse track browser')).toBeNull()
+    await waitFor(() => {
+      expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
+    })
   })
 
   it('renders every workspace widget frame in the default preset', async () => {
@@ -1376,51 +1323,12 @@ describe('Shell toggle', () => {
       render(<App />)
     })
 
+    await waitFor(() => {
+      expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
+    })
     const grid = screen.getByLabelText('Workspace grid')
     for (const label of ['Explorer', 'Browser', 'Sequencer', 'Matches']) {
       expect(within(grid).getByLabelText(label)).toBeInTheDocument()
-    }
-  })
-
-  it('switches to the legacy quadrant shell and back', async () => {
-    localStorage.clear()
-    await act(async () => {
-      render(<App />)
-    })
-
-    await act(async () => {
-      screen.getByRole('button', { name: /legacy shell/i }).click()
-    })
-    expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Workspace grid')).toBeNull()
-
-    await act(async () => {
-      screen.getByRole('button', { name: /workspace shell/i }).click()
-    })
-    expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
-  })
-
-  it('persists the shell choice through the layout preference row', async () => {
-    vi.useFakeTimers()
-    try {
-      localStorage.clear()
-      const httpMod = await import('./api/http')
-      vi.mocked(httpMod.saveWorkspaceLayout).mockClear()
-
-      await act(async () => {
-        render(<App />)
-      })
-      await act(async () => {
-        screen.getByRole('button', { name: /legacy shell/i }).click()
-      })
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(600)
-      })
-
-      const saved = vi.mocked(httpMod.saveWorkspaceLayout).mock.calls.at(-1)
-      expect(saved?.[0].shell).toBe('legacy')
-    } finally {
-      vi.useRealTimers()
     }
   })
 
@@ -1490,6 +1398,9 @@ describe('Shell toggle', () => {
     await act(async () => {
       screen.getByRole('button', { name: 'Prune' }).click()
     })
+    await act(async () => {
+      screen.getByRole('button', { name: 'Confirm prune' }).click()
+    })
 
     // Only the pooled track the committed lane already holds is removed.
     expect(vi.mocked(httpMod.poolRemove).mock.calls).toEqual([
@@ -1497,7 +1408,7 @@ describe('Shell toggle', () => {
     ])
   })
 
-  it('hydrates the shell from the server layout row', async () => {
+  it('coerces legacy server shell state to workspace', async () => {
     localStorage.clear()
     const httpMod = await import('./api/http')
     vi.mocked(httpMod.fetchWorkspaceLayout).mockResolvedValueOnce({
@@ -1511,7 +1422,10 @@ describe('Shell toggle', () => {
       render(<App />)
     })
 
-    expect(screen.getByLabelText('Collapse track browser')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByLabelText('Workspace grid')).toBeInTheDocument()
+    })
+    expect(screen.queryByLabelText('Collapse track browser')).toBeNull()
   })
 })
 

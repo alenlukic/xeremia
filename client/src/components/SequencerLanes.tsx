@@ -263,9 +263,10 @@ export function SequencerLanes({
   } | null>(null)
   const marqueeRef = useRef<{
     lane: LaneScope
-    element: Element
+    element: HTMLElement
     from: number
     clientX: number
+    pointerId: number
   } | null>(null)
 
   const beginMarquee = useCallback(
@@ -274,8 +275,21 @@ export function SequencerLanes({
         return
       }
       const element = e.currentTarget
+      if (typeof element.setPointerCapture === 'function') {
+        try {
+          element.setPointerCapture(e.pointerId)
+        } catch {
+          /* jsdom and some UAs may not support capture here */
+        }
+      }
       const from = minuteFromClientX(element, e.clientX)
-      marqueeRef.current = { lane, element, from, clientX: e.clientX }
+      marqueeRef.current = {
+        lane,
+        element,
+        from,
+        clientX: e.clientX,
+        pointerId: e.pointerId,
+      }
       setMarquee({ lane, from, to: from })
     },
     [minuteFromClientX],
@@ -285,6 +299,24 @@ export function SequencerLanes({
   useEffect(() => {
     if (!dragging) {
       return
+    }
+    function releaseCapture(drag: (typeof marqueeRef.current)) {
+      if (!drag) {
+        return
+      }
+      if (
+        typeof drag.element.hasPointerCapture !== 'function' ||
+        typeof drag.element.releasePointerCapture !== 'function'
+      ) {
+        return
+      }
+      try {
+        if (drag.element.hasPointerCapture(drag.pointerId)) {
+          drag.element.releasePointerCapture(drag.pointerId)
+        }
+      } catch {
+        /* capture may already be released */
+      }
     }
     function onMove(e: PointerEvent) {
       const drag = marqueeRef.current
@@ -300,6 +332,7 @@ export function SequencerLanes({
       const drag = marqueeRef.current
       marqueeRef.current = null
       setMarquee(null)
+      releaseCapture(drag)
       if (!drag) {
         return
       }
@@ -318,11 +351,18 @@ export function SequencerLanes({
         covered.map((block) => block.entry.track_id),
       )
     }
+    function onCancel() {
+      releaseCapture(marqueeRef.current)
+      marqueeRef.current = null
+      setMarquee(null)
+    }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
     }
   }, [dragging, blocksInLane, minuteFromClientX, onSelectRange, onSetCursor])
 
@@ -654,6 +694,9 @@ export function SequencerLanes({
     ],
   )
 
+  const isEmptyTimeline =
+    blocks.length === 0 && benchLanes.every((lane) => lane.blocks.length === 0)
+
   return (
     <div
       className="sq-lanes"
@@ -691,6 +734,11 @@ export function SequencerLanes({
         scrollRef={scrollRef}
         endOffset={LANE_LABEL_PX + (committedEnd - startMin) * pxPerMin}
       />
+      {isEmptyTimeline && (
+        <p className="table-status sq-empty">
+          No tracks in this set yet — add tracks to the pool to start sequencing.
+        </p>
+      )}
       <div
         className="sq-lane sq-lane--committed"
         style={{ width: width + LANE_LABEL_PX }}

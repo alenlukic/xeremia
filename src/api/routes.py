@@ -759,16 +759,15 @@ def api_update_set(set_id: int, body: SetUpdateRequest):
 @router.put("/sets/{set_id}/sequencer", response_model=SetSummary)
 def api_update_set_sequencer(set_id: int, body: SetSequencerRequest):
     """Merge Sequencer view state into the set, so nothing about it is ephemeral."""
-    from src.models.dj_set import DjSet
+    from src.set_workspace.service import SetWorkspaceService
 
     session = _get_session()
     try:
-        dj_set = session.query(DjSet).filter_by(id=set_id).one_or_none()
+        svc = SetWorkspaceService(session)
+        patch = body.model_dump(exclude_unset=True)
+        dj_set = svc.update_set_sequencer(set_id, patch)
         if dj_set is None:
             raise HTTPException(status_code=404, detail="Set not found")
-        merged = dict(dj_set.sequencer or {})
-        merged.update(body.model_dump(exclude_none=True))
-        dj_set.sequencer = merged
         session.commit()
         return _serialize_set_summary(dj_set, session)
     except HTTPException:
@@ -1269,7 +1268,11 @@ def api_tracklist_set_overrides(
         raise
     except Exception:
         session.rollback()
-        logger.exception("Tracklist override update failed")
+        logger.exception(
+            "Tracklist override update failed for set_id=%s track_id=%s",
+            set_id,
+            track_id,
+        )
         raise HTTPException(status_code=500, detail="Override update failed")
     finally:
         session.close()

@@ -55,19 +55,27 @@ describe('useWorkspaceLayout', () => {
     const { result } = await mounted()
     expect(result.current.preset).toBe('Pool curation')
     expect(result.current.place).toEqual(presetPlace('Pool curation', B))
-    expect(result.current.shell).toBe('legacy')
+    expect(result.current.shell).toBe('workspace')
   })
 
   it('saves through the table-preference surface after a change', async () => {
-    const { result } = await mounted()
-    act(() => {
-      result.current.selectPreset('Pool curation')
-    })
-    await vi.waitFor(() =>
-      expect(http.saveWorkspaceLayout).toHaveBeenCalledWith(
-        expect.objectContaining({ preset: 'Pool curation' }),
-      ),
-    )
+    vi.useFakeTimers()
+    try {
+      const { result } = await mounted()
+      act(() => {
+        result.current.selectPreset('Pool curation')
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+      await vi.waitFor(() =>
+        expect(http.saveWorkspaceLayout).toHaveBeenCalledWith(
+          expect.objectContaining({ preset: 'Pool curation' }),
+        ),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('restores a saved preset with its locks', async () => {
@@ -209,7 +217,7 @@ describe('normalizeLayout', () => {
       shell: 'legacy',
     })
     expect(Object.keys(layout.place)).toEqual(['pool'])
-    expect(layout.shell).toBe('legacy')
+    expect(layout.shell).toBe('workspace')
   })
 })
 

@@ -5,6 +5,7 @@ import { formatDuration, formatHM } from '../utils/time'
 import { harmonyPaint, keyDotColor } from '../utils/harmonic'
 import type { PairResult } from '../utils/harmonic'
 import type { Track } from '../types'
+import { displayTitle } from '../utils/trackTitle'
 
 // One block on a lane. The tile carries only a key over a BPM; the full track
 // details live in a hover popover.
@@ -78,6 +79,7 @@ export function SequencerBlock({
   // live in a popover. It is rendered through a portal because the block clips
   // its own overflow to keep the tile copy tidy, which would otherwise hide it.
   const [pop, setPop] = useState<{ x: number; y: number } | null>(null)
+  const label = track ? displayTitle(track, track.id) : 'Track'
   const meta = [
     track?.camelot_code,
     bpm != null ? `${Math.round(bpm)} BPM` : null,
@@ -106,7 +108,7 @@ export function SequencerBlock({
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      aria-label={track?.title ?? 'Block'}
+      aria-label={label}
       data-fallback={fallback ? 'true' : undefined}
       title={
         fallback
@@ -153,7 +155,7 @@ export function SequencerBlock({
           className="sq-star"
           type="button"
           draggable={false}
-          aria-label={`${starred ? 'Unstar' : 'Star'} ${track?.title ?? 'track'}`}
+          aria-label={`${starred ? 'Unstar' : 'Star'} ${label}`}
           aria-pressed={!!starred}
           title={starred ? 'Remove star' : 'Star track'}
           onPointerDown={(e) => e.stopPropagation()}
@@ -170,7 +172,7 @@ export function SequencerBlock({
           className="sq-pin"
           type="button"
           draggable={false}
-          aria-label={`${locationPinned ? 'Unpin' : 'Pin'} ${track?.title ?? 'track'}`}
+          aria-label={`${locationPinned ? 'Unpin' : 'Pin'} ${label}`}
           aria-pressed={!!locationPinned}
           title={
             locationPinned
@@ -194,7 +196,7 @@ export function SequencerBlock({
             role="tooltip"
             style={{ left: pop.x, top: pop.y }}
           >
-            <span className="sq-block-pop-title">{track.title}</span>
+            <span className="sq-block-pop-title">{displayTitle(track, track.id)}</span>
             {meta && <span className="sq-block-pop-meta">{meta}</span>}
           </div>,
           document.body,
@@ -202,7 +204,7 @@ export function SequencerBlock({
       {benched && selected && onPromote && (
         <button
           className="sq-promote"
-          aria-label={`Promote ${track?.title ?? 'track'}`}
+          aria-label={`Promote ${label}`}
           title="Promote into the committed lane"
           onClick={(e) => {
             e.stopPropagation()
