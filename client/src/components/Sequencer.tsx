@@ -105,6 +105,7 @@ function sameRecord<T>(a: Record<string, T>, b: Record<string, T>): boolean {
 
 interface Props {
   activeSet: HydratedSet | null
+  allTracks?: Track[]
   onAddCommitted: (trackId: number, position: number) => MutationResult
   onPromote: (trackId: number, position: number) => MutationResult
   onReorder: (trackId: number, position: number) => MutationResult
@@ -129,6 +130,7 @@ interface Props {
 
 export function Sequencer({
   activeSet,
+  allTracks = [],
   onAddCommitted,
   onPromote,
   onReorder,
@@ -220,6 +222,10 @@ export function Sequencer({
       [patch],
     ),
   })
+  const poolTrackIds = useMemo(
+    () => new Set(activeSet?.pool.map((entry) => entry.track_id) ?? []),
+    [activeSet?.pool],
+  )
 
   useEffect(() => {
     const firstRealLaneId = sequencer.lanes[0]?.group?.id ?? null
@@ -827,6 +833,8 @@ export function Sequencer({
           <SequencerTracklist
             blocks={sequencer.blocks}
             overrides={sequencer.overrides}
+            allTracks={allTracks}
+            poolTrackIds={poolTrackIds}
             selectedTrackId={
               selection.lane === 'committed' ? selection.focus : null
             }
@@ -845,6 +853,7 @@ export function Sequencer({
             onReorder={onReorder}
             onAddCommitted={onAddCommitted}
             onPromote={onPromote}
+            onRemove={onRemove}
           />
         )}
       </div>

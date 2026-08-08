@@ -784,8 +784,8 @@ describe('Sequencer harmony highlighting', () => {
 })
 
 describe('Sequencer tracklist view', () => {
-  function openList(activeSet: HydratedSet) {
-    const view = renderSequencer(activeSet)
+  function openList(activeSet: HydratedSet, props = {}) {
+    const view = renderSequencer(activeSet, props)
     act(() => {
       screen.getByRole('button', { name: 'Tracklist' }).click()
     })
@@ -797,7 +797,7 @@ describe('Sequencer tracklist view', () => {
 
     expect(
       screen.getAllByRole('columnheader').map((th) => th.textContent),
-    ).toEqual(['#', 'Title', 'Key', 'BPM', 'In', 'Out', 'Length', 'Notes'])
+    ).toEqual(['', '#', 'Title', 'Key', 'BPM', 'In', 'Out', 'Length', 'Notes'])
     expect(screen.getByLabelText('Notes for Track 1')).toBeInTheDocument()
   })
 
@@ -860,8 +860,12 @@ describe('Sequencer tracklist view', () => {
       expect(
         (row as HTMLElement).querySelector('.sq-col-length')?.textContent,
       ).toMatch(/^\d{2}:\d{2}$/)
-      expect(row.textContent).not.toContain('×')
     }
+    expect(
+      screen.getAllByRole('button', {
+        name: /Remove Track \d+ from tracklist/,
+      }),
+    ).toHaveLength(2)
   })
 
   it('exports the committed lane in order', async () => {
@@ -932,6 +936,42 @@ describe('Sequencer tracklist view', () => {
       },
     })
     expect(onAddCommitted).toHaveBeenCalledWith(99, 1)
+  })
+
+  it('inserts a catalog track before a row from the + control', () => {
+    const onAddCommitted = vi.fn()
+    const catalogTrack = makeTrack(99, '07A', 126)
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '09A', 128), 1),
+    ]
+    openList(makeSet(tracklist), { onAddCommitted, allTracks: [catalogTrack] })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Insert track before Track 2' }),
+    )
+    fireEvent.change(screen.getByTestId('track-search-modal-input'), {
+      target: { value: 'Track 99' },
+    })
+    fireEvent.mouseDown(screen.getByTestId('track-search-modal-item'))
+
+    expect(onAddCommitted).toHaveBeenCalledWith(99, 1)
+    expect(screen.queryByTestId('track-search-modal')).toBeNull()
+  })
+
+  it('removes a tracklist row from the × control', () => {
+    const onRemove = vi.fn()
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '09A', 128), 1),
+    ]
+    openList(makeSet(tracklist), { onRemove })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove Track 2 from tracklist' }),
+    )
+
+    expect(onRemove).toHaveBeenCalledWith(2)
   })
 })
 

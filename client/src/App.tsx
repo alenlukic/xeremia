@@ -551,6 +551,7 @@ export function App() {
       sequencer: {
         node: (
           <Sequencer
+            allTracks={allTracks}
             onFocusTrack={setSequencerFocus}
             onRenameLane={(id, name) => void setBuilder.renameSubgroup(id, name)}
             onReorderLanes={(ids) => void setBuilder.reorderSubgroups(ids)}

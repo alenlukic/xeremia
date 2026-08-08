@@ -7,10 +7,12 @@ import {
 import { BPM_OVERRIDE_MAX, BPM_OVERRIDE_MIN } from '../constants/sequencer'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
+import type { Track } from '../types'
 import { keyDotColor } from '../utils/harmonic'
 import { displayTitle } from '../utils/trackTitle'
 import { formatDuration, formatHM } from '../utils/time'
 import { POOL_ROW_MIME, TRACK_DRAG_MIME, TRACKLIST_ROW_MIME } from '../utils'
+import { TrackSearchModal } from './TrackSearchModal'
 
 // Tracklist view of the committed lane. The BPM cell is the only editable one;
 // timing mechanics stay under the hood. Rows reorder and accept browse/pool
@@ -19,6 +21,8 @@ import { POOL_ROW_MIME, TRACK_DRAG_MIME, TRACKLIST_ROW_MIME } from '../utils'
 interface Props {
   blocks: LaidBlock[]
   overrides: OverrideMap
+  allTracks: Track[]
+  poolTrackIds: ReadonlySet<number>
   selectedTrackId: number | null
   onSelect: (trackId: number) => void
   onBpmChange: (trackId: number, bpm: number | null) => void
@@ -26,6 +30,7 @@ interface Props {
   onReorder: (trackId: number, position: number) => void
   onAddCommitted: (trackId: number, position: number) => void
   onPromote: (trackId: number, position: number) => void
+  onRemove: (trackId: number) => void
 }
 
 function NoteInput({
@@ -103,6 +108,8 @@ function readExternalTrackId(
 export function SequencerTracklist({
   blocks,
   overrides,
+  allTracks,
+  poolTrackIds,
   selectedTrackId,
   onSelect,
   onBpmChange,
@@ -110,8 +117,12 @@ export function SequencerTracklist({
   onReorder,
   onAddCommitted,
   onPromote,
+  onRemove,
 }: Props) {
   const [draft, setDraft] = useState<Record<number, string>>({})
+  const [insertBeforeTrackId, setInsertBeforeTrackId] = useState<
+    number | 'end' | null
+  >(null)
   // Track-id based (not index): survives list refresh mid-drag and never
   // leaves a stale "dragging" class stuck on whatever sits at index 0.
   const [dragTrackId, setDragTrackId] = useState<number | null>(null)
@@ -182,6 +193,33 @@ export function SequencerTracklist({
     [handlePanelExternalDrop],
   )
   const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
+  const insertBeforeBlock =
+    typeof insertBeforeTrackId === 'number'
+      ? (blocks.find((block) => block.entry.track_id === insertBeforeTrackId) ??
+        null)
+      : null
+
+  const handleInsertSelect = useCallback(
+    (trackId: number) => {
+      const position =
+        insertBeforeTrackId === 'end'
+          ? blocks.length
+          : blocks.findIndex(
+              (block) => block.entry.track_id === insertBeforeTrackId,
+            )
+      if (position < 0) {
+        setInsertBeforeTrackId(null)
+        return
+      }
+      insertExternal(
+        trackId,
+        poolTrackIds.has(trackId) ? 'pool' : 'browse',
+        position,
+      )
+      setInsertBeforeTrackId(null)
+    },
+    [blocks, insertBeforeTrackId, insertExternal, poolTrackIds],
+  )
 
   return (
     <div
@@ -191,6 +229,10 @@ export function SequencerTracklist({
       <table className="sq-list-table">
         <thead>
           <tr>
+            <th
+              className="set-ws-th set-ws-th-remove set-ws-th-rowactions"
+              aria-label="Row actions"
+            />
             <th className="sq-col-num">#</th>
             <th className="sq-col-title">Title</th>
             <th className="sq-col-key">Key</th>
@@ -287,6 +329,32 @@ export function SequencerTracklist({
                   clearRowDragState()
                 }}
               >
+                <td className="set-ws-cell-remove set-ws-cell-rowactions">
+                  <button
+                    type="button"
+                    className="set-row-remove-btn set-row-insert-btn"
+                    aria-label={`Insert track before ${title}`}
+                    title="Insert track before this row"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setInsertBeforeTrackId(trackId)
+                    }}
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    className="set-row-remove-btn"
+                    aria-label={`Remove ${title} from tracklist`}
+                    title="Remove from tracklist"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onRemove(trackId)
+                    }}
+                  >
+                    ×
+                  </button>
+                </td>
                 <td className="sq-col-num">{i + 1}</td>
                 <td className="sq-col-title">
                   <span
@@ -350,13 +418,51 @@ export function SequencerTracklist({
               </tr>
             )
           })}
+          <tr>
+            <td className="set-ws-cell-remove set-ws-cell-rowactions">
+              <button
+                type="button"
+                className="set-row-remove-btn set-row-insert-btn"
+                aria-label="Insert track at end"
+                title="Insert track at end"
+                onClick={() => setInsertBeforeTrackId('end')}
+              >
+                +
+              </button>
+            </td>
+            <td colSpan={8} />
+          </tr>
         </tbody>
       </table>
       {blocks.length === 0 && (
         <p className="table-status">
-          Nothing committed yet — promote a benched track to start the spine.
+          Nothing committed yet — insert a track to start the spine.
         </p>
       )}
+      {insertBeforeTrackId !== null &&
+        (insertBeforeTrackId === 'end' || insertBeforeBlock) && (
+          <TrackSearchModal
+            allTracks={allTracks}
+            title="Insert Track"
+            subtitle={
+              insertBeforeTrackId === 'end' ? (
+                'Inserting at the end'
+              ) : (
+                <>
+                  Inserting before{' '}
+                  <strong>
+                    {displayTitle(
+                      insertBeforeBlock?.entry.track,
+                      insertBeforeTrackId,
+                    )}
+                  </strong>
+                </>
+              )
+            }
+            onSelect={(suggestion) => handleInsertSelect(suggestion.id)}
+            onClose={() => setInsertBeforeTrackId(null)}
+          />
+        )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent, screen } from '@testing-library/react'
 import { SequencerTracklist } from './SequencerTracklist'
 import type { LaidBlock } from '../hooks/useSequencer'
 import type { Track, TracklistEntry } from '../types'
@@ -54,6 +54,8 @@ function renderList(
     <SequencerTracklist
       blocks={blocks}
       overrides={{}}
+      allTracks={[]}
+      poolTrackIds={new Set()}
       selectedTrackId={null}
       onSelect={noop}
       onBpmChange={noop}
@@ -61,6 +63,7 @@ function renderList(
       onReorder={noop}
       onAddCommitted={noop}
       onPromote={noop}
+      onRemove={noop}
       {...extra}
     />,
   )
@@ -217,6 +220,8 @@ describe('SequencerTracklist drag-to-add and inter-row insert', () => {
       <SequencerTracklist
         blocks={[...initial, makeBlock(30, 2)]}
         overrides={{}}
+        allTracks={[]}
+        poolTrackIds={new Set()}
         selectedTrackId={null}
         onSelect={noop}
         onBpmChange={noop}
@@ -224,10 +229,111 @@ describe('SequencerTracklist drag-to-add and inter-row insert', () => {
         onReorder={noop}
         onAddCommitted={noop}
         onPromote={noop}
+        onRemove={noop}
       />,
     )
 
     const nextRows = container.querySelectorAll('tbody tr')
     expect(nextRows[0].classList.contains('set-row-dragging')).toBe(false)
+  })
+})
+
+describe('SequencerTracklist explicit row actions', () => {
+  const blocks = [makeBlock(10, 0), makeBlock(20, 1)]
+
+  it('offers an insertion control at every tracklist boundary', () => {
+    renderList(blocks)
+
+    expect(
+      screen.getByRole('button', { name: 'Insert track before Track 10' }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Insert track before Track 20' }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Insert track at end' }),
+    ).toBeTruthy()
+  })
+
+  it('inserts a browse track before the selected row', () => {
+    const onAddCommitted = vi.fn()
+    renderList(blocks, {
+      allTracks: [makeTrack(99)],
+      onAddCommitted,
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Insert track before Track 20',
+      }),
+    )
+    fireEvent.change(screen.getByTestId('track-search-modal-input'), {
+      target: { value: 'Track 99' },
+    })
+    fireEvent.mouseDown(screen.getByTestId('track-search-modal-item'))
+
+    expect(onAddCommitted).toHaveBeenCalledWith(99, 1)
+    expect(screen.queryByTestId('track-search-modal')).toBeNull()
+  })
+
+  it('promotes a pool track at the end', () => {
+    const onPromote = vi.fn()
+    renderList(blocks, {
+      allTracks: [makeTrack(77)],
+      poolTrackIds: new Set([77]),
+      onPromote,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Insert track at end' }))
+    fireEvent.change(screen.getByTestId('track-search-modal-input'), {
+      target: { value: 'Track 77' },
+    })
+    fireEvent.mouseDown(screen.getByTestId('track-search-modal-item'))
+
+    expect(onPromote).toHaveBeenCalledWith(77, 2)
+  })
+
+  it('inserts the first track from the empty-list end control', () => {
+    const onAddCommitted = vi.fn()
+    renderList([], {
+      allTracks: [makeTrack(42)],
+      onAddCommitted,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Insert track at end' }))
+    fireEvent.change(screen.getByTestId('track-search-modal-input'), {
+      target: { value: 'Track 42' },
+    })
+    fireEvent.mouseDown(screen.getByTestId('track-search-modal-item'))
+
+    expect(onAddCommitted).toHaveBeenCalledWith(42, 0)
+  })
+
+  it('cancels insertion without changing the tracklist', () => {
+    const onAddCommitted = vi.fn()
+    const onPromote = vi.fn()
+    renderList(blocks, { onAddCommitted, onPromote })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Insert track at end' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByTestId('track-search-modal')).toBeNull()
+    expect(onAddCommitted).not.toHaveBeenCalled()
+    expect(onPromote).not.toHaveBeenCalled()
+  })
+
+  it('removes the selected row without selecting it', () => {
+    const onRemove = vi.fn()
+    const onSelect = vi.fn()
+    renderList(blocks, { onRemove, onSelect })
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Remove Track 20 from tracklist',
+      }),
+    )
+
+    expect(onRemove).toHaveBeenCalledWith(20)
+    expect(onSelect).not.toHaveBeenCalled()
   })
 })
