@@ -5,12 +5,20 @@ Usage::
     .venv/bin/python -m src.scripts.repair_genre_label --snapshot PATH
     .venv/bin/python -m src.scripts.repair_genre_label --snapshot PATH --apply
     .venv/bin/python -m src.scripts.repair_genre_label --snapshot PATH --verify-only
+
+The snapshot is pretty-formatted JSON holding one object per track the write
+classes will change. Each object carries its repair classes and an explicit
+`old -> new` delta per touched field; fields that do not change are omitted,
+and `null` inside a delta stands for an empty pre-write value. To restore by
+hand, split each delta on the last " -> " and take the left side — target
+values are canonical vocabulary or label names and never contain the
+delimiter.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,7 +28,19 @@ from src.data_management.genre_vocabulary import resolve_canonical_genre
 from src.track_metadata.label import resolve_label
 from src.track_metadata.underground import LEGACY_TRACK_ID_CEILING, UNDERGROUND_MIN_BPM
 
-NAMED_GENRE_OVERRIDES: dict[int, str] = {9922: "House"}
+NAMED_GENRE_OVERRIDES: dict[int, str] = {
+    9565: "Soundtracks",
+    9566: "Soundtracks",
+    9567: "Soundtracks",
+    9910: "Drum & Bass",
+    9922: "House",
+}
+
+NAMED_LABEL_OVERRIDES: dict[int, str] = {
+    9565: "Supergiant Games",
+    9566: "Supergiant Games",
+    9567: "Supergiant Games",
+}
 
 WRITE_CLASSES = frozenset(
     {
@@ -28,6 +48,7 @@ WRITE_CLASSES = frozenset(
         "genre_soundtrack_collision",
         "genre_alias",
         "genre_whitespace",
+        "label_named_override",
         "label_canonical_mismatch",
         "label_soundtrack_publisher",
         "label_underground_default",
@@ -71,6 +92,19 @@ class RepairReport:
         self.classes.setdefault(entry.class_name, []).append(entry)
 
 
+@dataclass
+class ChangeRow:
+    """One row the write classes will change, with its pre-write values."""
+
+    row_id: int
+    file_name: str
+    class_names: list[str] = field(default_factory=list)
+    genre_old: str | None = None
+    genre_new: str | None = None
+    label_old: str | None = None
+    label_new: str | None = None
+
+
 def _candidate_rows(session: Any) -> list[RepairRow]:
     from src.models.track import Track
 
@@ -99,6 +133,8 @@ def _classify_genre(row: RepairRow) -> tuple[ClassifiedRow | None, str | None]:
 
     if row.row_id in NAMED_GENRE_OVERRIDES:
         target = NAMED_GENRE_OVERRIDES[row.row_id]
+        if row.genre == target:
+            return None, target
         entry = ClassifiedRow(row.row_id, "genre_named_override", genre_target=target)
         return entry, target
 
@@ -133,6 +169,16 @@ def _classify_label(
     row: RepairRow, genre_target: str | None
 ) -> ClassifiedRow | None:
     label = row.label
+    if row.row_id in NAMED_LABEL_OVERRIDES:
+        target = NAMED_LABEL_OVERRIDES[row.row_id]
+        if label == target:
+            return None
+        return ClassifiedRow(
+            row.row_id,
+            "label_named_override",
+            label_target=target,
+        )
+
     if label is not None and str(label).strip():
         resolved = resolve_label(label, authoritative=True)
         if resolved is None:
@@ -166,7 +212,7 @@ def _classify_label(
 
 
 def classify(session: Any) -> RepairReport:
-    """Sort every candidate row into one of the eleven named repair classes."""
+    """Sort every candidate row into a named repair class."""
     report = RepairReport()
     for row in _candidate_rows(session):
         genre_class, genre_target = _classify_genre(row)
@@ -183,25 +229,65 @@ def classify(session: Any) -> RepairReport:
     return report
 
 
-def write_snapshot(path: Path, rows: list[RepairRow]) -> None:
-    """Write the rollback CSV for every candidate row, without overwriting."""
+def plan_changes(rows: list[RepairRow], report: RepairReport) -> list[ChangeRow]:
+    """Join the write-class entries against the candidate rows.
+
+    One record per changing row, with the pre-write value and the target
+    value for each field the repair touches. Report-only classes never
+    appear, because they write nothing.
+    """
+    rows_by_id = {row.row_id: row for row in rows}
+    changes: dict[int, ChangeRow] = {}
+    for class_name in sorted(WRITE_CLASSES):
+        for entry in report.classes.get(class_name, []):
+            row = rows_by_id.get(entry.row_id)
+            if row is None:
+                continue
+            change = changes.setdefault(
+                entry.row_id,
+                ChangeRow(row_id=row.row_id, file_name=row.file_name),
+            )
+            change.class_names.append(class_name)
+            if entry.genre_target is not None:
+                change.genre_old = row.genre
+                change.genre_new = entry.genre_target
+            if entry.label_target is not None:
+                change.label_old = row.label
+                change.label_new = entry.label_target
+    return [changes[row_id] for row_id in sorted(changes)]
+
+
+def _render_delta(old: str | None, new: str | None) -> str:
+    if new is None:
+        return ""
+    old_text = "null" if old is None or old == "" else str(old)
+    return f"{old_text} -> {new}"
+
+
+def write_snapshot(path: Path, changes: list[ChangeRow]) -> None:
+    """Write the rollback JSON for the rows the write classes will change.
+
+    The file doubles as the pre-apply review artifact, so each object names
+    its repair classes and carries an `old -> new` delta under the touched
+    field's own key; untouched fields are omitted. Never overwritten.
+    """
     if path.exists():
         raise FileExistsError(f"snapshot already exists: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(
-            handle, fieldnames=["id", "file_name", "genre", "label"]
-        )
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(
-                {
-                    "id": row.row_id,
-                    "file_name": row.file_name,
-                    "genre": row.genre or "",
-                    "label": row.label or "",
-                }
-            )
+    payload: list[dict[str, Any]] = []
+    for change in changes:
+        entry: dict[str, Any] = {
+            "id": change.row_id,
+            "repair_classes": change.class_names,
+        }
+        if change.file_name:
+            entry["file_name"] = change.file_name
+        if change.genre_new is not None:
+            entry["genre"] = _render_delta(change.genre_old, change.genre_new)
+        if change.label_new is not None:
+            entry["label"] = _render_delta(change.label_old, change.label_new)
+        payload.append(entry)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def apply(session: Any, report: RepairReport) -> None:
@@ -271,7 +357,9 @@ def main(argv: list[str] | None = None) -> int:
         newer_cov, legacy_cov = coverage(session)
 
         if not args.verify_only and not args.apply:
-            write_snapshot(args.snapshot, _candidate_rows(session))
+            write_snapshot(
+                args.snapshot, plan_changes(_candidate_rows(session), report)
+            )
 
         _print_report(report)
         print(f"new_cohort_label_coverage: {newer_cov:.1f}%")
@@ -288,7 +376,10 @@ def main(argv: list[str] | None = None) -> int:
             # the first write, whether or not a dry run produced it already.
             if not args.snapshot.exists():
                 try:
-                    write_snapshot(args.snapshot, _candidate_rows(session))
+                    write_snapshot(
+                        args.snapshot,
+                        plan_changes(_candidate_rows(session), report),
+                    )
                 except OSError as error:
                     print(
                         f"snapshot write failed, no row written: {error}",

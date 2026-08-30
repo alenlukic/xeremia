@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from contextlib import redirect_stderr, redirect_stdout
 
 from src.scripts import repair_genre_label as repair
@@ -142,6 +143,98 @@ def test_operator_named_rows(monkeypatch):
     assert any(entry.row_id == 9000 for entry in legacy)
 
 
+def test_backfill_miss_overrides_genres_and_soundtrack_labels(monkeypatch):
+    session = _StubSession(
+        [
+            _Track(9565, genre="Trance", label=None, bpm=120.0),
+            _Track(
+                9566,
+                genre="Hard Dance / Hardcore / Neo Rave Tracks - Beatport",
+                label="CDR",
+                bpm=150.0,
+            ),
+            _Track(9567, genre="Trance", label=None, bpm=125.0),
+            _Track(
+                9910,
+                genre="Buy Drum &amp; Bass Music",
+                label=None,
+                bpm=119.0,
+            ),
+        ]
+    )
+    monkeypatch.setattr("src.db.database.create_session", lambda: session)
+
+    report = repair.classify(session)
+
+    genre_targets = {
+        entry.row_id: entry.genre_target
+        for entry in report.classes["genre_named_override"]
+    }
+    assert genre_targets == {
+        9565: "Soundtracks",
+        9566: "Soundtracks",
+        9567: "Soundtracks",
+        9910: "Drum & Bass",
+    }
+    label_targets = {
+        entry.row_id: entry.label_target
+        for entry in report.classes["label_named_override"]
+    }
+    assert label_targets == {
+        9565: "Supergiant Games",
+        9566: "Supergiant Games",
+        9567: "Supergiant Games",
+    }
+    held = report.classes["label_held_below_threshold"]
+    assert [entry.row_id for entry in held] == [9910]
+
+    changes = {
+        change.row_id: change
+        for change in repair.plan_changes(repair._candidate_rows(session), report)
+    }
+    assert changes[9566].genre_old == (
+        "Hard Dance / Hardcore / Neo Rave Tracks - Beatport"
+    )
+    assert changes[9566].genre_new == "Soundtracks"
+    assert changes[9566].label_old == "CDR"
+    assert changes[9566].label_new == "Supergiant Games"
+    assert changes[9910].genre_old == "Buy Drum &amp; Bass Music"
+    assert changes[9910].genre_new == "Drum & Bass"
+    assert changes[9910].label_new is None
+
+    repair.apply(session, report)
+    assert session.tracks[9565].genre == "Soundtracks"
+    assert session.tracks[9565].label == "Supergiant Games"
+    assert session.tracks[9566].genre == "Soundtracks"
+    assert session.tracks[9566].label == "Supergiant Games"
+    assert session.tracks[9567].genre == "Soundtracks"
+    assert session.tracks[9567].label == "Supergiant Games"
+    assert session.tracks[9910].genre == "Drum & Bass"
+    assert session.tracks[9910].label is None
+
+
+def test_named_overrides_are_idempotent(monkeypatch):
+    session = _StubSession(
+        [
+            _Track(9565, genre="Soundtracks", label="Supergiant Games", bpm=120.0),
+            _Track(9566, genre="Soundtracks", label="Supergiant Games", bpm=150.0),
+            _Track(
+                9567,
+                genre="Soundtracks",
+                label="Supergiant Games",
+                bpm=125.0,
+            ),
+            _Track(9910, genre="Drum & Bass", label=None, bpm=119.0),
+            _Track(9922, genre="House", label=None),
+        ]
+    )
+    monkeypatch.setattr("src.db.database.create_session", lambda: session)
+
+    report = repair.classify(session)
+
+    assert all(not report.classes.get(name) for name in repair.WRITE_CLASSES)
+
+
 def test_operator_named_rows_exclude_legacy(monkeypatch):
     # The row clears the underground BPM threshold, so only the legacy
     # exclusion keeps it out of every write class.
@@ -185,8 +278,14 @@ def test_apply_writes_snapshot_before_the_commit(tmp_path, monkeypatch):
     assert exit_code == 0
     assert session.committed is True
     assert session.tracks[9600].label == "CDR"
-    # The snapshot holds the row as it stood before the write.
-    assert "9600,t.mp3,Techno," in snapshot.read_text(encoding="utf-8")
+    # The snapshot holds the pre-write value of the field the write changed.
+    (entry,) = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert entry == {
+        "id": 9600,
+        "repair_classes": ["label_underground_default"],
+        "file_name": "t.mp3",
+        "label": "null -> CDR",
+    }
 
 
 def test_apply_reuses_the_dry_run_snapshot(tmp_path, monkeypatch):
@@ -204,6 +303,45 @@ def test_apply_reuses_the_dry_run_snapshot(tmp_path, monkeypatch):
     assert snapshot.read_text(encoding="utf-8") == dry_run_csv
     assert session.committed is True
     assert session.tracks[9600].label == "CDR"
+
+
+def test_snapshot_holds_only_changing_rows(tmp_path, monkeypatch):
+    session = _StubSession(
+        [
+            _Track(9600, genre="Techno", label="", bpm=145.0),
+            _Track(9601, genre="Techno", label="", bpm=100.0),
+            _Track(9000, genre="Techno", label=""),
+        ]
+    )
+    monkeypatch.setattr("src.db.database.create_session", lambda: session)
+    snapshot = tmp_path / "snap.csv"
+
+    with redirect_stdout(io.StringIO()):
+        assert repair.main(["--snapshot", str(snapshot)]) == 0
+
+    entries = json.loads(snapshot.read_text(encoding="utf-8"))
+    # Report-only rows (held below threshold, legacy excluded) write nothing,
+    # so the snapshot does not carry them.
+    assert [entry["id"] for entry in entries] == [9600]
+    assert "genre" not in entries[0]
+    assert entries[0]["label"] == "null -> CDR"
+
+
+def test_snapshot_renders_explicit_deltas(tmp_path, monkeypatch):
+    session = _StubSession([_Track(9540, genre="Soundtrack", label="")])
+    monkeypatch.setattr("src.db.database.create_session", lambda: session)
+    snapshot = tmp_path / "snap.csv"
+
+    with redirect_stdout(io.StringIO()):
+        assert repair.main(["--snapshot", str(snapshot)]) == 0
+
+    (entry,) = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert entry["genre"] == "Soundtrack -> Soundtracks"
+    assert entry["label"] == "null -> Supergiant Games"
+    assert entry["repair_classes"] == [
+        "genre_soundtrack_collision",
+        "label_soundtrack_publisher",
+    ]
 
 
 def test_apply_refuses_when_the_snapshot_cannot_be_written(tmp_path, monkeypatch):
