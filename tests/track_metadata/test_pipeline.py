@@ -421,3 +421,71 @@ def test_db_first_pipeline_updates_matched_track(monkeypatch, tmp_path):
     assert track_result.metadata.label == "Label"
     assert updated["track_id"] == 42
     assert updated["genre"] == "Techno"
+
+
+def test_classify_genre_keeps_existing_genre(monkeypatch, tmp_path):
+    from src.track_metadata.pipeline.stages import stage_classify_genre
+
+    class _GenreHydrator:
+        def classify_free_download_genre(self, metadata):
+            return "Ravevival"
+
+    result = type(
+        "TrackResult",
+        (),
+        {"metadata": SimpleMetadata(genre="Trance", artist="A", title="T", bpm=150.0)},
+    )()
+    context = PipelineContext(hydrator=_GenreHydrator(), run_report=RunReport())
+    stage_classify_genre(result, context)
+    assert result.metadata.genre == "Trance"
+
+
+def test_db_first_pipeline_includes_classify_genre_stage():
+    from src.track_metadata.pipeline.stages import build_db_first_pipeline
+
+    names = [stage.name for stage in build_db_first_pipeline().stages]
+    assert names.index("classify_genre") == names.index("analyze") + 1
+    assert names.index("format") == names.index("classify_genre") + 1
+
+
+def test_mapping_registry_loaded_before_pipeline_run(monkeypatch, tmp_path):
+    from src.track_metadata import run_pipeline as run_pipeline_mod
+
+    calls: list[str] = []
+
+    class _Registry:
+        @classmethod
+        def load(cls, _session):
+            calls.append("load")
+
+    monkeypatch.setattr(run_pipeline_mod, "discover_new_audio_files", lambda: [])
+    monkeypatch.setattr(run_pipeline_mod, "ensure_directories", lambda: None)
+    monkeypatch.setattr(run_pipeline_mod, "reset_processing_dir", lambda: None)
+    monkeypatch.setattr(run_pipeline_mod, "setup_logging", lambda: None)
+    monkeypatch.setattr(
+        "src.data_management.mapping_registry.MappingRegistry", _Registry
+    )
+
+    run_pipeline_mod.run_pipeline()
+    assert calls == []
+
+    monkeypatch.setattr(
+        run_pipeline_mod, "discover_new_audio_files", lambda: [tmp_path / "a.mp3"]
+    )
+    (tmp_path / "a.mp3").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(run_pipeline_mod, "build_default_pipeline", lambda: type(
+        "Pipeline", (), {"run": lambda *_args, **_kwargs: None}
+    )())
+    monkeypatch.setattr(run_pipeline_mod, "build_metadata_agent", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        run_pipeline_mod,
+        "build_context",
+        lambda **_kwargs: type("Context", (), {"agent": None})(),
+    )
+    monkeypatch.setattr(run_pipeline_mod, "build_cursor_sdk_agent", lambda: None)
+    monkeypatch.setattr(
+        "src.db.database.create_session", lambda: type("S", (), {"close": lambda self: None})()
+    )
+
+    run_pipeline_mod.run_pipeline()
+    assert calls == ["load"]

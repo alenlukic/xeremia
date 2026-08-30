@@ -8,6 +8,7 @@ from src.models.track import Track
 from src.track_metadata.audio_features import analyze_missing_audio_features
 from src.track_metadata.db_matching import apply_db_fields
 from src.track_metadata.key_utils import canonicalize_key
+from src.track_metadata.genre import is_unknown_genre
 from src.track_metadata.label import apply_album_label_consistency
 from src.track_metadata.matching import (
     _compose_display_title,
@@ -136,6 +137,8 @@ def stage_analyze(result: TrackResult, context: PipelineContext) -> None:
 def stage_classify_genre(result: TrackResult, context: PipelineContext) -> None:
     if result.metadata is None:
         return
+    if not is_unknown_genre(result.metadata.genre):
+        return
     genre = context.hydrator.classify_free_download_genre(result.metadata)
     if genre:
         result.metadata.genre = genre
@@ -244,6 +247,7 @@ def build_db_first_pipeline() -> Pipeline:
             Stage(name="prepare", run=stage_prepare),
             Stage(name="db_hydrate", run=stage_db_hydrate),
             Stage(name="analyze", run=stage_analyze),
+            Stage(name="classify_genre", run=stage_classify_genre),
             Stage(name="format", run=stage_format),
             Stage(name="persist_matched", run=stage_persist_matched),
         ]

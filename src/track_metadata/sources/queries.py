@@ -103,3 +103,9 @@ def beatport_artist_discovery_query(artist: str) -> str:
 
 def beatport_track_discovery_query(artist: str, title: str) -> str:
     return f'site:beatport.com "{artist}" "{title}"'
+
+
+def bandcamp_track_discovery_query(artist: str | None, title: str | None) -> str | None:
+    if not artist or not title:
+        return None
+    return f'site:bandcamp.com "{artist}" "{title}"'

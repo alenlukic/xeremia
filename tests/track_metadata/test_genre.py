@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from src.track_metadata.genre import (
+    _SOURCE_PRIORITY,
     aggregate_artist_history,
     extract_usable_artists,
+    normalize_genre_value,
     resolve_artist_history_genre,
     resolve_beatport_artist_genre,
     resolve_dynamic_genre,
@@ -23,12 +25,12 @@ def test_resolve_ravevival_boundary_values():
     assert resolve_ravevival(free_download=True, bpm=None) is None
 
 
-def test_resolve_single_genre_prefers_beatport_then_lastfm():
+def test_resolve_single_genre_prefers_beatport_tag_then_lastfm():
     genre = resolve_single_genre(
         [
             ("discogs", "House | Deep House", 0.7),
             ("lastfm", "Techno", 0.9),
-            ("beatport", "Deep House", 0.8),
+            ("beatport_tag", "Deep House", 0.8),
         ]
     )
     assert genre == "Deep House"
@@ -41,7 +43,57 @@ def test_resolve_dynamic_genre_uses_lookup_hooks():
         beatport_lookup=lambda _artist, _title: "Techno",
         lastfm_lookup=lambda _artist, _title: "House",
     )
-    assert genre == "Techno"
+    assert genre == "House"
+
+
+def test_source_priority_order():
+    assert _SOURCE_PRIORITY.index("beatport_tag") == 0
+    assert _SOURCE_PRIORITY.index("beatport_search") > _SOURCE_PRIORITY.index(
+        "musicbrainz"
+    )
+
+
+def test_beatport_tag_outranks_musicbrainz_and_search():
+    assert (
+        resolve_single_genre(
+            [
+                ("musicbrainz", "House", 0.9),
+                ("beatport_tag", "Techno", 0.8),
+            ]
+        )
+        == "Techno"
+    )
+    assert (
+        resolve_single_genre(
+            [
+                ("musicbrainz", "House", 0.9),
+                ("beatport_search", "Techno", 0.95),
+            ]
+        )
+        == "House"
+    )
+
+
+def test_normalize_genre_value_rejects_scraped_title_and_accepts_alias():
+    assert (
+        normalize_genre_value("Hard Dance / Hardcore / Neo Rave Tracks - Beatport")
+        is None
+    )
+    assert normalize_genre_value("Psy-trance") == "Psytrance"
+
+
+def test_terminal_ravevival_default():
+    genre, events = resolve_genre_fallback(
+        artist="Artist",
+        title="Track",
+        repository=None,
+        browser=None,
+        enable_artist_history=False,
+        enable_beatport=False,
+        underground=True,
+    )
+    assert genre == "Ravevival"
+    assert events[-1].method == "underground_default"
 
 
 class _StubRepository:
@@ -50,6 +102,9 @@ class _StubRepository:
 
     def query_genres_for_artist(self, artist, **_kwargs):
         return self.mapping[artist]
+
+    def artist_in_legacy_library(self, artist):
+        return self.mapping.get(artist) is not None
 
 
 class _StubBrowser:
@@ -147,3 +202,65 @@ def test_resolve_genre_fallback_uses_beatport_after_db_tie():
     )
     assert genre == "Techno"
     assert events[-1].method == "beatport_artist_genres"
+
+
+def test_tie_break_by_legacy_frequency():
+    winner, _evidence = aggregate_artist_history(
+        [ArtistGenreCounts("A", 2, {"Trance": 2, "Techno": 2})],
+        legacy_totals={"Trance": 5, "Techno": 2},
+    )
+    assert winner == "Trance"
+
+    winner_none, _evidence = aggregate_artist_history(
+        [ArtistGenreCounts("A", 2, {"Trance": 2, "Techno": 2})],
+        legacy_totals=None,
+    )
+    assert winner_none is None
+
+
+def test_artist_history_rank_above_beatport_search():
+    genre = resolve_single_genre(
+        [
+            ("artist_history", "House", 0.7),
+            ("beatport_search", "Techno", 0.9),
+        ]
+    )
+    assert genre == "House"
+
+
+def test_artist_history_rank_below_beatport_tag():
+    genre = resolve_single_genre(
+        [
+            ("artist_history", "House", 0.9),
+            ("beatport_tag", "Techno", 0.8),
+        ]
+    )
+    assert genre == "Techno"
+
+
+def test_placeholder_artist_reaches_scraped_candidates():
+    genre, events = resolve_genre_fallback(
+        artist="Unknown",
+        title="Track",
+        repository=None,
+        browser=None,
+        enable_artist_history=True,
+        enable_beatport=False,
+        scraped_candidates=[("beatport_search", "Techno", 0.5)],
+    )
+    assert genre == "Techno"
+    assert any(event.method == "artist_history" and event.outcome == "skipped" for event in events)
+
+
+def test_placeholder_artist_reaches_underground_default():
+    genre, events = resolve_genre_fallback(
+        artist="Unknown",
+        title="Track",
+        repository=None,
+        browser=None,
+        enable_artist_history=True,
+        enable_beatport=False,
+        underground=True,
+    )
+    assert genre == "Ravevival"
+    assert any(event.method == "artist_history" and event.outcome == "skipped" for event in events)

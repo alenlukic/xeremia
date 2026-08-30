@@ -161,3 +161,45 @@ def test_purge_invalid_augmented_files(tmp_path):
 
     assert valid_copy.exists()
     assert not invalid_file.exists()
+
+
+def test_generate_metadata_genre(monkeypatch, tmp_path):
+    from src.data_management.audio_file import AudioFile
+
+    audio = AudioFile.__new__(AudioFile)
+    audio.file_name = "track.mp3"
+    audio.full_path = str(tmp_path / "track.mp3")
+
+    def fake_tag(tag, default=""):
+        tag_key = getattr(tag, "value", tag)
+        values = {
+            "TCON": "Chill House",
+            "TIT2": "Title",
+            "TBPM": "128",
+            "TKEY": "Am",
+            "TPUB": "Label",
+        }
+        return values.get(tag_key, default)
+
+    monkeypatch.setattr(audio, "get_tag", fake_tag)
+    monkeypatch.setattr(audio, "format_bpm", lambda: "128")
+    monkeypatch.setattr(audio, "format_key", lambda: "Am")
+    monkeypatch.setattr(audio, "generate_title", lambda *_args, **_kwargs: "Title")
+    monkeypatch.setattr(audio, "parse_energy", lambda: None)
+    monkeypatch.setattr(
+        "src.data_management.audio_file.get_file_creation_time", lambda _path: 0
+    )
+    monkeypatch.setattr(audio, "generate_comment", lambda _metadata: {})
+
+    off_vocab = audio.generate_metadata()
+    assert "genre" not in off_vocab
+
+    def psy_tag(tag, default=""):
+        tag_key = getattr(tag, "value", tag)
+        if tag_key == "TCON":
+            return "Psy-Trance"
+        return fake_tag(tag, default)
+
+    monkeypatch.setattr(audio, "get_tag", psy_tag)
+    with_genre = audio.generate_metadata()
+    assert with_genre["genre"] == "Psytrance"

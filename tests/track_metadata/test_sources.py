@@ -432,3 +432,173 @@ def test_detect_free_download_requires_identity_match() -> None:
         _client(lambda *_args, **_kwargs: _text_response(html))
     )
     assert client.detect_free_download("Artist", "Track") is False
+
+
+def test_label_observation_without_label() -> None:
+    html = (
+        '<a class="result__a" href="https://example.com/track">Artist - Track</a>'
+        '<div class="result__snippet">Official release page</div>'
+    )
+    client = WebSearchResearchClient(
+        _client(lambda *_args, **_kwargs: _text_response(html))
+    )
+    observations = client.search_label_by_title("Artist", "Track")
+    assert len(observations) == 1
+    assert observations[0].identity_confirmed is True
+    assert observations[0].label is None
+
+
+# ---------------------------------------------------------------------------
+# BandcampSource
+# ---------------------------------------------------------------------------
+
+
+def test_bandcamp_reads_label_from_data_tralbum(monkeypatch) -> None:
+    from src.track_metadata.sources.bandcamp import BandcampSource
+
+    search_html = (
+        '<a class="result__a" href="https://anjunadeep.bandcamp.com/track/x">'
+        "Lane 8 - Track | Bandcamp</a>"
+    )
+    page_html = (
+        '<meta property="og:site_name" content="Anjunadeep" />'
+        'data-tralbum=\'{"artist":"Lane 8","current":{"publisher":"Anjunadeep"}}\''
+    )
+    calls: list[str] = []
+
+    def _get(url: str, *, params=None, **_kwargs):
+        calls.append(url)
+        if params is not None:
+            return _text_response(search_html)
+        return _text_response(page_html)
+
+    source = BandcampSource()
+    result = source.lookup(
+        SimpleMetadata(artist="Lane 8", title="Track"),
+        _context(_client(_get)),
+    )
+    assert result is not None
+    assert result.label == "Anjunadeep"
+
+
+def test_bandcamp_reads_label_from_ld_json(monkeypatch) -> None:
+    from src.track_metadata.sources.bandcamp import BandcampSource
+
+    search_html = (
+        '<a class="result__a" href="https://anjunadeep.bandcamp.com/track/x">'
+        "Lane 8 - Track | Bandcamp</a>"
+    )
+    page_html = (
+        '<script type="application/ld+json">'
+        '{"publisher":{"name":"Anjunadeep"},"byArtist":{"name":"Lane 8"}}'
+        "</script>"
+    )
+
+    def _get(url: str, *, params=None, **_kwargs):
+        if params is not None:
+            return _text_response(search_html)
+        return _text_response(page_html)
+
+    source = BandcampSource()
+    result = source.lookup(
+        SimpleMetadata(artist="Lane 8", title="Track"),
+        _context(_client(_get)),
+    )
+    assert result is not None
+    assert result.label == "Anjunadeep"
+
+
+def test_bandcamp_returns_none_when_owner_equals_artist() -> None:
+    from src.track_metadata.sources.bandcamp import BandcampSource
+
+    search_html = (
+        '<a class="result__a" href="https://artist.bandcamp.com/track/x">'
+        "Artist - Track | Bandcamp</a>"
+    )
+    page_html = 'data-tralbum=\'{"artist":"Artist","current":{"publisher":"Artist"}}\''
+
+    def _get(url: str, *, params=None, **_kwargs):
+        if params is not None:
+            return _text_response(search_html)
+        return _text_response(page_html)
+
+    source = BandcampSource()
+    result = source.lookup(
+        SimpleMetadata(artist="Artist", title="Track"),
+        _context(_client(_get)),
+    )
+    assert result is None
+
+
+def test_bandcamp_returns_none_on_malformed_page() -> None:
+    from src.track_metadata.sources.bandcamp import BandcampSource
+
+    search_html = (
+        '<a class="result__a" href="https://artist.bandcamp.com/track/x">'
+        "Artist - Track | Bandcamp</a>"
+    )
+
+    def _get(url: str, *, params=None, **_kwargs):
+        if params is not None:
+            return _text_response(search_html)
+        return _text_response("<html>broken</html>")
+
+    source = BandcampSource()
+    result = source.lookup(
+        SimpleMetadata(artist="Artist", title="Track"),
+        _context(_client(_get)),
+    )
+    assert result is None
+
+
+def test_bandcamp_rejects_lookalike_host() -> None:
+    from src.track_metadata.sources.bandcamp import BandcampSource
+    from src.track_metadata.sources.constants import WEB_SEARCH_URL
+
+    search_html = (
+        '<a class="result__a" href="https://evilbandcamp.com/track/x">'
+        "Lane 8 - Track | Bandcamp</a>"
+    )
+    fetched: list[str] = []
+
+    def _get(url: str, *, params=None, **_kwargs):
+        fetched.append(url)
+        if params is not None:
+            return _text_response(search_html)
+        return _text_response(
+            'data-tralbum=\'{"artist":"Lane 8","current":{"publisher":"Evil"}}\''
+        )
+
+    source = BandcampSource()
+    result = source.lookup(
+        SimpleMetadata(artist="Lane 8", title="Track"),
+        _context(_client(_get)),
+    )
+    assert result is None
+    assert fetched == [WEB_SEARCH_URL]
+
+
+def test_discogs_label_contributes_release_label(monkeypatch) -> None:
+    monkeypatch.setenv("DISCOGS_TOKEN", "faketoken")
+    get = MagicMock(
+        return_value=_json_response(
+            {
+                "results": [
+                    {
+                        "title": "Artist - Track",
+                        "year": 2020,
+                        "genre": ["Techno"],
+                        "label": ["Anjunadeep"],
+                    }
+                ]
+            }
+        )
+    )
+    source = DiscogsSource()
+    result = source.lookup(
+        SimpleMetadata(title="Track", artist="Artist"),
+        _context(_client(get)),
+    )
+    assert result is not None
+    assert result.label == "Anjunadeep"
+    assert "label" in DiscogsSource.merge_fields
