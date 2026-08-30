@@ -56,7 +56,14 @@ def run_pipeline(rekordbox_tsv: Path | None = None) -> Path:
 
     report = RunReport()
     if files:
+        from src.data_management.mapping_registry import MappingRegistry
         from src.db import database
+
+        session = database.create_session()
+        try:
+            MappingRegistry.load(session)
+        finally:
+            session.close()
 
         fallback_agent = build_cursor_sdk_agent()
         hydrator = build_metadata_agent(
@@ -78,7 +85,12 @@ def run_pipeline(rekordbox_tsv: Path | None = None) -> Path:
         )
         context.agent = fallback_agent
         pipeline = build_default_pipeline()
-        pipeline.run(files, context, on_progress=_on_track_progress)
+        try:
+            pipeline.run(files, context, on_progress=_on_track_progress)
+        finally:
+            close = getattr(hydrator, "close", None)
+            if callable(close):
+                close()
 
     report_path = LOG_DIR / f"{RUN_START}_report.md"
     report.write(report_path)

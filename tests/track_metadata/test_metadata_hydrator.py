@@ -1015,3 +1015,209 @@ def test_external_research_can_be_disabled_without_disabling_db_genre(
     )
     result = hydrator.hydrate(mp3, SimpleMetadata(artist="Artist", title="Track"))
     assert result.genre == "Techno"
+
+
+def test_shared_underground_value(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, bool] = {}
+
+    def fake_genre_fallback(**kwargs):
+        captured["genre"] = kwargs.get("underground", False)
+        return None, []
+
+    def fake_label_fallback(**kwargs):
+        captured["label"] = kwargs.get("underground", False)
+        return None, []
+
+    monkeypatch.setattr(
+        "src.track_metadata.sources.hydrator.resolve_genre_fallback",
+        fake_genre_fallback,
+    )
+    monkeypatch.setattr(
+        "src.track_metadata.sources.hydrator.resolve_label_fallback",
+        fake_label_fallback,
+    )
+
+    class _Repo:
+        def artist_in_legacy_library(self, _artist):
+            return False
+
+        def query_genres_for_artist(self, artist, **_kwargs):
+            from src.track_metadata.research import ArtistGenreCounts
+
+            return ArtistGenreCounts(artist, 0, {})
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        track_repository=_Repo(),
+        enable_label_web_search=False,
+        enable_genre_beatport=False,
+        enable_label_beatport=False,
+        enable_label_cdr=False,
+    )
+    hydrator.hydrate(
+        mp3,
+        SimpleMetadata(artist="Artist", title="Track", bpm=145.0, genre=None, label=None),
+    )
+    assert captured["genre"] is True
+    assert captured["label"] is True
+
+
+def test_sourced_label_survives_hydrate(tmp_path: Path) -> None:
+    class _Session:
+        def query(self, model):
+            return self
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def ilike(self, *_args, **_kwargs):
+            return self
+
+        def first(self):
+            return object()
+
+        def close(self):
+            return None
+
+    class _PresentLabelSource(_FakeSource):
+        def lookup(self, seed, context):
+            return SimpleMetadata(label="Warp Records")
+
+    class _Repo:
+        def query_genres_for_artist(self, artist, **_kwargs):
+            from src.track_metadata.research import ArtistGenreCounts
+
+            return ArtistGenreCounts(artist, 0, {})
+
+        def artist_in_legacy_library(self, _artist):
+            return False
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[_PresentLabelSource("bandcamp")],
+        track_repository=_Repo(),
+        session_factory=_Session,
+        enable_label_web_search=False,
+        enable_genre_artist_history=False,
+    )
+    result = hydrator.hydrate(
+        mp3, SimpleMetadata(artist="Artist", title="Track", genre="House")
+    )
+    assert result.label == "Warp Records"
+
+
+def test_sourced_label_dropped_when_absent_from_db(tmp_path: Path) -> None:
+    class _Session:
+        def query(self, model):
+            return self
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def ilike(self, *_args, **_kwargs):
+            return self
+
+        def first(self):
+            return None
+
+        def close(self):
+            return None
+
+    class _AbsentLabelSource(_FakeSource):
+        def lookup(self, seed, context):
+            return SimpleMetadata(label="Warp Records")
+
+    class _Repo:
+        def query_genres_for_artist(self, artist, **_kwargs):
+            from src.track_metadata.research import ArtistGenreCounts
+
+            return ArtistGenreCounts(artist, 0, {})
+
+        def artist_in_legacy_library(self, _artist):
+            return False
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[_AbsentLabelSource("bandcamp")],
+        track_repository=_Repo(),
+        session_factory=_Session,
+        enable_label_web_search=False,
+        enable_genre_artist_history=False,
+    )
+    result = hydrator.hydrate(
+        mp3, SimpleMetadata(artist="Artist", title="Track", genre="House")
+    )
+    assert result.label is None
+
+
+def test_catalog_source_sees_label_from_earlier_source(tmp_path: Path) -> None:
+    resolver = _FakeSource(
+        "discogs",
+        SimpleMetadata(label="Anjunadeep"),
+        merge_fields=frozenset({"label"}),
+    )
+    seen_labels: list[str | None] = []
+
+    class _GuardedSource(_FakeSource):
+        def lookup(self, seed, context):
+            # Record the value rather than the object, because later resolution
+            # mutates the metadata the loop passed in.
+            seen_labels.append(seed.label)
+            return None
+
+    guarded = _GuardedSource("bandcamp", None, merge_fields=frozenset({"label"}))
+
+    mp3 = _staged_mp3(tmp_path, "Artist - Track.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        catalog_sources=[resolver, guarded],
+        enable_genre_artist_history=False,
+        enable_genre_beatport=False,
+        enable_label_beatport=False,
+        enable_label_cdr=False,
+    )
+
+    hydrator.hydrate(mp3, SimpleMetadata(artist="Artist", title="Track", genre="House"))
+
+    assert seen_labels == ["Anjunadeep"]
+
+
+def test_lazy_legacy_lookup_skipped_when_fields_resolved(tmp_path: Path) -> None:
+    calls = {"count": 0}
+
+    class _CountingRepo:
+        def artist_in_legacy_library(self, _artist):
+            calls["count"] += 1
+            return False
+
+        def query_genres_for_artist(self, artist, **_kwargs):
+            from src.track_metadata.research import ArtistGenreCounts
+
+            calls["count"] += 1
+            return ArtistGenreCounts(artist, 0, {})
+
+    mp3_resolved = _staged_mp3(tmp_path, "resolved.mp3")
+    mp3_empty_label = _staged_mp3(tmp_path, "empty-label.mp3")
+    hydrator = _make_hydrator(
+        tmp_path,
+        track_repository=_CountingRepo(),
+        enable_label_web_search=False,
+        enable_genre_artist_history=False,
+        enable_genre_beatport=False,
+        enable_label_beatport=False,
+        enable_label_cdr=False,
+    )
+    hydrator.hydrate(
+        mp3_resolved,
+        SimpleMetadata(artist="Artist", title="Track", genre="House", label="CDR"),
+    )
+    assert calls["count"] == 0
+
+    hydrator.hydrate(
+        mp3_empty_label,
+        SimpleMetadata(artist="Artist", title="Track", genre="House", label=None),
+    )
+    assert calls["count"] == 1

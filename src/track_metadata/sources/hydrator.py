@@ -14,6 +14,7 @@ from src.track_metadata.genre import (
     resolve_ravevival,
     RAVEVIVAL_MIN_BPM,
 )
+from src.track_metadata.underground import is_underground_release
 from src.track_metadata.label import (
     WebLabelVerifier,
     apply_label_resolution,
@@ -48,6 +49,7 @@ from src.track_metadata.sources.constants import (
     DEFAULT_USER_AGENT,
     HTTP_TIMEOUT_SECONDS,
 )
+from src.track_metadata.sources.bandcamp import BandcampSource
 from src.track_metadata.sources.discogs import DiscogsSource
 from src.track_metadata.sources.genre_lookups import (
     is_beatport_encoded,
@@ -121,7 +123,7 @@ class MetadataHydrator:
         self._catalog_sources = (
             catalog_sources
             if catalog_sources is not None
-            else [AcoustIdSource(), MusicBrainzSource(), DiscogsSource()]
+            else [AcoustIdSource(), MusicBrainzSource(), DiscogsSource(), BandcampSource()]
         )
         self._web_source = web_source if web_source is not None else WebSearchSource()
         self.session_factory = session_factory
@@ -133,6 +135,8 @@ class MetadataHydrator:
         self.enable_label_web_search = enable_label_web_search
         self.enable_label_beatport = enable_label_beatport
         self.enable_label_cdr = enable_label_cdr
+        self._session: Any | None = None
+        self._repository: TrackRepository | None = None
 
     def hydrate(
         self,
@@ -162,7 +166,10 @@ class MetadataHydrator:
         resolved = replace(seed)
 
         for source in self._catalog_sources:
-            candidate = source.lookup(seed, context)
+            # Each source receives the progressively merged metadata, so a
+            # source that skips work for a field another source already
+            # resolved can see that value.
+            candidate = source.lookup(resolved, context)
             if candidate is None:
                 continue
             candidates[source.name] = candidate
@@ -199,6 +206,7 @@ class MetadataHydrator:
         )
         apply_label_resolution(
             resolved,
+            session=self._resolve_session(),
             web_verifier=self.web_label_verifier,
             authoritative=is_beatport_encoded(file_path),
         )
@@ -222,8 +230,18 @@ class MetadataHydrator:
         repository = self._resolve_track_repository()
         web_client = self._resolve_web_research_client()
         browser = self.browser_research_client
+        underground_value: bool | None = None
+
+        def underground() -> bool:
+            nonlocal underground_value
+            if underground_value is None:
+                underground_value = self._compute_underground(resolved, repository)
+            return underground_value
 
         if is_unknown_genre(resolved.genre):
+            scraped_candidates = self._collect_scraped_genre_candidates(
+                resolved, file_path
+            )
             genre, genre_events = resolve_genre_fallback(
                 artist=resolved.artist,
                 title=resolved.title,
@@ -232,6 +250,8 @@ class MetadataHydrator:
                 enable_artist_history=self.enable_genre_artist_history,
                 enable_beatport=self.enable_genre_beatport,
                 exclude_file_name=file_path.name,
+                underground=underground(),
+                scraped_candidates=scraped_candidates,
             )
             events.extend(genre_events)
             if genre:
@@ -248,6 +268,8 @@ class MetadataHydrator:
                 enable_beatport=self.enable_label_beatport,
                 enable_cdr=self.enable_label_cdr,
                 cdr_min_soundcloud_followers=RESOLUTION_CDR_MIN_SOUNDCLOUD_FOLLOWERS,
+                underground=underground(),
+                genre=resolved.genre,
             )
             events.extend(label_events)
             if label:
@@ -259,17 +281,38 @@ class MetadataHydrator:
                 payload["file"] = file_path.name
                 agent_events.append(payload)
 
-    def _resolve_track_repository(self) -> TrackRepository | None:
-        if self.track_repository is not None:
-            return self.track_repository
+    def _resolve_session(self) -> Any | None:
+        if self._session is not None:
+            return self._session
         if self.session_factory is None:
             return None
         try:
-            session = self.session_factory()
-            return SqlAlchemyTrackRepository(session)
+            self._session = self.session_factory()
         except Exception as exc:
             logging.warning("Failed to open track repository session: %s", exc)
             return None
+        return self._session
+
+    def _resolve_track_repository(self) -> TrackRepository | None:
+        if self.track_repository is not None:
+            return self.track_repository
+        if self._repository is not None:
+            return self._repository
+        session = self._resolve_session()
+        if session is None:
+            return None
+        self._repository = SqlAlchemyTrackRepository(session)
+        return self._repository
+
+    def close(self) -> None:
+        if self._session is not None:
+            try:
+                self._session.close()
+            except Exception as exc:
+                logging.warning("Failed to close track repository session: %s", exc)
+            finally:
+                self._session = None
+                self._repository = None
 
     def _resolve_web_research_client(self) -> WebSearchResearchClient | None:
         if self.web_research_client is not None:
@@ -351,14 +394,44 @@ class MetadataHydrator:
             beatport_genre = read_beatport_genre_from_tags(file_path)
             if beatport_genre:
                 source_candidates.insert(
-                    0, ("beatport", beatport_genre, BEATPORT_TAG_CONFIDENCE)
+                    0, ("beatport_tag", beatport_genre, BEATPORT_TAG_CONFIDENCE)
                 )
         return resolve_dynamic_genre(
             artist=resolved.artist,
             title=resolved.title,
             source_candidates=source_candidates,
-            beatport_lookup=self.beatport_genre_lookup,
             lastfm_lookup=self.lastfm_genre_lookup,
+        )
+
+    def _collect_scraped_genre_candidates(
+        self,
+        resolved: SimpleMetadata,
+        file_path: Path,
+    ) -> list[tuple[str, str | None, float]]:
+        candidates: list[tuple[str, str | None, float]] = []
+        beatport_genre = self.beatport_genre_lookup(resolved.artist, resolved.title)
+        if beatport_genre:
+            candidates.append(("beatport_search", beatport_genre, 0.5))
+        return candidates
+
+    def _compute_underground(
+        self,
+        resolved: SimpleMetadata,
+        repository: TrackRepository | None,
+    ) -> bool:
+        artist_in_legacy = False
+        if repository is not None and resolved.artist:
+            if hasattr(repository, "artist_in_legacy_library"):
+                artist_in_legacy = repository.artist_in_legacy_library(
+                    resolved.artist
+                )
+            else:
+                counts = repository.query_genres_for_artist(resolved.artist)
+                artist_in_legacy = counts.matched_track_count > 0
+        return is_underground_release(
+            bpm=resolved.bpm,
+            title=resolved.title,
+            artist_in_legacy_library=artist_in_legacy,
         )
 
     def classify_free_download_genre(self, metadata: SimpleMetadata) -> str | None:
