@@ -31,6 +31,86 @@ export const TRACK_DRAG_MIME = 'application/x-xeremia-track'
 export const TRACKLIST_ROW_MIME = 'application/x-xeremia-tracklist-row'
 export const POOL_ROW_MIME = 'application/x-xeremia-pool-row'
 
+/**
+ * Every track in a multi-selection being dragged (payload: a JSON array of
+ * track ids). Written alongside the single-track types rather than instead of
+ * them, so a drop target that has never heard of multi-select still receives
+ * the dragged row and behaves exactly as before.
+ */
+export const TRACK_MULTI_MIME = 'application/x-xeremia-tracks'
+
+/**
+ * Tag a drag with a whole selection. `primary` is the row actually grabbed and
+ * is what the single-track payload carries.
+ *
+ * `rowMime` names the panel the rows came from and *replaces* the library
+ * type rather than joining it: targets read the type to tell a move between
+ * panels from a copy out of the library, so a pool row that also claimed to
+ * be a library drag would be copied into the pool it already lives in.
+ */
+export function writeTrackDrag(
+  dataTransfer: DataTransfer,
+  primary: number,
+  trackIds: number[],
+  rowMime?: string,
+) {
+  dataTransfer.setData(rowMime ?? TRACK_DRAG_MIME, String(primary))
+  if (trackIds.length > 1) {
+    dataTransfer.setData(TRACK_MULTI_MIME, JSON.stringify(trackIds))
+  }
+}
+
+/**
+ * Every track id a drag carries, in order. Falls back to the single-track
+ * payload, so this reads both new and old drags.
+ */
+export function readTrackDrag(
+  dataTransfer: DataTransfer,
+  rowMime?: string,
+): number[] {
+  const many = dataTransfer.getData(TRACK_MULTI_MIME)
+  if (many) {
+    try {
+      const parsed: unknown = JSON.parse(many)
+      if (Array.isArray(parsed)) {
+        const ids = parsed.filter(
+          (id): id is number => typeof id === 'number' && Number.isInteger(id),
+        )
+        if (ids.length > 0) {
+          return ids
+        }
+      }
+    } catch {
+      /* fall through to the single-track payload */
+    }
+  }
+  for (const mime of [rowMime, TRACK_DRAG_MIME]) {
+    if (!mime) {
+      continue
+    }
+    const raw = dataTransfer.getData(mime)
+    const id = Number(raw)
+    if (raw && Number.isInteger(id)) {
+      return [id]
+    }
+  }
+  return []
+}
+
+/**
+ * Apply a drop to every dragged track, in order and one at a time. These
+ * handlers each write shared set state and reload it, so overlapping them
+ * scrambles the order the tracks land in.
+ */
+export async function dropTracksInOrder(
+  trackIds: number[],
+  handle: (trackId: number) => void | Promise<unknown>,
+): Promise<void> {
+  for (const trackId of trackIds) {
+    await handle(trackId)
+  }
+}
+
 export function formatFloat(value: number | null | undefined): string {
   if (value == null) {
     return '—'

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { NO_SELECTION } from '../hooks/useMultiSelect'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowseFilterAddButton, BrowseFilterGroups } from './FilterBar'
@@ -215,6 +216,7 @@ describe('TrackTable column visibility', () => {
   it('hides a column when columnVisibility marks it false while Title remains', () => {
     render(
       <TrackTable
+          selection={NO_SELECTION}
         tracks={[sampleTrack]}
         loading={false}
         selectedTrack={null}
@@ -255,6 +257,7 @@ describe('TrackTable column visibility', () => {
   it('renders BPM as a rounded integer', () => {
     render(
       <TrackTable
+          selection={NO_SELECTION}
         tracks={[{ ...sampleTrack, bpm: 128.7 }]}
         {...trackTableProps}
       />,
@@ -269,6 +272,7 @@ describe('TrackTable column visibility', () => {
   it('renders BPM as integer with no trailing decimal for whole numbers', () => {
     render(
       <TrackTable
+          selection={NO_SELECTION}
         tracks={[{ ...sampleTrack, bpm: 130.0 }]}
         {...trackTableProps}
       />,

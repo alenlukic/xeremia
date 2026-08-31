@@ -18,6 +18,7 @@ import { useCollectionCache } from './hooks/useCollectionCache'
 import { useCacheStats } from './hooks/useCacheStats'
 import { useWeights } from './hooks/useWeights'
 import { useSetBuilder } from './hooks/useSetBuilder'
+import { useCrates } from './hooks/useCrates'
 import { useTablePreferences } from './hooks/useTablePreferences'
 import { AudioPlayerProvider } from './hooks/useAudioPlayer'
 import { visibleColumnIds, TABLE_REGISTRIES } from './tablePreferences'
@@ -128,6 +129,9 @@ export function App() {
     addToPool: setBuilderAddToPool,
     addToTracklist: setBuilderAddToTracklist,
   } = setBuilder
+
+  // Library-scoped Explorer crates; independent of the active set.
+  const crateStore = useCrates()
 
   const browseTracks = useMemo(
     () =>
@@ -256,6 +260,7 @@ export function App() {
       pendingAdd={setBuilder.pendingAdd}
       createSet={setBuilder.createSet}
       selectSet={setBuilder.selectSet}
+      renameSet={setBuilder.renameSet}
       deleteSet={setBuilder.deleteSet}
       resolvePendingAdd={setBuilder.resolvePendingAdd}
       clearPendingAdd={setBuilder.clearPendingAdd}
@@ -266,15 +271,6 @@ export function App() {
   const matchesConfig = tablePrefs.configs.matches
 
   const laneCount = setBuilder.activeSet?.pool_subgroups?.length ?? 0
-
-  /** The Explorer's Prune reads the committed lane as the source of truth. */
-  const committedTrackIds = useMemo(
-    () =>
-      new Set(
-        (setBuilder.activeSet?.tracklist ?? []).map((entry) => entry.track_id),
-      ),
-    [setBuilder.activeSet],
-  )
 
   /** Pool entries the virtual default lane shows while no subgroup exists. */
   const poolEntryIds = useMemo(
@@ -457,6 +453,7 @@ export function App() {
         tablePrefs.flushColumnWidth('search', id, width)
       }
       scrollRestorationKey="workspace"
+      onAddManyToPool={handleAddToPool}
     />
   )
 
@@ -539,12 +536,15 @@ export function App() {
       explorer: {
         node: (
           <ExplorerMatrix
-            pool={setBuilder.activeSet?.pool ?? []}
-            hasActiveSet={!!setBuilder.activeSet}
-            onDropTrack={(trackId) => setBuilderAddToPool(trackId)}
+            tracks={allTracks}
             focus={sequencerFocus}
-            committedTrackIds={committedTrackIds}
-            onRemoveTracks={setBuilder.removeManyFromPool}
+            crates={crateStore.crates}
+            crateMemberships={crateStore.memberships}
+            onCreateCrate={crateStore.createCrate}
+            onRenameCrate={crateStore.renameCrate}
+            onDeleteCrate={crateStore.deleteCrate}
+            onAddTrackToCrate={crateStore.addTrackToCrate}
+            onRemoveFromCrate={crateStore.removeTrackFromCrate}
           />
         ),
       },
@@ -566,8 +566,14 @@ export function App() {
             onBenchToLane={handleBenchToLane}
             onMoveBench={handleMoveBench}
             onRemove={(trackId) => setBuilder.removeFromTracklist(trackId, true)}
-            onRemoveBenched={(trackId) =>
-              setBuilder.removeFromPool(trackId, true)
+            // Lanes are alternative orderings over one pool, so removing from
+            // a real lane drops only that lane's membership. The default lane
+            // is virtual — it exists only before any subgroup does, and has no
+            // membership to drop, so there it is a pool removal.
+            onRemoveBenched={(trackId, lane, poolEntryId) =>
+              typeof lane === 'number'
+                ? setBuilder.removeSubgroupMember(lane, poolEntryId)
+                : setBuilder.removeFromPool(trackId, true)
             }
             onAddLane={handleAddLane}
             onDeleteLane={(subgroupId) => {
@@ -582,14 +588,19 @@ export function App() {
     [
       allTracks,
       browserStack,
-      committedTrackIds,
+      crateStore.crates,
+      crateStore.memberships,
+      crateStore.createCrate,
+      crateStore.renameCrate,
+      crateStore.deleteCrate,
+      crateStore.addTrackToCrate,
+      crateStore.removeTrackFromCrate,
       handleAddLane,
       handleBenchToLane,
       handleMoveBench,
       handlePromote,
       matchesStack,
       sequencerFocus,
-      setBuilderAddToPool,
       setBuilder.activeSet,
       setBuilder.addToPool,
       setBuilder.addSubgroupMember,
@@ -601,7 +612,6 @@ export function App() {
       setBuilder.refreshActive,
       setBuilder.removeFromPool,
       setBuilder.removeFromTracklist,
-      setBuilder.removeManyFromPool,
       setBuilder.renameSubgroup,
       setBuilder.reorderPool,
       setBuilder.reorderSubgroupMember,
@@ -632,7 +642,8 @@ export function App() {
     </button>
   )
 
-  const toastMessage = workspaceUiError ?? layout.saveError ?? setBuilder.error
+  const toastMessage =
+    workspaceUiError ?? layout.saveError ?? setBuilder.error ?? crateStore.error
 
   const dismissToast = useCallback(() => {
     setWorkspaceUiError(null)
@@ -687,12 +698,13 @@ export function App() {
           <WorkspaceGrid
             layout={layout}
             panels={workspacePanels}
-            headerExtras={
+            headerControls={
               <>
+                <span className="ws-header-label">Set</span>
                 {setPicker}
-                {renderAdminGear('ws-icon-btn ws-header-gear')}
               </>
             }
+            headerExtras={renderAdminGear('ws-icon-btn ws-header-gear')}
           />
         ) : (
           <div className="ws-shell">

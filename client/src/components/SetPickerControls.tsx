@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
+import { Dropdown } from './Dropdown'
+import type { DropdownItem } from './Dropdown'
 import type { SetSummary } from '../types'
 import type { PendingAdd } from '../hooks/useSetBuilder'
+
+// The header's set control, built on the same Dropdown as the layout picker
+// beside it. Sets can be renamed and deleted from the menu itself (right-click
+// or double-click), so the standalone select, "+ New" and "×" buttons are gone.
 
 interface Props {
   sets: SetSummary[]
@@ -8,6 +14,7 @@ interface Props {
   pendingAdd: PendingAdd | null
   createSet: (name: string) => Promise<SetSummary | null>
   selectSet: (id: number) => void
+  renameSet: (id: number, name: string) => void
   deleteSet: (id: number) => void
   resolvePendingAdd: (setId: number) => void
   clearPendingAdd: () => void
@@ -19,6 +26,7 @@ export function SetPickerControls({
   pendingAdd,
   createSet,
   selectSet,
+  renameSet,
   deleteSet,
   resolvePendingAdd,
   clearPendingAdd,
@@ -65,44 +73,47 @@ export function SetPickerControls({
     clearPendingAdd()
   }
 
+  const items: DropdownItem[] = sets.map((s) => ({
+    id: String(s.id),
+    label: `${s.name} (P:${s.pool_count} T:${s.tracklist_count})`,
+    // The counts decorate the row but are not part of the name.
+    renameValue: s.name,
+    canRename: true,
+    canDelete: true,
+  }))
+
+  const activeSet = sets.find((s) => s.id === activeSetId) ?? null
+
+  const validateName = (id: string, name: string) =>
+    sets.some((s) => String(s.id) !== id && s.name === name)
+      ? 'Name already exists'
+      : null
+
   return (
     <div className="set-picker-controls">
-      {activeSetId && (
-        <button
-          className="set-delete-btn"
-          onClick={() => deleteSet(activeSetId)}
-          title="Delete set"
-        >
-          ×
-        </button>
-      )}
-      {sets.length > 0 && (
-        <select
-          className="set-select"
-          value={activeSetId ?? ''}
-          onChange={(e) => {
-            if (e.target.value === '') {
-              return
-            }
-            const val = Number(e.target.value)
-            if (Number.isInteger(val)) {
-              selectSet(val)
-            }
-          }}
-        >
-          <option value="" disabled>
-            Select a set…
-          </option>
-          {sets.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name} (P:{s.pool_count} T:{s.tracklist_count})
-            </option>
-          ))}
-        </select>
-      )}
-      <button className="set-create-btn" onClick={() => setShowNewInput(true)}>
-        + New
-      </button>
+      <Dropdown
+        value={activeSet ? activeSet.name : 'Select a set…'}
+        ariaLabel="Set"
+        items={items}
+        selectedId={activeSetId === null ? null : String(activeSetId)}
+        emptyLabel="No sets yet"
+        onSelect={(id) => selectSet(Number(id))}
+        onRename={(id, name) => renameSet(Number(id), name)}
+        onDelete={(id) => deleteSet(Number(id))}
+        validateName={validateName}
+        footer={(close) => (
+          <button
+            className="ws-picker-item"
+            role="menuitem"
+            onClick={() => {
+              close()
+              setShowNewInput(true)
+            }}
+          >
+            New set…
+          </button>
+        )}
+      />
 
       {showNewInput && (
         <div className="set-new-input-row">

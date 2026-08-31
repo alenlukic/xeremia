@@ -201,6 +201,134 @@ export function NarrowIcon({ size = 13 }: IconProps) {
   )
 }
 
+/**
+ * Corner brackets pointing outwards to fill the canvas, and inwards once the
+ * widget already fills it.
+ */
+export function MaximizeIcon({
+  size = 13,
+  maximized = false,
+}: IconProps & { maximized?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d={
+          maximized
+            ? 'M7 3v4H3M9 13V9h4'
+            : 'M3 6.5V3h3.5M13 9.5V13H9.5'
+        }
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d={
+          maximized
+            ? 'M13 7H9V3M3 9h4v4'
+            : 'M9.5 3H13v3.5M6.5 13H3V9.5'
+        }
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** Media transport glyphs, so a preview control can sit in an SVG icon row. */
+export function PlayIcon({ size = 13 }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M5.5 3.4 12 8l-6.5 4.6z" fill="currentColor" />
+    </svg>
+  )
+}
+
+export function PauseIcon({ size = 13 }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="4.6" y="3.6" width="2.4" height="8.8" rx="0.6" fill="currentColor" />
+      <rect x="9" y="3.6" width="2.4" height="8.8" rx="0.6" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** Star — filled once the tile is starred, outline until then. */
+export function StarIcon({
+  size = 13,
+  filled = false,
+}: IconProps & { filled?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M8 2.2l1.76 3.57 3.94.57-2.85 2.78.67 3.92L8 11.2l-3.52 1.85.67-3.92L2.3 6.34l3.94-.57z"
+        fill={filled ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** Magnifying glass — opens the inline filter on a cohort or list. */
+export function SearchIcon({ size = 13 }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle
+        cx="7"
+        cy="7"
+        r="3.9"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M9.9 9.9 13 13"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 /** Padlock — closed pins a widget's width, open leaves it free. */
 export function LockIcon({
   size = 13,

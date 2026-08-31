@@ -143,7 +143,9 @@ const TRACKLIST_REGISTRY: ColumnRegistryEntry[] = [
 ]
 
 const POOL_REGISTRY: ColumnRegistryEntry[] = [
-  { id: 'play', label: 'Pre.', defaultVisible: true, resizable: false },
+  // Sizable and reorderable like any other pool column; only the tanstack
+  // tables still pin their preview column.
+  { id: 'play', label: 'Pre.', defaultVisible: true, defaultWidth: 32 },
   { id: 'num', label: '#', defaultVisible: true, defaultWidth: 40 },
   { id: 'title', label: 'Title', defaultVisible: true, defaultWidth: 220 },
   { id: 'key', label: 'Key', defaultVisible: true, defaultWidth: 62 },

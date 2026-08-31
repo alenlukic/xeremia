@@ -9,6 +9,8 @@ import type {
   SequencerSettings,
   SetSummary,
   HydratedSet,
+  ExplorerCrate,
+  ExplorerCrateMembership,
   PoolSubgroup,
   PreferenceTableId,
   TablePreferenceConfig,
@@ -425,6 +427,82 @@ export async function subgroupDropTrack(
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
     throw new Error(data.detail || `Subgroup drop failed: ${res.status}`)
+  }
+}
+
+export interface CratesPayload {
+  crates: ExplorerCrate[]
+  memberships: ExplorerCrateMembership[]
+}
+
+export async function fetchCrates(): Promise<CratesPayload> {
+  const res = await fetch('/api/crates')
+  if (!res.ok) {
+    throw new Error(`Crate fetch failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function crateCreate(name: string): Promise<ExplorerCrate> {
+  const res = await fetch('/api/crates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    throw new Error(`Crate create failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function crateRename(
+  crateId: number,
+  name: string,
+): Promise<ExplorerCrate> {
+  const res = await fetch(`/api/crates/${crateId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    throw new Error(`Crate rename failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function crateDelete(crateId: number): Promise<void> {
+  const res = await fetch(`/api/crates/${crateId}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    throw new Error(`Crate delete failed: ${res.status}`)
+  }
+}
+
+export async function crateAddTrack(
+  crateId: number,
+  trackId: number,
+): Promise<void> {
+  const res = await fetch(`/api/crates/${crateId}/tracks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ track_id: trackId }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || `Crate add track failed: ${res.status}`)
+  }
+}
+
+export async function crateRemoveTrack(
+  crateId: number,
+  trackId: number,
+): Promise<void> {
+  const res = await fetch(`/api/crates/${crateId}/tracks/${trackId}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    throw new Error(`Crate remove track failed: ${res.status}`)
   }
 }
 

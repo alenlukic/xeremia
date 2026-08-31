@@ -71,6 +71,7 @@ function defaultState(): WorkspaceLayoutState {
     preset: DEFAULT_PRESET,
     place: presetPlace(DEFAULT_PRESET, FALLBACK_BOUNDS),
     custom: {},
+    hidden: [],
     shell: 'workspace',
     locked: {},
   }
@@ -165,11 +166,20 @@ export function normalizeLayout(raw: unknown): WorkspaceLayoutState {
   // Validate against the size the rectangles were written at, so nothing is
   // squeezed before the live canvas has reported in.
   const place = normalizePlace(source.place, authored ?? FALLBACK_BOUNDS)
+  // Only real built-in names are kept: a stale entry would otherwise hide
+  // nothing forever, invisible to the restore action.
+  const hidden = Array.isArray(source.hidden)
+    ? (source.hidden as unknown[]).filter(
+        (name): name is string =>
+          typeof name === 'string' && PRESET_NAMES.includes(name),
+      )
+    : []
   return {
     bounds: authored,
     preset: typeof source.preset === 'string' ? source.preset : defaults.preset,
     place: Object.keys(place).length > 0 ? place : defaults.place,
     custom,
+    hidden,
     shell: 'workspace',
     locked: normalizeLocked(source.locked),
   }
@@ -209,11 +219,19 @@ export interface WorkspaceLayout {
   /** Widgets that are not on the canvas. */
   missing: WidgetId[]
   locked: LockedWidgets
+  /** Widget temporarily filling the canvas, or null. Never persisted. */
+  maximized: WidgetId | null
+  toggleMaximize: (id: WidgetId) => void
   /** Report the canvas size so placements clamp to what is on screen. */
   setBounds: (bounds: Bounds) => void
   selectPreset: (name: string) => void
-  saveCustomPreset: (name: string) => void
-  renamePreset: (name: string) => void
+  /** `from` branches off an existing layout; omitted, it saves what is on screen. */
+  saveCustomPreset: (name: string, from?: string) => void
+  renamePreset: (name: string, from?: string) => void
+  deletePreset: (name: string) => void
+  /** Built-in presets the user removed; empty when none are hidden. */
+  hiddenPresets: string[]
+  restoreBuiltInPresets: () => void
   setShell: (shell: ShellId) => void
   toggleLock: (id: WidgetId) => void
   removeWidget: (id: WidgetId) => void
@@ -312,8 +330,10 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     setBoundsState(next)
     setState((s) => {
       // A built-in preset is defined in fractions, so it reflows to fill the
-      // new canvas exactly.
-      if (PRESET_NAMES.includes(s.preset)) {
+      // new canvas exactly — unless it has been edited, in which case a stored
+      // entry holds the edit and regenerating here would silently throw it
+      // away on the next window resize.
+      if (PRESET_NAMES.includes(s.preset) && !s.custom[s.preset]) {
         return { ...s, bounds: next, place: presetPlace(s.preset, next) }
       }
       // A hand-made layout keeps its proportions. Rescaling from the size it
@@ -334,8 +354,12 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     })
   }, [])
 
+  const hidden = state.hidden ?? []
   const presets: Record<string, LayoutPlace> = {}
   for (const name of PRESET_NAMES) {
+    if (hidden.includes(name)) {
+      continue
+    }
     presets[name] = presetPlace(name, bounds)
   }
   for (const [name, saved] of Object.entries(state.custom)) {
@@ -367,11 +391,38 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     })
   }, [mutateState])
 
-  const setPlace = useCallback((fn: (place: LayoutPlace) => LayoutPlace) => {
-    mutateState((s) => ({ ...s, preset: CUSTOM_PRESET, place: fn(s.place) }))
-  }, [mutateState])
+  /**
+   * Every edit — move, resize, lock, add, remove — writes through to the
+   * layout you are working in. Editing a layout means changing it, not
+   * abandoning it for an unnamed placeholder; branching off a layout is what
+   * "New layout… / copy from" is for. A built-in gets a stored entry the first
+   * time it is edited, which shadows the generated one until it is restored.
+   */
+  const writeThrough = useCallback(
+    (s: WorkspaceLayoutState, place: LayoutPlace, locked: LockedWidgets) => {
+      if (s.preset === CUSTOM_PRESET) {
+        return { ...s, place, locked }
+      }
+      return {
+        ...s,
+        place,
+        locked,
+        custom: { ...s.custom, [s.preset]: { place, locked } },
+      }
+    },
+    [],
+  )
 
-  const saveCustomPreset = useCallback((requestedName: string) => {
+  const setPlace = useCallback(
+    (fn: (place: LayoutPlace) => LayoutPlace) => {
+      mutateState((s) => writeThrough(s, fn(s.place), s.locked ?? {}))
+    },
+    [mutateState, writeThrough],
+  )
+
+  // `from` names a layout to branch off; without it the new layout takes the
+  // arrangement on screen.
+  const saveCustomPreset = useCallback((requestedName: string, from?: string) => {
     mutateState((s) => {
       const name = requestedName.trim()
       const duplicate = hasDuplicatePresetName(Object.keys(s.custom), name)
@@ -379,29 +430,114 @@ export function useWorkspaceLayout(): WorkspaceLayout {
       if (!name || reserved || duplicate) {
         return s
       }
-      const saved: SavedLayout = { place: s.place, locked: s.locked }
-      return { ...s, preset: name, custom: { ...s.custom, [name]: saved } }
+      const source =
+        from && from !== CUSTOM_PRESET
+          ? (s.custom[from] ??
+            (PRESET_NAMES.includes(from) && !(s.hidden ?? []).includes(from)
+              ? { place: presetPlace(from, boundsRef.current), locked: {} }
+              : null))
+          : null
+      const saved: SavedLayout = source
+        ? { place: source.place, locked: source.locked ?? {} }
+        : { place: s.place, locked: s.locked }
+      return {
+        ...s,
+        preset: name,
+        place: saved.place,
+        locked: saved.locked ?? {},
+        custom: { ...s.custom, [name]: saved },
+      }
     })
   }, [mutateState])
 
-  const renamePreset = useCallback((requestedName: string) => {
+  // `from` names the preset being renamed; it defaults to the active one, which
+  // is the only preset the header could rename before the picker grew per-item
+  // actions.
+  const renamePreset = useCallback((requestedName: string, from?: string) => {
     mutateState((s) => {
+      const source = from ?? s.preset
       const name = requestedName.trim()
       const duplicate = hasDuplicatePresetName(
         Object.keys(s.custom),
         name,
-        s.preset,
+        source,
       )
       const reserved = isReservedPresetName(name)
-      if (!name || name === s.preset || reserved || duplicate) {
+      if (!name || name === source || reserved || duplicate) {
+        return s
+      }
+      const saved = s.custom[source]
+      const builtIn = !saved && PRESET_NAMES.includes(source)
+      if (!saved && !builtIn) {
+        return s
+      }
+      // A saved layout is moved under the new name. A built-in has no stored
+      // entry to move, so it is snapshotted into one: the live arrangement
+      // when it is the preset on screen, otherwise the rectangles the built-in
+      // itself generates. Either way the original name goes away, which is
+      // what renaming means.
+      const custom = { ...s.custom }
+      delete custom[source]
+      custom[name] =
+        saved ??
+        (source === s.preset
+          ? { place: s.place, locked: s.locked }
+          : { place: presetPlace(source, boundsRef.current), locked: {} })
+      return {
+        ...s,
+        preset: s.preset === source ? name : s.preset,
+        custom,
+        hidden: builtIn ? [...(s.hidden ?? []), source] : (s.hidden ?? []),
+      }
+    })
+  }, [mutateState])
+
+  const deletePreset = useCallback((name: string) => {
+    mutateState((s) => {
+      // A built-in is generated from code rather than stored, so removing it
+      // is recorded as an absence. Restoring brings the whole set back.
+      if (!s.custom[name]) {
+        const hidden = s.hidden ?? []
+        if (!PRESET_NAMES.includes(name) || hidden.includes(name)) {
+          return s
+        }
+        return {
+          ...s,
+          preset: s.preset === name ? CUSTOM_PRESET : s.preset,
+          hidden: [...hidden, name],
+        }
+      }
+      const custom = { ...s.custom }
+      delete custom[name]
+      // Deleting the layout in use leaves the widgets exactly where they are;
+      // only the name it was saved under goes away.
+      return { ...s, preset: s.preset === name ? CUSTOM_PRESET : s.preset, custom }
+    })
+  }, [mutateState])
+
+  // Restores the generated set: drops both the deletions and the stored
+  // overrides that editing a built-in leaves behind. Layouts saved under their
+  // own names are untouched.
+  const restoreBuiltInPresets = useCallback(() => {
+    mutateState((s) => {
+      const overridden = Object.keys(s.custom).filter((name) =>
+        PRESET_NAMES.includes(name),
+      )
+      if ((s.hidden ?? []).length === 0 && overridden.length === 0) {
         return s
       }
       const custom = { ...s.custom }
-      if (custom[s.preset]) {
-        delete custom[s.preset]
+      for (const name of overridden) {
+        delete custom[name]
       }
-      custom[name] = { place: s.place, locked: s.locked }
-      return { ...s, preset: name, custom }
+      return {
+        ...s,
+        custom,
+        hidden: [],
+        place: PRESET_NAMES.includes(s.preset)
+          ? presetPlace(s.preset, boundsRef.current)
+          : s.place,
+      }
     })
   }, [mutateState])
 
@@ -417,9 +553,9 @@ export function useWorkspaceLayout(): WorkspaceLayout {
       } else {
         locked[id] = true
       }
-      return { ...s, locked }
+      return writeThrough(s, s.place, locked)
     })
-  }, [mutateState])
+  }, [mutateState, writeThrough])
 
   const removeWidget = useCallback(
     (id: WidgetId) => {
@@ -483,6 +619,18 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     [state.place],
   )
 
+  // Maximizing is a view state, not a layout edit: it lives outside `state` so
+  // it is never written to the server and restoring is exactly a no-op on the
+  // stored rectangles.
+  const [maximizedId, setMaximizedId] = useState<WidgetId | null>(null)
+  const toggleMaximize = useCallback((id: WidgetId) => {
+    setMaximizedId((current) => (current === id ? null : id))
+  }, [])
+  // Derived rather than reconciled in an effect, so a widget removed from the
+  // canvas stops being maximized in the same render it leaves.
+  const maximized =
+    maximizedId && state.place[maximizedId] ? maximizedId : null
+
   const clearSaveError = useCallback(() => {
     setSaveError(null)
   }, [])
@@ -499,10 +647,15 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     clearSaveError,
     missing,
     locked: state.locked ?? {},
+    maximized,
+    toggleMaximize,
     setBounds,
     selectPreset,
     saveCustomPreset,
     renamePreset,
+    deletePreset,
+    hiddenPresets: hidden,
+    restoreBuiltInPresets,
     setShell,
     toggleLock,
     removeWidget,

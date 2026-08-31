@@ -32,8 +32,8 @@ import type { Track } from '../types'
 import { POOL_ROW_MIME, TRACKLIST_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
 
 // Lanes view: a sticky ruler, the committed spine that packs end to end, and
-// one lane per pool subgroup. A set without a subgroup shows the virtual
-// default lane instead, and the first drop on it creates the subgroup.
+// one lane per pool subgroup. No virtual lanes are rendered: every alternative
+// lane shown here has real rename/delete persistence.
 
 export const LANE_LABEL_PX = 110
 
@@ -386,6 +386,36 @@ export function SequencerLanes({
     setDropPreview(null)
   }, [])
 
+  /**
+   * Lane labels are fixed controls beside the timeline, not timeline content.
+   * Track drags over them must not bubble to the lane drop handlers. Lane-name
+   * drags still bubble so groups can be reordered by dropping one label onto
+   * another.
+   */
+  const blockTrackDropOnLabel = useCallback(
+    (e: React.DragEvent) => {
+      if (!hasSupportedTrackDrag(e.dataTransfer)) {
+        return
+      }
+      e.stopPropagation()
+      e.dataTransfer.dropEffect = 'none'
+      setDropPreview(null)
+    },
+    [],
+  )
+
+  const rejectTrackDropOnLabel = useCallback(
+    (e: React.DragEvent) => {
+      if (!hasSupportedTrackDrag(e.dataTransfer)) {
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      clearBlockDrag()
+    },
+    [clearBlockDrag],
+  )
+
   const benchDropPlan = useCallback(
     (target: LaneKey, payload: BlockDragPayload, pointerMinute: number) => {
       const source = blocksInLane(payload.from).find(
@@ -440,9 +470,19 @@ export function SequencerLanes({
       dur: number,
     ) => {
       const rect = e.currentTarget.getBoundingClientRect()
+      // A hovered tile is raised: grown to a fixed footprint around its own
+      // centre. The drag math needs the resting geometry, recovered from the
+      // tile's declared base width.
+      const el = e.currentTarget as HTMLElement
+      const raised = el.dataset?.raised === 'true'
+      const baseWidth = Number(el.dataset?.baseWidth)
+      const tileLeft =
+        raised && Number.isFinite(baseWidth)
+          ? rect.left + (rect.width - baseWidth) / 2
+          : rect.left
       const grabOffsetMinutes = Math.max(
         0,
-        Math.min(dur, (e.clientX - rect.left) / pxPerMin),
+        Math.min(dur, (e.clientX - tileLeft) / pxPerMin),
       )
       const complete = { ...payload, grabOffsetMinutes }
       setActiveBlockDrag(complete)
@@ -752,7 +792,14 @@ export function SequencerLanes({
         onPointerDown={beginMarquee('committed')}
       >
         {renderPostEndBorder()}
-        <span className="sq-lane-label">Committed</span>
+        <span
+          className="sq-lane-label"
+          onPointerDown={(e) => e.stopPropagation()}
+          onDragOver={blockTrackDropOnLabel}
+          onDrop={rejectTrackDropOnLabel}
+        >
+          Committed
+        </span>
         {renderMarquee('committed')}
         {renderCursor('committed')}
         {blocks.map((block) => {
@@ -773,6 +820,7 @@ export function SequencerLanes({
               selected={picked}
               starred={!!starredTiles[tileKey]}
               relation={picked ? null : relationFor(block.entry.track)}
+              raiseDisabled={selection.ids.length > 0 && !picked}
               onSelect={() =>
                 onSelect('committed', picked ? null : block.entry.track_id)
               }
@@ -830,7 +878,12 @@ export function SequencerLanes({
             onPointerDown={beginMarquee(key)}
           >
             {renderPostEndBorder()}
-            <span className="sq-lane-label">
+            <span
+              className="sq-lane-label"
+              onPointerDown={(e) => e.stopPropagation()}
+              onDragOver={blockTrackDropOnLabel}
+              onDrop={rejectTrackDropOnLabel}
+            >
               {renaming === groupId && lane.group != null ? (
                 <input
                   className="sq-lane-rename"
@@ -878,28 +931,42 @@ export function SequencerLanes({
                   {lane.name}
                 </span>
               )}
+              {lane.group != null && renaming !== groupId && (
+                <button
+                  type="button"
+                  className="sq-lane-control sq-lane-rename-btn"
+                  aria-label={`Rename lane ${lane.name}`}
+                  title="Rename lane"
+                  onClick={() => setRenaming(groupId)}
+                >
+                  ✎
+                </button>
+              )}
               <button
-                className="sq-lane-sort"
+                type="button"
+                className="sq-lane-control sq-lane-sort"
                 aria-label={`Auto-arrange lane ${lane.name}`}
                 title="Group this lane into BPM clusters"
                 onClick={() => handleArrangeLane(benched)}
               >
                 <SortIcon size={11} />
               </button>
+              {lane.group != null && renaming !== groupId && (
+                <button
+                  type="button"
+                  className="sq-lane-control sq-lane-delete"
+                  aria-label={`Delete lane ${lane.name}`}
+                  title="Delete lane"
+                  onClick={() => onDeleteLane(groupId)}
+                >
+                  ×
+                </button>
+              )}
             </span>
             {renderMarquee(key)}
             {renderCursor(key)}
             {renderDropPreview(key)}
             {renderBenchLinks(benched)}
-            {lane.group != null && (
-              <button
-                className="sq-lane-delete"
-                aria-label={`Delete lane ${lane.name}`}
-                onClick={() => onDeleteLane(groupId)}
-              >
-                ×
-              </button>
-            )}
             {benched.map((block) => {
               const picked = isSelected(key, block.entry.track_id)
               const tileKey = sequencerTileKey(key, block.entry.track_id)
@@ -918,6 +985,7 @@ export function SequencerLanes({
                   starred={!!starredTiles[tileKey]}
                   locationPinned={!!pinnedTiles[tileKey]}
                   relation={picked ? null : relationFor(block.entry.track)}
+                  raiseDisabled={selection.ids.length > 0 && !picked}
                   bpm={block.entry.track?.bpm ?? null}
                   onSelect={() =>
                     onSelect(key, picked ? null : block.entry.track_id)
@@ -948,6 +1016,11 @@ export function SequencerLanes({
           </div>
         )
       })}
+      {benchLanes.length === 0 && (
+        <p className="table-status sq-empty">
+          No alternative lanes — use + to add one.
+        </p>
+      )}
       <div className="sq-lane-actions">
         <button
           className="sq-add-lane"

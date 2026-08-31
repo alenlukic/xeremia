@@ -34,6 +34,8 @@ EXPECTED_TABLES = frozenset(
         "artist_mapping",
         "artist_track",
         "dj_set",
+        "explorer_crate",
+        "explorer_crate_member",
         "final_tags",
         "genre_mapping",
         "initial_tags",

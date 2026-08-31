@@ -4,6 +4,7 @@ import {
   fetchSets,
   createSet as apiCreateSet,
   fetchHydratedSet,
+  updateSet as apiUpdateSet,
   deleteSet as apiDeleteSet,
   poolAdd,
   poolRemove,
@@ -191,6 +192,29 @@ export function useSetBuilder() {
       hydrateSet(id)
     },
     [hydrateSet],
+  )
+
+  const renameSet = useCallback(
+    async (id: number, name: string) => {
+      const trimmed = name.trim()
+      if (!trimmed) {
+        return
+      }
+      try {
+        await apiUpdateSet(id, trimmed)
+        await refreshSets()
+        // The hydrated set carries its own copy of the name, so re-read it or
+        // everything reading `activeSet.name` keeps showing the old one.
+        if (activeSetId === id) {
+          await hydrateSet(id)
+        }
+      } catch (err) {
+        if (mountedRef.current) {
+          setErrorWithAutoClear(friendlyError(err, 'Could not rename set.'))
+        }
+      }
+    },
+    [activeSetId, hydrateSet, refreshSets, setErrorWithAutoClear],
   )
 
   const deleteSetAction = useCallback(
@@ -399,9 +423,10 @@ export function useSetBuilder() {
     [activeSetId, refreshActive, setErrorWithAutoClear],
   )
 
-  // Shared skeleton for the boolean subgroup mutations below: no-op without
-  // an active set, rehydrate on success, surface a friendly error on failure.
-  const runSubgroupMutation = useCallback(
+  // Shared skeleton for the boolean subgroup mutations below: no-op
+  // without an active set, rehydrate on success, surface a friendly error on
+  // failure.
+  const runSetMutation = useCallback(
     async (
       mutate: (setId: number) => Promise<unknown>,
       failureMessage: string,
@@ -484,29 +509,29 @@ export function useSetBuilder() {
 
   const renameSubgroup = useCallback(
     (subgroupId: number, name: string) =>
-      runSubgroupMutation(
+      runSetMutation(
         (setId) => apiSubgroupRename(setId, subgroupId, name),
         'Could not rename group.',
       ),
-    [runSubgroupMutation],
+    [runSetMutation],
   )
 
   const deleteSubgroup = useCallback(
     (subgroupId: number) =>
-      runSubgroupMutation(
+      runSetMutation(
         (setId) => apiSubgroupDelete(setId, subgroupId),
         'Could not delete group.',
       ),
-    [runSubgroupMutation],
+    [runSetMutation],
   )
 
   const reorderSubgroups = useCallback(
     (subgroupIds: number[]) =>
-      runSubgroupMutation(
+      runSetMutation(
         (setId) => apiSubgroupReorder(setId, subgroupIds),
         'Could not reorder groups.',
       ),
-    [runSubgroupMutation],
+    [runSetMutation],
   )
 
   const reorderSubgroupMember = useCallback(
@@ -542,20 +567,20 @@ export function useSetBuilder() {
 
   const addSubgroupMember = useCallback(
     (subgroupId: number, poolEntryId: number) =>
-      runSubgroupMutation(
+      runSetMutation(
         (setId) => apiSubgroupAddMember(setId, subgroupId, poolEntryId),
         'Could not add to group.',
       ),
-    [runSubgroupMutation],
+    [runSetMutation],
   )
 
   const removeSubgroupMember = useCallback(
     (subgroupId: number, poolEntryId: number) =>
-      runSubgroupMutation(
+      runSetMutation(
         (setId) => apiSubgroupRemoveMember(setId, subgroupId, poolEntryId),
         'Could not remove from group.',
       ),
-    [runSubgroupMutation],
+    [runSetMutation],
   )
 
   const dropTrackToSubgroup = useCallback(
@@ -956,6 +981,7 @@ export function useSetBuilder() {
     pendingAdd,
     createSet,
     selectSet,
+    renameSet,
     deleteSet: deleteSetAction,
     addToPool,
     addToTracklist,

@@ -5,7 +5,6 @@ import {
   BLOCK_DRAG_MIME,
   BENCH_BLOCK_GAP_MIN,
   BPM_CLUSTER_GAP_MIN,
-  DEFAULT_LANE_NAME,
   FALLBACK_LEN_MIN,
   PLAY_FRACTION,
   arrangeLaneBlocks,
@@ -14,7 +13,7 @@ import {
   buildOverrideMap,
   committedReorderMoves,
   deriveLanes,
-  effectivePlayedBpm,
+  displayBpm,
   entryOverride,
   hasMeasuredDuration,
   layoutBench,
@@ -28,7 +27,7 @@ import {
 } from './useSequencer'
 import type { BenchBlock } from './useSequencer'
 import { TRACK_DRAG_MIME } from '../utils'
-import { DUR_MAX, DUR_MIN, colForBpm } from '../utils/harmonic'
+import { colForBpm } from '../utils/harmonic'
 import type {
   PoolEntry,
   PoolSubgroup,
@@ -195,19 +194,36 @@ describe('layoutCommitted', () => {
     }
   })
 
-  it('lets the pitch window beat an unreachable end time', () => {
+  it('reaches the end time however far it is from the natural run', () => {
     const ov = buildOverrideMap(tracks)
     const natural = layoutCommitted(tracks, ov, START)
     const naturalEnd = natural[2].t + natural[2].dur
 
-    // Half the natural run is far outside the pitch bounds, so the blocks
-    // stop at the clamp and the set simply ends early.
-    const target = START + (naturalEnd - START) * 0.5
-    const clamped = layoutCommitted(tracks, ov, START, undefined, target)
-    expect(clamped[2].t + clamped[2].dur).toBeGreaterThan(target)
-    for (const block of clamped) {
-      expect(block.scale).toBeGreaterThanOrEqual(1 - 0.083 - 1e-9)
+    // Nothing is held back by a playable-pitch bound: the end time is a
+    // target the run is expected to hit, not a suggestion.
+    for (const fraction of [0.5, 2]) {
+      const target = START + (naturalEnd - START) * fraction
+      const blocks = layoutCommitted(tracks, ov, START, undefined, target)
+      expect(blocks[2].t + blocks[2].dur).toBeCloseTo(target, 5)
     }
+  })
+
+  it('splits the difference in proportion to track length', () => {
+    // 5 and 15 minutes long: the longer track absorbs three times as much of
+    // the change as the shorter one.
+    const list = [
+      entry(1, 0, track(1, 124, 300)),
+      entry(2, 1, track(2, 124, 900)),
+    ]
+    const ov = buildOverrideMap(list)
+    const natural = layoutCommitted(list, ov, START)
+    const naturalEnd = natural[1].t + natural[1].dur
+    const extra = 4
+
+    const blocks = layoutCommitted(list, ov, START, undefined, naturalEnd + extra)
+    const gained = blocks.map((b, i) => b.dur - natural[i].dur)
+    expect(gained[0] + gained[1]).toBeCloseTo(extra, 5)
+    expect(gained[1] / gained[0]).toBeCloseTo(3, 5)
   })
 
   it('packs blocks end to end from the start time', () => {
@@ -237,16 +253,15 @@ describe('layoutCommitted', () => {
     expect(blocks[0].dur).toBeCloseTo(4, 5)
   })
 
-  it('shortens a block when the played BPM is raised', () => {
-    const list = [entry(1, 0, track(1, 100, 600), { bpm_override: 105 })]
-    const blocks = layoutCommitted(list, buildOverrideMap(list), START)
-    expect(blocks[0].dur).toBeCloseTo(7 * (100 / 105), 5)
-  })
-
-  it('clamps a played BPM to the pitch window', () => {
-    const wild = [entry(1, 0, track(1, 100, 600), { bpm_override: 500 })]
-    const blocks = layoutCommitted(wild, buildOverrideMap(wild), START)
-    expect(blocks[0].dur).toBeCloseTo(7 / DUR_MAX, 5)
+  it('leaves timing alone when a BPM is set by hand', () => {
+    // A hand-set BPM records where the mix goes, usually the BPM the track is
+    // mixed out at. It is a note, not a tempo change, so it must not move the
+    // blocks around it — play length has its own override for that.
+    const plain = [entry(1, 0, track(1, 100, 600))]
+    const noted = [entry(1, 0, track(1, 100, 600), { bpm_override: 105 })]
+    const bare = layoutCommitted(plain, buildOverrideMap(plain), START)
+    const blocks = layoutCommitted(noted, buildOverrideMap(noted), START)
+    expect(blocks[0].dur).toBeCloseTo(bare[0].dur, 5)
   })
 
   it('scales the unpinned run before a pin in proportion', () => {
@@ -267,12 +282,10 @@ describe('layoutCommitted', () => {
     expect(blocks[2].t + blocks[2].dur).toBeCloseTo(380, 5)
   })
 
-  it('lets the pitch window beat a pin it cannot reach', () => {
-    // A 2-minute window for one 7-minute block is far below the lower bound.
+  it('reaches a pin however tight it is', () => {
     const list = [entry(1, 0, track(1, 124, 600), { pinned_end_minutes: 362 })]
     const blocks = layoutCommitted(list, buildOverrideMap(list), START)
-    expect(blocks[0].dur).toBeCloseTo(7 * DUR_MIN, 5)
-    expect(blocks[0].t + blocks[0].dur).toBeGreaterThan(362)
+    expect(blocks[0].t + blocks[0].dur).toBeCloseTo(362, 5)
   })
 
   it('resumes the next run at a pin the window can reach', () => {
@@ -286,30 +299,15 @@ describe('layoutCommitted', () => {
     expect(blocks[1].t).toBeCloseTo(367, 5)
   })
 
-  it('leaves no gap when the clamp keeps a run short of its pin', () => {
-    // 400 needs 40 minutes from one 7-minute block, far past the upper bound.
+  it('starts the next run exactly where a stretched pin lands', () => {
+    // 400 asks 40 minutes of one 7-minute block; it stretches all the way.
     const list = [
       entry(1, 0, track(1, 124, 600), { pinned_end_minutes: 400 }),
       entry(2, 1, track(2, 124, 600)),
     ]
     const blocks = layoutCommitted(list, buildOverrideMap(list), START)
-    const clampedEnd = blocks[0].t + blocks[0].dur
-    expect(blocks[0].dur).toBeCloseTo(7 * DUR_MAX, 5)
-    expect(clampedEnd).toBeLessThan(400)
-    expect(blocks[1].t).toBeCloseTo(clampedEnd, 6)
-  })
-
-  it('leaves no overlap when the clamp overshoots its pin', () => {
-    // 362 needs 2 minutes from one 7-minute block, far below the lower bound.
-    const list = [
-      entry(1, 0, track(1, 124, 600), { pinned_end_minutes: 362 }),
-      entry(2, 1, track(2, 124, 600)),
-    ]
-    const blocks = layoutCommitted(list, buildOverrideMap(list), START)
-    const clampedEnd = blocks[0].t + blocks[0].dur
-    expect(blocks[0].dur).toBeCloseTo(7 * DUR_MIN, 5)
-    expect(clampedEnd).toBeGreaterThan(362)
-    expect(blocks[1].t).toBeCloseTo(clampedEnd, 6)
+    expect(blocks[0].t + blocks[0].dur).toBeCloseTo(400, 5)
+    expect(blocks[1].t).toBeCloseTo(400, 6)
   })
 
   it('packs every block end to end across several pins', () => {
@@ -428,6 +426,41 @@ describe('planBenchDrop', () => {
     })
   })
 
+  it('keeps a tile put when the drop lands past its midpoint', () => {
+    // Butting a track up against the one on its left says "play this next".
+    // The left tile must stay left; it used to be shunted to the right of the
+    // tile just dropped beside it, inverting the running order.
+    const left = benchBlock(1, 404, 4)
+    const right = benchBlock(2, 408, 4)
+
+    expect(
+      planBenchDrop([left, right], { placementKey: '5:9', dur: 4 }, 407),
+    ).toEqual({
+      // Snapped flush to the left tile's end rather than overlapping it.
+      '5:9': 408,
+      // The left tile is absent, so it never moved.
+      '5:2': 412,
+    })
+  })
+
+  it('snaps flush to the left neighbour without leaving a gap', () => {
+    const left = benchBlock(1, 400, 4)
+
+    // Dropped just past the midpoint and overlapping, so it closes up.
+    expect(
+      planBenchDrop([left], { placementKey: '5:9', dur: 3 }, 403),
+    ).toEqual({ '5:9': 404 })
+  })
+
+  it('leaves a deliberate gap after the left neighbour alone', () => {
+    const left = benchBlock(1, 400, 4)
+
+    // Dropped clear of the tile, so free placement still wins.
+    expect(
+      planBenchDrop([left], { placementKey: '5:9', dur: 3 }, 410),
+    ).toEqual({ '5:9': 410 })
+  })
+
   it('routes shifted tiles around pinned spans', () => {
     const unpinned = benchBlock(1, 404, 4)
     const pinned = benchBlock(2, 410, 3)
@@ -531,45 +564,48 @@ describe('committedReorderMoves', () => {
   })
 })
 
-describe('effectivePlayedBpm', () => {
-  it('returns the original BPM when nothing was overridden', () => {
+describe('displayBpm', () => {
+  it('returns the track BPM when nothing was set', () => {
     const list = [entry(1, 0, track(1, 124, 600))]
     const ov = buildOverrideMap(list)
-    const block = layoutCommitted(list, ov, START)[0]
-    expect(effectivePlayedBpm(block, ov)).toBeCloseTo(124, 5)
+    expect(displayBpm(layoutCommitted(list, ov, START)[0], ov)).toBe(124)
   })
 
-  it('rises when a pin compresses the block', () => {
+  it('holds still when a pin compresses the block', () => {
+    // Scaling a run is a plan for the shape of the set, not an instruction to
+    // play the track faster, so the BPM shown stays the track's own.
     const list = [
       entry(1, 0, track(1, 124, 600)),
       entry(2, 1, track(2, 124, 600), { pinned_end_minutes: 372 }),
     ]
     const ov = buildOverrideMap(list)
     const blocks = layoutCommitted(list, ov, START)
-    expect(effectivePlayedBpm(blocks[0], ov)!).toBeGreaterThan(124)
+    expect(blocks[0].dur).toBeLessThan(7)
+    expect(displayBpm(blocks[0], ov)).toBe(124)
+  })
+
+  it('returns the BPM the user set, when they set one', () => {
+    const list = [entry(1, 0, track(1, 124, 600), { bpm_override: 130 })]
+    const ov = buildOverrideMap(list)
+    expect(displayBpm(layoutCommitted(list, ov, START)[0], ov)).toBe(130)
   })
 
   it('returns null for a track without a BPM', () => {
     const list = [entry(1, 0, track(1, null, 600))]
     const ov = buildOverrideMap(list)
-    expect(
-      effectivePlayedBpm(layoutCommitted(list, ov, START)[0], ov),
-    ).toBeNull()
+    expect(displayBpm(layoutCommitted(list, ov, START)[0], ov)).toBeNull()
   })
 })
 
 describe('deriveLanes', () => {
   const pool = [poolEntry(10, 1), poolEntry(11, 2)]
 
-  it('renders exactly one alternative lane when no subgroup exists', () => {
+  it('renders no alternative lane when no subgroup exists', () => {
     const lanes = deriveLanes(pool, [], [])
-    expect(lanes).toHaveLength(1)
-    expect(lanes[0].group).toBeNull()
-    expect(lanes[0].name).toBe(DEFAULT_LANE_NAME)
-    expect(lanes[0].entries).toHaveLength(2)
+    expect(lanes).toEqual([])
   })
 
-  it('replaces the default lane with one lane per subgroup', () => {
+  it('renders one lane per subgroup', () => {
     const subgroups: PoolSubgroup[] = [
       { id: 5, set_id: 1, name: 'Peak', display_order: 1 },
       { id: 4, set_id: 1, name: 'Openers', display_order: 0 },
@@ -620,10 +656,10 @@ describe('useSequencer', () => {
     )
   }
 
-  it('lays out the committed lane and derives the default lane', () => {
+  it('lays out the committed lane without inventing an alternative lane', () => {
     const { result } = mount()
     expect(result.current.blocks).toHaveLength(1)
-    expect(result.current.lanes).toHaveLength(1)
+    expect(result.current.lanes).toHaveLength(0)
     expect(result.current.endMinutes).toBeCloseTo(START + 7, 5)
   })
 
@@ -675,8 +711,12 @@ describe('useSequencer', () => {
           setId: 1,
           tracklist,
           pool: [poolEntry(10, 2)],
-          subgroups: [],
-          memberships: [],
+          subgroups: [
+            { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+          ],
+          memberships: [
+            { id: 1, subgroup_id: 7, pool_entry_id: 10, display_order: 0 },
+          ],
           startMin: START,
           benchTimes: props.benchTimes,
           benchOverrides: props.benchOverrides,
@@ -688,34 +728,34 @@ describe('useSequencer', () => {
     expect(result.current.benchLanes[0].blocks[0].t).toBe(START)
 
     act(() => {
-      result.current.setBenchTime('default', 2, 420.3)
+      result.current.setBenchTime(7, 2, 420.3)
     })
     // A lane drag lands on the half-minute grid, reported not stored.
     expect(onBenchChange).toHaveBeenCalledWith(
-      expect.objectContaining({ times: { 'default:2': 420.5 } }),
+      expect.objectContaining({ times: { '7:2': 420.5 } }),
     )
 
     // Fed back in, it lays the block out at that time.
-    rerender({ benchTimes: { 'default:2': 420.5 } })
+    rerender({ benchTimes: { '7:2': 420.5 } })
     expect(result.current.benchLanes[0].blocks[0].t).toBe(420.5)
 
     act(() => {
-      result.current.patchBenchOverride('default', 2, { durOv: 3 })
+      result.current.patchBenchOverride(7, 2, { durOv: 3 })
     })
     expect(onBenchChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        overrides: { 'default:2': { durOv: 3 } },
+        overrides: { '7:2': { durOv: 3 } },
       }),
     )
     expect(http.tracklistSetOverrides).not.toHaveBeenCalled()
 
     rerender({
-      benchTimes: { 'default:2': 420.5 },
-      benchOverrides: { 'default:2': { durOv: 3 } },
+      benchTimes: { '7:2': 420.5 },
+      benchOverrides: { '7:2': { durOv: 3 } },
     })
     expect(result.current.benchLanes[0].blocks[0].dur).toBe(3)
 
-    rerender({ benchTimes: { 'default:2': 420.5 }, benchOverrides: {} })
+    rerender({ benchTimes: { '7:2': 420.5 }, benchOverrides: {} })
     expect(result.current.benchLanes[0].blocks[0].dur).toBeCloseTo(4.2, 5)
   })
 

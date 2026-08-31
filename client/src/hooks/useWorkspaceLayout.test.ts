@@ -4,6 +4,7 @@ import * as http from '../api/http'
 import {
   DEFAULT_PRESET,
   MIN_H,
+  PRESET_NAMES,
   MIN_W,
   WIDGET_IDS,
   firstFree,
@@ -81,13 +82,16 @@ describe('useWorkspaceLayout', () => {
   it('restores a saved preset with its locks', async () => {
     const { result } = await mounted()
     act(() => {
-      result.current.toggleLock('pool')
-    })
-    act(() => {
       result.current.saveCustomPreset('Locked mix')
     })
     act(() => {
-      result.current.selectPreset(DEFAULT_PRESET)
+      result.current.toggleLock('pool')
+    })
+    // A lock belongs to the layout it was set in, so leaving for another one
+    // drops it and coming back brings it with you.
+    const untouched = PRESET_NAMES.find((name) => name !== DEFAULT_PRESET)!
+    act(() => {
+      result.current.selectPreset(untouched)
     })
     expect(result.current.locked).toEqual({})
 
@@ -95,6 +99,89 @@ describe('useWorkspaceLayout', () => {
       result.current.selectPreset('Locked mix')
     })
     expect(result.current.locked).toEqual({ pool: true })
+  })
+
+  it('saves an edit into the layout being edited, not a placeholder', async () => {
+    const { result } = await mounted()
+    act(() => {
+      result.current.saveCustomPreset('Working set')
+    })
+    act(() => {
+      result.current.removeWidget('pool')
+    })
+
+    // Editing a layout changes that layout. Dropping to an unnamed "Custom"
+    // would quietly discard which layout the work belonged to.
+    expect(result.current.preset).toBe('Working set')
+    expect(result.current.presets['Working set']).toEqual(result.current.place)
+    expect(result.current.presets['Working set'].pool).toBeUndefined()
+
+    // It survives a round trip through another layout.
+    act(() => {
+      result.current.selectPreset(DEFAULT_PRESET)
+    })
+    act(() => {
+      result.current.selectPreset('Working set')
+    })
+    expect(result.current.place.pool).toBeUndefined()
+  })
+
+  it('stores an edited built-in and gives it back on restore', async () => {
+    const { result } = await mounted()
+    const original = result.current.presets[DEFAULT_PRESET]
+
+    act(() => {
+      result.current.removeWidget('pool')
+    })
+    expect(result.current.preset).toBe(DEFAULT_PRESET)
+    expect(result.current.presets[DEFAULT_PRESET].pool).toBeUndefined()
+
+    // A built-in is generated from code, so the edit is an override that
+    // restoring can lift.
+    act(() => {
+      result.current.restoreBuiltInPresets()
+    })
+    expect(result.current.presets[DEFAULT_PRESET]).toEqual(original)
+  })
+
+  it('keeps an edited built-in through a canvas resize', async () => {
+    const { result } = await mounted()
+    act(() => {
+      result.current.removeWidget('pool')
+    })
+
+    // The built-in's fractions would regenerate the pool right back; the
+    // stored edit has to win, or every window resize undoes the user's work.
+    act(() => {
+      result.current.setBounds({ cols: 120, rows: 90 })
+    })
+    expect(result.current.preset).toBe(DEFAULT_PRESET)
+    expect(result.current.place.pool).toBeUndefined()
+  })
+
+  it('branches a new layout off an existing one instead of the screen', async () => {
+    const { result } = await mounted()
+    act(() => {
+      result.current.saveCustomPreset('Source')
+    })
+    const source = result.current.presets['Source']
+    act(() => {
+      result.current.removeWidget('pool')
+    })
+
+    act(() => {
+      result.current.saveCustomPreset('Branch', DEFAULT_PRESET)
+    })
+
+    // Copied from the named layout, not from the arrangement on screen.
+    expect(result.current.presets['Branch']).toEqual(
+      result.current.presets[DEFAULT_PRESET],
+    )
+    expect(result.current.presets['Branch'].pool).toBeDefined()
+    // 'Source' kept the edit that was made while it was active, and did not
+    // pick up anything from the branch taken off a different layout.
+    expect(source.pool).toBeDefined()
+    expect(result.current.presets['Source'].pool).toBeUndefined()
   })
 
   it('creates a named layout from any current preset', async () => {
@@ -119,12 +206,53 @@ describe('useWorkspaceLayout', () => {
     expect(result.current.preset).toBe('Second name')
     expect(result.current.presets['First name']).toBeUndefined()
 
+    // A built-in has no stored entry, so renaming snapshots its rectangles
+    // under the new name. The old name goes away like any other rename —
+    // leaving it behind would make this a copy, not a rename.
     act(() => {
       result.current.selectPreset(DEFAULT_PRESET)
+    })
+    const built = result.current.presets[DEFAULT_PRESET]
+    act(() => {
       result.current.renamePreset('My explorer')
     })
     expect(result.current.preset).toBe('My explorer')
-    expect(result.current.presets[DEFAULT_PRESET]).toBeDefined()
+    expect(result.current.presets['My explorer']).toEqual(built)
+    expect(result.current.presets[DEFAULT_PRESET]).toBeUndefined()
+    expect(result.current.hiddenPresets).toContain(DEFAULT_PRESET)
+  })
+
+  it('renames a built-in that is not the one on screen', async () => {
+    const { result } = await mounted()
+    const other = PRESET_NAMES.find((name) => name !== result.current.preset)!
+    const rects = result.current.presets[other]
+
+    act(() => {
+      result.current.renamePreset('Renamed in place', other)
+    })
+
+    // Its rectangles come from the built-in itself, not from whatever happens
+    // to be on screen, so renaming one you are not using cannot capture the
+    // wrong arrangement.
+    expect(result.current.presets['Renamed in place']).toEqual(rects)
+    expect(result.current.presets[other]).toBeUndefined()
+    expect(result.current.preset).not.toBe('Renamed in place')
+  })
+
+  it('hides a deleted built-in until the set is restored', async () => {
+    const { result } = await mounted()
+    const target = PRESET_NAMES[0]
+
+    act(() => {
+      result.current.deletePreset(target)
+    })
+    expect(result.current.presets[target]).toBeUndefined()
+
+    act(() => {
+      result.current.restoreBuiltInPresets()
+    })
+    expect(result.current.presets[target]).toBeDefined()
+    expect(result.current.hiddenPresets).toEqual([])
   })
 
   it('rejects empty, reserved, built-in and duplicate layout names', async () => {

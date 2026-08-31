@@ -1,13 +1,7 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { FloatingSurface } from './FloatingSurface'
+import type { FloatingAlign } from './FloatingSurface'
 import { FilterIcon } from './table/icons'
 import {
   FILTER_KIND_LABELS,
@@ -60,107 +54,6 @@ function useDismiss(
       document.removeEventListener('keydown', onEsc)
     }
   }, [ref, floatingRef, active])
-}
-
-type FloatingAlign = 'left' | 'right'
-
-function useWidgetFloating(
-  anchorRef: React.RefObject<HTMLElement | null>,
-  floatingRef: React.RefObject<HTMLElement | null>,
-  align: FloatingAlign,
-) {
-  const update = useCallback(() => {
-    const anchor = anchorRef.current
-    const floating = floatingRef.current
-    if (!anchor || !floating) {
-      return
-    }
-    const anchorRect = anchor.getBoundingClientRect()
-    const panelRect = anchor.closest<HTMLElement>('.ws-panel')?.getBoundingClientRect()
-    const bounds =
-      panelRect && panelRect.width > 0 && panelRect.height > 0
-        ? panelRect
-        : {
-            left: 0,
-            top: 0,
-            right: window.innerWidth,
-            bottom: window.innerHeight,
-            width: window.innerWidth,
-            height: window.innerHeight,
-          }
-    const padding = 8
-    const gap = 4
-    const maxWidth = Math.max(120, bounds.width - padding * 2)
-    const maxHeight = Math.max(80, bounds.height - padding * 2)
-    const width = Math.min(floating.offsetWidth || 220, maxWidth)
-    const height = Math.min(floating.offsetHeight || 160, maxHeight)
-    const minLeft = bounds.left + padding
-    const maxLeft = Math.max(minLeft, bounds.right - padding - width)
-    const preferredLeft =
-      align === 'right' ? anchorRect.right - width : anchorRect.left
-    const left = Math.min(maxLeft, Math.max(minLeft, preferredLeft))
-    const below = anchorRect.bottom + gap
-    const above = anchorRect.top - gap - height
-    const top =
-      below + height <= bounds.bottom - padding
-        ? below
-        : above >= bounds.top + padding
-          ? above
-          : bounds.top + padding
-    Object.assign(floating.style, {
-      position: 'fixed',
-      left: `${left}px`,
-      top: `${top}px`,
-      right: 'auto',
-      bottom: 'auto',
-      maxWidth: `${maxWidth}px`,
-      maxHeight: `${maxHeight}px`,
-      overflow: 'auto',
-      visibility: 'visible',
-    })
-  }, [align, anchorRef, floatingRef])
-
-  useLayoutEffect(() => {
-    update()
-    window.addEventListener('resize', update)
-    window.addEventListener('scroll', update, true)
-    return () => {
-      window.removeEventListener('resize', update)
-      window.removeEventListener('scroll', update, true)
-    }
-  }, [update])
-}
-
-function FloatingSurface({
-  anchorRef,
-  floatingRef,
-  align,
-  className,
-  role,
-  ariaLabel,
-  children,
-}: {
-  anchorRef: React.RefObject<HTMLElement | null>
-  floatingRef: React.RefObject<HTMLDivElement | null>
-  align: FloatingAlign
-  className: string
-  role: React.AriaRole
-  ariaLabel?: string
-  children: ReactNode
-}) {
-  useWidgetFloating(anchorRef, floatingRef, align)
-  return createPortal(
-    <div
-      ref={floatingRef}
-      className={className}
-      role={role}
-      aria-label={ariaLabel}
-      style={{ position: 'fixed', visibility: 'hidden' }}
-    >
-      {children}
-    </div>,
-    document.body,
-  )
 }
 
 const CAMELOT_CODES = [

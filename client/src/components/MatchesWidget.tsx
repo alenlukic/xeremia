@@ -89,6 +89,7 @@ export function MatchesWidget({
       trackIndex={trackIndex}
       genres={genres}
       labels={labels}
+      onAddManyToPool={onAddToPool}
     />
   )
 }

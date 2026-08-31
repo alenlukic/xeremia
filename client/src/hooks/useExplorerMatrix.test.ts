@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import {
   CELL_WIDTH_PX,
-  bucketPool,
+  bucketTracks,
   cellKey,
   useExplorerMatrix,
 } from './useExplorerMatrix'
@@ -13,7 +13,7 @@ import {
   MATRIX_COLS,
   colForBpm,
 } from '../utils/harmonic'
-import type { PoolEntry, Track } from '../types'
+import type { Track } from '../types'
 
 function track(id: number, camelot: string | null, bpm: number | null): Track {
   return {
@@ -30,26 +30,15 @@ function track(id: number, camelot: string | null, bpm: number | null): Track {
   }
 }
 
-function entry(id: number, t: Track | null): PoolEntry {
-  return {
-    id,
-    set_id: 1,
-    track_id: t?.id ?? 0,
-    insertion_order: id,
-    highlight_color: null,
-    track: t,
-  }
-}
-
 describe('matrix axes', () => {
-  it('holds the 24 codes in order regardless of pool contents', () => {
+  it('holds the 24 codes in order regardless of library contents', () => {
     const { result } = renderHook(() => useExplorerMatrix([]))
     expect(result.current.rows).toEqual(CAMELOT_ROWS)
     expect(result.current.rows).toHaveLength(24)
     expect(result.current.cols).toBe(26)
 
     const populated = renderHook(() =>
-      useExplorerMatrix([entry(1, track(1, '05B', 128))]),
+      useExplorerMatrix([track(1, '05B', 128)]),
     )
     expect(populated.result.current.rows).toEqual(CAMELOT_ROWS)
     expect(populated.result.current.cols).toBe(26)
@@ -75,12 +64,12 @@ describe('matrix axes', () => {
   })
 })
 
-describe('bucketPool', () => {
+describe('bucketTracks', () => {
   it('files each track into its own key and BPM cohort', () => {
-    const buckets = bucketPool([
-      entry(1, track(1, '08A', 124)),
-      entry(2, track(2, '08A', 124.4)),
-      entry(3, track(3, '01B', 90)),
+    const buckets = bucketTracks([
+      track(1, '08A', 124),
+      track(2, '08A', 124.4),
+      track(3, '01B', 90),
     ])
     const key = cellKey(CAMELOT_ROWS.indexOf('08A'), colForBpm(124))
     expect(buckets.get(key)).toHaveLength(2)
@@ -89,12 +78,11 @@ describe('bucketPool', () => {
     ).toHaveLength(1)
   })
 
-  it('skips entries the matrix cannot plot', () => {
-    const buckets = bucketPool([
-      entry(1, null),
-      entry(2, track(2, null, 124)),
-      entry(3, track(3, '08A', null)),
-      entry(4, track(4, 'Abm', 124)),
+  it('skips tracks the matrix cannot plot', () => {
+    const buckets = bucketTracks([
+      track(2, null, 124),
+      track(3, '08A', null),
+      track(4, 'Abm', 124),
     ])
     expect(buckets.size).toBe(0)
   })
@@ -103,10 +91,7 @@ describe('bucketPool', () => {
 describe('cohort BPM', () => {
   it('averages the cohort when populated', () => {
     const { result } = renderHook(() =>
-      useExplorerMatrix([
-        entry(1, track(1, '08A', 124)),
-        entry(2, track(2, '08A', 126)),
-      ]),
+      useExplorerMatrix([track(1, '08A', 124), track(2, '08A', 126)]),
     )
     const r = CAMELOT_ROWS.indexOf('08A')
     const c = colForBpm(124)
@@ -123,15 +108,15 @@ describe('cohort BPM', () => {
 })
 
 describe('selection and relations', () => {
-  const pool = [entry(1, track(1, '08A', 124))]
+  const tracks = [track(1, '08A', 124)]
 
   it('reports no relation before a selection', () => {
-    const { result } = renderHook(() => useExplorerMatrix(pool))
+    const { result } = renderHook(() => useExplorerMatrix(tracks))
     expect(result.current.relationTo(0, 0)).toBeNull()
   })
 
   it('scores every other cell once a cell is selected', () => {
-    const { result } = renderHook(() => useExplorerMatrix(pool))
+    const { result } = renderHook(() => useExplorerMatrix(tracks))
     const r = CAMELOT_ROWS.indexOf('08A')
     const c = colForBpm(124)
     act(() => {
@@ -149,7 +134,7 @@ describe('selection and relations', () => {
   })
 
   it('encodes pitch effort as the border style', () => {
-    const { result } = renderHook(() => useExplorerMatrix(pool))
+    const { result } = renderHook(() => useExplorerMatrix(tracks))
     const r = CAMELOT_ROWS.indexOf('08A')
     const c = colForBpm(124)
     act(() => {
@@ -170,7 +155,7 @@ describe('selection and relations', () => {
   })
 
   it('opens the inspector only from a populated cell', () => {
-    const { result } = renderHook(() => useExplorerMatrix(pool))
+    const { result } = renderHook(() => useExplorerMatrix(tracks))
     const r = CAMELOT_ROWS.indexOf('08A')
     const c = colForBpm(124)
 
@@ -194,20 +179,30 @@ describe('selection and relations', () => {
     expect(result.current.inspectorOpen).toBe(false)
   })
 
-  it('flips the inspector to the left for a right-half cell', () => {
-    const { result } = renderHook(() => useExplorerMatrix(pool))
+  it('marks a focus-lit cell as focus driven and a clicked one as not', () => {
+    // The Explorer scrolls a focus-lit cell into view, so it has to be able to
+    // tell the workspace's focus apart from a cell the DJ clicked.
+    const focus = { camelot_code: '08A', bpm: 128 }
+    const { result, rerender } = renderHook(
+      ({ f }: { f: typeof focus | null }) => useExplorerMatrix(tracks, f),
+      { initialProps: { f: null as typeof focus | null } },
+    )
+    expect(result.current.focusDriven).toBe(false)
+
+    rerender({ f: focus })
+    expect(result.current.focusDriven).toBe(true)
+    expect(result.current.selected).not.toBeNull()
+    // A highlight is not a cell click, so the inspector stays shut.
+    expect(result.current.inspectorOpen).toBe(false)
+
     act(() => {
-      result.current.selectCell(0, 3)
+      result.current.selectCell(3, 0)
     })
-    expect(result.current.inspectorSide).toBe('right')
-    act(() => {
-      result.current.selectCell(0, 20)
-    })
-    expect(result.current.inspectorSide).toBe('left')
+    expect(result.current.focusDriven).toBe(false)
   })
 
   it('closes the inspector when the selection clears', () => {
-    const { result } = renderHook(() => useExplorerMatrix(pool))
+    const { result } = renderHook(() => useExplorerMatrix(tracks))
     const r = CAMELOT_ROWS.indexOf('08A')
     act(() => {
       result.current.selectCell(r, colForBpm(124))

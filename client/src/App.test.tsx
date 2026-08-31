@@ -112,6 +112,12 @@ vi.mock('./api/http', () => ({
   subgroupMemberReorder: vi.fn().mockResolvedValue(undefined),
   subgroupAddMember: vi.fn().mockResolvedValue(undefined),
   subgroupDropTrack: vi.fn().mockResolvedValue(undefined),
+  fetchCrates: vi.fn().mockResolvedValue({ crates: [], memberships: [] }),
+  crateCreate: vi.fn().mockResolvedValue({ id: 1, name: 'Crate', display_order: 0 }),
+  crateRename: vi.fn().mockResolvedValue(undefined),
+  crateDelete: vi.fn().mockResolvedValue(undefined),
+  crateAddTrack: vi.fn().mockResolvedValue(undefined),
+  crateRemoveTrack: vi.fn().mockResolvedValue(undefined),
   updateTablePreferences: vi.fn().mockResolvedValue({
     table_id: 'search',
     column_order: ['title'],
@@ -966,7 +972,7 @@ describe('Set workspace', () => {
     await act(async () => {
       render(<App />)
     })
-    expect(screen.getByText('+ New')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set' })).toBeInTheDocument()
   })
 
   it('does not offer the tracklist menu without an active set', async () => {
@@ -1069,7 +1075,7 @@ describe('Browse widget', () => {
     await act(async () => {
       render(<App />)
     })
-    expect(screen.getByText('+ New')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set' })).toBeInTheDocument()
 
     const row = screen.getByText('Track 1').closest('tr')!
     await act(async () => {
@@ -1079,7 +1085,7 @@ describe('Browse widget', () => {
     await waitFor(() => {
       expect(vi.mocked(httpMod.fetchMatches).mock.calls.at(-1)?.[0]).toBe(1)
     })
-    expect(screen.getByText('+ New')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set' })).toBeInTheDocument()
   })
 })
 
@@ -1332,80 +1338,27 @@ describe('Shell toggle', () => {
     }
   })
 
-  it('wires the Explorer bulk actions to the pool', async () => {
+  it('wires the Explorer to the library-scoped crates', async () => {
     localStorage.clear()
     const httpMod = await import('./api/http')
-    const [committed, benched] = makeTracks(2)
-    vi.mocked(httpMod.fetchSets).mockResolvedValue([
-      {
-        id: 1,
-        name: 'Test',
-        created_at: '',
-        updated_at: '',
-        pool_count: 2,
-        tracklist_count: 1,
-      },
-    ])
-    vi.mocked(httpMod.fetchHydratedSet).mockResolvedValue({
-      set: {
-        id: 1,
-        name: 'Test',
-        created_at: '',
-        updated_at: '',
-        pool_count: 2,
-        tracklist_count: 1,
-      },
-      pool: [
-        {
-          id: 20,
-          set_id: 1,
-          track_id: committed.id,
-          insertion_order: 0,
-          highlight_color: null,
-          track: committed,
-        },
-        {
-          id: 21,
-          set_id: 1,
-          track_id: benched.id,
-          insertion_order: 1,
-          highlight_color: null,
-          track: benched,
-        },
-      ],
-      tracklist: [
-        {
-          id: 10,
-          set_id: 1,
-          track_id: committed.id,
-          position: 0,
-          track: committed,
-        },
-      ],
-      explorer_nodes: [],
-      explorer_edges: [],
+    vi.mocked(httpMod.fetchCrates).mockResolvedValue({
+      crates: [{ id: 3, name: 'Warmup', display_order: 0 }],
+      memberships: [],
     })
-    localStorage.setItem('xeremia-active-set-id', '1')
 
     await act(async () => {
       render(<App />)
     })
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Prune' })).toBeEnabled(),
+
+    // The crate bar shows without any active set: crates span the library.
+    const bar = await screen.findByRole('tablist', { name: 'Crates' })
+    expect(within(bar).getByRole('tab', { name: 'All' })).toHaveAttribute(
+      'aria-selected',
+      'true',
     )
-    vi.mocked(httpMod.poolRemove).mockClear()
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Prune' }).click()
-    })
-    await act(async () => {
-      screen.getByRole('button', { name: 'Confirm prune' }).click()
-    })
-
-    // Only the pooled track the committed lane already holds is removed.
-    expect(vi.mocked(httpMod.poolRemove).mock.calls).toEqual([
-      [1, committed.id],
-    ])
+    expect(
+      within(bar).getByRole('tab', { name: 'Crate Warmup' }),
+    ).toBeInTheDocument()
   })
 
   it('coerces legacy server shell state to workspace', async () => {
@@ -1431,9 +1384,8 @@ describe('Shell toggle', () => {
 
 describe('Sequencer bench clipboard', () => {
   /**
-   * Pool, subgroup and membership rows the bench clipboard writes. The
-   * sequencer's default lane is virtual until a subgroup exists, so a paste
-   * onto it depends on how the server answers after each write.
+   * Pool, subgroup and membership rows the bench clipboard writes. Every
+   * displayed Sequencer lane is backed by a real subgroup.
    */
   function fakeSetRows(tracks: Track[]) {
     const pool: PoolEntry[] = tracks.map((track, index) => ({
@@ -1444,11 +1396,18 @@ describe('Sequencer bench clipboard', () => {
       highlight_color: null,
       track,
     }))
-    const subgroups: PoolSubgroup[] = []
-    const memberships: PoolSubgroupMembership[] = []
+    const subgroups: PoolSubgroup[] = [
+      { id: 5, set_id: 1, name: 'Alt 1', display_order: 0 },
+    ]
+    const memberships: PoolSubgroupMembership[] = pool.map((entry, index) => ({
+      id: 60 + index,
+      subgroup_id: 5,
+      pool_entry_id: entry.id,
+      display_order: index,
+    }))
     let nextPoolEntryId = 40
-    let nextSubgroupId = 5
-    let nextMembershipId = 60
+    let nextSubgroupId = 6
+    let nextMembershipId = 60 + memberships.length
     let releasePoolRemovals: (() => void) | null = null
     let poolRemovalGate: Promise<void> | null = null
 
@@ -1666,7 +1625,7 @@ describe('Sequencer bench clipboard', () => {
     }
   })
 
-  it('does not materialize the virtual lane during repeated in-place pastes', async () => {
+  it('does not create another lane during repeated in-place pastes', async () => {
     const httpMod = await import('./api/http')
     await renderWithSequencerSet(makeTracks(1))
     const sequencer = screen.getByLabelText('Sequencer')
@@ -1715,10 +1674,10 @@ describe('Sequencer bench clipboard', () => {
     })
     await waitFor(() =>
       expect(
-        within(sequencer).getByLabelText('Alt 1 lane'),
+        within(sequencer).getByLabelText('Alt 2 lane'),
       ).toBeInTheDocument(),
     )
-    placeCursor(sequencer, 'Alt 1 lane', 120)
+    placeCursor(sequencer, 'Alt 2 lane', 120)
     await pressClipboardKey(sequencer, 'v')
 
     await waitFor(() =>

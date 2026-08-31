@@ -115,7 +115,7 @@ describe('PoolWidget', () => {
     expect(flag.style.backgroundColor).toBe('rgb(255, 136, 0)')
   })
 
-  it('lists pool subgroups with their counts in the groups rail', () => {
+  it('lists pool subgroups with their counts in the groups menu', async () => {
     const pool = [makePoolEntry(1), makePoolEntry(2)]
     const subgroups: PoolSubgroup[] = [
       { id: 7, set_id: 1, name: 'Peak', display_order: 0 },
@@ -123,13 +123,21 @@ describe('PoolWidget', () => {
     const memberships: PoolSubgroupMembership[] = [
       { id: 1, subgroup_id: 7, pool_entry_id: 1, display_order: 0 },
     ]
-    renderWidget(makeSet(pool, subgroups, memberships))
+    const { container } = renderWidget(makeSet(pool, subgroups, memberships))
 
-    const rail = screen.getByLabelText('Pool groups')
-    expect(within(rail).getByText('Peak')).toBeInTheDocument()
-    expect(within(rail).getByText('1')).toBeInTheDocument()
+    await act(async () => {
+      container
+        .querySelector<HTMLElement>('.pool-group-menu-trigger')!
+        .click()
+    })
+    // The panel is portalled to <body>, so query the document.
+    const panel = document.querySelector<HTMLElement>(
+      '.pool-group-menu-panel',
+    )!
+    expect(within(panel).getByText('Peak')).toBeInTheDocument()
+    expect(within(panel).getByText('1')).toBeInTheDocument()
     expect(
-      within(screen.getByLabelText('Pool view')).getByText('All'),
+      within(within(panel).getByLabelText('Pool view')).getByText('All'),
     ).toBeInTheDocument()
   })
 
@@ -154,15 +162,22 @@ describe('PoolWidget', () => {
     expect(plain.style.boxShadow).toBe('')
   })
 
-  it('creates a pool subgroup from the rail', async () => {
+  it('creates a pool subgroup from the group menu', async () => {
     const onCreateSubgroup = vi.fn().mockResolvedValue({
       id: 9,
       set_id: 1,
       name: 'New group',
       display_order: 0,
     })
-    renderWidget(makeSet([makePoolEntry(1)]), { onCreateSubgroup })
+    const { container } = renderWidget(makeSet([makePoolEntry(1)]), {
+      onCreateSubgroup,
+    })
 
+    await act(async () => {
+      container
+        .querySelector<HTMLElement>('.pool-group-menu-trigger')!
+        .click()
+    })
     await act(async () => {
       screen.getByLabelText('Create group').click()
     })

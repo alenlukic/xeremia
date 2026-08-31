@@ -8,6 +8,7 @@
   height: 100vh;
 }
 .ws-shell {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -15,14 +16,72 @@
   min-width: 1280px;
   background: var(--bg, #0f1117);
 }
+/* The nav bar floats over the canvas rather than taking a row from it, so
+   hiding it hands the whole shell to the widgets. The zone is the hover
+   target: full height while revealed, and a thin strip once hidden — narrow
+   enough to sit inside .ws-grid-wrap's padding, so it never swallows a click
+   meant for the widget underneath. */
+.ws-header-zone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 46px;
+  z-index: 40;
+}
+/* Purely the hairline hint while hidden: the reveal is driven by pointer
+   proximity, so this must never intercept a click meant for a widget. */
+.ws-header-zone--peek {
+  height: 6px;
+  pointer-events: none;
+}
+.ws-header-zone--peek::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(var(--accent-rgb, 108, 140, 255), 0.5),
+    transparent
+  );
+  opacity: 0.6;
+}
 .ws-header {
-  flex: 0 0 46px;
+  height: 46px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 0 12px;
   background: var(--surface-2, #20242f);
   border-bottom: 1px solid var(--border, #2a2e3b);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 150ms ease,
+    opacity 150ms ease;
+}
+.ws-header--hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+/* Keyboard users never generate the hover that reveals the bar, so focus
+   landing anywhere inside it pins it open. */
+.ws-header-zone:focus-within {
+  height: 46px;
+  pointer-events: auto;
+}
+.ws-header-zone:focus-within .ws-header {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ws-header {
+    transition: none;
+  }
 }
 .ws-wordmark {
   font:
@@ -66,9 +125,7 @@
   opacity: 0.75;
 }
 .ws-picker-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
   z-index: 50;
   min-width: 168px;
   display: flex;
@@ -106,6 +163,41 @@
   margin: 3px 2px;
   background: var(--border, #2a2e3b);
 }
+.ws-picker-empty {
+  padding: 5px 8px;
+  font:
+    400 10.5px/1.3 var(--font-body),
+    sans-serif;
+  color: var(--text-muted, #8b8fa3);
+}
+/* Right-click actions for one row. Sits above the menu it came from. */
+.ws-picker-context {
+  z-index: 60;
+  min-width: 140px;
+}
+/* Why a row offers no actions, so right-click never reads as broken. */
+.ws-picker-note {
+  display: block;
+  max-width: 190px;
+  padding: 5px 8px;
+  font:
+    400 10px/1.35 var(--font-body),
+    sans-serif;
+  color: var(--text-muted, #8b8fa3);
+}
+.ws-picker-confirm {
+  padding: 4px 8px 2px;
+  font:
+    400 10px/1.3 var(--font-body),
+    sans-serif;
+  color: var(--text-muted, #8b8fa3);
+}
+.ws-picker-item--danger {
+  color: #e38d9a;
+}
+.ws-picker-item--danger:hover {
+  background: rgba(227, 141, 154, 0.14);
+}
 .ws-picker-name-form {
   display: flex;
   flex-direction: column;
@@ -134,6 +226,27 @@
   color: #e38d9a;
   font:
     400 9px/1.2 var(--font-body),
+    sans-serif;
+}
+.ws-picker-copy-from {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font:
+    400 10px/1 var(--font-body),
+    sans-serif;
+  color: var(--text-muted, #8b8fa3);
+}
+.ws-picker-copy-from select {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid var(--border, #2a2e3b);
+  background: var(--bg, #0f1117);
+  color: var(--text, #d8dae5);
+  font:
+    400 10px/1 var(--font-body),
     sans-serif;
 }
 .ws-picker-name-actions {
@@ -206,6 +319,12 @@
   border-radius: 6px;
   overflow: hidden;
 }
+/* Maximized widgets sit above the guides but below the nav bar, so the bar can
+   still be reached to restore them. */
+.ws-panel--maximized {
+  z-index: 30;
+  border-color: rgba(var(--accent-rgb, 108, 140, 255), 0.45);
+}
 .ws-panel--dragging {
   z-index: 20;
   border-color: rgba(var(--accent-rgb, 108, 140, 255), 0.5);
@@ -234,8 +353,8 @@
   background: rgba(var(--accent-rgb, 108, 140, 255), 0.08);
 }
 
-/* Every edge and corner is a drag target. Bottom controls sit above a reserved
-   gutter in .wf-body, so these overlays never intercept toolbar interactions. */
+/* Every edge and corner is a drag target. The body reserves matching bottom
+   and right gutters so these overlays never intercept controls or scrollbars. */
 .ws-handle {
   position: absolute;
   z-index: 10;
@@ -345,6 +464,7 @@
 }
 .wf-body--resize-safe {
   padding-bottom: 6px;
+  padding-right: 6px;
 }
 .ws-icon-btn {
   display: inline-flex;
@@ -416,17 +536,35 @@
   display: flex;
   position: relative;
 }
+/* Inset so the outline reads inside the widget rather than over its frame. */
+.xm-body--drop {
+  outline: 1px dashed var(--accent-bright, #9db3ff);
+  outline-offset: -2px;
+}
 .xm-scroll {
   flex: 1;
   min-width: 0;
   overflow: auto;
   padding: 8px;
 }
+/* The axis labels stay put while the matrix scrolls under them: a cohort cell
+   is meaningless without the key and BPM it sits at, and both scroll out of
+   reach on a grid this size. The negative insets let each label band cover the
+   scroller's own padding, so nothing shows through the gap. */
 .xm-col-heads {
   display: flex;
   gap: 2px;
   margin-bottom: 3px;
   padding-left: 36px;
+  position: sticky;
+  /* Pinned at the scroller's own padding, so sticking moves nothing sideways;
+     the shadow paints over that padding strip without taking up space, which a
+     margin or padding here would — and that shifted every row off its heads. */
+  top: 0;
+  z-index: 2;
+  background: var(--surface, #1a1d27);
+  box-shadow: 0 -8px 0 0 var(--surface, #1a1d27);
+  width: max-content;
 }
 .xm-head {
   width: 26px;
@@ -445,6 +583,7 @@
   gap: 2px;
   margin-bottom: 2px;
   align-items: center;
+  width: max-content;
 }
 .xm-row-head {
   flex: 0 0 34px;
@@ -454,6 +593,11 @@
     400 9px/1 var(--font-mono),
     monospace;
   color: #5c6178;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface, #1a1d27);
+  box-shadow: -8px 0 0 0 var(--surface, #1a1d27);
 }
 .xm-row-head--on {
   color: var(--accent-bright, #9db3ff);
@@ -527,32 +671,70 @@
 .xm-swatch--inline {
   margin-right: 6px;
 }
+/* Portalled to <body> and pinned beside the widget, so the grid underneath
+   stays fully readable. Position comes from the inspector's own measurement. */
 .xm-inspector {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  width: 238px;
-  z-index: 8;
+  position: fixed;
+  z-index: 45;
   display: flex;
   flex-direction: column;
   border-radius: 8px;
   border: 1px solid rgba(58, 64, 85, 0.7);
-  background: rgba(23, 26, 35, 0.84);
+  background: rgba(23, 26, 35, 0.96);
   backdrop-filter: blur(7px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
-.xm-inspector--left {
-  left: 8px;
-}
-.xm-inspector--right {
-  right: 8px;
-}
 .xm-inspector-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   padding: 8px 10px;
   border-bottom: 1px solid rgba(58, 64, 85, 0.55);
+}
+/* Expands in place of the title, so the filter costs the panel no height. */
+.xm-inspector-search {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(var(--accent-rgb, 108, 140, 255), 0.6);
+  background: var(--bg, #0f1117);
+  color: var(--text, #d8dae5);
+  font:
+    400 10.5px/1 var(--font-mono),
+    monospace;
+  outline: none;
+}
+.xm-inspector-search-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted, #8b8fa3);
+  cursor: pointer;
+}
+.xm-inspector-search-btn:hover {
+  color: var(--accent-bright, #9db3ff);
+  border-color: rgba(var(--accent-rgb, 108, 140, 255), 0.5);
+}
+.xm-inspector-search-btn--on {
+  color: var(--accent-bright, #9db3ff);
+  border-color: rgba(var(--accent-rgb, 108, 140, 255), 0.5);
+  background: rgba(var(--accent-rgb, 108, 140, 255), 0.14);
+}
+.xm-inspector-empty {
+  margin: 6px 4px;
+  font:
+    400 10px/1.3 var(--font-body),
+    sans-serif;
+  color: var(--text-muted, #8b8fa3);
 }
 .xm-inspector-title {
   flex: 1;
@@ -575,6 +757,10 @@
   padding: 6px;
 }
 .xm-track-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
   padding: 5px 6px;
   margin-bottom: 3px;
   border-radius: 4px;
@@ -585,6 +771,142 @@
     monospace;
   color: var(--text, #d8dae5);
   cursor: grab;
+}
+.xm-track-card-label {
+  flex: 1;
+  min-width: 0;
+}
+/* Transparent preview control on each cohort card. It holds its place in the
+   row at all times so revealing it never reflows the title, and stays visible
+   while its own track is playing so the pause state is findable after the
+   pointer has moved on. */
+.xm-card-play {
+  flex: 0 0 auto;
+  opacity: 0;
+  background: transparent;
+  transition: opacity 100ms ease;
+}
+.xm-track-card:hover .xm-card-play,
+.xm-card-play:focus-visible,
+.xm-card-play.play-btn--playing {
+  opacity: 1;
+}
+/* Matched to the preview control beside them, so the row is one size. */
+.xm-card-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 3px;
+  border: 1px solid rgba(58, 64, 85, 0.8);
+  background: transparent;
+  color: var(--text-muted, #8b8fa3);
+  font:
+    500 11px/1 var(--font-mono),
+    monospace;
+  cursor: pointer;
+}
+.xm-card-action:hover {
+  color: var(--accent-bright, #9db3ff);
+  border-color: var(--accent-bright, #9db3ff);
+}
+/* Above .xm-inspector (45): both are portalled to <body>, so they are stacking
+   siblings and a lower value hides this menu behind the panel it belongs to. */
+.xm-card-menu {
+  position: fixed;
+  z-index: 55;
+  min-width: 120px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 3px;
+  border-radius: 5px;
+  border: 1px solid rgba(58, 64, 85, 0.85);
+  background: rgba(20, 23, 31, 0.97);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.xm-card-menu-item {
+  display: block;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  text-align: left;
+  font:
+    400 10px/1.3 var(--font-mono),
+    monospace;
+  color: var(--text, #d8dae5);
+  cursor: pointer;
+}
+.xm-card-menu-item:hover {
+  background: rgba(var(--accent-rgb, 108, 140, 255), 0.18);
+  color: var(--accent-bright, #9db3ff);
+}
+/* The crate bar scopes the grid: All is the immutable whole pool; custom
+   crate pills double as drop targets. */
+.xm-crates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.xm-crate {
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 9px;
+  border: 1px solid #2a2f3d;
+  background: transparent;
+  color: var(--text-muted, #8b8fa3);
+  font:
+    500 9.5px/1 var(--font-mono),
+    monospace;
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.xm-crate:hover {
+  color: var(--text, #d8dae5);
+  border-color: var(--border-strong, #3a4055);
+}
+.xm-crate--on {
+  color: var(--accent-bright, #9db3ff);
+  border-color: rgba(var(--accent-rgb, 108, 140, 255), 0.7);
+  background: rgba(var(--accent-rgb, 108, 140, 255), 0.14);
+}
+.xm-crate--drop {
+  border-style: dashed;
+  border-color: var(--accent-bright, #9db3ff);
+  color: var(--accent-bright, #9db3ff);
+}
+.xm-crate--add {
+  width: 18px;
+  padding: 0;
+  text-align: center;
+}
+.xm-crate-input {
+  height: 18px;
+  width: 110px;
+  padding: 0 6px;
+  border-radius: 9px;
+  border: 1px solid rgba(var(--accent-rgb, 108, 140, 255), 0.7);
+  background: rgba(20, 23, 31, 0.9);
+  color: var(--text, #d8dae5);
+  font:
+    500 9.5px/1 var(--font-mono),
+    monospace;
+  outline: none;
+}
+.xm-crate-tools {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: 4px;
 }
 .xm-tip {
   position: fixed;
@@ -780,16 +1102,6 @@
 .sq-lane-actions {
   margin-top: 6px;
 }
-.sq-lane-delete {
-  position: absolute;
-  right: 6px;
-  top: 6px;
-  z-index: 2;
-  border: 0;
-  background: none;
-  color: var(--text-muted, #8b8fa3);
-  cursor: pointer;
-}
 /* Tight dot, and the BPM on the dot's own left edge rather than under the
    Camelot code, so the block spends no width on an indent. */
 .sq-block-line {
@@ -811,27 +1123,41 @@
   white-space: nowrap;
   padding-left: 0;
 }
-/* Only the selected benched tile shows this, tucked into the corner so it
-   never sits on top of the key or the BPM. */
-.sq-promote {
-  position: absolute;
-  right: 1px;
-  bottom: 1px;
-  z-index: 2;
+/* Tile controls. One rule covers preview, promote, star and pin: identical
+   chrome at a 24px target, distinguished only by their glyph. Anything that
+   gave one of them its own shape or fill implied a relationship to its
+   neighbours that does not exist. */
+.sq-ctl {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 13px;
-  height: 13px;
-  border: 0;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border-radius: 3px;
-  background: rgba(15, 17, 23, 0.65);
-  color: var(--accent-bright, #9db3ff);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.72;
   cursor: pointer;
+  transition:
+    opacity 100ms ease,
+    background-color 100ms ease,
+    border-color 100ms ease;
 }
-.sq-promote:hover {
-  background: rgba(var(--accent-rgb, 108, 140, 255), 0.35);
+.sq-ctl:hover {
+  opacity: 1;
+  background: rgba(15, 17, 23, 0.16);
+  border-color: rgba(15, 17, 23, 0.24);
+}
+.sq-ctl:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent-bright, #9db3ff);
+  outline-offset: 1px;
+}
+.sq-ctl[aria-pressed='true'] {
+  opacity: 1;
 }
 .sq-list {
   flex: 1;
@@ -989,7 +1315,9 @@
   overflow: hidden;
   border-radius: 3px;
   background: rgba(23, 26, 35, 0.94);
-  pointer-events: none;
+  /* This is fixed widget chrome, not timeline. It must intercept pointer and
+     track-drop events so clicks cannot place a paste cursor beneath it. */
+  pointer-events: auto;
   font:
     500 9px/1 var(--font-body),
     sans-serif;
@@ -1033,6 +1361,59 @@
   color: #0f1117;
   opacity: 1;
 }
+/* Hover or selection raises the tile: lifted above its row, grown to a fixed
+   100×40 footprint (inline geometry) and floated over its neighbours. Opacity
+   comes from the inline style so it also wins over the relation dimming. */
+.sq-block--raised {
+  z-index: 6;
+  /* Lift past the extra raised height (40px vs 30px resting) so the whole
+     footprint visibly rises above the row instead of reading as downward
+     growth: the raised bottom edge ends up 8px above the resting bottom. */
+  transform: translateY(-18px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  /* The raised tile is roomy enough not to need clipping, and visible
+     overflow lets the ::after hover extender below actually receive events. */
+  overflow: visible;
+}
+/* Invisible hover extender under the raised tile: the lift shifts the tile up
+   away from the pointer, so without this buffer a pointer near the bottom
+   edge would oscillate between the two states. */
+.sq-block--raised::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 100%;
+  width: 100%;
+  height: 14px;
+}
+/* The raised tile's control row, pinned to its right edge and vertically
+   centred. The tile grows sideways to make room for it. */
+.sq-block-controls {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* The shared preview button keeps its own chrome everywhere else; inside the
+   tile row it is just another .sq-ctl. */
+.sq-block-controls .play-btn.sq-ctl {
+  font-size: inherit;
+  background: transparent;
+  color: inherit;
+}
+/* Preview column in the tracklist view. */
+.sq-col-play {
+  width: 26px;
+}
+.sq-col-play .play-btn {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
 .sq-block--starred {
   opacity: 1;
   border-color: #f1ca64;
@@ -1040,52 +1421,17 @@
   color: #fff5cf;
   box-shadow: inset 0 0 0 1px rgba(255, 232, 157, 0.18);
 }
-.sq-star,
-.sq-pin {
-  position: absolute;
-  top: 1px;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 13px;
-  height: 13px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #aeb4c5;
-  opacity: 0;
-  cursor: pointer;
-  transition:
-    opacity 100ms ease,
-    color 100ms ease;
+/* The controls inherit the tile's own text colour, so they stay legible on the
+   dark resting plate and on the pale selected one without a per-state palette.
+   Only the starred toggle takes a colour of its own. */
+.sq-ctl[aria-pressed='true'] svg path[fill]:not([fill='none']) {
+  color: inherit;
 }
-.sq-star {
-  right: 1px;
-  font: 400 11px/1 sans-serif;
-}
-.sq-pin {
-  top: 14px;
-  right: 1px;
-}
-.sq-block:hover .sq-star,
-.sq-star:focus-visible {
-  opacity: 1;
-}
-.sq-block:hover .sq-pin,
-.sq-pin:focus-visible,
-.sq-pin[aria-pressed='true'] {
-  opacity: 1;
-}
-.sq-star:hover,
-.sq-pin:hover {
-  color: #f4f6ff;
-}
-.sq-star[aria-pressed='true'] {
+.sq-block-controls .sq-ctl[aria-label^='Unstar'] {
   color: #f1ca64;
 }
-.sq-pin[aria-pressed='true'] {
-  color: #dce3f7;
+.sq-block--sel .sq-block-controls .sq-ctl[aria-label^='Unstar'] {
+  color: #8a6a12;
 }
 .sq-block--pinned {
   border-right: 3px solid var(--accent-bright, #9db3ff);
@@ -1189,7 +1535,9 @@
 .sq-block-pop {
   position: fixed;
   z-index: 80;
-  transform: translate(-50%, calc(-100% - 8px));
+  /* Clears the raised tile's full lift, so the popover never covers the
+     centred preview button or the star/pin column. */
+  transform: translate(-50%, calc(-100% - 26px));
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1241,16 +1589,16 @@
   color: var(--accent-bright, #9db3ff);
 }
 
-/* Sits inside the lane label so it reads as part of it, matching the other
-   small icon controls. */
-.sq-lane-sort {
+/* Controls stay inside the sticky lane label. Keeping rename/delete here makes
+   them visible even when the timeline is wider than the viewport. */
+.sq-lane-control {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 15px;
   height: 15px;
-  margin-left: 5px;
+  margin-left: 2px;
   padding: 0;
   border: 0;
   border-radius: 3px;
@@ -1260,9 +1608,13 @@
   vertical-align: middle;
   pointer-events: auto;
 }
-.sq-lane-sort:hover {
+.sq-lane-control:hover {
   background: rgba(var(--accent-rgb, 108, 140, 255), 0.18);
   color: var(--accent-bright, #9db3ff);
+}
+.sq-lane-delete:hover {
+  background: rgba(255, 96, 112, 0.16);
+  color: #ff9aa6;
 }
 
 /* The rectangle a selection drag paints across a lane. Click-through, so the
@@ -1300,8 +1652,7 @@
   border-top: 4px solid rgba(238, 243, 255, 0.9);
 }
 
-/* The label chip is click-through so it never eats a drop aimed at a block
-   beneath it; its interactive children opt back in. */
+/* The lane name owns the remaining label width and can drag group lanes. */
 .sq-lane-name {
   flex: 1;
   min-width: 0;
@@ -1310,6 +1661,9 @@
   white-space: nowrap;
   cursor: grab;
   pointer-events: auto;
+}
+.sq-lane--committed .sq-lane-name {
+  cursor: default;
 }
 .sq-lane-name:hover {
   color: #a2a8bd;
@@ -1342,13 +1696,181 @@
 .ws-picker-name-input:focus-visible,
 .xm-cell:focus-visible,
 .xm-inspector-close:focus-visible,
+.xm-crate:focus-visible,
+.xm-crate-input:focus-visible,
+.xm-card-action:focus-visible,
+.xm-card-menu-item:focus-visible,
 .sq-block:focus-visible,
 .sq-star:focus-visible,
 .sq-pin:focus-visible,
 .sq-lane-sort:focus-visible,
 .sq-lane-delete:focus-visible,
+.sq-lane-rename-btn:focus-visible,
 .sq-add-lane:focus-visible,
 .sq-lane-rename:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring, 0 0 0 2px #0f1117, 0 0 0 4px #6c8cff);
+}
+
+/* === Multi-select: shared by every track list === */
+.sel-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.sel-toggle:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.sel-toggle-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong, #3a4055);
+  background: var(--bg, #0f1117);
+  color: var(--accent-bright, #9db3ff);
+  font:
+    600 10px/1 var(--font-body),
+    sans-serif;
+}
+.sel-toggle:hover .sel-toggle-box {
+  border-color: var(--accent-bright, #9db3ff);
+}
+.sel-toggle--all .sel-toggle-box,
+.sel-toggle--some .sel-toggle-box {
+  border-color: rgba(var(--accent-rgb, 108, 140, 255), 0.8);
+  background: rgba(var(--accent-rgb, 108, 140, 255), 0.18);
+}
+.sel-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border, #2a2e3b);
+  background: rgba(var(--accent-rgb, 108, 140, 255), 0.1);
+}
+.sel-bar-count {
+  font:
+    500 10.5px/1 var(--font-body),
+    sans-serif;
+  color: var(--accent-bright, #9db3ff);
+  white-space: nowrap;
+}
+.sel-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.sel-action {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong, #3a4055);
+  background: var(--surface, #1a1d27);
+  color: var(--text, #d8dae5);
+  font:
+    400 10.5px/1 var(--font-body),
+    sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sel-action:hover {
+  border-color: var(--accent-bright, #9db3ff);
+  color: var(--accent-bright, #9db3ff);
+}
+.sel-action--danger:hover {
+  border-color: #e38d9a;
+  color: #e38d9a;
+}
+.sel-bar-clear {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted, #8b8fa3);
+  cursor: pointer;
+}
+.sel-bar-clear:hover {
+  color: var(--text, #d8dae5);
+}
+/* A selected row, in whichever list it lives. */
+.is-multi-selected,
+tr.is-multi-selected > td {
+  background: rgba(var(--accent-rgb, 108, 140, 255), 0.16) !important;
+}
+.xm-track-card.is-multi-selected {
+  border-color: rgba(var(--accent-rgb, 108, 140, 255), 0.8);
+}
+.xm-bulk-crates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(58, 64, 85, 0.55);
+}
+.sel-bar-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.sel-bar-progress-label {
+  font:
+    400 10px/1 var(--font-mono),
+    monospace;
+  color: var(--text, #d8dae5);
+  white-space: nowrap;
+}
+.sel-bar-progress-track {
+  flex: 1;
+  min-width: 40px;
+  max-width: 160px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.sel-bar-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent-bright, #9db3ff);
+  transition: width 120ms linear;
+}
+.sel-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.sel-bar-clear:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* BrowserWidget wraps its stack in an element so it can own focus for
+   Cmd/Ctrl+A. It has to keep passing the widget body's height through, or the
+   virtualized table below it loses its flex sizing. */
+.ds-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  outline: none;
 }

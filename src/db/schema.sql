@@ -263,6 +263,70 @@ ALTER SEQUENCE public.scoring_weight_override_id_seq OWNED BY public.scoring_wei
 
 
 --
+-- Name: explorer_crate; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.explorer_crate (
+    id integer NOT NULL,
+    name character varying(256) NOT NULL,
+    display_order integer DEFAULT 0 NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: explorer_crate_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE IF NOT EXISTS public.explorer_crate_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: explorer_crate_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.explorer_crate_id_seq OWNED BY public.explorer_crate.id;
+
+
+--
+-- Name: explorer_crate_member; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.explorer_crate_member (
+    id integer NOT NULL,
+    crate_id integer NOT NULL,
+    track_id integer NOT NULL,
+    added_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: explorer_crate_member_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE IF NOT EXISTS public.explorer_crate_member_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: explorer_crate_member_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.explorer_crate_member_id_seq OWNED BY public.explorer_crate_member.id;
+
+
+--
 -- Name: set_explorer_edge; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -618,6 +682,20 @@ ALTER TABLE ONLY public.scoring_weight_override ALTER COLUMN id SET DEFAULT next
 
 
 --
+-- Name: explorer_crate id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.explorer_crate ALTER COLUMN id SET DEFAULT nextval('public.explorer_crate_id_seq'::regclass);
+
+
+--
+-- Name: explorer_crate_member id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.explorer_crate_member ALTER COLUMN id SET DEFAULT nextval('public.explorer_crate_member_id_seq'::regclass);
+
+
+--
 -- Name: set_explorer_edge id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -802,6 +880,30 @@ ALTER TABLE ONLY public.table_preference
 
 
 --
+-- Name: explorer_crate explorer_crate_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.explorer_crate
+    ADD CONSTRAINT explorer_crate_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: explorer_crate_member explorer_crate_member_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.explorer_crate_member
+    ADD CONSTRAINT explorer_crate_member_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: explorer_crate_member uq_explorer_crate_member; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.explorer_crate_member
+    ADD CONSTRAINT uq_explorer_crate_member UNIQUE (crate_id, track_id);
+
+
+--
 -- Name: set_explorer_edge set_explorer_edge_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -949,6 +1051,20 @@ CREATE INDEX IF NOT EXISTS artist_mapping_raw_idx ON public.artist_mapping USING
 --
 
 CREATE INDEX IF NOT EXISTS genre_mapping_raw_idx ON public.genre_mapping USING btree (raw_genre);
+
+
+--
+-- Name: idx_crate_member_crate_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS idx_crate_member_crate_id ON public.explorer_crate_member USING btree (crate_id);
+
+
+--
+-- Name: idx_crate_member_track_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS idx_crate_member_track_id ON public.explorer_crate_member USING btree (track_id);
 
 
 --
@@ -1368,6 +1484,22 @@ ALTER TABLE ONLY public.post_mik_tags
 
 ALTER TABLE ONLY public.post_rekordbox_tags
     ADD CONSTRAINT post_rekordbox_tags_track_id_fkey FOREIGN KEY (track_id) REFERENCES public.track(id);
+
+
+--
+-- Name: explorer_crate_member explorer_crate_member_crate_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.explorer_crate_member
+    ADD CONSTRAINT explorer_crate_member_crate_id_fkey FOREIGN KEY (crate_id) REFERENCES public.explorer_crate(id) ON DELETE CASCADE;
+
+
+--
+-- Name: explorer_crate_member explorer_crate_member_track_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.explorer_crate_member
+    ADD CONSTRAINT explorer_crate_member_track_id_fkey FOREIGN KEY (track_id) REFERENCES public.track(id) ON DELETE CASCADE;
 
 
 --

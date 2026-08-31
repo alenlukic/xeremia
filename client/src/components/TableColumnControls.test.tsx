@@ -317,7 +317,7 @@ describe('SetPoolTable header layout and column controls', () => {
     )
   }
 
-  it('keeps the Pool title and filter control in the header, with group tabs in the right rail', () => {
+  it('keeps the Pool title and filter control in the header, with group tabs in the header dropdown', () => {
     const { container } = renderPool()
     const header = container.querySelector('.ds-table-header')!
     expect(header.querySelector('.ds-table-header-title')?.textContent).toMatch(
@@ -326,34 +326,34 @@ describe('SetPoolTable header layout and column controls', () => {
     const primary = header.querySelector<HTMLElement>(
       '.ds-table-header-primary',
     )!
-    // The group enumeration moved out of the header into the collapsible rail.
+    // The group enumeration moved out of the primary header row into the
+    // trailing dropdown menu.
     expect(within(primary).queryByRole('tablist')).toBeNull()
     expect(
       within(primary).getByRole('button', { name: 'Add filter' }),
     ).toBeTruthy()
 
-    const rail = container.querySelector<HTMLElement>('.pool-group-rail')!
-    expect(rail).toBeTruthy()
-    expect(within(rail).getByRole('tablist')).toBeTruthy()
+    const trigger = header.querySelector<HTMLElement>(
+      '.pool-group-menu-trigger',
+    )!
+    expect(trigger).toBeTruthy()
   })
 
-  it('collapses and expands the group rail', async () => {
+  it('opens and closes the group menu from the header trigger', async () => {
     const { container } = renderPool()
-    // Re-query each time: the rail swaps between an expanded <aside> and a
-    // collapsed <button> spine, so a cached reference goes stale.
-    const rail = () => container.querySelector('.pool-group-rail')!
-    expect(within(rail() as HTMLElement).getByRole('tablist')).toBeTruthy()
+    // The panel is portalled to <body>, so query the document.
+    const panel = () =>
+      document.querySelector<HTMLElement>('.pool-group-menu-panel')
+    expect(panel()).toBeNull()
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Collapse groups' }),
-    )
-    expect(rail().classList.contains('pool-group-rail--collapsed')).toBe(true)
-    // Collapsed spine hides the tab list.
-    expect(within(rail() as HTMLElement).queryByRole('tablist')).toBeNull()
+    const trigger = container.querySelector<HTMLElement>(
+      '.pool-group-menu-trigger',
+    )!
+    await userEvent.click(trigger)
+    expect(within(panel()!).getByRole('tablist')).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Expand groups' }))
-    expect(rail().classList.contains('pool-group-rail--collapsed')).toBe(false)
-    expect(within(rail() as HTMLElement).getByRole('tablist')).toBeTruthy()
+    await userEvent.click(trigger)
+    expect(panel()).toBeNull()
   })
 
   it('moves the add-column control off the headers (no inline per-column +)', () => {

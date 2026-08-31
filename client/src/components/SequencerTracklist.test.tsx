@@ -337,3 +337,5 @@ describe('SequencerTracklist explicit row actions', () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 })
+
+

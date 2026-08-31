@@ -3,6 +3,7 @@ import {
   useCallback,
   useMemo,
   useEffect,
+  useLayoutEffect,
   useRef,
   createContext,
   useContext,
@@ -21,10 +22,30 @@ import type {
   PoolSubgroupMembership,
   Track,
 } from '../types'
-import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
+import {
+  dropTracksInOrder,
+  readTrackDrag,
+  writeTrackDrag,
+  TRACK_DRAG_MIME,
+  TRACKLIST_ROW_MIME,
+  POOL_ROW_MIME,
+} from '../utils'
+import {
+  useMultiSelect,
+  NO_SELECTION,
+  type MultiSelect,
+} from '../hooks/useMultiSelect'
+import { useBulkAction } from '../hooks/useBulkAction'
+import { useSelectAllShortcut } from '../hooks/useSelectAllShortcut'
+import {
+  SelectionAction,
+  SelectionBar,
+  SelectionToggle,
+} from './SelectionControls'
 import { displayTitle } from '../utils/trackTitle'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
+import { FloatingSurface } from './FloatingSurface'
 import { PlayButton } from './PlayButton'
 import { SortTierBar, SortAddButton } from './SortTierBar'
 import type { SortDescriptor, SortColumn } from './SortTierBar'
@@ -53,6 +74,11 @@ import {
 } from './table/tableFilter'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 import { useColumnResizeGuard } from '../hooks/useColumnResizeGuard'
+import { useColumnResize } from '../hooks/useColumnResize'
+import { useFixedTableWidths } from '../hooks/useFixedTableWidths'
+
+/** The row-removal × gutter; not a preference column, so it is sized here. */
+const POOL_REMOVE_COL_PX = 22
 
 const POOL_COL_CLASS: Record<string, string> = {
   play: 'set-ws-col-play',
@@ -64,6 +90,7 @@ const POOL_COL_CLASS: Record<string, string> = {
 }
 
 const POOL_HEADER_LABEL: Record<string, string> = {
+  play: 'Pre.',
   num: '#',
   title: 'Title',
   key: 'Key',
@@ -115,6 +142,17 @@ function poolKeyOptions(pool: PoolEntry[]): string[] {
 }
 
 type SubgroupDropSource = 'browse' | 'tracklist' | 'pool'
+
+/**
+ * Files one dragged track into a group, pooling it first when it is not in the
+ * pool yet. Async so a multi-track drop can let each track land before
+ * starting the next.
+ */
+type SubgroupDropHandler = (
+  subgroupId: number,
+  trackId: number,
+  source: SubgroupDropSource,
+) => void | Promise<unknown>
 
 function trackDropSource(types: readonly string[]): SubgroupDropSource | null {
   if (types.includes(TRACK_DRAG_MIME)) {
@@ -188,7 +226,7 @@ interface Props {
   onInsertColumnAfter: (afterColumnId: string, columnId: string) => void
   onColumnWidthChange: (columnId: string, width: number) => void
   onColumnWidthFlush: (columnId: string, width: number) => void
-  onRemove: (trackId: number) => void
+  onRemove: (trackId: number) => void | Promise<unknown>
   onReorder: (trackId: number, newPosition: number) => void
   onReorderSubgroupMember: (
     subgroupId: number,
@@ -196,19 +234,15 @@ interface Props {
     newPosition: number,
   ) => Promise<boolean>
   onSetHighlight: (trackId: number, color: string | null) => void
-  onAddTrack: (trackId: number, title?: string) => void
+  onAddTrack: (trackId: number, title?: string) => void | Promise<unknown>
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
   onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
   onDeleteSubgroup: (subgroupId: number) => Promise<boolean>
   onReorderSubgroups: (subgroupIds: number[]) => Promise<boolean>
   onAddSubgroupMember: SubgroupMemberAction
   onRemoveSubgroupMember: SubgroupMemberAction
-  onDropFromTracklist: (trackId: number) => void
-  onDropTrackToSubgroup: (
-    subgroupId: number,
-    trackId: number,
-    source: SubgroupDropSource,
-  ) => void
+  onDropFromTracklist: (trackId: number) => void | Promise<unknown>
+  onDropTrackToSubgroup: SubgroupDropHandler
 }
 
 function compareByColumn(a: PoolEntry, b: PoolEntry, col: string): number {
@@ -318,6 +352,7 @@ function SubgroupCell({
   const [query, setQuery] = useState('')
   const [creating, setCreating] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const floatingRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const close = useCallback(() => {
@@ -330,7 +365,7 @@ function SubgroupCell({
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [])
 
-  useDismissOnOutsideClick(ref, open, close)
+  useDismissOnOutsideClick(ref, open, close, floatingRef)
   useEffect(() => {
     if (!open) {
       return
@@ -427,10 +462,13 @@ function SubgroupCell({
         )}
       </button>
       {open && (
-        <div
+        <FloatingSurface
+          anchorRef={ref}
+          floatingRef={floatingRef}
+          align="right"
           className="subgroup-modal"
           role="listbox"
-          aria-label={`Assign groups for ${trackLabel}`}
+          ariaLabel={`Assign groups for ${trackLabel}`}
         >
           <input
             ref={inputRef}
@@ -491,7 +529,7 @@ function SubgroupCell({
                 : 'Create new group'}
             </button>
           )}
-        </div>
+        </FloatingSurface>
       )}
     </div>
   )
@@ -552,6 +590,18 @@ function HighlightPalette({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useDismissOnOutsideClick(ref, true, onClose)
+  // Pull the palette back inside the viewport when the cursor sits near an
+  // edge, so no swatch lands off screen.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) {
+      return
+    }
+    const padding = 8
+    const { width, height } = el.getBoundingClientRect()
+    el.style.left = `${Math.max(padding, Math.min(x, window.innerWidth - padding - width))}px`
+    el.style.top = `${Math.max(padding, Math.min(y, window.innerHeight - padding - height))}px`
+  }, [x, y])
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -629,10 +679,12 @@ function PoolRow({
   onCreateSubgroup,
   reorder,
   railSubgroupId,
+  selection,
 }: {
   entry: PoolEntry
   visibleColumnIds: string[]
   onRemove: (trackId: number) => void
+  selection: MultiSelect
   subgroups: PoolSubgroup[]
   colorByIndex: Map<number, string>
   memberSubgroupIds: Set<number>
@@ -715,18 +767,33 @@ function PoolRow({
     <tr
       draggable
       className={
-        reorder
-          ? (reorder.isDragging ? 'set-row-dragging' : '') +
-            (reorder.isDropTarget ? ' set-row-drop-target' : '')
-          : undefined
+        [
+          reorder && reorder.isDragging ? 'set-row-dragging' : '',
+          reorder && reorder.isDropTarget ? 'set-row-drop-target' : '',
+          selection.isSelected(entry.track_id) ? 'is-multi-selected' : '',
+        ]
+          .filter(Boolean)
+          .join(' ') || undefined
       }
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', String(entry.track_id))
-        e.dataTransfer.setData(POOL_ROW_MIME, String(entry.track_id))
+        // A row inside the selection drags the whole selection with it; any
+        // other row drags just itself.
+        const ids = selection.isSelected(entry.track_id)
+          ? selection.orderedIds
+          : [entry.track_id]
+        writeTrackDrag(e.dataTransfer, entry.track_id, ids, POOL_ROW_MIME)
         e.dataTransfer.effectAllowed = 'move'
         if (reorder) {
           reorder.onDragStart(reorder.index)
         }
+      }}
+      onClick={(event) => {
+        // The row's own controls (remove, play, group chips) own their clicks.
+        if ((event.target as HTMLElement).closest('button')) {
+          return
+        }
+        selection.select(entry.track_id, event)
       }}
       onDragOver={
         reorder ? (e) => reorder.onDragOver(reorder.index, e) : undefined
@@ -856,14 +923,6 @@ function PoolTableHead({
     const sortable = sortCol != null && onHeaderSort != null
     const thClass = sortable ? 'set-ws-th set-ws-th-sortable' : 'set-ws-th'
 
-    if (colId === 'play') {
-      return (
-        <th key={colId} className={thClass}>
-          <div className="th-content th-content--play">Pre.</div>
-        </th>
-      )
-    }
-
     return (
       <th
         key={colId}
@@ -954,11 +1013,7 @@ function PoolTabBar({
   onReorderSubgroups: (subgroupIds: number[]) => Promise<boolean>
   activeTab: PoolTab
   onTabChange: (tab: PoolTab) => void
-  onDropTrackToSubgroup: (
-    subgroupId: number,
-    trackId: number,
-    source: SubgroupDropSource,
-  ) => void
+  onDropTrackToSubgroup: SubgroupDropHandler
   trackDropSubgroupId: number | null
   onTrackDropSubgroupChange: (subgroupId: number | null) => void
 }) {
@@ -1087,11 +1142,10 @@ function PoolTabBar({
               e.preventDefault()
               e.stopPropagation()
               onTrackDropSubgroupChange(null)
-              const raw = e.dataTransfer.getData(trackDropMime(source))
-              const trackId = Number(raw)
-              if (raw && Number.isInteger(trackId)) {
-                onDropTrackToSubgroup(sg.id, trackId, source)
-              }
+              void dropTracksInOrder(
+                readTrackDrag(e.dataTransfer, trackDropMime(source)),
+                (trackId) => onDropTrackToSubgroup(sg.id, trackId, source),
+              )
               return
             }
             handleTabDrop(idx, e)
@@ -1151,10 +1205,10 @@ function PoolTabBar({
                     `Delete group "${sg.name}"? Tracks will remain in the pool.`,
                   )
                 ) {
+                  // No explicit tab switch: the parent falls back to All when
+                  // the active group disappears, and skipping onTabChange
+                  // keeps the group menu open through the deletion.
                   onDeleteSubgroup(sg.id)
-                  if (activeTab === sg.id) {
-                    onTabChange('all')
-                  }
                 }
               }}
               title={`Delete ${sg.name}`}
@@ -1214,6 +1268,147 @@ function PoolTabBar({
   )
 }
 
+/**
+ * How long a tab selection waits before closing the group menu. Closing
+ * immediately would unmount the panel between the two clicks of a
+ * double-click, making the tabs' double-click rename unreachable; the second
+ * click cancels the pending close instead.
+ */
+const TAB_SELECT_CLOSE_DELAY_MS = 250
+
+/**
+ * Group navigation dropdown anchored in the pool table header: a compact
+ * trigger showing the active tab (All / Groups / group name with its color
+ * dot) that toggles a popover panel housing the unchanged PoolTabBar.
+ * Selecting a tab closes the menu; rename, create, delete, and reorder keep
+ * it open. Dismisses on Escape and on outside click.
+ */
+function PoolGroupMenu(props: React.ComponentProps<typeof PoolTabBar>) {
+  const { activeTab, subgroups, colorByIndex, onTabChange } = props
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeTimerRef = useRef<number | null>(null)
+
+  const cancelPendingClose = useCallback(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }, [])
+
+  const close = useCallback(() => {
+    cancelPendingClose()
+    setOpen(false)
+  }, [cancelPendingClose])
+
+  useEffect(() => cancelPendingClose, [cancelPendingClose])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    // Dismiss on a completed outside *click* rather than mousedown (the
+    // shared useDismissOnOutsideClick hook) so a drag that starts outside the
+    // menu — e.g. dragging a pool row toward a group tab in the open panel —
+    // does not close the panel before the drop can land.
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as Node
+      // A click inside the panel can detach its own target before the event
+      // reaches the document: React flushes the discrete event synchronously,
+      // so e.g. the "Create new group" button is already swapped for the name
+      // input by the time this listener runs. A detached target cannot be
+      // classified as outside, so keep the menu open.
+      if (!target.isConnected) {
+        return
+      }
+      const insideTrigger = ref.current?.contains(target)
+      const insidePanel = panelRef.current?.contains(target)
+      if (!insideTrigger && !insidePanel) {
+        close()
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        close()
+      }
+    }
+    document.addEventListener('click', onDocClick)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('click', onDocClick)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, close])
+
+  const handleTabChange = useCallback(
+    (tab: PoolTab) => {
+      onTabChange(tab)
+      cancelPendingClose()
+      closeTimerRef.current = window.setTimeout(() => {
+        closeTimerRef.current = null
+        setOpen(false)
+      }, TAB_SELECT_CLOSE_DELAY_MS)
+    },
+    [onTabChange, cancelPendingClose],
+  )
+
+  const activeSubgroup =
+    typeof activeTab === 'number'
+      ? subgroups.find((sg) => sg.id === activeTab)
+      : undefined
+  const label = activeSubgroup
+    ? activeSubgroup.name
+    : activeTab === 'groups'
+      ? 'Groups'
+      : 'All'
+
+  return (
+    <div className="pool-group-menu" ref={ref}>
+      <button
+        type="button"
+        className="pool-group-menu-trigger"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-label={`Pool view: ${label}`}
+        title="Switch pool view"
+        onClick={() => {
+          if (open) {
+            close()
+          } else {
+            setOpen(true)
+          }
+        }}
+      >
+        {activeSubgroup && (
+          <span
+            className="subgroup-dot pool-tab-dot"
+            style={{ background: colorByIndex.get(activeSubgroup.id) }}
+            aria-hidden="true"
+          />
+        )}
+        <span className="pool-group-menu-label">{label}</span>
+        <span className="pool-group-menu-chevron" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open && (
+        // A double-click inside the panel (tab rename) cancels the pending
+        // selection-close so the rename input survives.
+        <FloatingSurface
+          anchorRef={ref}
+          floatingRef={panelRef}
+          align="right"
+          className="pool-group-menu-panel"
+          onDoubleClickCapture={cancelPendingClose}
+        >
+          <PoolTabBar {...props} onTabChange={handleTabChange} />
+        </FloatingSurface>
+      )}
+    </div>
+  )
+}
+
 function SubgroupSection({
   subgroup,
   entries,
@@ -1230,6 +1425,7 @@ function SubgroupSection({
   onCreateSubgroup,
   visibleColumnIds: columnIds,
   poolHeadProps,
+  tableWidth,
   onDropTrackToSubgroup,
   trackDropSubgroupId,
   onTrackDropSubgroupChange,
@@ -1252,11 +1448,9 @@ function SubgroupSection({
     React.ComponentProps<typeof PoolTableHead>,
     'sorting' | 'onHeaderSort'
   >
-  onDropTrackToSubgroup: (
-    subgroupId: number,
-    trackId: number,
-    source: SubgroupDropSource,
-  ) => void
+  /** Sum of the resolved column widths; keeps every section's table aligned. */
+  tableWidth: number
+  onDropTrackToSubgroup: SubgroupDropHandler
   trackDropSubgroupId: number | null
   onTrackDropSubgroupChange: (subgroupId: number | null) => void
 }) {
@@ -1338,11 +1532,10 @@ function SubgroupSection({
         e.preventDefault()
         e.stopPropagation()
         onTrackDropSubgroupChange(null)
-        const raw = e.dataTransfer.getData(trackDropMime(source))
-        const trackId = Number(raw)
-        if (raw && Number.isInteger(trackId)) {
-          onDropTrackToSubgroup(subgroup.id, trackId, source)
-        }
+        void dropTracksInOrder(
+          readTrackDrag(e.dataTransfer, trackDropMime(source)),
+          (trackId) => onDropTrackToSubgroup(subgroup.id, trackId, source),
+        )
       }}
     >
       <div className="subgroup-section-header" {...attributes} {...listeners}>
@@ -1363,7 +1556,7 @@ function SubgroupSection({
             columns={POOL_SORT_COLUMNS}
             onSortingChange={onSortingChange}
           />
-          <table className="set-pool-table">
+          <table className="set-pool-table" style={{ width: tableWidth }}>
             <PoolTableHead
               {...poolHeadProps}
               sorting={sorting}
@@ -1387,6 +1580,9 @@ function SubgroupSection({
                   onRemoveSubgroupMember={onRemoveSubgroupMember}
                   onCreateSubgroup={onCreateSubgroup}
                   railSubgroupId={subgroup.id}
+                  // The Groups tab lists every group at once; see the note on
+                  // `selectableIds`.
+                  selection={NO_SELECTION}
                 />
               ))}
             </tbody>
@@ -1420,22 +1616,9 @@ export function SetPoolTable({
   onDropFromTracklist,
   onDropTrackToSubgroup,
 }: Props) {
-  const poolColWidths = tableConfig.columnWidths
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
-  // Live width for the column being resized. Kept local so a drag re-renders
-  // only the pool table, not the whole App (which re-rendered every quadrant on
-  // each mousemove). Flushed to App on mouse-up.
-  const [liveResize, setLiveResize] = useState<{
-    id: string
-    width: number
-  } | null>(null)
-  const effectivePoolColWidths = useMemo(
-    () =>
-      liveResize
-        ? { ...poolColWidths, [liveResize.id]: liveResize.width }
-        : poolColWidths,
-    [poolColWidths, liveResize],
-  )
+  const { widths: liveColWidths, beginResize: beginPoolColResize } =
+    useColumnResize(tableConfig.columnWidths, onColumnWidthFlush)
   const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
   const registryById = useMemo(
     () => new Map(TABLE_REGISTRIES.pool.map((entry) => [entry.id, entry])),
@@ -1445,6 +1628,20 @@ export function SetPoolTable({
     () => effectivePoolColumns(visibleIds, subgroups.length > 0),
     [visibleIds, subgroups.length],
   )
+  // The panel element, which claims focus so Cmd/Ctrl+A means "this list".
+  const poolHostRef = useRef<HTMLDivElement | null>(null)
+  // Explicit widths for every column, so resizing one leaves the rest alone.
+  const {
+    outerRef: tableOuterRef,
+    widths: resolvedColWidths,
+    totalWidth: tableWidth,
+  } = useFixedTableWidths({
+    tableId: 'pool',
+    visibleColumnIds: displayColumns,
+    widths: liveColWidths,
+    flexColumnId: 'title',
+    leadingWidth: POOL_REMOVE_COL_PX,
+  })
   // Stable dot color per subgroup (shared by the tabs and the Groups cell).
   const subgroupColorById = useMemo(() => {
     const m = new Map<number, string>()
@@ -1519,44 +1716,10 @@ export function SetPoolTable({
     setDraggedColumn(null)
   }, [])
 
-  const beginPoolColResize = useCallback(
-    (colId: string, e: React.MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const th = (e.target as HTMLElement).closest('th')
-      if (!th) {
-        return
-      }
-      const startWidth = th.getBoundingClientRect().width
-      const startX = e.clientX
-      let latestWidth = startWidth
-
-      function handleMove(ev: MouseEvent) {
-        latestWidth = Math.max(40, Math.round(startWidth + ev.clientX - startX))
-        setLiveResize({ id: colId, width: latestWidth })
-      }
-
-      function handleUp() {
-        document.removeEventListener('mousemove', handleMove)
-        document.removeEventListener('mouseup', handleUp)
-        document.body.style.removeProperty('cursor')
-        document.body.style.removeProperty('user-select')
-        setLiveResize(null)
-        onColumnWidthFlush(colId, latestWidth)
-      }
-
-      document.addEventListener('mousemove', handleMove)
-      document.addEventListener('mouseup', handleUp)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-    },
-    [onColumnWidthFlush],
-  )
-
   const poolHeadBaseProps = useMemo(
     () => ({
       visibleColumnIds: displayColumns,
-      colWidths: effectivePoolColWidths,
+      colWidths: resolvedColWidths,
       beginResize: beginPoolColResize,
       registryById,
       draggedColumn,
@@ -1568,7 +1731,7 @@ export function SetPoolTable({
     }),
     [
       displayColumns,
-      effectivePoolColWidths,
+      resolvedColWidths,
       registryById,
       draggedColumn,
       onToggleColumn,
@@ -1578,40 +1741,6 @@ export function SetPoolTable({
       handleColumnDragEnd,
       beginPoolColResize,
     ],
-  )
-  // The group navigation lives in a rail pinned to the right of the table; it
-  // collapses to a slim spine so the table can reclaim the width, and its
-  // expanded width is drag-resizable.
-  const [railCollapsed, setRailCollapsed] = useState(false)
-  const [railWidth, setRailWidth] = useState(160)
-  const railResizeRef = useRef<{ startX: number; startWidth: number } | null>(
-    null,
-  )
-  const startRailResize = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault()
-      railResizeRef.current = { startX: e.clientX, startWidth: railWidth }
-      const onMove = (ev: MouseEvent) => {
-        const s = railResizeRef.current
-        if (!s) {
-          return
-        }
-        // The rail sits on the right edge, so dragging the handle left widens it.
-        const next = Math.min(
-          420,
-          Math.max(120, s.startWidth + (s.startX - ev.clientX)),
-        )
-        setRailWidth(next)
-      }
-      const onUp = () => {
-        railResizeRef.current = null
-        window.removeEventListener('mousemove', onMove)
-        window.removeEventListener('mouseup', onUp)
-      }
-      window.addEventListener('mousemove', onMove)
-      window.addEventListener('mouseup', onUp)
-    },
-    [railWidth],
   )
   const [trackDropSubgroupId, setTrackDropSubgroupId] = useState<number | null>(
     null,
@@ -1796,6 +1925,22 @@ export function SetPoolTable({
     [filteredPool, activeSorting, subgroupDisplayOrder],
   )
 
+  // Selectable rows are exactly the ones the tab and filters leave standing.
+  // The Groups tab lists every group at once, where "remove from group" has
+  // no single answer, so it gets no selection.
+  const selectableIds = useMemo(
+    () => (activeTab === 'groups' ? [] : sorted.map((e) => e.track_id)),
+    [activeTab, sorted],
+  )
+  const selection = useMultiSelect(selectableIds)
+  useSelectAllShortcut(poolHostRef, selection.selectAll)
+  const bulk = useBulkAction()
+  // Group membership is keyed by pool entry, not track.
+  const entryIdByTrackId = useMemo(
+    () => new Map(sorted.map((e) => [e.track_id, e.id])),
+    [sorted],
+  )
+
   // Row drag reordering only makes sense when rows follow the persisted order
   // (# ascending) without active filters.
   const rowReorderEnabled =
@@ -1811,23 +1956,45 @@ export function SetPoolTable({
   const [rowDragIndex, setRowDragIndex] = useState<number | null>(null)
   const [rowDropIndex, setRowDropIndex] = useState<number | null>(null)
 
+  // Dropping onto the table while a group tab is open files the track into
+  // that group, not merely into the pool behind it: the group is the list on
+  // screen, and a drop lands in the list you dropped it on. Both sources route
+  // through the same call the group's own tab uses, which pools the track
+  // first when it needs pooling.
   const handleExternalDrop = useCallback(
     (trackId: number) => {
+      if (typeof activeTab === 'number') {
+        return onDropTrackToSubgroup(activeTab, trackId, 'browse')
+      }
       const track = allTracks.find((t) => t.id === trackId)
-      onAddTrack(trackId, track?.title)
+      return onAddTrack(trackId, track?.title)
     },
-    [allTracks, onAddTrack],
+    [activeTab, allTracks, onAddTrack, onDropTrackToSubgroup],
+  )
+  const handleTracklistDrop = useCallback(
+    (trackId: number) =>
+      typeof activeTab === 'number'
+        ? onDropTrackToSubgroup(activeTab, trackId, 'tracklist')
+        : onDropFromTracklist(trackId),
+    [activeTab, onDropFromTracklist, onDropTrackToSubgroup],
   )
   const dropTargets = useMemo<TrackDropTarget[]>(
     () => [
-      { mime: TRACK_DRAG_MIME, onDropTrack: handleExternalDrop },
+      {
+        mime: TRACK_DRAG_MIME,
+        onDropTrack: handleExternalDrop,
+        onDropTracks: (trackIds) =>
+          void dropTracksInOrder(trackIds, handleExternalDrop),
+      },
       {
         mime: TRACKLIST_ROW_MIME,
-        onDropTrack: onDropFromTracklist,
+        onDropTrack: handleTracklistDrop,
+        onDropTracks: (trackIds) =>
+          void dropTracksInOrder(trackIds, handleTracklistDrop),
         dropEffect: 'move',
       },
     ],
-    [handleExternalDrop, onDropFromTracklist],
+    [handleExternalDrop, handleTracklistDrop],
   )
   const { dropActive, dropHandlers } = useExternalTrackDrop(dropTargets)
 
@@ -1909,12 +2076,18 @@ export function SetPoolTable({
     <PoolHighlightContext.Provider value={highlightContext}>
       <div
         className={`set-pool${dropActive ? ' set-drop-active' : ''}`}
+        ref={poolHostRef}
+        tabIndex={-1}
+        // Claiming focus on click is what scopes Cmd/Ctrl+A to this list
+        // rather than whichever other track list happens to be on screen.
+        onMouseDown={() => poolHostRef.current?.focus({ preventScroll: true })}
         {...dropHandlers}
       >
-        {/* Groups moved to the right rail, so the pool's active sort tiers and
-          filter pills share the title row rather than a separate control-panel
-          row — reclaiming the vertical space. */}
+        {/* Group navigation lives in the trailing header dropdown, so the
+          pool's active sort tiers and filter pills share the title row rather
+          than a separate control-panel row — reclaiming the vertical space. */}
         <TableHeader
+          leading={<SelectionToggle selection={selection} label="the pool" />}
           title={`Pool (${pool.length})`}
           primary={
             <div className="set-pool-header-controls">
@@ -1956,7 +2129,57 @@ export function SetPoolTable({
               />
             </div>
           }
+          trailing={
+            <PoolGroupMenu
+              subgroups={subgroups}
+              colorByIndex={subgroupColorById}
+              memberCounts={memberCounts}
+              onCreateSubgroup={onCreateSubgroup}
+              onRenameSubgroup={onRenameSubgroup}
+              onDeleteSubgroup={onDeleteSubgroup}
+              onReorderSubgroups={onReorderSubgroups}
+              activeTab={activeTab}
+              onTabChange={setSelectedTab}
+              onDropTrackToSubgroup={onDropTrackToSubgroup}
+              trackDropSubgroupId={trackDropSubgroupId}
+              onTrackDropSubgroupChange={setTrackDropSubgroupId}
+            />
+          }
         />
+        <SelectionBar selection={selection} progress={bulk.progress}>
+          {typeof activeTab === 'number' && (
+            <SelectionAction
+              label="Remove from group"
+              disabled={bulk.running}
+              onClick={() =>
+                void bulk.run(
+                  'Removing from group',
+                  selection.orderedIds,
+                  (trackId) => {
+                    const entryId = entryIdByTrackId.get(trackId)
+                    return entryId === undefined
+                      ? undefined
+                      : onRemoveSubgroupMember(activeTab, entryId)
+                  },
+                  selection.clear,
+                )
+              }
+            />
+          )}
+          <SelectionAction
+            label="Remove from pool"
+            danger
+            disabled={bulk.running}
+            onClick={() =>
+              void bulk.run(
+                'Removing',
+                selection.orderedIds,
+                onRemove,
+                selection.clear,
+              )
+            }
+          />
+        </SelectionBar>
         <div className="set-pool-body">
           <div className="set-pool-content">
             {activeTab === 'groups' ? (
@@ -1999,6 +2222,7 @@ export function SetPoolTable({
                           onCreateSubgroup={onCreateSubgroup}
                           visibleColumnIds={displayColumns}
                           poolHeadProps={poolHeadBaseProps}
+                        tableWidth={tableWidth}
                           onDropTrackToSubgroup={onDropTrackToSubgroup}
                           trackDropSubgroupId={trackDropSubgroupId}
                           onTrackDropSubgroupChange={setTrackDropSubgroupId}
@@ -2020,9 +2244,9 @@ export function SetPoolTable({
             ) : displayColumns.length === 0 ? (
               <TableColumnEmptyRecovery />
             ) : (
-              <div className="track-table-outer">
+              <div className="track-table-outer" ref={tableOuterRef}>
                 <div className="track-table-wrapper">
-                  <table className="set-pool-table">
+                  <table className="set-pool-table" style={{ width: tableWidth }}>
                     <PoolTableHead
                       {...poolHeadBaseProps}
                       sorting={activeSorting}
@@ -2060,6 +2284,7 @@ export function SetPoolTable({
                                 }
                               : undefined
                           }
+                          selection={selection}
                         />
                       ))}
                     </tbody>
@@ -2068,60 +2293,6 @@ export function SetPoolTable({
               </div>
             )}
           </div>
-          {railCollapsed ? (
-            // Collapsed: the whole spine is the expand affordance (no chevron);
-            // a hover "wibble" signals it is interactive.
-            <button
-              type="button"
-              className="pool-group-rail pool-group-rail--collapsed"
-              aria-expanded={false}
-              aria-label="Expand groups"
-              title="Expand groups"
-              onClick={() => setRailCollapsed(false)}
-            >
-              <span className="pool-group-rail-spine-label">Groups</span>
-            </button>
-          ) : (
-            <aside
-              className="pool-group-rail"
-              style={{ width: railWidth }}
-              aria-label="Pool groups"
-            >
-              <div
-                className="pool-group-rail-resizer"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize groups"
-                onMouseDown={startRailResize}
-              />
-              <PoolTabBar
-                subgroups={subgroups}
-                colorByIndex={subgroupColorById}
-                memberCounts={memberCounts}
-                onCreateSubgroup={onCreateSubgroup}
-                onRenameSubgroup={onRenameSubgroup}
-                onDeleteSubgroup={onDeleteSubgroup}
-                onReorderSubgroups={onReorderSubgroups}
-                activeTab={activeTab}
-                onTabChange={setSelectedTab}
-                onDropTrackToSubgroup={onDropTrackToSubgroup}
-                trackDropSubgroupId={trackDropSubgroupId}
-                onTrackDropSubgroupChange={setTrackDropSubgroupId}
-              />
-              <button
-                type="button"
-                className="pool-group-rail-toggle"
-                aria-expanded
-                aria-label="Collapse groups"
-                title="Collapse groups"
-                onClick={() => setRailCollapsed(true)}
-              >
-                <span className="pool-group-rail-chevron" aria-hidden="true">
-                  ›
-                </span>
-              </button>
-            </aside>
-          )}
         </div>
       </div>
     </PoolHighlightContext.Provider>

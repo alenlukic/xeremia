@@ -81,6 +81,22 @@ function makeSet(
   subgroups: PoolSubgroup[] = [],
   memberships: PoolSubgroupMembership[] = [],
 ): HydratedSet {
+  // Most component tests need a persisted alternative lane. The production UI
+  // no longer invents a virtual lane, so materialize the old fixture shape as
+  // a real Alt 1 subgroup whenever pool entries are supplied without groups.
+  const materializedSubgroups =
+    subgroups.length === 0 && pool.length > 0
+      ? [{ id: 7, set_id: 1, name: 'Alt 1', display_order: 0 }]
+      : subgroups
+  const materializedMemberships =
+    subgroups.length === 0 && pool.length > 0
+      ? pool.map((entry, index) => ({
+          id: 1000 + index,
+          subgroup_id: 7,
+          pool_entry_id: entry.id,
+          display_order: index,
+        }))
+      : memberships
   return {
     set: {
       id: 1,
@@ -94,8 +110,8 @@ function makeSet(
     tracklist,
     explorer_nodes: [],
     explorer_edges: [],
-    pool_subgroups: subgroups,
-    pool_subgroup_memberships: memberships,
+    pool_subgroups: materializedSubgroups,
+    pool_subgroup_memberships: materializedMemberships,
   }
 }
 
@@ -226,13 +242,14 @@ describe('Sequencer lanes', () => {
     expect(main.scrollLeft).toBe(120)
   })
 
-  it('starts with exactly one alternative lane and no subgroups', () => {
-    const pool = [makePoolEntry(makeTrack(5, '08A', 128), 0)]
-    const { container } = renderSequencer(makeSet([], pool))
+  it('shows no fake alternative lane when no subgroup exists', () => {
+    const { container } = renderSequencer(makeSet([]))
 
     const altLanes = container.querySelectorAll('.sq-lane--alt')
-    expect(altLanes).toHaveLength(1)
-    expect(screen.getByLabelText('Alt 1 lane')).toBeInTheDocument()
+    expect(altLanes).toHaveLength(0)
+    expect(
+      screen.getByText('No alternative lanes — use + to add one.'),
+    ).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Delete lane/)).toBeNull()
   })
 
@@ -303,6 +320,55 @@ describe('Sequencer lanes', () => {
     expect(onRenameLane).toHaveBeenCalledWith(7, 'Peak hour')
   })
 
+  it('exposes rename and delete controls inside the sticky lane label', () => {
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+    ]
+    const { onRenameLane, onDeleteLane, container } = renderSequencer(
+      makeSet([], [], subgroups),
+    )
+    const label = container.querySelector(
+      '.sq-lane--alt > .sq-lane-label',
+    ) as HTMLElement
+    const rename = screen.getByRole('button', { name: 'Rename lane Alt 1' })
+    const remove = screen.getByRole('button', { name: 'Delete lane Alt 1' })
+
+    expect(label).toContainElement(rename)
+    expect(label).toContainElement(remove)
+
+    fireEvent.click(rename)
+    const input = screen.getByLabelText('Rename lane Alt 1')
+    fireEvent.change(input, { target: { value: 'Peak hour' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onRenameLane).toHaveBeenCalledWith(7, 'Peak hour')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete lane Alt 1' }),
+    )
+    expect(onDeleteLane).toHaveBeenCalledWith(7)
+  })
+
+  it('keeps the lane label outside cursor placement and track drops', () => {
+    const subgroups: PoolSubgroup[] = [
+      { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
+    ]
+    const { onBenchToLane, container } = renderSequencer(
+      makeSet([], [], subgroups),
+    )
+    const label = container.querySelector(
+      '.sq-lane--alt > .sq-lane-label',
+    ) as HTMLElement
+
+    fireEvent.pointerDown(label, { button: 0, clientX: 20 })
+    fireEvent.pointerUp(window, { clientX: 20 })
+    expect(screen.queryByLabelText(/^Paste cursor at/)).toBeNull()
+
+    const dt = dataTransfer({ [TRACK_DRAG_MIME]: '12' })
+    expect(fireEvent.dragOver(label, { dataTransfer: dt })).toBe(true)
+    fireEvent.drop(label, { dataTransfer: dt })
+    expect(onBenchToLane).not.toHaveBeenCalled()
+  })
+
   it('reorders lanes when one lane label is dragged onto another', () => {
     const subgroups: PoolSubgroup[] = [
       { id: 7, set_id: 1, name: 'Alt 1', display_order: 0 },
@@ -339,14 +405,11 @@ describe('Sequencer lanes', () => {
     expect(onBenchToLane).toHaveBeenCalledWith(12, 7, 'browse')
   })
 
-  it('routes a drop on the default lane through the same lane key', () => {
+  it('does not expose a track-drop target until a real lane exists', () => {
     const { onBenchToLane } = renderSequencer(makeSet([]))
 
-    fireEvent.drop(screen.getByLabelText('Alt 1 lane'), {
-      dataTransfer: dataTransfer({ [TRACK_DRAG_MIME]: '12' }),
-    })
-
-    expect(onBenchToLane).toHaveBeenCalledWith(12, 'default', 'browse')
+    expect(screen.queryByLabelText(/^Alt 1 lane$/)).toBeNull()
+    expect(onBenchToLane).not.toHaveBeenCalled()
   })
 
   it('adds a browse track dropped on the committed lane', () => {
@@ -646,6 +709,9 @@ describe('SequencerBlock sizing', () => {
       makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]),
     )
     const block = screen.getByLabelText('Track 1')
+    // Controls live on the raised tile, which is the only size that can host
+    // them at a usable target size.
+    fireEvent.pointerEnter(block)
 
     fireEvent.click(screen.getByLabelText('Star Track 1'))
 
@@ -663,6 +729,9 @@ describe('SequencerBlock sizing', () => {
     ]
     const { container } = renderSequencer(makeSet([], pool))
     const block = screen.getByLabelText('Pinned')
+    // Read the position while raised, since the hover that exposes the control
+    // also recentres the tile — both readings have to be in the same state.
+    fireEvent.pointerEnter(block)
     const initialLeft = block.style.left
 
     fireEvent.click(screen.getByLabelText('Pin Pinned'))
@@ -676,25 +745,42 @@ describe('SequencerBlock sizing', () => {
     expect(block.style.left).toBe(initialLeft)
   })
 
-  it('reveals the promote control only once the benched block is selected', () => {
+  it('keeps promote in place whether or not the benched tile is selected', () => {
     const onPromote = vi.fn()
+    const props = {
+      track,
+      left: 0,
+      width: 120,
+      benched: true,
+      onSelect: vi.fn(),
+      onPromote,
+      onToggleStar: vi.fn(),
+      onTogglePin: vi.fn(),
+    }
     const { container, rerender } = render(
-      <SequencerBlock
-        track={track}
-        left={0}
-        width={120}
-        benched
-        selected={false}
-        onSelect={vi.fn()}
-        onPromote={onPromote}
-      />,
+      <SequencerBlock {...props} selected={false} />,
     )
+    const order = () =>
+      Array.from(
+        (container.querySelector('.sq-block-controls') as HTMLElement)
+          .querySelectorAll('.sq-ctl'),
+      ).map((el) => el.getAttribute('aria-label'))
 
-    // Unselected, the arrow stays out of the way of the key and the BPM.
-    expect(container.querySelector('.sq-block--benched')).not.toBeNull()
-    expect(screen.queryByLabelText('Promote Track 1')).toBeNull()
+    // Raised but unselected: the arrow is already there.
+    fireEvent.pointerEnter(screen.getByLabelText('Track 1'))
+    const unselected = order()
+    expect(unselected).toContain('Promote Track 1')
 
-    rerender(
+    rerender(<SequencerBlock {...props} selected />)
+
+    // Selecting must not insert a control between ones already on screen,
+    // which would shove its neighbours sideways under the pointer.
+    expect(order()).toEqual(unselected)
+  })
+
+  it('renders every tile control in one row with identical chrome', () => {
+    const track = makeTrack(1, '08A', 128)
+    const { container } = render(
       <SequencerBlock
         track={track}
         left={0}
@@ -702,10 +788,33 @@ describe('SequencerBlock sizing', () => {
         benched
         selected
         onSelect={vi.fn()}
-        onPromote={onPromote}
+        onPromote={vi.fn()}
+        onToggleStar={vi.fn()}
+        onTogglePin={vi.fn()}
       />,
     )
-    expect(screen.getByLabelText('Promote Track 1')).toBeInTheDocument()
+
+    const row = container.querySelector('.sq-block-controls') as HTMLElement
+    for (const label of [
+      'Play Track 1',
+      'Promote Track 1',
+      'Star Track 1',
+      'Pin Track 1',
+    ]) {
+      expect(within(row).getByLabelText(label)).toBeInTheDocument()
+    }
+
+    // One shared class means one shared size and treatment: nothing gets its
+    // own shape or fill that would imply a relationship to its neighbours.
+    const controls = row.querySelectorAll('.sq-ctl')
+    expect(controls).toHaveLength(4)
+    expect(row.querySelectorAll('button, [role="button"]')).toHaveLength(4)
+
+    // Every control is an SVG glyph, so none of them reads as a different
+    // kind of thing next to the others.
+    for (const control of controls) {
+      expect(control.querySelector('svg')).not.toBeNull()
+    }
   })
 
   it('promotes a benched block on a double click', () => {
@@ -797,7 +906,18 @@ describe('Sequencer tracklist view', () => {
 
     expect(
       screen.getAllByRole('columnheader').map((th) => th.textContent),
-    ).toEqual(['', '#', 'Title', 'Key', 'BPM', 'In', 'Out', 'Length', 'Notes'])
+    ).toEqual([
+      '',
+      '#',
+      '',
+      'Title',
+      'Key',
+      'BPM',
+      'In',
+      'Out',
+      'Length',
+      'Notes',
+    ])
     expect(screen.getByLabelText('Notes for Track 1')).toBeInTheDocument()
   })
 
@@ -1042,8 +1162,42 @@ describe('Sequencer inspector footer', () => {
     })
 
     expect(vi.mocked(httpMod.tracklistSetOverrides)).not.toHaveBeenCalled()
-    // 3 minutes at 6px per minute.
-    expect(screen.getByLabelText('Track 5').style.width).toBe('18px')
+    // The selected tile is raised, so it renders at the fixed 100px raised
+    // width rather than its resting 18px (3 minutes at 6px per minute).
+    expect(screen.getByLabelText('Track 5').style.width).toBe('176px')
+  })
+
+  it('removes a benched tile from its own lane only', () => {
+    // Lanes are alternative running orders over one pool, so a removal has to
+    // name the lane and the pool entry. Reporting only the track id left the
+    // caller no choice but to drop it from the pool, taking it out of every
+    // other lane at the same time.
+    const track = makeTrack(5, '08A', 128)
+    const entry = makePoolEntry(track, 0)
+    const subgroups = [
+      { id: 11, set_id: 1, name: 'Alt 1', display_order: 0 },
+      { id: 12, set_id: 1, name: 'Alt 2', display_order: 1 },
+    ]
+    const memberships = [
+      { id: 1, subgroup_id: 11, pool_entry_id: entry.id, display_order: 0 },
+      { id: 2, subgroup_id: 12, pool_entry_id: entry.id, display_order: 0 },
+    ]
+    const { onRemoveBenched } = renderSequencer(
+      makeSet([], [entry], subgroups, memberships),
+    )
+
+    // The tile appears in both lanes; delete the one in Alt 2.
+    const tiles = screen.getAllByLabelText('Track 5')
+    expect(tiles).toHaveLength(2)
+    act(() => {
+      tiles[1].click()
+    })
+    act(() => {
+      screen.getByRole('button', { name: 'Remove' }).click()
+    })
+
+    expect(onRemoveBenched).toHaveBeenCalledTimes(1)
+    expect(onRemoveBenched).toHaveBeenCalledWith(5, 12, entry.id)
   })
 
   it('removes a benched selection from the pool', () => {
@@ -1059,7 +1213,7 @@ describe('Sequencer inspector footer', () => {
       screen.getByRole('button', { name: 'Remove' }).click()
     })
 
-    expect(onRemoveBenched).toHaveBeenCalledWith(5)
+    expect(onRemoveBenched).toHaveBeenCalledWith(5, 7, 205)
   })
 
   it('paints a benched selection as the relation source', () => {
@@ -1235,7 +1389,11 @@ describe('Sequencer scrollbar', () => {
 describe('Sequencer bench lane defaults', () => {
   it('switches lane borders to dashed after the committed end', () => {
     const { container } = renderSequencer(
-      makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]),
+      makeSet(
+        [makeEntry(makeTrack(1, '08A', 128), 0)],
+        [],
+        [{ id: 7, set_id: 1, name: 'Alt 1', display_order: 0 }],
+      ),
     )
     const committed = screen.getByLabelText('Track 1')
     const committedEnd =
@@ -1775,10 +1933,17 @@ describe('Sequencer cut and paste', () => {
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true)
-    const { container } = renderSequencer(makeSet(tracklist), {
-      onRemove,
-      onBenchToLane,
-    })
+    const { container } = renderSequencer(
+      makeSet(
+        tracklist,
+        [],
+        [{ id: 7, set_id: 1, name: 'Alt 1', display_order: 0 }],
+      ),
+      {
+        onRemove,
+        onBenchToLane,
+      },
+    )
     const committed = screen.getByLabelText('Committed lane')
     act(() => {
       fireEvent.pointerDown(committed, { clientX: LANE_LABEL_PX, button: 0 })
@@ -1906,5 +2071,307 @@ describe('Sequencer block BPM alignment', () => {
       .querySelector('.sq-block-sub') as HTMLElement
     expect(sub.style.paddingLeft).toBe('')
     expect(sub.style.marginLeft).toBe('')
+  })
+})
+
+describe('Sequencer tile raise and preview', () => {
+  it('raises a hovered tile: lifted class, fixed 176×40 footprint, full opacity', () => {
+    renderSequencer(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
+
+    const tile = screen.getByLabelText('Track 1')
+    const restLeft = Number.parseFloat(tile.style.left)
+    const restWidth = Number.parseFloat(tile.style.width)
+
+    act(() => {
+      fireEvent.pointerEnter(tile)
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(true)
+    expect(tile.style.opacity).toBe('1')
+    expect(tile.style.width).toBe('176px')
+    expect(tile.style.height).toBe('40px')
+    // Grown around its own centre, so the tile stays over its span.
+    expect(Number.parseFloat(tile.style.left)).toBeCloseTo(
+      restLeft + restWidth / 2 - 88,
+      3,
+    )
+
+    act(() => {
+      fireEvent.pointerLeave(tile)
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(false)
+    expect(Number.parseFloat(tile.style.width)).toBeCloseTo(restWidth, 3)
+    expect(tile.style.height).toBe('')
+  })
+
+  it('keeps a clicked tile raised while it stays selected', () => {
+    renderSequencer(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
+
+    const tile = screen.getByLabelText('Track 1')
+    act(() => {
+      fireEvent.click(tile)
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(true)
+
+    act(() => {
+      fireEvent.click(tile)
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(false)
+  })
+
+  it('collapses the hover raise when the pointer strays from the centre zone', () => {
+    renderSequencer(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
+
+    const tile = screen.getByLabelText('Track 1')
+    act(() => {
+      fireEvent.pointerEnter(tile)
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(true)
+
+    // JSDOM rects are zero-sized, so the tile centre sits at x=0 and the
+    // hold zone spans ±24px. Moving within it keeps the raise…
+    act(() => {
+      fireEvent.pointerMove(tile, { clientX: 10 })
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(true)
+
+    // …while straying beyond it collapses the raise so the tile underneath
+    // can take the hover.
+    act(() => {
+      fireEvent.pointerMove(tile, { clientX: 60 })
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(false)
+  })
+
+  it('keeps the raise on a selected tile regardless of pointer position', () => {
+    renderSequencer(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
+
+    const tile = screen.getByLabelText('Track 1')
+    act(() => {
+      fireEvent.click(tile)
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(true)
+
+    act(() => {
+      fireEvent.pointerMove(tile, { clientX: 500 })
+    })
+    expect(tile.classList.contains('sq-block--raised')).toBe(true)
+  })
+
+  it('does not raise other tiles on hover while a tile is selected', () => {
+    renderSequencer(
+      makeSet([
+        makeEntry(makeTrack(1, '08A', 128), 0),
+        makeEntry(makeTrack(2, '08A', 128), 1),
+      ]),
+    )
+
+    const first = screen.getByLabelText('Track 1')
+    const second = screen.getByLabelText('Track 2')
+    act(() => {
+      fireEvent.click(first)
+    })
+    expect(first.classList.contains('sq-block--raised')).toBe(true)
+
+    act(() => {
+      fireEvent.pointerEnter(second)
+    })
+    expect(second.classList.contains('sq-block--raised')).toBe(false)
+
+    // Clearing the selection restores the hover raise.
+    act(() => {
+      fireEvent.pointerLeave(second)
+      fireEvent.click(first)
+    })
+    act(() => {
+      fireEvent.pointerEnter(second)
+    })
+    expect(second.classList.contains('sq-block--raised')).toBe(true)
+  })
+
+  it('shows the centred action group only while the tile is raised', () => {
+    renderSequencer(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
+
+    const tile = screen.getByLabelText('Track 1')
+    expect(tile.querySelector('.sq-block-controls')).toBeNull()
+
+    act(() => {
+      fireEvent.pointerEnter(tile)
+    })
+    const play = tile.querySelector('.sq-block-controls') as HTMLElement
+    expect(play).not.toBeNull()
+    expect(within(play).getByLabelText('Play Track 1')).toBeInTheDocument()
+
+    act(() => {
+      fireEvent.pointerLeave(tile)
+    })
+    expect(tile.querySelector('.sq-block-controls')).toBeNull()
+  })
+
+  it('gives every tracklist row a preview button', () => {
+    renderSequencer(makeSet([makeEntry(makeTrack(1, '08A', 128), 0)]))
+    act(() => {
+      screen.getByRole('button', { name: 'Tracklist' }).click()
+    })
+
+    expect(screen.getByLabelText('Play Track 1')).toBeInTheDocument()
+  })
+})
+
+describe('Sequencer delete key and undo', () => {
+  const body = (container: HTMLElement) =>
+    container.querySelector('.sq-body') as HTMLElement
+
+  function press(
+    target: HTMLElement,
+    key: string,
+    mods: Record<string, boolean> = {},
+  ) {
+    act(() => {
+      fireEvent.keyDown(target, { key, ...mods })
+    })
+  }
+
+  it('deletes a selected committed tile with Backspace, no confirmation', () => {
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '09A', 128), 1),
+    ]
+    const { container, onRemove } = renderSequencer(makeSet(tracklist))
+
+    fireEvent.click(screen.getByLabelText('Track 2'))
+    press(body(container), 'Backspace')
+
+    expect(onRemove).toHaveBeenCalledWith(2)
+    expect(selectedLabels(container)).toEqual([])
+  })
+
+  it('deletes a selected benched tile with the Delete key', () => {
+    const pool = [makePoolEntry(makeTrack(5, '08A', 128), 0)]
+    const { container, onRemoveBenched } = renderSequencer(makeSet([], pool))
+
+    fireEvent.click(screen.getByLabelText('Track 5'))
+    press(body(container), 'Delete')
+
+    expect(onRemoveBenched).toHaveBeenCalledWith(5, 7, 205)
+  })
+
+  it('ignores Backspace while typing in a field', () => {
+    const tracklist = [makeEntry(makeTrack(1, '08A', 128), 0)]
+    const { onRemove } = renderSequencer(makeSet(tracklist))
+
+    fireEvent.click(screen.getByLabelText('Track 1'))
+    press(screen.getByLabelText('Set start time'), 'Backspace')
+
+    expect(onRemove).not.toHaveBeenCalled()
+  })
+
+  it('undoes a committed deletion with Cmd+Z, restoring the position', () => {
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '09A', 128), 1),
+    ]
+    const { container, onRemove, onAddCommitted } = renderSequencer(
+      makeSet(tracklist),
+    )
+
+    fireEvent.click(screen.getByLabelText('Track 2'))
+    press(body(container), 'Backspace')
+    expect(onRemove).toHaveBeenCalledWith(2)
+
+    press(body(container), 'z', { metaKey: true })
+    expect(onAddCommitted).toHaveBeenCalledWith(2, 1)
+  })
+
+  it('undoes a benched deletion by re-benching the track on its lane', () => {
+    const pool = [makePoolEntry(makeTrack(5, '08A', 128), 0)]
+    const { container, onBenchToLane } = renderSequencer(makeSet([], pool))
+
+    fireEvent.click(screen.getByLabelText('Track 5'))
+    press(body(container), 'Backspace')
+    press(body(container), 'z', { metaKey: true })
+
+    expect(onBenchToLane).toHaveBeenCalledWith(5, 7, 'browse')
+  })
+
+  it('undoes a promotion by benching the track back onto its lane', () => {
+    const pool = [makePoolEntry(makeTrack(5, '08A', 128), 0)]
+    const { container, onPromote, onBenchToLane } = renderSequencer(
+      makeSet([], pool),
+    )
+
+    fireEvent.click(screen.getByLabelText('Track 5'))
+    act(() => {
+      screen.getByRole('button', { name: 'Commit' }).click()
+    })
+    expect(onPromote).toHaveBeenCalledWith(5, 0)
+
+    press(body(container), 'z', { metaKey: true })
+    expect(onBenchToLane).toHaveBeenCalledWith(5, 7, 'tracklist')
+  })
+
+  it('undoes a committed reorder with Cmd+Z', () => {
+    const tracklist = [
+      makeEntry(makeTrack(1, '08A', 128), 0),
+      makeEntry(makeTrack(2, '09A', 128), 1),
+    ]
+    const { container, onReorder } = renderSequencer(makeSet(tracklist))
+
+    const dt = dataTransfer()
+    fireEvent.dragStart(screen.getByLabelText('Track 1'), { dataTransfer: dt })
+    const lane = screen.getByLabelText('Committed lane')
+    const event = createEvent.drop(lane, { dataTransfer: dt })
+    // Minute 372 is past the second block's midpoint at 6px per minute.
+    Object.defineProperty(event, 'clientX', {
+      value: LANE_LABEL_PX + (372 - 360) * 6,
+    })
+    act(() => {
+      fireEvent(lane, event)
+    })
+    expect(onReorder).toHaveBeenCalledWith(1, 1)
+
+    press(body(container), 'z', { metaKey: true })
+    expect(onReorder).toHaveBeenLastCalledWith(1, 0)
+  })
+})
+
+describe('Sequencer exact drop placement', () => {
+  it('keeps the bench time of a browse drop that has not landed in the pool yet', () => {
+    // Track 9 is not in the pool: the drop's mutation is asynchronous, so the
+    // written time must survive the settings pruning until the entry arrives.
+    const handlers = makeHandlers()
+    const pool = [makePoolEntry(makeTrack(5, '08A', 128), 0)]
+    const { rerender } = render(
+      <Sequencer activeSet={makeSet([], pool)} {...handlers} />,
+    )
+
+    const lane = screen.getByLabelText('Alt 1 lane')
+    const dt = dataTransfer({ [TRACK_DRAG_MIME]: '9' })
+    const event = createEvent.drop(lane, { dataTransfer: dt })
+    Object.defineProperty(event, 'clientX', {
+      value: LANE_LABEL_PX + (400 - 360) * 6,
+    })
+    act(() => {
+      fireEvent(lane, event)
+    })
+    expect(handlers.onBenchToLane).toHaveBeenCalledWith(9, 7, 'browse')
+
+    // The pool refresh lands: the same set now holds the dropped track.
+    const grown = makeSet(
+      [],
+      [
+        makePoolEntry(makeTrack(5, '08A', 128), 0),
+        makePoolEntry(makeTrack(9, '09A', 130), 1),
+      ],
+    )
+    act(() => {
+      rerender(<Sequencer activeSet={grown} {...handlers} />)
+    })
+
+    // 40 minutes past the start at 6px per minute, after the lane label.
+    const dropped = screen.getByLabelText('Track 9')
+    expect(Number.parseFloat(dropped.style.left)).toBeCloseTo(
+      LANE_LABEL_PX + 40 * 6,
+      1,
+    )
   })
 })

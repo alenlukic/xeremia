@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  effectivePlayedBpm,
+  displayBpm,
   type LaidBlock,
   type OverrideMap,
 } from '../hooks/useSequencer'
@@ -12,6 +12,7 @@ import { keyDotColor } from '../utils/harmonic'
 import { displayTitle } from '../utils/trackTitle'
 import { formatDuration, formatHM } from '../utils/time'
 import { POOL_ROW_MIME, TRACK_DRAG_MIME, TRACKLIST_ROW_MIME } from '../utils'
+import { PlayButton } from './PlayButton'
 import { TrackSearchModal } from './TrackSearchModal'
 
 // Tracklist view of the committed lane. The BPM cell is the only editable one;
@@ -234,6 +235,7 @@ export function SequencerTracklist({
               aria-label="Row actions"
             />
             <th className="sq-col-num">#</th>
+            <th className="sq-col-play" aria-label="Preview" />
             <th className="sq-col-title">Title</th>
             <th className="sq-col-key">Key</th>
             <th className="sq-col-bpm">BPM</th>
@@ -247,7 +249,7 @@ export function SequencerTracklist({
           {blocks.map((block, i) => {
             const trackId = block.entry.track_id
             const ov = overrides[trackId] ?? {}
-            const played = effectivePlayedBpm(block, overrides)
+            const played = displayBpm(block, overrides)
             const value =
               draft[trackId] ?? (played != null ? played.toFixed(1) : '')
             const title = displayTitle(block.entry.track, trackId)
@@ -356,6 +358,9 @@ export function SequencerTracklist({
                   </button>
                 </td>
                 <td className="sq-col-num">{i + 1}</td>
+                <td className="sq-col-play">
+                  <PlayButton trackId={trackId} title={title} />
+                </td>
                 <td className="sq-col-title">
                   <span
                     className="key-dot"
@@ -430,7 +435,7 @@ export function SequencerTracklist({
                 +
               </button>
             </td>
-            <td colSpan={8} />
+            <td colSpan={9} />
           </tr>
         </tbody>
       </table>

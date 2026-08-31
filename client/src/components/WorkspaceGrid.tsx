@@ -9,6 +9,7 @@ import type { ReactNode } from 'react'
 import { LayoutPicker } from './LayoutPicker'
 import { WidgetFrame } from './WidgetFrame'
 import { WidgetTray } from './WidgetTray'
+import { NavBarHoldContext } from '../hooks/useNavBarHold'
 import { WIDGET_IDS, WIDGET_LABELS } from '../hooks/useWorkspaceLayout'
 import type {
   Edge,
@@ -31,10 +32,34 @@ export interface WorkspacePanel {
 interface Props {
   layout: WorkspaceLayout
   panels: Partial<Record<WidgetId, WorkspacePanel>>
+  /** Controls grouped with the layout picker on the left of the bar. */
+  headerControls?: ReactNode
   headerExtras?: ReactNode
   /** The workspace/legacy switch, rendered as a header tab. */
   shellToggle?: ReactNode
 }
+
+/** Hover dwell before the nav bar slides in, and before it slides back out. */
+const NAV_SHOW_MS = 300
+const NAV_HIDE_MS = 600
+/**
+ * How close to the top of the viewport summons the bar, matching .ws-header's
+ * own height in workspace.css: the pointer is inside the band exactly when it
+ * is where the bar would be. Measured against the pointer rather than
+ * hit-tested against a strip element, because a strip is only the topmost
+ * element over its own few pixels — anywhere a widget, a resize handle or a
+ * panel sits in front of it, the hover never arrives at all.
+ */
+const NAV_BAND_PX = 46
+/**
+ * The band shrinks to this over a widget's own title bar. That bar sits at the
+ * very top of the canvas — always, for a maximized widget — so its lock,
+ * maximize and close buttons (y 15–35) fall inside the full band, and reaching
+ * for one would summon the nav bar on top of it. Restoring a maximized widget
+ * was a race against the reveal. The extreme top edge still summons the bar
+ * from anywhere, so nothing becomes unreachable.
+ */
+const NAV_BAND_OVER_WIDGET_PX = 12
 
 const EDGES: Edge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 
@@ -62,6 +87,7 @@ interface Drag {
 export function WorkspaceGrid({
   layout,
   panels,
+  headerControls,
   headerExtras,
   shellToggle,
 }: Props) {
@@ -209,30 +235,132 @@ export function WorkspaceGrid({
 
   const presetNames = Object.keys(layout.presets)
 
+  // The bar hides itself so the canvas gets the whole shell, and a thin strip
+  // along the top edge brings it back. Dwell times keep a pointer merely
+  // crossing the top of the screen from flashing it in and out.
+  const [navVisible, setNavVisible] = useState(false)
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const navInsideRef = useRef(false)
+  const navHoldsRef = useRef(0)
+  const [navHeld, setNavHeld] = useState(false)
+
+  const cancelNavTimer = useCallback(() => {
+    if (navTimerRef.current) {
+      clearTimeout(navTimerRef.current)
+      navTimerRef.current = null
+    }
+  }, [])
+
+  const scheduleNav = useCallback(
+    (visible: boolean, delay: number) => {
+      cancelNavTimer()
+      navTimerRef.current = setTimeout(() => {
+        navTimerRef.current = null
+        setNavVisible(visible)
+      }, delay)
+    },
+    [cancelNavTimer],
+  )
+
+  useEffect(() => cancelNavTimer, [cancelNavTimer])
+
+  // Proximity to the top edge drives the reveal, so the gesture works over
+  // widgets instead of only over the sliver of bar not covered by one. While
+  // the bar is out, the band grows to its full height so running the pointer
+  // along it does not start the hide countdown.
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      // The listener is on the document, so the target is whatever the pointer
+      // is actually over — used here only to shrink the band, never to receive
+      // the reveal, so nothing can swallow the gesture.
+      const target = e.target as Element | null
+      const overWidgetBar =
+        typeof target?.closest === 'function' && target.closest('.wf-bar')
+      const band = overWidgetBar ? NAV_BAND_OVER_WIDGET_PX : NAV_BAND_PX
+      const inside = e.clientY <= band
+      if (inside === navInsideRef.current) {
+        return
+      }
+      navInsideRef.current = inside
+      if (inside) {
+        scheduleNav(true, NAV_SHOW_MS)
+      } else if (navHoldsRef.current === 0) {
+        scheduleNav(false, NAV_HIDE_MS)
+      }
+    }
+    function onMouseLeave() {
+      navInsideRef.current = false
+      if (navHoldsRef.current === 0) {
+        scheduleNav(false, NAV_HIDE_MS)
+      }
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseleave', onMouseLeave)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseleave', onMouseLeave)
+    }
+  }, [scheduleNav])
+
+  // An open menu pins the bar. Closing it restarts the ordinary countdown,
+  // unless the pointer is still resting on the bar. Handled here rather than in
+  // an effect on the flag, so the reveal happens in the same tick as the menu
+  // opening instead of a render later.
+  const holdNav = useCallback(
+    (delta: number) => {
+      navHoldsRef.current = Math.max(0, navHoldsRef.current + delta)
+      const held = navHoldsRef.current > 0
+      setNavHeld(held)
+      if (held) {
+        cancelNavTimer()
+        setNavVisible(true)
+      } else if (!navInsideRef.current) {
+        scheduleNav(false, NAV_HIDE_MS)
+      }
+    },
+    [cancelNavTimer, scheduleNav],
+  )
+
+  const maximized = layout.maximized
+  const canvasCols = layout.bounds.cols
+  const canvasRows = layout.bounds.rows
+
   return (
     <div className="ws-shell">
-      <header className="ws-header">
-        <span className="ws-wordmark">XEREMIA</span>
-        <span className="ws-header-rule" />
-        <span className="ws-header-label">Layout</span>
-        <LayoutPicker
-          preset={layout.preset}
-          presetNames={presetNames}
-          onSelect={layout.selectPreset}
-          onSaveCustom={layout.saveCustomPreset}
-          onRename={layout.renamePreset}
-        />
-        {layout.missing.length > 0 && (
-          <WidgetTray
-            available={layout.missing}
-            labels={WIDGET_LABELS}
-            onAdd={layout.addWidget}
-          />
-        )}
-        {shellToggle}
-        <div className="ws-header-spacer" />
-        {headerExtras}
-      </header>
+      <div
+        className={`ws-header-zone${navVisible ? '' : ' ws-header-zone--peek'}`}
+      >
+        <header
+          className={`ws-header${navVisible || navHeld ? '' : ' ws-header--hidden'}`}
+        >
+          <span className="ws-wordmark">XEREMIA</span>
+          <span className="ws-header-rule" />
+          <span className="ws-header-label">Layout</span>
+          <NavBarHoldContext.Provider value={holdNav}>
+            <LayoutPicker
+              preset={layout.preset}
+              presetNames={presetNames}
+              onSelect={layout.selectPreset}
+              onSaveCustom={layout.saveCustomPreset}
+              onRename={layout.renamePreset}
+              onDelete={layout.deletePreset}
+              hiddenPresets={layout.hiddenPresets}
+              onRestoreBuiltIns={layout.restoreBuiltInPresets}
+            />
+            {headerControls}
+            {layout.missing.length > 0 && (
+              <WidgetTray
+                available={layout.missing}
+                labels={WIDGET_LABELS}
+                onAdd={layout.addWidget}
+              />
+            )}
+            {shellToggle}
+            <div className="ws-header-spacer" />
+            {headerExtras}
+          </NavBarHoldContext.Provider>
+        </header>
+      </div>
       <div className="ws-grid-wrap">
         <div
           ref={canvasRef}
@@ -266,36 +394,53 @@ export function WorkspaceGrid({
             if (!p || !panel) {
               return null
             }
+            // Maximizing hides the rest rather than reordering them, so the
+            // stored rectangles are untouched and restoring is a plain toggle.
+            if (maximized && maximized !== id) {
+              return null
+            }
+            const isMaximized = maximized === id
             const locked = !!layout.locked[id]
+            const rect = isMaximized
+              ? { x: 0, y: 0, w: canvasCols, h: canvasRows }
+              : dragging === id && preview
+                ? preview
+                : p
             return (
               <section
                 key={id}
-                className={`ws-panel${dragging === id ? ' ws-panel--dragging' : ''}`}
+                className={[
+                  'ws-panel',
+                  dragging === id ? 'ws-panel--dragging' : '',
+                  isMaximized ? 'ws-panel--maximized' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 aria-label={WIDGET_LABELS[id]}
                 style={{
-                  left:
-                    dragging === id && preview ? preview.x * unitPx : p.x * unitPx,
-                  top:
-                    dragging === id && preview ? preview.y * unitPx : p.y * unitPx,
-                  width:
-                    dragging === id && preview ? preview.w * unitPx : p.w * unitPx,
-                  height:
-                    dragging === id && preview ? preview.h * unitPx : p.h * unitPx,
+                  left: rect.x * unitPx,
+                  top: rect.y * unitPx,
+                  width: rect.w * unitPx,
+                  height: rect.h * unitPx,
                 }}
               >
                 <WidgetFrame
                   id={id}
                   title={WIDGET_LABELS[id]}
                   locked={locked}
+                  maximized={isMaximized}
                   actions={panel.actions}
                   onMoveStart={startDrag(id, 'move', p)}
                   onToggleLock={() => layout.toggleLock(id)}
+                  onToggleMaximize={() => layout.toggleMaximize(id)}
                   onRemove={() => layout.removeWidget(id)}
                 >
                   {panel.node}
                 </WidgetFrame>
-                {/* Every edge and corner resizes; a locked widget shows none. */}
+                {/* Every edge and corner resizes; a locked or maximized widget
+                    shows none. */}
                 {!locked &&
+                  !isMaximized &&
                   EDGES.map((edge) => (
                     <span
                       key={edge}

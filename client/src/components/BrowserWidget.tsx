@@ -1,3 +1,4 @@
+import { useMemo, useRef } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { SortingState } from '@tanstack/react-table'
 import { SearchPanel } from './SearchPanel'
@@ -9,6 +10,14 @@ import { BrowseFilterAddButton, BrowseFilterGroups } from './FilterBar'
 import type { NormalizedTableConfig } from '../tablePreferences'
 import type { FilterModel } from '../hooks/useTrackFilters'
 import type { SearchSuggestion, Track } from '../types'
+import { useMultiSelect } from '../hooks/useMultiSelect'
+import { useBulkAction } from '../hooks/useBulkAction'
+import { useSelectAllShortcut } from '../hooks/useSelectAllShortcut'
+import {
+  SelectionAction,
+  SelectionBar,
+  SelectionToggle,
+} from './SelectionControls'
 
 // The Browser stack — search, sort, filters, virtualized table — as one unit so
 // the workspace shell and the legacy quadrant shell render the same chrome.
@@ -40,6 +49,8 @@ interface Props {
   onColumnWidthChange: (columnId: string, width: number) => void
   onColumnWidthFlush: (columnId: string, width: number) => void
   scrollRestorationKey?: string
+  /** Bulk actions for a multi-selection; omitted, the bar shows no actions. */
+  onAddManyToPool?: (trackId: number) => void | Promise<unknown>
 }
 
 export function BrowserWidget({
@@ -69,12 +80,29 @@ export function BrowserWidget({
   onColumnWidthChange,
   onColumnWidthFlush,
   scrollRestorationKey,
+  onAddManyToPool,
 }: Props) {
+  const hostRef = useRef<HTMLDivElement | null>(null)
+  // Selectable rows are exactly what the search and filters leave standing.
+  const selection = useMultiSelect(
+    useMemo(() => tracks.map((t) => t.id), [tracks]),
+  )
+  useSelectAllShortcut(hostRef, selection.selectAll)
+  const bulk = useBulkAction()
+
   return (
-    <>
+    <div
+      className="ds-stack"
+      ref={hostRef}
+      tabIndex={-1}
+      // Claiming focus on click is what scopes Cmd/Ctrl+A to this list rather
+      // than whichever other track list happens to be on screen.
+      onMouseDown={() => hostRef.current?.focus({ preventScroll: true })}
+    >
       <TableHeader
         title={
           <div className="ds-header-search">
+            <SelectionToggle selection={selection} label="browse results" />
             <SearchPanel
               allTracks={allTracks}
               selectedTrack={selectedTrack}
@@ -122,6 +150,22 @@ export function BrowserWidget({
           />
         )}
       </TableControlPanel>
+      <SelectionBar selection={selection} progress={bulk.progress}>
+        {onAddManyToPool && (
+          <SelectionAction
+            label="Add to Pool"
+            disabled={bulk.running}
+            onClick={() =>
+              void bulk.run(
+                'Adding to pool',
+                selection.orderedIds,
+                onAddManyToPool,
+                selection.clear,
+              )
+            }
+          />
+        )}
+      </SelectionBar>
       {traitsError && (
         <p className="table-status table-status--error">
           Failed to load track traits — {traitsError}
@@ -142,7 +186,8 @@ export function BrowserWidget({
         onColumnWidthChange={onColumnWidthChange}
         onColumnWidthFlush={onColumnWidthFlush}
         scrollRestorationKey={scrollRestorationKey}
+        selection={selection}
       />
-    </>
+    </div>
   )
 }

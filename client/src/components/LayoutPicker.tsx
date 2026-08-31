@@ -1,20 +1,34 @@
-import { useEffect, useRef, useState } from 'react'
-import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
+import { useState } from 'react'
+import { Dropdown } from './Dropdown'
+import type { DropdownItem } from './Dropdown'
 import {
+  CUSTOM_PRESET,
   hasDuplicatePresetName,
   isReservedPresetName,
 } from '../utils/workspaceGeometry'
 
+/**
+ * Row id for the arrangement on screen when it matches no saved layout. It is
+ * not a stored preset — the pill just calls it "Custom" — so it is listed only
+ * while it is what you are looking at, and renaming it means saving it.
+ */
+const UNSAVED_ID = '\u0000unsaved'
+
 // The header's layout control: one pill showing the active preset that opens a
-// menu of every preset. Replaces the row of pills, which grew unreadable once
-// saved presets joined the built-in ones.
+// menu of every preset. Built on the shared Dropdown, so it looks and behaves
+// exactly like the set picker beside it — including right-click Rename/Delete
+// and double-click-to-rename on the saved layouts.
 
 interface Props {
   preset: string
   presetNames: string[]
   onSelect: (name: string) => void
-  onSaveCustom: (name: string) => void
-  onRename: (name: string) => void
+  onSaveCustom: (name: string, from?: string) => void
+  onRename: (name: string, from?: string) => void
+  onDelete: (name: string) => void
+  /** Built-ins the user removed; drives the restore row. */
+  hiddenPresets?: string[]
+  onRestoreBuiltIns?: () => void
 }
 
 export function LayoutPicker({
@@ -23,167 +37,177 @@ export function LayoutPicker({
   onSelect,
   onSaveCustom,
   onRename,
+  onDelete,
+  hiddenPresets = [],
+  onRestoreBuiltIns,
 }: Props) {
-  const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<'create' | 'rename' | null>(null)
+  const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState('')
-  const ref = useRef<HTMLDivElement | null>(null)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  useDismissOnOutsideClick(ref, open, () => {
-    setOpen(false)
-    setMode(null)
-    triggerRef.current?.focus()
-  })
+  // '' means the arrangement on screen; otherwise the layout to branch off.
+  const [copyFrom, setCopyFrom] = useState('')
 
-  useEffect(() => {
-    if (!open) {
-      return
+  // Every layout can be renamed and deleted, built-ins included. A built-in is
+  // regenerated from fractions rather than stored, so renaming one saves its
+  // arrangement under the new name and deleting one hides it — both reversible
+  // through the restore row below.
+  const unsaved = preset === CUSTOM_PRESET
+  const items: DropdownItem[] = [
+    ...(unsaved
+      ? [
+          {
+            id: UNSAVED_ID,
+            label: `${CUSTOM_PRESET} (unsaved)`,
+            renameValue: '',
+            canRename: true,
+            canDelete: false,
+          },
+        ]
+      : []),
+    ...presetNames.map((name) => ({
+      id: name,
+      label: name,
+      canRename: true,
+      canDelete: true,
+    })),
+  ]
+
+  const validateName = (id: string, name: string) => {
+    if (isReservedPresetName(name)) {
+      return 'Choose a different name'
     }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') {
-        return
-      }
-      event.preventDefault()
-      setOpen(false)
-      setMode(null)
-      triggerRef.current?.focus()
+    if (hasDuplicatePresetName(presetNames, name, id)) {
+      return 'Name already exists'
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open])
-
-  const trimmed = draft.trim()
-  const reserved = isReservedPresetName(trimmed)
-  const duplicate = hasDuplicatePresetName(
-    presetNames,
-    trimmed,
-    mode === 'rename' ? preset : undefined,
-  )
-  const canSubmit =
-    trimmed.length > 0 &&
-    !reserved &&
-    !duplicate &&
-    (mode !== 'rename' || trimmed !== preset)
-
-  const beginName = (nextMode: 'create' | 'rename') => {
-    setMode(nextMode)
-    setDraft(nextMode === 'rename' ? preset : '')
+    return null
   }
 
-  const submitName = () => {
-    if (!mode || !canSubmit) {
+  // Naming the unsaved arrangement is saving it; every other row is a move.
+  const handleRename = (id: string, name: string) => {
+    if (id === UNSAVED_ID) {
+      onSaveCustom(name)
       return
     }
-    if (mode === 'create') {
-      onSaveCustom(trimmed)
-    } else {
-      onRename(trimmed)
-    }
-    setMode(null)
-    setOpen(false)
+    onRename(name, id)
+  }
+
+  const trimmed = draft.trim()
+  const createError = trimmed ? validateName('', trimmed) : null
+  const canCreate = trimmed.length > 0 && !createError
+
+  const cancelCreate = () => {
+    setCreating(false)
+    setDraft('')
+    setCopyFrom('')
   }
 
   return (
-    <div className="ws-picker" ref={ref}>
-      <button
-        ref={triggerRef}
-        className={`ws-pill ws-picker-button${open ? ' ws-pill--on' : ''}`}
-        aria-label="Layout preset"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen((value) => !value)
-          setMode(null)
-        }}
-      >
-        <span className="ws-picker-value">{preset}</span>
-        <span className="ws-picker-caret" aria-hidden="true">
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div className="ws-picker-menu" role="menu">
-          {presetNames.map((name) => (
+    <Dropdown
+      value={preset}
+      ariaLabel="Layout preset"
+      items={items}
+      selectedId={unsaved ? UNSAVED_ID : preset}
+      onSelect={(id) => {
+        if (id !== UNSAVED_ID) {
+          onSelect(id)
+        }
+      }}
+      onRename={handleRename}
+      onDelete={onDelete}
+      validateName={validateName}
+      lockedLabel="This arrangement is not saved yet — rename it to save it"
+      footer={(close) =>
+        creating ? (
+          <form
+            className="ws-picker-name-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!canCreate) {
+                return
+              }
+              onSaveCustom(trimmed, copyFrom || undefined)
+              cancelCreate()
+              close()
+            }}
+          >
+            <input
+              className="ws-picker-name-input"
+              aria-label="New layout name"
+              placeholder="Layout name"
+              autoFocus
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  cancelCreate()
+                }
+              }}
+            />
+            {createError && (
+              <span className="ws-picker-name-error">{createError}</span>
+            )}
+            {/* Editing a layout now saves that layout, so branching off one is
+                an explicit choice rather than something an edit does for you. */}
+            <label className="ws-picker-copy-from">
+              Copy from
+              <select
+                aria-label="Copy layout from"
+                value={copyFrom}
+                onChange={(event) => setCopyFrom(event.target.value)}
+              >
+                <option value="">Current arrangement</option>
+                {presetNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="ws-picker-name-actions">
+              <button
+                className="ws-picker-name-cancel"
+                type="button"
+                onClick={cancelCreate}
+              >
+                Cancel
+              </button>
+              <button
+                className="ws-picker-name-save"
+                type="submit"
+                disabled={!canCreate}
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
             <button
-              key={name}
-              className={`ws-picker-item${name === preset ? ' ws-picker-item--on' : ''}`}
-              role="menuitemradio"
-              aria-checked={name === preset}
+              className="ws-picker-item"
+              role="menuitem"
               onClick={() => {
-                onSelect(name)
-                setOpen(false)
+                setDraft('')
+                setCreating(true)
               }}
             >
-              {name}
+              New layout…
             </button>
-          ))}
-          <span className="ws-picker-sep" role="separator" />
-          {mode ? (
-            <form
-              className="ws-picker-name-form"
-              onSubmit={(event) => {
-                event.preventDefault()
-                submitName()
-              }}
-            >
-              <input
-                className="ws-picker-name-input"
-                aria-label={mode === 'create' ? 'New layout name' : 'Rename layout'}
-                autoFocus
-                value={draft}
-                placeholder={mode === 'create' ? 'Layout name' : undefined}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    event.preventDefault()
-                    setOpen(false)
-                    setMode(null)
-                    triggerRef.current?.focus()
-                  }
+            {hiddenPresets.length > 0 && onRestoreBuiltIns && (
+              <button
+                className="ws-picker-item"
+                role="menuitem"
+                onClick={() => {
+                  onRestoreBuiltIns()
+                  close()
                 }}
-              />
-              {(duplicate || reserved) && (
-                <span className="ws-picker-name-error">
-                  {duplicate ? 'Name already exists' : 'Choose a different name'}
-                </span>
-              )}
-              <div className="ws-picker-name-actions">
-                <button
-                  className="ws-picker-name-cancel"
-                  type="button"
-                  onClick={() => setMode(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="ws-picker-name-save"
-                  type="submit"
-                  disabled={!canSubmit}
-                >
-                  Save
-                </button>
-              </div>
-            </form>
-          ) : (
-            <>
-              <button
-                className="ws-picker-item"
-                role="menuitem"
-                onClick={() => beginName('create')}
               >
-                New layout…
+                Restore built-in layouts ({hiddenPresets.length})
               </button>
-              <button
-                className="ws-picker-item"
-                role="menuitem"
-                onClick={() => beginName('rename')}
-              >
-                Rename layout…
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+            )}
+          </>
+        )
+      }
+    />
   )
 }

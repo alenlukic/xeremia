@@ -1,11 +1,26 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { TracklistEntry, Track } from '../types'
-import { TRACK_DRAG_MIME, TRACKLIST_ROW_MIME, POOL_ROW_MIME } from '../utils'
+import {
+  dropTracksInOrder,
+  TRACK_DRAG_MIME,
+  TRACKLIST_ROW_MIME,
+  POOL_ROW_MIME,
+  writeTrackDrag,
+} from '../utils'
+import { useMultiSelect } from '../hooks/useMultiSelect'
+import { useBulkAction } from '../hooks/useBulkAction'
+import { useSelectAllShortcut } from '../hooks/useSelectAllShortcut'
+import {
+  SelectionAction,
+  SelectionBar,
+  SelectionToggle,
+} from './SelectionControls'
 import { displayTitle } from '../utils/trackTitle'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
 import { useDragAutoScroll } from '../hooks/useDragAutoScroll'
+import { useColumnResize } from '../hooks/useColumnResize'
 import { TrackSearchModal } from './TrackSearchModal'
 import {
   TABLE_REGISTRIES,
@@ -52,10 +67,13 @@ interface Props {
   onRemove: (trackId: number) => void
   onReorder: (trackId: number, newPosition: number) => void
   onUpdateNote: (trackId: number, note: string) => void
-  onAddTrack: (trackId: number, title?: string) => void
+  // A multi-track drop applies these one at a time, so the promise has to
+  // survive the prop signature for the next track to wait on it — appending
+  // concurrently would land them in arbitrary order.
+  onAddTrack: (trackId: number, title?: string) => void | Promise<unknown>
   /** Add `trackId` and place it at `position` (0-based) in one step. */
   onInsertTrack: (trackId: number, position: number) => void
-  onDropFromPool: (trackId: number) => void
+  onDropFromPool: (trackId: number) => void | Promise<unknown>
   onExportM3u8: () => void
 }
 
@@ -137,15 +155,16 @@ export function SetTracklist({
   const [insertAfterTrackId, setInsertAfterTrackId] = useState<number | null>(
     null,
   )
-  // Live width for the column being resized. Kept local so a drag re-renders
-  // only this table, not the whole App (which re-rendered every quadrant on
-  // each mousemove and made resizing crawl). Flushed to App on mouse-up.
-  const [liveResize, setLiveResize] = useState<{
-    id: string
-    width: number
-  } | null>(null)
-
-  const colWidths = tableConfig.columnWidths
+  const { widths: colWidths, beginResize } = useColumnResize(
+    tableConfig.columnWidths,
+    onColumnWidthFlush,
+  )
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const selection = useMultiSelect(
+    useMemo(() => tracklist.map((entry) => entry.track_id), [tracklist]),
+  )
+  useSelectAllShortcut(listRef, selection.selectAll)
+  const bulk = useBulkAction()
   const visibleIds = useMemo(() => visibleColumnIds(tableConfig), [tableConfig])
   const registryById = useMemo(
     () => new Map(TABLE_REGISTRIES.tracklist.map((entry) => [entry.id, entry])),
@@ -193,51 +212,28 @@ export function SetTracklist({
     return () => window.removeEventListener('dragend', onDragEnd, true)
   }, [clearRowDragState])
 
-  const beginResize = useCallback(
-    (colId: string, e: React.MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const th = (e.target as HTMLElement).closest('th')
-      if (!th) {
-        return
-      }
-      const startWidth = th.getBoundingClientRect().width
-      const startX = e.clientX
-
-      let latestWidth = startWidth
-      function handleMove(ev: MouseEvent) {
-        latestWidth = Math.max(40, Math.round(startWidth + ev.clientX - startX))
-        setLiveResize({ id: colId, width: latestWidth })
-      }
-
-      function handleUp() {
-        document.removeEventListener('mousemove', handleMove)
-        document.removeEventListener('mouseup', handleUp)
-        document.body.style.removeProperty('cursor')
-        document.body.style.removeProperty('user-select')
-        setLiveResize(null)
-        onColumnWidthFlush(colId, latestWidth)
-      }
-
-      document.addEventListener('mousemove', handleMove)
-      document.addEventListener('mouseup', handleUp)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-    },
-    [onColumnWidthFlush],
-  )
-
   const handleExternalDrop = useCallback(
     (trackId: number) => {
       const track = allTracks.find((t) => t.id === trackId)
-      onAddTrack(trackId, track?.title)
+      return onAddTrack(trackId, track?.title)
     },
     [allTracks, onAddTrack],
   )
   const dropTargets = useMemo<TrackDropTarget[]>(
     () => [
-      { mime: TRACK_DRAG_MIME, onDropTrack: handleExternalDrop },
-      { mime: POOL_ROW_MIME, onDropTrack: onDropFromPool, dropEffect: 'move' },
+      {
+        mime: TRACK_DRAG_MIME,
+        onDropTrack: handleExternalDrop,
+        onDropTracks: (trackIds) =>
+          void dropTracksInOrder(trackIds, handleExternalDrop),
+      },
+      {
+        mime: POOL_ROW_MIME,
+        onDropTrack: onDropFromPool,
+        onDropTracks: (trackIds) =>
+          void dropTracksInOrder(trackIds, onDropFromPool),
+        dropEffect: 'move',
+      },
     ],
     [handleExternalDrop, onDropFromPool],
   )
@@ -269,12 +265,10 @@ export function SetTracklist({
     [insertAfterTrackId, tracklist, onInsertTrack],
   )
 
-  const colStyle = (id: string) => {
-    if (liveResize?.id === id) {
-      return { width: liveResize.width }
-    }
-    return colWidths[id] != null ? { width: colWidths[id] } : undefined
-  }
+  // `colWidths` already carries the in-flight drag, so there is no separate
+  // live-resize branch to keep in step.
+  const colStyle = (id: string) =>
+    colWidths[id] != null ? { width: colWidths[id] } : undefined
 
   const resizer = (id: string) => (
     <div
@@ -430,12 +424,18 @@ export function SetTracklist({
 
   return (
     <div
+      ref={listRef}
+      tabIndex={-1}
+      // Claiming focus on click is what scopes Cmd/Ctrl+A to this list rather
+      // than whichever other track list happens to be on screen.
+      onMouseDown={() => listRef.current?.focus({ preventScroll: true })}
       className={`set-tracklist${dropActive ? ' set-drop-active' : ''}`}
       {...dropHandlers}
     >
       <TableHeader
         title={
           <div className="ds-header-titlegroup">
+            <SelectionToggle selection={selection} label="tracklist" />
             <span className="ds-header-titletext">
               Tracklist ({tracklist.length})
             </span>
@@ -467,6 +467,16 @@ export function SetTracklist({
           </div>
         }
       />
+      <SelectionBar selection={selection} progress={bulk.progress}>
+        <SelectionAction
+          label="Remove from tracklist"
+          danger
+          disabled={bulk.running}
+          onClick={() =>
+            void bulk.run('Removing', selection.orderedIds, onRemove, selection.clear)
+          }
+        />
+      </SelectionBar>
       {tracklist.length === 0 ? (
         <p className="set-empty-tracks">
           Tracklist is empty. Drag tracks from the Search table above.
@@ -514,16 +524,31 @@ export function SetTracklist({
                       dragTrackId !== null &&
                       dragTrackId !== entry.track_id
                         ? ' set-row-drop-target'
+                        : '') +
+                      (selection.isSelected(entry.track_id)
+                        ? ' is-multi-selected'
                         : '')
                     }
+                    onClick={(event) => {
+                      if ((event.target as HTMLElement).closest('button, input')) {
+                        return
+                      }
+                      selection.select(entry.track_id, event)
+                    }}
                     onDragStart={(e) => {
                       e.dataTransfer.setData(
                         'text/plain',
                         String(entry.track_id),
                       )
-                      e.dataTransfer.setData(
+                      // A row inside the selection drags the whole selection.
+                      const ids = selection.isSelected(entry.track_id)
+                        ? selection.orderedIds
+                        : [entry.track_id]
+                      writeTrackDrag(
+                        e.dataTransfer,
+                        entry.track_id,
+                        ids,
                         TRACKLIST_ROW_MIME,
-                        String(entry.track_id),
                       )
                       e.dataTransfer.effectAllowed = 'move'
                       setDragTrackId(entry.track_id)

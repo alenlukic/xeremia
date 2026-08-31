@@ -366,6 +366,23 @@ class PoolSubgroupMemberResponse(BaseModel):
     display_order: int
 
 
+class ExplorerCrateResponse(BaseModel):
+    id: int
+    name: str
+    display_order: int
+
+
+class ExplorerCrateMemberResponse(BaseModel):
+    id: int
+    crate_id: int
+    track_id: int
+
+
+class ExplorerCratesResponse(BaseModel):
+    crates: List[ExplorerCrateResponse] = Field(default_factory=list)
+    memberships: List[ExplorerCrateMemberResponse] = Field(default_factory=list)
+
+
 class ExplorerNodeResponse(BaseModel):
     id: int
     set_id: int
@@ -448,6 +465,18 @@ class SubgroupMemberReorderRequest(BaseModel):
 class SubgroupDropRequest(BaseModel):
     track_id: int
     source: Literal["browse", "tracklist", "pool"]
+
+
+class CrateCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class CrateRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class CrateTrackRequest(BaseModel):
+    track_id: int
 
 
 class ExplorerAddNodeRequest(BaseModel):

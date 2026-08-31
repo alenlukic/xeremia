@@ -221,6 +221,20 @@ export interface PoolSubgroupMembership {
   display_order: number
 }
 
+/** A named, library-scoped subset of tracks shown by the Explorer matrix.
+ * The global crate (every track in the library) is virtual and never stored. */
+export interface ExplorerCrate {
+  id: number
+  name: string
+  display_order: number
+}
+
+export interface ExplorerCrateMembership {
+  id: number
+  crate_id: number
+  track_id: number
+}
+
 export interface HydratedSet {
   set: SetSummary
   pool: PoolEntry[]
@@ -278,6 +292,12 @@ export interface WorkspaceLayoutState {
    */
   bounds?: { cols: number; rows: number }
   custom: Record<string, SavedLayout>
+  /**
+   * Built-in presets the user renamed away or deleted. Built-ins are generated
+   * from code constants rather than stored, so removing one is recorded as an
+   * absence; restoring brings the whole set back.
+   */
+  hidden?: string[]
   shell: ShellId
   /** Absent on rows written before width locking existed. */
   locked?: LockedWidgets

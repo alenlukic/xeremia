@@ -34,6 +34,11 @@ from src.api.schemas import (
     SetSummary,
     SetSequencerRequest,
     SetUpdateRequest,
+    CrateCreateRequest,
+    CrateRenameRequest,
+    CrateTrackRequest,
+    ExplorerCrateResponse,
+    ExplorerCratesResponse,
     SubgroupCreateRequest,
     SubgroupDropRequest,
     SubgroupMemberRequest,
@@ -1139,6 +1144,142 @@ def api_subgroup_drop_track(
         session.rollback()
         logger.exception("Subgroup drop failed")
         raise HTTPException(status_code=500, detail="Subgroup drop failed")
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Explorer crate endpoints (library-scoped; not tied to any set)
+# ---------------------------------------------------------------------------
+
+
+def _serialize_crate(crate) -> dict:
+    return {
+        "id": crate.id,
+        "name": crate.name,
+        "display_order": crate.display_order,
+    }
+
+
+@router.get("/crates", response_model=ExplorerCratesResponse)
+def api_crates_list():
+    from src.crates.service import CrateService
+
+    session = _get_session()
+    try:
+        svc = CrateService(session)
+        return {
+            "crates": [_serialize_crate(c) for c in svc.list_crates()],
+            "memberships": [
+                {"id": m.id, "crate_id": m.crate_id, "track_id": m.track_id}
+                for m in svc.list_memberships()
+            ],
+        }
+    except Exception:
+        logger.exception("Crate list failed")
+        raise HTTPException(status_code=500, detail="Crate list failed")
+    finally:
+        session.close()
+
+
+@router.post("/crates", response_model=ExplorerCrateResponse, status_code=201)
+def api_crate_create(body: CrateCreateRequest):
+    from src.crates.service import CrateService
+
+    session = _get_session()
+    try:
+        crate = CrateService(session).crate_create(body.name)
+        session.commit()
+        return _serialize_crate(crate)
+    except Exception:
+        session.rollback()
+        logger.exception("Crate create failed")
+        raise HTTPException(status_code=500, detail="Crate create failed")
+    finally:
+        session.close()
+
+
+@router.patch("/crates/{crate_id}", response_model=ExplorerCrateResponse)
+def api_crate_rename(crate_id: int, body: CrateRenameRequest):
+    from src.crates.service import CrateService
+
+    session = _get_session()
+    try:
+        crate = CrateService(session).crate_rename(crate_id, body.name)
+        if crate is None:
+            raise HTTPException(status_code=404, detail="Crate not found")
+        session.commit()
+        return _serialize_crate(crate)
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Crate rename failed")
+        raise HTTPException(status_code=500, detail="Crate rename failed")
+    finally:
+        session.close()
+
+
+@router.delete("/crates/{crate_id}", status_code=204)
+def api_crate_delete(crate_id: int):
+    from src.crates.service import CrateService
+
+    session = _get_session()
+    try:
+        deleted = CrateService(session).crate_delete(crate_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Crate not found")
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Crate delete failed")
+        raise HTTPException(status_code=500, detail="Crate delete failed")
+    finally:
+        session.close()
+
+
+@router.post("/crates/{crate_id}/tracks", status_code=201)
+def api_crate_add_track(crate_id: int, body: CrateTrackRequest):
+    from src.crates.service import CrateService
+
+    session = _get_session()
+    try:
+        member, error = CrateService(session).crate_add_track(
+            crate_id, body.track_id
+        )
+        if error:
+            status = 404 if "not found" in error.lower() else 400
+            raise HTTPException(status_code=status, detail=error)
+        session.commit()
+        return {"ok": True, "member_id": member.id}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Crate add track failed")
+        raise HTTPException(status_code=500, detail="Crate add track failed")
+    finally:
+        session.close()
+
+
+@router.delete("/crates/{crate_id}/tracks/{track_id}", status_code=204)
+def api_crate_remove_track(crate_id: int, track_id: int):
+    from src.crates.service import CrateService
+
+    session = _get_session()
+    try:
+        ok, error = CrateService(session).crate_remove_track(crate_id, track_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail=error)
+        session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Crate remove track failed")
+        raise HTTPException(status_code=500, detail="Crate remove track failed")
     finally:
         session.close()
 

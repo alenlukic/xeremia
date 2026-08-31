@@ -24,10 +24,19 @@ import type { Track, SearchSuggestion, TransitionMatch } from '../types'
 import {
   formatScore,
   formatOverallScore,
+  writeTrackDrag,
   TRACK_DRAG_MIME,
   TRACKLIST_ROW_MIME,
   POOL_ROW_MIME,
 } from '../utils'
+import { useMultiSelect } from '../hooks/useMultiSelect'
+import { useBulkAction } from '../hooks/useBulkAction'
+import { useSelectAllShortcut } from '../hooks/useSelectAllShortcut'
+import {
+  SelectionAction,
+  SelectionBar,
+  SelectionToggle,
+} from './SelectionControls'
 import {
   useExternalTrackDrop,
   type TrackDropTarget,
@@ -258,6 +267,8 @@ interface Props {
    *  filter editors (mirrors the browse quadrant's filter). */
   genres?: string[]
   labels?: string[]
+  /** Bulk action for a multi-selection; omitted, the bar shows no actions. */
+  onAddManyToPool?: (candidateId: number) => void | Promise<unknown>
 }
 
 export const MatchesPanel = memo(function MatchesPanel({
@@ -277,9 +288,12 @@ export const MatchesPanel = memo(function MatchesPanel({
   trackIndex,
   genres = [],
   labels = [],
+  onAddManyToPool,
 }: Props) {
   const { onResizeStart, shouldIgnoreSortClick } = useColumnResizeGuard()
   const outerRef = useRef<HTMLDivElement>(null)
+  // The panel element, which claims focus so Cmd/Ctrl+A means "this list".
+  const hostRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const topScrollRef = useRef<HTMLDivElement>(null)
 
@@ -565,6 +579,16 @@ export const MatchesPanel = memo(function MatchesPanel({
   // any re-render of this table (a column-preference change, a resize) block
   // the main thread — each score cell also computes a gradient background.
   const matchRows = table.getRowModel().rows
+  // Selectable rows are exactly the ones the buckets, filters and score
+  // filters leave standing — a bulk action can never reach past them.
+  const selection = useMultiSelect(
+    useMemo(
+      () => matchRows.map((row) => row.original.candidate_id),
+      [matchRows],
+    ),
+  )
+  useSelectAllShortcut(hostRef, selection.selectAll)
+  const bulk = useBulkAction()
   const rowVirtualizer = useVirtualizer({
     count: matchRows.length,
     getScrollElement: () => wrapperRef.current,
@@ -729,15 +753,18 @@ export const MatchesPanel = memo(function MatchesPanel({
   const header = (
     <TableHeader
       leading={
-        <button
-          type="button"
-          className="matches-clear-btn"
-          aria-label="Clear matches"
-          title="Clear matches"
-          onClick={onClearMatchSource}
-        >
-          ×
-        </button>
+        <>
+          <button
+            type="button"
+            className="matches-clear-btn"
+            aria-label="Clear matches"
+            title="Clear matches"
+            onClick={onClearMatchSource}
+          >
+            ×
+          </button>
+          <SelectionToggle selection={selection} label="matches" />
+        </>
       }
       title={headerTitle ?? matchSource.title}
       primary={
@@ -798,6 +825,27 @@ export const MatchesPanel = memo(function MatchesPanel({
     </TableControlPanel>
   )
 
+  // Matches is a library view: it offers what a candidate can be added to,
+  // never removal.
+  const selectionBar = (
+    <SelectionBar selection={selection} progress={bulk.progress}>
+      {onAddManyToPool && (
+        <SelectionAction
+          label="Add to Pool"
+          disabled={bulk.running}
+          onClick={() =>
+            void bulk.run(
+              'Adding to pool',
+              selection.orderedIds,
+              onAddManyToPool,
+              selection.clear,
+            )
+          }
+        />
+      )}
+    </SelectionBar>
+  )
+
   if (visibleIds.length === 0) {
     return (
       <div className={panelClassName} {...dropHandlers}>
@@ -809,9 +857,18 @@ export const MatchesPanel = memo(function MatchesPanel({
   }
 
   return (
-    <div className={panelClassName} {...dropHandlers}>
+    <div
+      className={panelClassName}
+      ref={hostRef}
+      tabIndex={-1}
+      // Claiming focus on click is what scopes Cmd/Ctrl+A to this list rather
+      // than whichever other track list happens to be on screen.
+      onMouseDown={() => hostRef.current?.focus({ preventScroll: true })}
+      {...dropHandlers}
+    >
       {header}
       {controlPanel}
+      {selectionBar}
       <div className="track-table-outer" ref={outerRef}>
         {isOverflowing && (
           <div
@@ -980,16 +1037,32 @@ export const MatchesPanel = memo(function MatchesPanel({
                   )}
                   {virtualRows.map((virtualRow) => {
                     const row = matchRows[virtualRow.index]
+                    const candidateId = row.original.candidate_id
                     return (
                       <tr
                         key={row.id}
+                        className={
+                          selection.isSelected(candidateId)
+                            ? 'is-multi-selected'
+                            : undefined
+                        }
                         draggable
                         onDragStart={(e) => {
-                          e.dataTransfer.setData(
-                            TRACK_DRAG_MIME,
-                            String(row.original.candidate_id),
-                          )
+                          // A row inside the selection drags the whole
+                          // selection; any other row drags just itself.
+                          const ids = selection.isSelected(candidateId)
+                            ? selection.orderedIds
+                            : [candidateId]
+                          writeTrackDrag(e.dataTransfer, candidateId, ids)
                           e.dataTransfer.effectAllowed = 'copy'
+                        }}
+                        onClick={(event) => {
+                          // The row's own buttons (play, detail, use as
+                          // source) own their clicks.
+                          if ((event.target as HTMLElement).closest('button')) {
+                            return
+                          }
+                          selection.select(candidateId, event)
                         }}
                         style={loading ? { opacity: 0.6 } : undefined}
                       >

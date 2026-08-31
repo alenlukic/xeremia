@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
+import { FloatingSurface } from './FloatingSurface'
 import { SortIcon } from './table/icons'
 
 export interface SortDescriptor {
@@ -36,12 +37,18 @@ export function SortAddButton({
 }: SortAddButtonProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const wrapperRef = useRef<HTMLSpanElement>(null)
+  const menuRef = useRef<HTMLUListElement>(null)
 
   const availableColumns = columns.filter(
     (c) => !sorting.some((s) => s.id === c.id),
   )
 
-  useDismissOnOutsideClick(wrapperRef, menuOpen, () => setMenuOpen(false))
+  useDismissOnOutsideClick(
+    wrapperRef,
+    menuOpen,
+    () => setMenuOpen(false),
+    menuRef,
+  )
 
   const addTier = useCallback(
     (colId: string) => {
@@ -67,17 +74,24 @@ export function SortAddButton({
         <SortIcon />
       </button>
       {menuOpen && (
-        <ul className="sort-tier-menu">
+        <FloatingSurface
+          anchorRef={wrapperRef}
+          floatingRef={menuRef}
+          as="ul"
+          className="sort-tier-menu"
+          role="menu"
+        >
           {availableColumns.map((col) => (
             <li
               key={col.id}
               className="sort-tier-menu-item"
+              role="menuitem"
               onMouseDown={() => addTier(col.id)}
             >
               {col.label}
             </li>
           ))}
-        </ul>
+        </FloatingSurface>
       )}
     </span>
   )

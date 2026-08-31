@@ -11,7 +11,73 @@ import {
   DRAG_SENSITIVITY_BASE,
   DRAG_DECAY,
   RESISTANCE_THRESHOLD,
+  writeTrackDrag,
+  readTrackDrag,
+  dropTracksInOrder,
+  TRACK_DRAG_MIME,
+  TRACK_MULTI_MIME,
+  POOL_ROW_MIME,
 } from './utils'
+
+/** Minimal stand-in for DataTransfer; jsdom's drag events carry none. */
+function fakeDataTransfer() {
+  const store = new Map<string, string>()
+  return {
+    setData: (mime: string, value: string) => void store.set(mime, value),
+    getData: (mime: string) => store.get(mime) ?? '',
+    get types() {
+      return [...store.keys()]
+    },
+  } as unknown as DataTransfer
+}
+
+describe('track drag payloads', () => {
+  it('round-trips a whole selection, in the order it was written', () => {
+    const dt = fakeDataTransfer()
+    writeTrackDrag(dt, 7, [3, 7, 11])
+    expect(readTrackDrag(dt)).toEqual([3, 7, 11])
+  })
+
+  it('reads a single-row drag, which carries no list at all', () => {
+    const dt = fakeDataTransfer()
+    writeTrackDrag(dt, 7, [7])
+    expect(dt.types).not.toContain(TRACK_MULTI_MIME)
+    expect(readTrackDrag(dt)).toEqual([7])
+  })
+
+  // Targets read the type to tell a move between panels from a copy out of
+  // the library, so a panel row must not also claim to be a library drag.
+  it('tags a panel row with its own type only', () => {
+    const dt = fakeDataTransfer()
+    writeTrackDrag(dt, 7, [7, 8], POOL_ROW_MIME)
+    expect(dt.types).toContain(POOL_ROW_MIME)
+    expect(dt.types).not.toContain(TRACK_DRAG_MIME)
+    expect(readTrackDrag(dt, POOL_ROW_MIME)).toEqual([7, 8])
+  })
+
+  it('reads a drag written before multi-select existed', () => {
+    const dt = fakeDataTransfer()
+    dt.setData(TRACK_DRAG_MIME, '42')
+    expect(readTrackDrag(dt)).toEqual([42])
+  })
+
+  it('reports nothing for a drag carrying no track', () => {
+    expect(readTrackDrag(fakeDataTransfer())).toEqual([])
+  })
+
+  it('runs a drop over the selection one track at a time', async () => {
+    const order: number[] = []
+    let running = 0
+    await dropTracksInOrder([1, 2, 3], async (id) => {
+      running += 1
+      expect(running).toBe(1)
+      await Promise.resolve()
+      order.push(id)
+      running -= 1
+    })
+    expect(order).toEqual([1, 2, 3])
+  })
+})
 
 describe('formatFloat', () => {
   it('returns em-dash for null', () => {

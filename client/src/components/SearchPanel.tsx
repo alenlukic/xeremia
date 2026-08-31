@@ -4,6 +4,7 @@ import { TRACK_DRAG_MIME } from '../utils'
 import { useTrackSearch } from '../hooks/useTrackSearch'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
 import { useExternalTrackDrop } from '../hooks/useExternalTrackDrop'
+import { FloatingSurface } from './FloatingSurface'
 import type { TrackDropTarget } from '../hooks/useExternalTrackDrop'
 
 interface Props {
@@ -29,6 +30,8 @@ export function SearchPanel({
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
+  const inputWrapRef = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLUListElement>(null)
   const { suggestions, search, clear } = useTrackSearch(allTracks)
   const dropTargets = useMemo<TrackDropTarget[]>(
     () =>
@@ -85,7 +88,12 @@ export function SearchPanel({
     [clearBrowseSelection, onSearchTextChange, search, clear],
   )
 
-  useDismissOnOutsideClick(containerRef, open, () => setOpen(false))
+  useDismissOnOutsideClick(
+    containerRef,
+    open,
+    () => setOpen(false),
+    dropdownRef,
+  )
 
   function handleSelect(suggestion: SearchSuggestion) {
     selectTrack(suggestion)
@@ -116,7 +124,7 @@ export function SearchPanel({
       ref={containerRef}
       {...dropHandlers}
     >
-      <div className="search-input-container">
+      <div className="search-input-container" ref={inputWrapRef}>
         <input
           type="text"
           className="search-input"
@@ -143,11 +151,21 @@ export function SearchPanel({
           </button>
         )}
         {open && suggestions.length > 0 && (
-          <ul className="search-dropdown">
+          <FloatingSurface
+            anchorRef={inputWrapRef}
+            floatingRef={dropdownRef}
+            as="ul"
+            matchAnchorWidth
+            className="search-dropdown"
+            role="listbox"
+            ariaLabel="Track suggestions"
+          >
             {suggestions.map((s, i) => (
               <li
                 key={s.id}
                 className={`search-item${i === activeIdx ? ' active' : ''}`}
+                role="option"
+                aria-selected={i === activeIdx}
                 onMouseDown={() => handleSelect(s)}
                 onMouseEnter={() => setActiveIdx(i)}
               >
@@ -161,7 +179,7 @@ export function SearchPanel({
                 </span>
               </li>
             ))}
-          </ul>
+          </FloatingSurface>
         )}
       </div>
     </div>

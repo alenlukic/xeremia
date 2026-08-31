@@ -8,12 +8,18 @@ import {
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SetPoolTable } from './SetPoolTable'
-import { TRACKLIST_ROW_MIME, POOL_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
+import {
+  TRACKLIST_ROW_MIME,
+  POOL_ROW_MIME,
+  TRACK_DRAG_MIME,
+  TRACK_MULTI_MIME,
+} from '../utils'
 import type { PoolEntry, PoolSubgroup, PoolSubgroupMembership } from '../types'
 import {
   testPoolTableProps,
   columnHeaderLabel,
 } from '../test/tablePreferenceHelpers'
+import { MIN_COL_WIDTH } from '../tablePreferences'
 
 vi.mock('../api/http', () => ({
   searchTracks: vi.fn().mockResolvedValue([]),
@@ -78,6 +84,31 @@ function renderPool(
       {...testPoolTableProps}
       {...extra}
     />,
+  )
+}
+
+/**
+ * Toggle the group-navigation dropdown in the pool header and return the tab
+ * buttons inside the revealed panel. Call only while the menu is closed.
+ */
+function openGroupMenu(container: HTMLElement) {
+  fireEvent.click(container.querySelector('.pool-group-menu-trigger')!)
+  // The panel is portalled to <body>, so query the document, not the
+  // render container.
+  return document.querySelectorAll('.pool-tab-bar .pool-tab')
+}
+
+/**
+ * Open the group menu and click the tab at `index` (0 = All, 1 = Groups,
+ * 2+ = subgroups). Selecting a tab closes the menu on a short delay (so a
+ * double-click rename can cancel it), so wait for the panel to disappear
+ * before returning.
+ */
+async function selectPoolTab(container: HTMLElement, index: number) {
+  const tabs = openGroupMenu(container)
+  fireEvent.click(tabs[index])
+  await waitFor(() =>
+    expect(document.querySelector('.pool-group-menu-panel')).toBeNull(),
   )
 }
 
@@ -269,20 +300,19 @@ describe('SetPoolTable per-group sorting', () => {
     )
   }
 
-  it('sorting a group tab does not affect the All tab', () => {
+  it('sorting a group tab does not affect the All tab', async () => {
     const { container } = renderPool(makeEntries(), subgroups, memberships)
-    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
-    fireEvent.click(tabs[2]) // Warmup
+    await selectPoolTab(container, 2) // Warmup
     fireEvent.click(screen.getByRole('columnheader', { name: /title/i }))
     expect(rowTitles(container)).toEqual(['Mike', 'Zulu'])
 
-    fireEvent.click(tabs[0]) // All
+    await selectPoolTab(container, 0) // All
     expect(rowTitles(container)).toEqual(['Zulu', 'Mike', 'Alpha'])
   })
 
-  it('each Groups-view section has its own sort controls and state', () => {
+  it('each Groups-view section has its own sort controls and state', async () => {
     const { container } = renderPool(makeEntries(), subgroups, memberships)
-    fireEvent.click(container.querySelectorAll('.pool-tab-bar .pool-tab')[1])
+    await selectPoolTab(container, 1) // Groups
 
     const sections = container.querySelectorAll('.subgroup-section')
     expect(sections.length).toBe(2)
@@ -298,10 +328,9 @@ describe('SetPoolTable per-group sorting', () => {
     expect(rowTitles(sections[1])).toEqual(['Mike', 'Alpha'])
   })
 
-  it("sorting a Groups-view section carries to that group's tab", () => {
+  it("sorting a Groups-view section carries to that group's tab", async () => {
     const { container } = renderPool(makeEntries(), subgroups, memberships)
-    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
-    fireEvent.click(tabs[1]) // Groups
+    await selectPoolTab(container, 1) // Groups
 
     const sections = container.querySelectorAll('.subgroup-section')
     fireEvent.click(
@@ -310,10 +339,10 @@ describe('SetPoolTable per-group sorting', () => {
       }),
     )
 
-    fireEvent.click(tabs[2]) // Warmup tab shares the section's sort scope
+    await selectPoolTab(container, 2) // Warmup tab shares the section's sort scope
     expect(rowTitles(container)).toEqual(['Mike', 'Zulu'])
 
-    fireEvent.click(tabs[3]) // Peak keeps its own default order
+    await selectPoolTab(container, 3) // Peak keeps its own default order
     expect(rowTitles(container)).toEqual(['Mike', 'Alpha'])
   })
 })
@@ -371,7 +400,7 @@ describe('SetPoolTable drag-and-drop row reordering', () => {
     expect(onReorder).not.toHaveBeenCalled()
   })
 
-  it('maps drop index to subgroup member position on a subgroup tab', () => {
+  it('maps drop index to subgroup member position on a subgroup tab', async () => {
     const onReorder = vi.fn()
     const subgroups: PoolSubgroup[] = [
       { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
@@ -386,9 +415,7 @@ describe('SetPoolTable drag-and-drop row reordering', () => {
     const { container } = renderPool(makeEntries(), subgroups, memberships, {
       onReorderSubgroupMember,
     })
-    fireEvent.click(
-      container.querySelectorAll('.pool-tab-bar .pool-tab')[2], // Warmup
-    )
+    await selectPoolTab(container, 2) // Warmup
     const rows = container.querySelectorAll('tbody tr')
     expect(rows.length).toBe(2)
     // Drag track 30 (group index 1) onto track 10 (group index 0).
@@ -399,7 +426,7 @@ describe('SetPoolTable drag-and-drop row reordering', () => {
     expect(onReorder).not.toHaveBeenCalled()
   })
 
-  it('orders subgroup tab rows by membership display_order after rehydrate', () => {
+  it('orders subgroup tab rows by membership display_order after rehydrate', async () => {
     const subgroups: PoolSubgroup[] = [
       { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
     ]
@@ -428,9 +455,7 @@ describe('SetPoolTable drag-and-drop row reordering', () => {
       { id: 3, subgroup_id: 1, pool_entry_id: 30, display_order: 1 },
     ]
     const { container, rerender } = renderPool(entries, subgroups, memberships)
-    fireEvent.click(
-      container.querySelectorAll('.pool-tab-bar .pool-tab')[2], // Warmup
-    )
+    await selectPoolTab(container, 2) // Warmup
     const rowTitles = () =>
       Array.from(container.querySelectorAll('.set-ws-cell-title')).map(
         (cell) => cell.textContent ?? '',
@@ -480,19 +505,18 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     ]
   }
 
-  it('renders the pool tab bar with tablist role', () => {
+  it('renders the tab bar with tablist role inside the open menu only', () => {
     const { container } = renderPool(makeEntries(), subgroups)
-    const bar = container.querySelector('.pool-tab-bar')
+    expect(document.querySelector('.pool-tab-bar')).toBeNull()
+    openGroupMenu(container)
+    const bar = document.querySelector('.pool-group-menu-panel .pool-tab-bar')
     expect(bar).toBeTruthy()
     expect(bar!.getAttribute('role')).toBe('tablist')
   })
 
   it('renders All, Groups, and subgroup tabs in order', () => {
     const { container } = renderPool(makeEntries(), subgroups)
-    const bar = container.querySelector('.pool-tab-bar')!
-    const tabs = Array.from(bar.querySelectorAll('.pool-tab')).map(
-      (b) => b.textContent,
-    )
+    const tabs = Array.from(openGroupMenu(container)).map((b) => b.textContent)
     expect(tabs[0]).toBe('All')
     expect(tabs[1]).toBe('Groups')
     expect(tabs[2]).toMatch(/^Warmup/)
@@ -501,7 +525,7 @@ describe('SetPoolTable tab bar and subgroup features', () => {
 
   it('All tab is active by default', () => {
     const { container } = renderPool(makeEntries(), subgroups)
-    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
+    const tabs = openGroupMenu(container)
     expect(tabs[0].classList.contains('pool-tab--active')).toBe(true)
     expect(tabs[0].getAttribute('aria-selected')).toBe('true')
   })
@@ -512,9 +536,10 @@ describe('SetPoolTable tab bar and subgroup features', () => {
       { id: 2, subgroup_id: 1, pool_entry_id: 20, display_order: 1 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
-    const counts = Array.from(
-      container.querySelectorAll('.pool-tab-count'),
-    ).map((el) => el.textContent)
+    openGroupMenu(container)
+    const counts = Array.from(document.querySelectorAll('.pool-tab-count')).map(
+      (el) => el.textContent,
+    )
     expect(counts).toEqual(['2', '0'])
   })
 
@@ -569,29 +594,27 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     expect(cell.querySelector('.subgroup-cell-trigger--empty')).toBeTruthy()
   })
 
-  it('clicking subgroup tab shows only filtered tracks', () => {
+  it('clicking subgroup tab shows only filtered tracks', async () => {
     const memberships: PoolSubgroupMembership[] = [
       { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
-    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
-    fireEvent.click(tabs[2]) // Warmup
+    await selectPoolTab(container, 2) // Warmup
     expect(container.querySelectorAll('.set-pool-table tbody tr').length).toBe(
       1,
     )
-    fireEvent.click(tabs[0]) // All
+    await selectPoolTab(container, 0) // All
     expect(container.querySelectorAll('.set-pool-table tbody tr').length).toBe(
       2,
     )
   })
 
-  it('Groups tab renders one section per subgroup with counts', () => {
+  it('Groups tab renders one section per subgroup with counts', async () => {
     const memberships: PoolSubgroupMembership[] = [
       { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
     ]
     const { container } = renderPool(makeEntries(), subgroups, memberships)
-    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
-    fireEvent.click(tabs[1]) // Groups
+    await selectPoolTab(container, 1) // Groups
     const sections = container.querySelectorAll('.subgroup-section')
     expect(sections.length).toBe(2)
     expect(
@@ -603,10 +626,9 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     expect(sections[1].textContent).toContain('No tracks in Peak.')
   })
 
-  it('Groups tab shows guidance when no subgroups exist', () => {
+  it('Groups tab shows guidance when no subgroups exist', async () => {
     const { container } = renderPool(makeEntries(), [])
-    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
-    fireEvent.click(tabs[1]) // Groups
+    await selectPoolTab(container, 1) // Groups
     expect(screen.getByText(/no groups yet/i)).toBeTruthy()
   })
 
@@ -620,29 +642,33 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     const { container } = renderPool(makeEntries(), subgroups, [], {
       onCreateSubgroup,
     })
-    fireEvent.click(container.querySelector('.pool-tab-create')!)
-    const input = container.querySelector('.subgroup-new-input')!
+    openGroupMenu(container)
+    fireEvent.click(document.querySelector('.pool-tab-create')!)
+    const input = document.querySelector('.subgroup-new-input')!
     fireEvent.change(input, { target: { value: 'Cooldown' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => {
       expect(onCreateSubgroup).toHaveBeenCalledWith('Cooldown')
     })
+    // Creating a group keeps the menu open.
+    expect(document.querySelector('.pool-group-menu-panel')).toBeTruthy()
   })
 
-  it('double-clicking a subgroup tab opens rename input', async () => {
+  it('double-clicking a subgroup tab opens rename input and keeps the menu open', async () => {
     const onRenameSubgroup = vi.fn().mockResolvedValue(true)
     const { container } = renderPool(makeEntries(), subgroups, [], {
       onRenameSubgroup,
     })
-    const tabs = container.querySelectorAll('.pool-tab-bar .pool-tab')
+    const tabs = openGroupMenu(container)
     fireEvent.doubleClick(tabs[2])
-    const input = container.querySelector('.subgroup-rename-input')!
+    const input = document.querySelector('.subgroup-rename-input')!
     expect(input).toBeTruthy()
     fireEvent.change(input, { target: { value: 'Openers' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => {
       expect(onRenameSubgroup).toHaveBeenCalledWith(1, 'Openers')
     })
+    expect(document.querySelector('.pool-group-menu-panel')).toBeTruthy()
   })
 
   it('renders Groups column header only when subgroups exist', () => {
@@ -686,7 +712,8 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     })
     const firstRow = container.querySelector('tbody tr')!
     fireEvent.click(firstRow.querySelector('.subgroup-cell-trigger')!)
-    const items = firstRow.querySelectorAll('.subgroup-modal-item')
+    // The checklist floats at <body> so the table's scroller cannot clip it.
+    const items = document.querySelectorAll('.subgroup-modal-item')
     fireEvent.click(items[0]) // Warmup active → remove
     expect(onRemoveSubgroupMember).toHaveBeenCalledWith(1, 10)
     fireEvent.click(items[1]) // Peak inactive → add
@@ -703,10 +730,10 @@ describe('SetPoolTable tab bar and subgroup features', () => {
     expect(cell.querySelector('.subgroup-assign-input')).toBeNull()
     fireEvent.click(cell.querySelector('.subgroup-cell-trigger')!)
     expect(
-      cell.querySelector('.subgroup-modal .subgroup-assign-input'),
+      document.querySelector('.subgroup-modal .subgroup-assign-input'),
     ).toBeTruthy()
     expect(
-      (cell.querySelector('.subgroup-assign-input') as HTMLInputElement)
+      (document.querySelector('.subgroup-assign-input') as HTMLInputElement)
         .placeholder,
     ).toBe('')
   })
@@ -724,14 +751,14 @@ describe('SetPoolTable tab bar and subgroup features', () => {
       onAddSubgroupMember,
     })
     fireEvent.click(container.querySelector('.subgroup-cell-trigger')!)
-    const input = container.querySelector('.subgroup-assign-input')!
+    const input = document.querySelector('.subgroup-assign-input')!
     expect(
-      container.querySelector('.subgroup-modal-create')?.textContent,
+      document.querySelector('.subgroup-modal-create')?.textContent,
     ).toMatch(/Create new group/)
     fireEvent.change(input, { target: { value: 'Warm' } })
-    const items = container.querySelectorAll('.subgroup-modal-item')
+    const items = document.querySelectorAll('.subgroup-modal-item')
     expect(Array.from(items).map((el) => el.textContent)).toEqual(['Warmup'])
-    fireEvent.click(container.querySelector('.subgroup-modal-create')!)
+    fireEvent.click(document.querySelector('.subgroup-modal-create')!)
     await waitFor(() => {
       expect(onCreateSubgroup).toHaveBeenCalledWith('Warm')
       expect(onAddSubgroupMember).toHaveBeenCalledWith(9, 10)
@@ -741,9 +768,9 @@ describe('SetPoolTable tab bar and subgroup features', () => {
   it('hides Create new group when input exactly matches an existing name', () => {
     const { container } = renderPool(makeEntries(), subgroups, [])
     fireEvent.click(container.querySelector('.subgroup-cell-trigger')!)
-    const input = container.querySelector('.subgroup-assign-input')!
+    const input = document.querySelector('.subgroup-assign-input')!
     fireEvent.change(input, { target: { value: 'Warmup' } })
-    expect(container.querySelector('.subgroup-modal-create')).toBeNull()
+    expect(document.querySelector('.subgroup-modal-create')).toBeNull()
   })
 })
 
@@ -758,12 +785,19 @@ describe('SetPoolTable tab drag-and-drop reordering', () => {
     dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
   })
 
+  /** Open the group menu (drag reordering lives in its panel) and return the
+   * per-group tab wrappers. Reorder actions keep the menu open. */
   function getWrappers(container: HTMLElement) {
-    return container.querySelectorAll('.pool-tab-wrapper')
+    openGroupMenu(container)
+    return document.querySelectorAll('.pool-tab-wrapper')
   }
 
   it('does not render move left/right arrow buttons', () => {
-    renderPool([makePoolEntry({ id: 1, track_id: 10 })], subgroups)
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+    )
+    openGroupMenu(container)
     expect(screen.queryByTitle('Move left')).toBeNull()
     expect(screen.queryByTitle('Move right')).toBeNull()
   })
@@ -832,11 +866,106 @@ describe('SetPoolTable tab drag-and-drop reordering', () => {
   })
 })
 
+describe('SetPoolTable multi-selection', () => {
+  function makeEntries(): PoolEntry[] {
+    return [
+      makePoolEntry({ id: 10, track_id: 100, insertion_order: 0 }),
+      makePoolEntry({ id: 20, track_id: 200, insertion_order: 1 }),
+      makePoolEntry({ id: 30, track_id: 300, insertion_order: 2 }),
+    ]
+  }
+
+  it('removes every selected track from the pool, one at a time', async () => {
+    const onRemove = vi.fn()
+    const { container } = renderPool(makeEntries(), [], [], { onRemove })
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all the pool' }),
+    )
+    // Scoped to the selection bar: every row also has its own remove button.
+    const bar = within(container.querySelector('.sel-bar') as HTMLElement)
+    fireEvent.click(bar.getByRole('button', { name: 'Remove from pool' }))
+
+    await waitFor(() =>
+      expect(onRemove.mock.calls.map((call) => call[0])).toEqual([
+        100, 200, 300,
+      ]),
+    )
+    expect(container.querySelectorAll('tr.is-multi-selected')).toHaveLength(0)
+  })
+
+  it('offers removal from the group only on a group tab', async () => {
+    const onRemoveSubgroupMember = vi.fn().mockResolvedValue(true)
+    const { container } = renderPool(
+      makeEntries(),
+      [{ id: 7, set_id: 1, name: 'Warmup', display_order: 0 }],
+      [{ id: 1, subgroup_id: 7, pool_entry_id: 20, display_order: 0 }],
+      { onRemoveSubgroupMember },
+    )
+
+    // On the All tab a track's group is ambiguous, so the action is absent.
+    fireEvent.click(container.querySelectorAll('tbody tr')[1])
+    expect(
+      screen.queryByRole('button', { name: 'Remove from group' }),
+    ).toBeNull()
+
+    await selectPoolTab(container, 2)
+    fireEvent.click(container.querySelector('tbody tr')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from group' }))
+
+    // Membership is keyed by pool entry, not by track.
+    await waitFor(() =>
+      expect(onRemoveSubgroupMember).toHaveBeenCalledWith(7, 20),
+    )
+  })
+
+  it('drags the whole selection when a selected row is grabbed', () => {
+    const { container } = renderPool(makeEntries())
+    const rows = container.querySelectorAll('tbody tr')
+
+    fireEvent.click(rows[0])
+    fireEvent.click(rows[2], { metaKey: true })
+
+    const setData = vi.fn()
+    fireEvent.dragStart(rows[0], {
+      dataTransfer: { setData, effectAllowed: '', dropEffect: '' },
+    })
+    expect(setData).toHaveBeenCalledWith(TRACK_MULTI_MIME, '[100,300]')
+
+    // A row outside the selection drags only itself.
+    const soloSetData = vi.fn()
+    fireEvent.dragStart(rows[1], {
+      dataTransfer: { setData: soloSetData, effectAllowed: '', dropEffect: '' },
+    })
+    expect(soloSetData).toHaveBeenCalledWith(POOL_ROW_MIME, '200')
+    expect(soloSetData).not.toHaveBeenCalledWith(
+      TRACK_MULTI_MIME,
+      expect.anything(),
+    )
+  })
+})
+
 describe('SetPoolTable cross-panel drag-and-drop', () => {
   const crossDragData = (mime: string, trackId: number) => ({
     dataTransfer: {
       types: [mime],
       getData: (m: string) => (m === mime ? String(trackId) : ''),
+      setData: noop,
+      effectAllowed: '',
+      dropEffect: '',
+    },
+  })
+
+  /** A drag out of a multi-selection: the grabbed row, plus the whole set. */
+  const multiDragData = (mime: string, primary: number, ids: number[]) => ({
+    dataTransfer: {
+      types: [mime, TRACK_MULTI_MIME],
+      getData: (m: string) =>
+        m === TRACK_MULTI_MIME
+          ? JSON.stringify(ids)
+          : m === mime
+            ? String(primary)
+            : '',
       setData: noop,
       effectAllowed: '',
       dropEffect: '',
@@ -880,6 +1009,64 @@ describe('SetPoolTable cross-panel drag-and-drop', () => {
     expect(onDropFromTracklist).not.toHaveBeenCalled()
     expect(onAddTrack).not.toHaveBeenCalled()
   })
+
+  // Each add waits for the one before it: appending concurrently would land
+  // them in whatever order the requests happened to finish in.
+  it('adds every track of a multi-track drag, in the dragged order', async () => {
+    const onAddTrack = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      [],
+      [],
+      { onAddTrack },
+    )
+    const panel = container.querySelector('.set-pool')!
+    fireEvent.drop(panel, multiDragData(TRACK_DRAG_MIME, 42, [42, 43, 44]))
+    await waitFor(() =>
+      expect(onAddTrack.mock.calls.map((call) => call[0])).toEqual([
+        42, 43, 44,
+      ]),
+    )
+  })
+
+  // The group tab open is the list on screen, so a drop lands in it, not
+  // merely in the pool behind it.
+  it('files a drop into the open group rather than the bare pool', async () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const onAddTrack = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      [{ id: 7, set_id: 1, name: 'Warmup', display_order: 0 }],
+      [],
+      { onDropTrackToSubgroup, onAddTrack },
+    )
+    await selectPoolTab(container, 2)
+
+    const panel = container.querySelector('.set-pool')!
+    fireEvent.drop(panel, crossDragData(TRACK_DRAG_MIME, 42))
+    expect(onDropTrackToSubgroup).toHaveBeenCalledWith(7, 42, 'browse')
+    expect(onAddTrack).not.toHaveBeenCalled()
+
+    // A tracklist row moves into the group the same way, keeping its source
+    // so the server pools it out of the tracklist rather than copying it.
+    fireEvent.drop(panel, crossDragData(TRACKLIST_ROW_MIME, 55))
+    expect(onDropTrackToSubgroup).toHaveBeenCalledWith(7, 55, 'tracklist')
+  })
+
+  it('still drops into the bare pool on the All tab', () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const onAddTrack = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      [{ id: 7, set_id: 1, name: 'Warmup', display_order: 0 }],
+      [],
+      { onDropTrackToSubgroup, onAddTrack },
+    )
+    const panel = container.querySelector('.set-pool')!
+    fireEvent.drop(panel, crossDragData(TRACK_DRAG_MIME, 42))
+    expect(onAddTrack).toHaveBeenCalledWith(42, undefined)
+    expect(onDropTrackToSubgroup).not.toHaveBeenCalled()
+  })
 })
 
 describe('SetPoolTable subgroup track drops', () => {
@@ -897,6 +1084,12 @@ describe('SetPoolTable subgroup track drops', () => {
     },
   })
 
+  /** Group tabs are drop targets only while the menu panel is open. */
+  function openTabWrappers(container: HTMLElement) {
+    openGroupMenu(container)
+    return document.querySelectorAll('.pool-tab-wrapper')
+  }
+
   it('maps browse drag onto a subgroup tab to source browse', () => {
     const onDropTrackToSubgroup = vi.fn()
     const { container } = renderPool(
@@ -905,7 +1098,7 @@ describe('SetPoolTable subgroup track drops', () => {
       [],
       { onDropTrackToSubgroup },
     )
-    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    const tabWrapper = openTabWrappers(container)[0]
     fireEvent.drop(tabWrapper, crossDragData(TRACK_DRAG_MIME, 42))
     expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 42, 'browse')
   })
@@ -918,7 +1111,7 @@ describe('SetPoolTable subgroup track drops', () => {
       [],
       { onDropTrackToSubgroup },
     )
-    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    const tabWrapper = openTabWrappers(container)[0]
     fireEvent.drop(tabWrapper, crossDragData(TRACKLIST_ROW_MIME, 55))
     expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 55, 'tracklist')
   })
@@ -931,9 +1124,35 @@ describe('SetPoolTable subgroup track drops', () => {
       [],
       { onDropTrackToSubgroup },
     )
-    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    const tabWrapper = openTabWrappers(container)[0]
     fireEvent.drop(tabWrapper, crossDragData(POOL_ROW_MIME, 10))
     expect(onDropTrackToSubgroup).toHaveBeenCalledWith(1, 10, 'pool')
+  })
+
+  it('files every track of a multi-track drag onto a subgroup tab', async () => {
+    const onDropTrackToSubgroup = vi.fn()
+    const { container } = renderPool(
+      [makePoolEntry({ id: 1, track_id: 10 })],
+      subgroups,
+      [],
+      { onDropTrackToSubgroup },
+    )
+    const tabWrapper = openTabWrappers(container)[0]
+    fireEvent.drop(tabWrapper, {
+      dataTransfer: {
+        types: [TRACK_DRAG_MIME, TRACK_MULTI_MIME],
+        getData: (m: string) =>
+          m === TRACK_MULTI_MIME ? '[42,43]' : m === TRACK_DRAG_MIME ? '42' : '',
+        setData: noop,
+        effectAllowed: '',
+        dropEffect: '',
+      },
+    })
+    await waitFor(() =>
+      expect(onDropTrackToSubgroup.mock.calls.map((call) => call[1])).toEqual([
+        42, 43,
+      ]),
+    )
   })
 
   it('marks subgroup tab as track-drop target while hovering', () => {
@@ -943,7 +1162,7 @@ describe('SetPoolTable subgroup track drops', () => {
       [],
       { onDropTrackToSubgroup: noop },
     )
-    const tabWrapper = container.querySelectorAll('.pool-tab-wrapper')[0]
+    const tabWrapper = openTabWrappers(container)[0]
     fireEvent.dragOver(tabWrapper, crossDragData(TRACK_DRAG_MIME, 42))
     expect(
       tabWrapper.classList.contains('pool-tab-wrapper--track-drop-target'),
@@ -962,7 +1181,7 @@ describe('SetPoolTable subgroup track drops', () => {
       [],
       { onReorderSubgroups },
     )
-    const wrappers = container.querySelectorAll('.pool-tab-wrapper')
+    const wrappers = openTabWrappers(container)
     fireEvent.dragStart(wrappers[0], {
       dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
     })
@@ -970,6 +1189,114 @@ describe('SetPoolTable subgroup track drops', () => {
       dataTransfer: { setData: noop, effectAllowed: '', dropEffect: '' },
     })
     expect(onReorderSubgroups).toHaveBeenCalledWith([2, 1])
+  })
+})
+
+describe('SetPoolTable group menu', () => {
+  const subgroups: PoolSubgroup[] = [
+    { id: 1, set_id: 1, name: 'Warmup', display_order: 0 },
+    { id: 2, set_id: 1, name: 'Peak', display_order: 1 },
+  ]
+
+  function makeEntries(): PoolEntry[] {
+    return [
+      makePoolEntry({ id: 10, track_id: 100, insertion_order: 0 }),
+      makePoolEntry({ id: 20, track_id: 200, insertion_order: 1 }),
+    ]
+  }
+
+  it('renders the trigger in the header trailing slot', () => {
+    const { container } = renderPool(makeEntries(), subgroups)
+    expect(
+      container.querySelector(
+        '.ds-table-header-trailing .pool-group-menu-trigger',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('trigger shows the active tab', async () => {
+    const { container } = renderPool(makeEntries(), subgroups)
+    const label = () =>
+      container.querySelector('.pool-group-menu-label')?.textContent
+    expect(label()).toBe('All')
+    // No color dot while a non-group tab is active.
+    expect(
+      container.querySelector('.pool-group-menu-trigger .subgroup-dot'),
+    ).toBeNull()
+
+    await selectPoolTab(container, 2) // Warmup
+    expect(label()).toBe('Warmup')
+    const dot = container.querySelector<HTMLElement>(
+      '.pool-group-menu-trigger .subgroup-dot',
+    )
+    expect(dot).toBeTruthy()
+    expect(dot!.style.background).toBeTruthy()
+
+    await selectPoolTab(container, 1) // Groups
+    expect(label()).toBe('Groups')
+  })
+
+  it('opening the menu reveals the group tabs and Create new group', () => {
+    const { container } = renderPool(makeEntries(), subgroups)
+    expect(document.querySelector('.pool-group-menu-panel')).toBeNull()
+
+    const tabs = openGroupMenu(container)
+    expect(document.querySelector('.pool-group-menu-panel')).toBeTruthy()
+    expect(Array.from(tabs).map((t) => t.textContent)).toEqual([
+      'All',
+      'Groups',
+      expect.stringMatching(/^Warmup/),
+      expect.stringMatching(/^Peak/),
+    ])
+    expect(
+      screen.getByRole('button', { name: 'Create group' }).textContent,
+    ).toBe('Create new group')
+  })
+
+  it('selecting a group switches the table contents and closes the menu', async () => {
+    const memberships: PoolSubgroupMembership[] = [
+      { id: 1, subgroup_id: 1, pool_entry_id: 10, display_order: 0 },
+    ]
+    const { container } = renderPool(makeEntries(), subgroups, memberships)
+    expect(container.querySelectorAll('tbody tr').length).toBe(2)
+
+    await selectPoolTab(container, 2) // Warmup
+    expect(container.querySelectorAll('tbody tr').length).toBe(1)
+    expect(document.querySelector('.pool-group-menu-panel')).toBeNull()
+  })
+
+  it('closes on Escape and on outside click without changing the tab', () => {
+    const { container } = renderPool(makeEntries(), subgroups)
+    openGroupMenu(container)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.querySelector('.pool-group-menu-panel')).toBeNull()
+
+    openGroupMenu(container)
+    fireEvent.click(document.body)
+    expect(document.querySelector('.pool-group-menu-panel')).toBeNull()
+    // Still on All: both rows visible.
+    expect(container.querySelectorAll('tbody tr').length).toBe(2)
+  })
+
+  it('creating a group from the menu calls the handler and keeps it open', async () => {
+    const onCreateSubgroup = vi.fn().mockResolvedValue({
+      id: 3,
+      set_id: 1,
+      name: 'Cooldown',
+      display_order: 2,
+    })
+    const { container } = renderPool(makeEntries(), subgroups, [], {
+      onCreateSubgroup,
+    })
+    openGroupMenu(container)
+    fireEvent.click(screen.getByRole('button', { name: 'Create group' }))
+    const input = document.querySelector('.subgroup-new-input')!
+    fireEvent.change(input, { target: { value: 'Cooldown' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => {
+      expect(onCreateSubgroup).toHaveBeenCalledWith('Cooldown')
+    })
+    expect(document.querySelector('.pool-group-menu-panel')).toBeTruthy()
   })
 })
 
@@ -1021,5 +1348,94 @@ describe('SetPoolTable filtering', () => {
         (el) => el.textContent,
       ),
     ).toEqual(['Pool Track 20'])
+  })
+})
+
+describe('SetPoolTable columns', () => {
+  const entries = [makePoolEntry({ id: 1, track_id: 10 })]
+
+  /** Column widths as the browser would apply them, read off the <colgroup>. */
+  function colWidths(container: HTMLElement) {
+    const table = container.querySelector('.set-pool-table') as HTMLElement
+    const widths: Record<string, string> = {}
+    table.querySelectorAll('col').forEach((col, i) => {
+      widths[String(i)] = (col as HTMLElement).style.width
+    })
+    return widths
+  }
+
+  function headerFor(container: HTMLElement, label: string): HTMLElement {
+    return within(container).getByLabelText(label).closest('th') as HTMLElement
+  }
+
+  function dragResizer(th: HTMLElement, dx: number) {
+    const resizer = th.querySelector('.col-resizer') as HTMLElement
+    // jsdom reports a zero rect, so the drag starts from 0 and the floor wins
+    // unless dx clears it — which is exactly what the min-width case asserts.
+    fireEvent.mouseDown(resizer, { clientX: 0 })
+    fireEvent.mouseMove(document, { clientX: dx })
+    fireEvent.mouseUp(document)
+  }
+
+  it('gives the Pre. column a resize handle and a drag handle like any other', () => {
+    const { container } = renderPool(entries)
+    const th = headerFor(container, 'Pre.')
+
+    // It used to render as a bare cell, with neither affordance.
+    expect(th.querySelector('.col-resizer')).not.toBeNull()
+    expect(th.querySelector('[draggable="true"]')).not.toBeNull()
+  })
+
+  it('carries Pre. as the dragged column when its header starts a drag', () => {
+    const { container } = renderPool(entries)
+    const handle = headerFor(container, 'Pre.').querySelector(
+      '[draggable="true"]',
+    ) as HTMLElement
+    const setData = vi.fn()
+
+    fireEvent.dragStart(handle, {
+      dataTransfer: { setData, effectAllowed: '', types: [] },
+    })
+
+    expect(setData).toHaveBeenCalledWith('text/plain', 'play')
+  })
+
+  it('resizes only the dragged column, leaving its neighbours alone', () => {
+    const { container } = renderPool(entries)
+    const before = colWidths(container)
+    const resizer = headerFor(container, 'Key').querySelector(
+      '.col-resizer',
+    ) as HTMLElement
+
+    // Asserted mid-drag: on mouse-up the width is handed to the parent, which
+    // is a mock here and so never feeds a new config back in.
+    fireEvent.mouseDown(resizer, { clientX: 0 })
+    fireEvent.mouseMove(document, { clientX: 200 })
+    const during = colWidths(container)
+    fireEvent.mouseUp(document)
+
+    // <col> order is: remove gutter, play, num, title, key, bpm.
+    expect(during['4']).not.toBe(before['4'])
+    for (const i of ['1', '2', '3', '5']) {
+      expect(during[i]).toBe(before[i])
+    }
+  })
+
+  it('lets a column go down to the shared 40px floor', () => {
+    const onColumnWidthFlush = vi.fn()
+    const { container } = renderPool(entries, [], [], { onColumnWidthFlush })
+
+    dragResizer(headerFor(container, 'Title'), -500)
+
+    expect(onColumnWidthFlush).toHaveBeenCalledWith('title', MIN_COL_WIDTH)
+  })
+
+  it('sizes the table to the sum of its columns rather than the container', () => {
+    const { container } = renderPool(entries)
+    const table = container.querySelector('.set-pool-table') as HTMLElement
+
+    // An explicit total is what stops table-layout:fixed redistributing space
+    // between columns on every resize.
+    expect(table.style.width).toMatch(/^\d+px$/)
   })
 })

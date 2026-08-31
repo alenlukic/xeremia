@@ -200,10 +200,9 @@ body,
 }
 
 .search-dropdown {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
+  /* Floated to <body> and pinned to the input by useAnchoredFloating, so the
+     browse widget's clipping containers cannot cut the suggestions short. */
+  position: fixed;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -620,9 +619,7 @@ body,
    and popover anchor right to stay inside the quadrant (pill popovers,
    opening from the left-aligned pills row, keep the default left anchor). */
 .filter-add-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
+  position: fixed;
   display: flex;
   flex-direction: column;
   min-width: 120px;
@@ -652,9 +649,7 @@ body,
 }
 
 .filter-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3868,105 +3863,79 @@ body,
   }
 }
 
-/* === Group navigation rail (pinned to the right of the pool table) === */
+/* === Group navigation dropdown (anchored in the pool table header) === */
 
-.pool-group-rail {
+.pool-group-menu {
   position: relative;
-  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  width: 160px;
-  border-left: 1px solid var(--border);
-  background: var(--surface);
-  overflow: hidden;
-}
-/* Collapsed: the whole spine is a single expand button (no chevron). */
-.pool-group-rail--collapsed {
-  width: 26px;
   align-items: center;
-  justify-content: center;
-  padding: 0;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color var(--transition);
-}
-.pool-group-rail--collapsed:hover {
-  color: var(--text);
-  background: var(--surface-hover);
-}
-.pool-group-rail--collapsed:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
 }
 
-/* Left-edge drag handle: widens/narrows the expanded rail. */
-.pool-group-rail-resizer {
-  position: absolute;
-  top: 0;
-  left: -3px;
-  width: 6px;
-  height: 100%;
-  z-index: 2;
-  cursor: col-resize;
-}
-.pool-group-rail-resizer:hover {
-  background: var(--accent-dim);
-}
-
-/* Collapse/expand control: pinned to the bottom of the rail, centered. */
-.pool-group-rail-toggle {
-  flex: 0 0 auto;
-  order: 2;
-  display: flex;
+/* Compact trigger showing the active tab; matches the shared header-button
+   look (see .ds-header-btn). */
+.pool-group-menu-trigger {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 8px;
-  border: none;
-  border-top: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color var(--transition);
-}
-.pool-group-rail-toggle:hover {
+  max-width: 180px;
+  padding: 4px 8px;
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   color: var(--text);
-}
-.pool-group-rail-chevron {
-  font-size: 20px;
-  line-height: 1;
-}
-/* Vertical "Groups" caption shown on the collapsed spine, above the toggle. */
-.pool-group-rail-spine-label {
-  flex: 1 1 auto;
-  order: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
+  font-family: var(--font-body);
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition),
+    background var(--transition);
+}
+.pool-group-menu-trigger:hover,
+.pool-group-menu-trigger[aria-expanded='true'] {
+  color: var(--accent-emphasis);
+  border-color: var(--accent);
+}
+.pool-group-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pool-group-menu-chevron {
+  margin-left: 5px;
+  font-size: 8px;
   color: var(--text-muted);
+}
+
+/* Popover panel under the trigger; right-anchored (the pool is the right-most
+   quadrant) and visually aligned with .subgroup-modal. Portalled to <body>
+   and fixed at the trigger's viewport position so the pool widget's
+   overflow:hidden containers cannot clip it; top/right come inline. */
+.pool-group-menu-panel {
+  position: fixed;
+  z-index: 60;
+  min-width: 180px;
+  max-width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
 .pool-tab-bar {
-  order: 0;
-  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 2px;
   padding: 6px 6px;
-  overflow-y: auto;
-  min-height: 0;
 }
 
-/* "Create new group" affordance in the rail, mirroring the group dropdown's
-   create item (see .subgroup-modal-create) rather than a bare +. */
+/* "Create new group" affordance at the bottom of the menu, mirroring the
+   group dropdown's create item (see .subgroup-modal-create) rather than a
+   bare +. */
 .pool-tab-create {
-  order: 1;
   margin-top: 4px;
   padding: 6px 8px;
   border: 1px dashed var(--border);
@@ -4307,14 +4276,10 @@ body,
   border-color: var(--accent);
 }
 .subgroup-modal {
-  position: absolute;
-  top: 100%;
-  /* The pool is the right-most quadrant, so a left-anchored menu overflows the
-     viewport edge. Anchor to the cell's right edge and grow leftward instead. */
-  right: 0;
-  left: auto;
+  /* Floated to <body> and right-anchored to the cell (the pool is the
+     right-most quadrant), so the table's scroll container cannot clip it. */
+  position: fixed;
   z-index: 60;
-  margin-top: 4px;
   min-width: 200px;
   max-width: 280px;
   max-height: 240px;
@@ -4474,10 +4439,8 @@ body,
 }
 
 .sort-tier-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 2px;
+  position: fixed;
+  margin: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;

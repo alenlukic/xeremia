@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useDismissOnOutsideClick } from '../../hooks/useDismissOnOutsideClick'
+import { FloatingSurface } from '../FloatingSurface'
+import type { FloatingAlign } from '../FloatingSurface'
 import { FilterIcon } from './icons'
 import {
   filterLabel,
@@ -14,7 +16,7 @@ import {
   type SelectFilter,
 } from './tableFilter'
 
-function NumericPopover({
+function NumericFields({
   value,
   onChange,
 }: {
@@ -22,34 +24,28 @@ function NumericPopover({
   onChange: (f: NumericFilter) => void
 }) {
   return (
-    <div className="filter-popover" role="dialog" aria-label="Numeric filter">
-      <div className="filter-popover-row">
-        <label className="filter-popover-label">Range</label>
-        <input
-          type="number"
-          className="filter-input mono"
-          placeholder="Min"
-          value={value.min ?? ''}
-          onChange={(e) =>
-            onChange({ ...value, min: parseNum(e.target.value) })
-          }
-        />
-        <span className="range-sep">–</span>
-        <input
-          type="number"
-          className="filter-input mono"
-          placeholder="Max"
-          value={value.max ?? ''}
-          onChange={(e) =>
-            onChange({ ...value, max: parseNum(e.target.value) })
-          }
-        />
-      </div>
+    <div className="filter-popover-row">
+      <label className="filter-popover-label">Range</label>
+      <input
+        type="number"
+        className="filter-input mono"
+        placeholder="Min"
+        value={value.min ?? ''}
+        onChange={(e) => onChange({ ...value, min: parseNum(e.target.value) })}
+      />
+      <span className="range-sep">–</span>
+      <input
+        type="number"
+        className="filter-input mono"
+        placeholder="Max"
+        value={value.max ?? ''}
+        onChange={(e) => onChange({ ...value, max: parseNum(e.target.value) })}
+      />
     </div>
   )
 }
 
-function SelectPopover({
+function SelectFields({
   column,
   value,
   onChange,
@@ -66,52 +62,67 @@ function SelectPopover({
     onChange({ values: next })
   }
 
+  if (options.length === 0) {
+    return <p className="filter-popover-empty">No values available</p>
+  }
   return (
-    <div className="filter-popover" role="dialog" aria-label="Value filter">
-      {options.length === 0 ? (
-        <p className="filter-popover-empty">No values available</p>
-      ) : (
-        <div className="filter-option-list">
-          {options.map((option) => (
-            <label key={option} className="filter-option">
-              <input
-                type="checkbox"
-                checked={value.values.includes(option)}
-                onChange={() => toggle(option)}
-              />
-              <span className="mono">{option}</span>
-            </label>
-          ))}
-        </div>
-      )}
+    <div className="filter-option-list">
+      {options.map((option) => (
+        <label key={option} className="filter-option">
+          <input
+            type="checkbox"
+            checked={value.values.includes(option)}
+            onChange={() => toggle(option)}
+          />
+          <span className="mono">{option}</span>
+        </label>
+      ))}
     </div>
   )
 }
 
-/** Renders whichever popover kind the column declares. */
+/**
+ * Renders whichever popover kind the column declares, floated above the widget
+ * so a long option list is never clipped by the table's scroll container.
+ */
 function FilterPopover({
   column,
   value,
   onChange,
+  anchorRef,
+  floatingRef,
+  align,
 }: {
   column: FilterableColumn
   value: ColumnFilter | undefined
   onChange: (f: ColumnFilter) => void
+  anchorRef: React.RefObject<HTMLElement | null>
+  floatingRef: React.RefObject<HTMLDivElement | null>
+  align: FloatingAlign
 }) {
-  if (column.kind === 'select') {
-    return (
-      <SelectPopover
-        column={column}
-        value={isSelectFilter(value) ? value : { values: [] }}
-        onChange={onChange}
-      />
-    )
-  }
+  const isSelect = column.kind === 'select'
   return (
-    <NumericPopover
-      value={value != null && !isSelectFilter(value) ? value : {}}
-      onChange={onChange}
-    />
+    <FloatingSurface
+      anchorRef={anchorRef}
+      floatingRef={floatingRef}
+      align={align}
+      className="filter-popover"
+      role="dialog"
+      ariaLabel={isSelect ? 'Value filter' : 'Numeric filter'}
+    >
+      {isSelect ? (
+        <SelectFields
+          column={column}
+          value={isSelectFilter(value) ? value : { values: [] }}
+          onChange={onChange}
+        />
+      ) : (
+        <NumericFields
+          value={value != null && !isSelectFilter(value) ? value : {}}
+          onChange={onChange}
+        />
+      )}
+    </FloatingSurface>
   )
 }
 
@@ -140,6 +151,7 @@ export function TableFilterAddButton({
   const [menuOpen, setMenuOpen] = useState(false)
   const [openColumn, setOpenColumn] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const floatingRef = useRef<HTMLDivElement>(null)
 
   const anyOpen = menuOpen || openColumn !== null
   useEffect(() => {
@@ -147,7 +159,12 @@ export function TableFilterAddButton({
       return
     }
     function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        ref.current &&
+        !ref.current.contains(target) &&
+        !floatingRef.current?.contains(target)
+      ) {
         setMenuOpen(false)
         setOpenColumn(null)
       }
@@ -184,7 +201,13 @@ export function TableFilterAddButton({
         {icon ?? <FilterIcon />}
       </button>
       {menuOpen && (
-        <div className="filter-add-menu">
+        <FloatingSurface
+          anchorRef={ref}
+          floatingRef={floatingRef}
+          align="right"
+          className="filter-add-menu"
+          role="menu"
+        >
           {columns.map((c) => (
             <button
               key={c.id}
@@ -197,13 +220,16 @@ export function TableFilterAddButton({
               {c.label}
             </button>
           ))}
-        </div>
+        </FloatingSurface>
       )}
       {openColumnDef && (
         <FilterPopover
           column={openColumnDef}
           value={filters[openColumnDef.id]}
           onChange={(f) => onFilterChange(openColumnDef.id, f)}
+          anchorRef={ref}
+          floatingRef={floatingRef}
+          align="right"
         />
       )}
     </div>
@@ -226,7 +252,15 @@ export function TableFilterPills({
 }: PillsProps) {
   const [editColumn, setEditColumn] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
-  useDismissOnOutsideClick(ref, editColumn !== null, () => setEditColumn(null))
+  // Only the pill being edited is tracked; its popover anchors to it.
+  const editPillRef = useRef<HTMLSpanElement | null>(null)
+  const floatingRef = useRef<HTMLDivElement>(null)
+  useDismissOnOutsideClick(
+    ref,
+    editColumn !== null,
+    () => setEditColumn(null),
+    floatingRef,
+  )
 
   const active = columns.filter((c) => isActiveFilter(filters[c.id]))
   if (active.length === 0) {
@@ -236,7 +270,11 @@ export function TableFilterPills({
   return (
     <div className="filter-pills" ref={ref}>
       {active.map((c) => (
-        <span key={c.id} className="filter-pill-group">
+        <span
+          key={c.id}
+          className="filter-pill-group"
+          ref={editColumn === c.id ? editPillRef : undefined}
+        >
           <span className="filter-pill">
             <button
               className="filter-pill-body"
@@ -266,6 +304,9 @@ export function TableFilterPills({
               column={c}
               value={filters[c.id]}
               onChange={(f) => onFilterChange(c.id, f)}
+              anchorRef={editPillRef}
+              floatingRef={floatingRef}
+              align="left"
             />
           )}
         </span>

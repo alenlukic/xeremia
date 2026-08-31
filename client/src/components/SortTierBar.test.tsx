@@ -29,9 +29,10 @@ describe('SortTierBar', () => {
   })
 
   it('shows dropdown menu on +Sort click with available columns', () => {
-    const { container } = renderBar([])
+    renderBar([])
     fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }))
-    const items = container.querySelectorAll('.sort-tier-menu-item')
+    // The menu floats at <body>, clear of the table header's clipping.
+    const items = document.querySelectorAll('.sort-tier-menu-item')
     expect(items.length).toBe(3)
     expect(items[0].textContent).toBe('Title')
     expect(items[1].textContent).toBe('BPM')
@@ -60,9 +61,9 @@ describe('SortTierBar', () => {
   })
 
   it('excludes already-used columns from the +Sort menu', () => {
-    const { container } = renderBar([{ id: 'title', desc: false }])
+    renderBar([{ id: 'title', desc: false }])
     fireEvent.click(screen.getByRole('button', { name: /add sort tier/i }))
-    const items = container.querySelectorAll('.sort-tier-menu-item')
+    const items = document.querySelectorAll('.sort-tier-menu-item')
     expect(items.length).toBe(2)
     const texts = Array.from(items).map((i) => i.textContent)
     expect(texts).not.toContain('Title')

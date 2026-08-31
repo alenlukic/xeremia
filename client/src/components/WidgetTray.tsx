@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDismissOnOutsideClick } from '../hooks/useDismissOnOutsideClick'
+import { FloatingSurface } from './FloatingSurface'
 import type { WidgetId } from '../hooks/useWorkspaceLayout'
 
 // The header control that puts a removed widget back on the canvas. It lists
@@ -15,10 +16,16 @@ export function WidgetTray({ available, labels, onAdd }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
-  useDismissOnOutsideClick(ref, open, () => {
-    setOpen(false)
-    triggerRef.current?.focus()
-  })
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  useDismissOnOutsideClick(
+    ref,
+    open,
+    () => {
+      setOpen(false)
+      triggerRef.current?.focus()
+    },
+    menuRef,
+  )
 
   useEffect(() => {
     if (!open) {
@@ -52,7 +59,13 @@ export function WidgetTray({ available, labels, onAdd }: Props) {
         </span>
       </button>
       {open && (
-        <div className="ws-picker-menu" role="menu">
+        <FloatingSurface
+          anchorRef={ref}
+          floatingRef={menuRef}
+          className="ws-picker-menu"
+          role="menu"
+          ariaLabel="Add widget"
+        >
           {available.map((id) => (
             <button
               key={id}
@@ -66,7 +79,7 @@ export function WidgetTray({ available, labels, onAdd }: Props) {
               {labels[id]}
             </button>
           ))}
-        </div>
+        </FloatingSurface>
       )}
     </div>
   )

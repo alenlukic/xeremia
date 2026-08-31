@@ -1,8 +1,16 @@
 import { useCallback, useState } from 'react'
+import { readTrackDrag } from '../utils'
 
 export interface TrackDropTarget {
   mime: string
   onDropTrack: (trackId: number) => void
+  /**
+   * Handles a whole multi-selection at once. Without it the drop replays
+   * {@link onDropTrack} over each dragged id in order, which is right for
+   * handlers that are independent per track and wrong for any that batch —
+   * those pass this instead.
+   */
+  onDropTracks?: (trackIds: number[]) => void
   /**
    * Must stay within the drag source's `effectAllowed` or browsers reject the
    * drop: row drags out of the tracklist/pool set `effectAllowed = 'move'`.
@@ -17,6 +25,10 @@ export interface TrackDropTarget {
  * the tracklist and pool panels. Internal row-reorder drags carry only
  * `text/plain` and are left untouched, so nested row-level drag handlers keep
  * working inside the container.
+ *
+ * A drag started from a multi-selection carries every selected id, and the
+ * drop applies to all of them; a plain row drag carries one and behaves
+ * exactly as it always has.
  *
  * `dropActive` is true while an accepted drag hovers the container; spread
  * `dropHandlers` onto the container element. With no targets the handlers
@@ -52,16 +64,21 @@ export function useExternalTrackDrop(targets: TrackDropTarget[]) {
       const target = targets.find((t) =>
         e.dataTransfer?.types?.includes(t.mime),
       )
-      if (!target) {
+      if (!target || !e.dataTransfer) {
         return
       }
-      const raw = e.dataTransfer?.getData?.(target.mime)
-      const trackId = Number(raw)
-      if (!raw || !Number.isInteger(trackId)) {
+      const trackIds = readTrackDrag(e.dataTransfer, target.mime)
+      if (trackIds.length === 0) {
         return
       }
       e.preventDefault()
-      target.onDropTrack(trackId)
+      if (target.onDropTracks) {
+        target.onDropTracks(trackIds)
+        return
+      }
+      for (const trackId of trackIds) {
+        target.onDropTrack(trackId)
+      }
     },
     [targets],
   )

@@ -29,7 +29,9 @@ import {
   dateAddedTimestamp,
   formatDateAdded,
   TRACK_DRAG_MIME,
+  writeTrackDrag,
 } from '../utils'
+import type { MultiSelect } from '../hooks/useMultiSelect'
 import { keyDotColor } from '../utils/harmonic'
 import { PlayButton } from './PlayButton'
 import {
@@ -191,6 +193,8 @@ interface Props {
   sorting?: SortingState
   onSortingChange?: OnChangeFn<SortingState>
   scrollRestorationKey?: string
+  /** Row multi-selection, owned by the widget so its header can drive it. */
+  selection: MultiSelect
 }
 
 export const TrackTable = memo(function TrackTable({
@@ -206,6 +210,7 @@ export const TrackTable = memo(function TrackTable({
   sorting: sortingProp,
   onSortingChange: onSortingChangeProp,
   scrollRestorationKey,
+  selection,
 }: Props) {
   const { onResizeStart, shouldIgnoreSortClick } = useColumnResizeGuard()
   const outerRef = useRef<HTMLDivElement>(null)
@@ -624,6 +629,9 @@ export const TrackTable = memo(function TrackTable({
                   const rowClass = [
                     virtualRow.index % 2 === 1 ? 'row-alt' : '',
                     isSelected ? 'row-selected' : '',
+                    selection.isSelected(row.original.id)
+                      ? 'is-multi-selected'
+                      : '',
                   ]
                     .filter(Boolean)
                     .join(' ')
@@ -633,13 +641,22 @@ export const TrackTable = memo(function TrackTable({
                       className={rowClass}
                       draggable
                       onDragStart={(e) => {
-                        e.dataTransfer.setData(
-                          TRACK_DRAG_MIME,
-                          String(row.original.id),
-                        )
+                        // A row inside the selection drags the whole selection.
+                        const ids = selection.isSelected(row.original.id)
+                          ? selection.orderedIds
+                          : [row.original.id]
+                        writeTrackDrag(e.dataTransfer, row.original.id, ids)
                         e.dataTransfer.effectAllowed = 'copy'
                       }}
-                      onClick={() => selectTrack(row.original)}
+                      onClick={(event) => {
+                        selection.select(row.original.id, event)
+                        // A modifier click is building a selection, not asking
+                        // to load this track's matches.
+                        if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                          return
+                        }
+                        selectTrack(row.original)
+                      }}
                     >
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id}>

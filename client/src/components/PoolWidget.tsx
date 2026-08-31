@@ -15,10 +15,12 @@ interface Props {
   onInsertColumnAfter: (afterId: string, columnId: string) => void
   onColumnWidthChange: (columnId: string, width: number) => void
   onColumnWidthFlush: (columnId: string, width: number) => void
-  onRemove: (trackId: number) => void
+  onRemove: (trackId: number) => void | Promise<unknown>
   onReorder: (trackId: number, newPosition: number) => void
   onSetHighlight: (trackId: number, color: string | null) => void
-  onAddTrack: (trackId: number, title?: string) => void
+  // A multi-track drop applies these one at a time, so the promise has to
+  // survive the prop signature for the next track to wait on it.
+  onAddTrack: (trackId: number, title?: string) => void | Promise<unknown>
   onCreateSubgroup: (name: string) => Promise<PoolSubgroup | null>
   onRenameSubgroup: (subgroupId: number, name: string) => Promise<boolean>
   onDeleteSubgroup: (subgroupId: number) => Promise<boolean>
@@ -41,7 +43,7 @@ interface Props {
     trackId: number,
     source: 'browse' | 'tracklist' | 'pool',
   ) => Promise<void>
-  onDropFromTracklist: (trackId: number) => void
+  onDropFromTracklist: (trackId: number) => void | Promise<unknown>
 }
 
 export function PoolWidget({ allTracks, activeSet, ...actions }: Props) {

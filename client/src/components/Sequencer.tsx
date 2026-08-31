@@ -116,7 +116,16 @@ interface Props {
   ) => MutationResult
   onMoveBench: (poolEntryId: number, from: number, to: number) => MutationResult
   onRemove: (trackId: number) => MutationResult
-  onRemoveBenched: (trackId: number) => MutationResult
+  /**
+   * Drop a track from one lane. Lanes are alternative running orders over the
+   * same pool, so this carries the lane and the pool entry: removing from a
+   * lane must not touch the track's place in any other.
+   */
+  onRemoveBenched: (
+    trackId: number,
+    lane: LaneKey,
+    poolEntryId: number,
+  ) => MutationResult
   onAddLane: () => void
   onDeleteLane: (subgroupId: number) => void
   onRenameLane: (subgroupId: number, name: string) => void
@@ -151,13 +160,19 @@ export function Sequencer({
     activeSet?.set.id ?? null,
     activeSet?.set.sequencer,
   )
-  const { startMin, endMin: targetEndMin, view, patch } = settings
+  const { startMin, endMin: targetEndMin, endIsSet, view, patch } = settings
   const setView = useCallback((v: View) => patch({ view: v }), [patch])
   const [selection, setSelection] = useState<LaneSelection>(EMPTY_SELECTION)
   const [clipboard, setClipboard] = useState<SequencerClipboard | null>(null)
   const [cursor, setCursor] = useState<SequencerCursor | null>(null)
   const [clipboardError, setClipboardError] = useState<string | null>(null)
   const pasteInFlightRef = useRef(false)
+  // Inverse actions for tile deletions and moves, popped by Cmd/Ctrl+Z.
+  const undoStackRef = useRef<Array<() => void>>([])
+  // Tracks whose bench time was written before their pool mutation landed.
+  // The pruning effect below must not reap those keys, or a drop at an exact
+  // position would lose the position and fall back to the end of the lane.
+  const pendingBenchTrackIdsRef = useRef<Set<number>>(new Set())
   const [startDraft, setStartDraft] = useState(formatHM(DEFAULT_START_MIN))
   const [endDraft, setEndDraft] = useState(formatHM(DEFAULT_END_MIN))
 
@@ -190,7 +205,8 @@ export function Sequencer({
       setEndDraft(formatHM(targetEndMin))
       return
     }
-    patch({ endMin: clamped })
+    // Typing an end time is what makes it a marker the tracks scale to reach.
+    patch({ endMin: clamped, endIsSet: true })
     setEndDraft(formatHM(clamped))
     setClipboardError(null)
   }, [endDraft, patch, startMin, targetEndMin])
@@ -210,7 +226,8 @@ export function Sequencer({
     subgroups: activeSet?.pool_subgroups ?? [],
     memberships: activeSet?.pool_subgroup_memberships ?? [],
     startMin,
-    endMin: targetEndMin,
+    // Only an end the user chose scales the run to reach it.
+    endMin: endIsSet ? targetEndMin : null,
     onSaved,
     benchTimes: settings.benchTimes,
     benchOverrides: settings.benchOverrides,
@@ -249,8 +266,34 @@ export function Sequencer({
       ...validBenchKeys,
     ])
 
-    const nextBenchTimes = pickKeys(migratedBenchTimes, validBenchKeys)
-    const nextBenchOverrides = pickKeys(migratedBenchOverrides, validBenchKeys)
+    // A pending placement is satisfied once its entry exists in some lane.
+    const pending = pendingBenchTrackIdsRef.current
+    for (const trackId of [...pending]) {
+      const suffix = `:${trackId}`
+      if ([...validBenchKeys].some((key) => key.endsWith(suffix))) {
+        pending.delete(trackId)
+      }
+    }
+    // Keys of still-pending placements survive until the mutation lands. The
+    // lane part may have changed (a virtual default lane materialises into a
+    // real subgroup), so the match goes by track id.
+    const allowedBenchKeys = new Set(validBenchKeys)
+    for (const key of [
+      ...Object.keys(migratedBenchTimes),
+      ...Object.keys(migratedBenchOverrides),
+    ]) {
+      for (const trackId of pending) {
+        if (key.endsWith(`:${trackId}`)) {
+          allowedBenchKeys.add(key)
+        }
+      }
+    }
+
+    const nextBenchTimes = pickKeys(migratedBenchTimes, allowedBenchKeys)
+    const nextBenchOverrides = pickKeys(
+      migratedBenchOverrides,
+      allowedBenchKeys,
+    )
     const nextStarredTiles = pickKeys(migratedStarredTiles, validTileKeys)
     const nextPinnedTiles = pickKeys(migratedPinnedTiles, validTileKeys)
 
@@ -300,6 +343,183 @@ export function Sequencer({
       )
     },
     [sequencer.blocks, sequencer.benchLanes],
+  )
+
+  const pushUndo = useCallback((action: () => void) => {
+    undoStackRef.current.push(action)
+    if (undoStackRef.current.length > 100) {
+      undoStackRef.current.shift()
+    }
+  }, [])
+
+  const undoLast = useCallback(() => {
+    undoStackRef.current.pop()?.()
+  }, [])
+
+  /** Reorder that remembers the previous committed index for undo. */
+  const reorderWithUndo = useCallback(
+    (trackId: number, position: number): MutationResult => {
+      const from = sequencer.blocks.findIndex(
+        (block) => block.entry.track_id === trackId,
+      )
+      if (from >= 0 && from !== position) {
+        pushUndo(() => void onReorder(trackId, from))
+      }
+      return onReorder(trackId, position)
+    },
+    [onReorder, pushUndo, sequencer.blocks],
+  )
+
+  /** Bench time write that survives pruning and remembers the old position. */
+  const setBenchTimeTracked = useCallback(
+    (
+      lane: LaneKey,
+      trackId: number,
+      minutes: number,
+      preserveExact?: boolean,
+    ) => {
+      pendingBenchTrackIdsRef.current.add(trackId)
+      const previous = sequencer.benchLanes
+        .find((l) => laneKeyOf(l.lane) === lane)
+        ?.blocks.find((block) => block.entry.track_id === trackId)
+      if (previous) {
+        pushUndo(() => sequencer.setBenchTime(lane, trackId, previous.t, true))
+      }
+      sequencer.setBenchTime(lane, trackId, minutes, preserveExact)
+    },
+    [pushUndo, sequencer],
+  )
+
+  const setBenchTimesTracked = useCallback(
+    (entries: Record<string, number>) => {
+      const blockByKey = new Map(
+        sequencer.benchLanes.flatMap((lane) =>
+          lane.blocks.map((block) => [block.placementKey, block] as const),
+        ),
+      )
+      const previousTimes: Record<string, number> = {}
+      for (const key of Object.keys(entries)) {
+        const block = blockByKey.get(key)
+        if (block) {
+          previousTimes[key] = block.t
+        }
+      }
+      if (Object.keys(previousTimes).length > 0) {
+        pushUndo(() => sequencer.setBenchTimes(previousTimes))
+      }
+      sequencer.setBenchTimes(entries)
+    },
+    [pushUndo, sequencer],
+  )
+
+  const moveBenchWithUndo = useCallback(
+    (poolEntryId: number, from: number, to: number): MutationResult => {
+      pushUndo(() => void onMoveBench(poolEntryId, to, from))
+      return onMoveBench(poolEntryId, from, to)
+    },
+    [onMoveBench, pushUndo],
+  )
+
+  /** Promote that remembers the source lane placement for undo. */
+  const promoteWithUndo = useCallback(
+    (trackId: number, position: number): MutationResult => {
+      for (const { lane, blocks } of sequencer.benchLanes) {
+        const block = blocks.find((b) => b.entry.track_id === trackId)
+        if (block) {
+          const laneKey = laneKeyOf(lane)
+          pushUndo(() => {
+            pendingBenchTrackIdsRef.current.add(trackId)
+            sequencer.setBenchTime(laneKey, trackId, block.t, true)
+            void onBenchToLane(trackId, laneKey, 'tracklist')
+          })
+          break
+        }
+      }
+      return onPromote(trackId, position)
+    },
+    [onBenchToLane, onPromote, pushUndo, sequencer],
+  )
+
+  const benchToLaneTracked = useCallback(
+    (
+      trackId: number,
+      lane: LaneKey,
+      source: 'browse' | 'pool' | 'tracklist',
+    ): MutationResult => {
+      pendingBenchTrackIdsRef.current.add(trackId)
+      if (source === 'tracklist') {
+        const from = sequencer.blocks.findIndex(
+          (block) => block.entry.track_id === trackId,
+        )
+        if (from >= 0) {
+          pushUndo(() => void onPromote(trackId, from))
+        }
+      }
+      return onBenchToLane(trackId, lane, source)
+    },
+    [onBenchToLane, onPromote, pushUndo, sequencer.blocks],
+  )
+
+  /** Delete tiles from one lane, recording the inverse for Cmd+Z. */
+  const removeTiles = useCallback(
+    (lane: LaneScope, ids: number[]) => {
+      if (ids.length === 0) {
+        return
+      }
+      if (lane === 'committed') {
+        const removals = ids
+          .map((trackId) => ({
+            trackId,
+            index: sequencer.blocks.findIndex(
+              (block) => block.entry.track_id === trackId,
+            ),
+          }))
+          .filter((removal) => removal.index >= 0)
+          .sort((a, b) => a.index - b.index)
+        if (removals.length === 0) {
+          return
+        }
+        pushUndo(() => {
+          for (const { trackId, index } of removals) {
+            void onAddCommitted(trackId, index)
+          }
+        })
+        for (const { trackId } of removals) {
+          void onRemove(trackId)
+        }
+      } else {
+        const laneBlocks = blocksInLane(lane)
+        const removals = ids
+          .map((trackId) =>
+            laneBlocks.find((block) => block.entry.track_id === trackId),
+          )
+          .filter((block) => block != null)
+        if (removals.length === 0) {
+          return
+        }
+        pushUndo(() => {
+          for (const block of removals) {
+            const trackId = block.entry.track_id
+            pendingBenchTrackIdsRef.current.add(trackId)
+            sequencer.setBenchTime(lane, trackId, block.t, true)
+            void onBenchToLane(trackId, lane, 'browse')
+          }
+        })
+        for (const block of removals) {
+          void onRemoveBenched(block.entry.track_id, lane, block.entry.id)
+        }
+      }
+      setSelection(EMPTY_SELECTION)
+    },
+    [
+      blocksInLane,
+      onAddCommitted,
+      onBenchToLane,
+      onRemove,
+      onRemoveBenched,
+      pushUndo,
+      sequencer,
+    ],
   )
 
   const selectBlock = useCallback((lane: LaneScope, trackId: number | null) => {
@@ -355,6 +575,8 @@ export function Sequencer({
     setClipboard(null)
     setCursor(null)
     setClipboardError(null)
+    undoStackRef.current = []
+    pendingBenchTrackIdsRef.current = new Set()
   }, [activeSet?.set.id])
 
   const selectedBlock = useMemo(
@@ -703,18 +925,32 @@ export function Sequencer({
         setSelection(EMPTY_SELECTION)
         return
       }
+      if (
+        (e.key === 'Backspace' || e.key === 'Delete') &&
+        !isEditableTarget(e.target)
+      ) {
+        if (selection.ids.length > 0) {
+          e.preventDefault()
+          removeTiles(selection.lane, selection.ids)
+        }
+        return
+      }
       if (!e.metaKey && !e.ctrlKey) {
         return
       }
       const key = e.key.toLowerCase()
       if (
-        (key !== 'x' && key !== 'c' && key !== 'v') ||
+        (key !== 'x' && key !== 'c' && key !== 'v' && key !== 'z') ||
         isEditableTarget(e.target)
       ) {
         return
       }
       e.preventDefault()
-      if (key === 'x') {
+      if (key === 'z') {
+        if (!e.shiftKey) {
+          undoLast()
+        }
+      } else if (key === 'x') {
         cutSelection()
       } else if (key === 'c') {
         copySelection()
@@ -722,7 +958,14 @@ export function Sequencer({
         void pasteClipboard()
       }
     },
-    [copySelection, cutSelection, pasteClipboard],
+    [
+      copySelection,
+      cutSelection,
+      pasteClipboard,
+      removeTiles,
+      selection,
+      undoLast,
+    ],
   )
 
   if (!activeSet) {
@@ -818,12 +1061,12 @@ export function Sequencer({
             onToggleStar={toggleStar}
             onTogglePin={togglePin}
             onAddCommitted={onAddCommitted}
-            onPromote={onPromote}
-            onReorder={onReorder}
-            onBenchToLane={onBenchToLane}
-            onMoveBench={onMoveBench}
-            onSetBenchTime={sequencer.setBenchTime}
-            onSetBenchTimes={sequencer.setBenchTimes}
+            onPromote={promoteWithUndo}
+            onReorder={reorderWithUndo}
+            onBenchToLane={benchToLaneTracked}
+            onMoveBench={moveBenchWithUndo}
+            onSetBenchTime={setBenchTimeTracked}
+            onSetBenchTimes={setBenchTimesTracked}
             onAddLane={onAddLane}
             onDeleteLane={onDeleteLane}
             onRenameLane={onRenameLane}
@@ -850,10 +1093,10 @@ export function Sequencer({
                 () => onSaved?.(),
               )
             }}
-            onReorder={onReorder}
+            onReorder={reorderWithUndo}
             onAddCommitted={onAddCommitted}
-            onPromote={onPromote}
-            onRemove={onRemove}
+            onPromote={promoteWithUndo}
+            onRemove={(trackId) => removeTiles('committed', [trackId])}
           />
         )}
       </div>
@@ -888,26 +1131,20 @@ export function Sequencer({
         }}
         onBench={() => {
           if (selection.focus != null) {
-            void onBenchToLane(selection.focus, firstLane, 'tracklist')
+            void benchToLaneTracked(selection.focus, firstLane, 'tracklist')
             setSelection(EMPTY_SELECTION)
           }
         }}
         onCommit={() => {
           if (selection.focus != null) {
-            onPromote(selection.focus, sequencer.blocks.length)
+            void promoteWithUndo(selection.focus, sequencer.blocks.length)
             setSelection(EMPTY_SELECTION)
           }
         }}
         onRemove={() => {
-          if (selection.focus == null) {
-            return
+          if (selection.focus != null) {
+            removeTiles(selection.lane, [selection.focus])
           }
-          if (selectedBlock) {
-            onRemove(selection.focus)
-          } else {
-            onRemoveBenched(selection.focus)
-          }
-          setSelection(EMPTY_SELECTION)
         }}
       />
     </div>

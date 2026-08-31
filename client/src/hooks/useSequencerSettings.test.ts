@@ -178,3 +178,14 @@ describe('useSequencerSettings', () => {
     }
   })
 })
+
+describe('end time as a marker', () => {
+  it('only counts as set once the set carries one', () => {
+    // A default nobody chose must not act as a marker: it would stretch the
+    // first track of a new set across the whole default window.
+    expect(fromSettings(null).endIsSet).toBe(false)
+    expect(fromSettings({ start_minutes: 0 }).endIsSet).toBe(false)
+    expect(fromSettings({ end_minutes: 22 }).endIsSet).toBe(true)
+    expect(fromSettings({ end_minutes: 22 }).endMin).toBe(22)
+  })
+})

@@ -3,6 +3,7 @@ import { render, screen, act, fireEvent } from '@testing-library/react'
 import { WorkspaceGrid } from './WorkspaceGrid'
 import type { WorkspacePanel } from './WorkspaceGrid'
 import {
+  DEFAULT_PRESET,
   PRESET_NAMES,
   UNIT_PX,
   overlaps,
@@ -134,10 +135,12 @@ describe('WorkspaceGrid placement', () => {
   it('creates a named layout from the picker after an edit', async () => {
     const layout = await renderGrid()
 
+    // Editing keeps you in the layout you are editing — the pill still names
+    // it rather than dropping to an unnamed placeholder.
     await drag(handle('Browser', 'left'), { dx: -1 })
     expect(
       screen.getByRole('button', { name: 'Layout preset' }),
-    ).toHaveTextContent('Custom')
+    ).toHaveTextContent(DEFAULT_PRESET)
 
     await act(async () => {
       screen.getByRole('button', { name: 'Layout preset' }).click()
@@ -170,9 +173,12 @@ describe('WorkspaceGrid placement', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(layout().preset).toBe('Morning set')
 
+    // Saved layouts are renamed from the row itself, via right-click or a
+    // double-click; built-ins offer neither.
     fireEvent.click(picker)
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename layout…' }))
-    fireEvent.change(screen.getByLabelText('Rename layout'), {
+    fireEvent.contextMenu(screen.getByRole('menuitemradio', { name: 'Morning set' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.change(screen.getByLabelText('Rename Morning set'), {
       target: { value: 'Evening set' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -180,10 +186,40 @@ describe('WorkspaceGrid placement', () => {
     expect(layout().preset).toBe('Evening set')
     expect(layout().presets['Morning set']).toBeUndefined()
   })
+
+  it('deletes a saved layout from its row, leaving built-ins alone', async () => {
+    const layout = await renderGrid()
+    const picker = screen.getByRole('button', { name: 'Layout preset' })
+
+    fireEvent.click(picker)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New layout…' }))
+    fireEvent.change(screen.getByLabelText('New layout name'), {
+      target: { value: 'Morning set' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    fireEvent.click(picker)
+    // Built-ins are ordinary rows: nothing about them is special enough to
+    // withhold the actions every other layout offers.
+    fireEvent.contextMenu(
+      screen.getByRole('menuitemradio', { name: PRESET_NAMES[0] }),
+    )
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
+
+    fireEvent.contextMenu(screen.getByRole('menuitemradio', { name: 'Morning set' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    // Deleting is a two-step, so the first click only arms it.
+    expect(layout().presets['Morning set']).toBeDefined()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Confirm delete' }))
+    expect(layout().presets['Morning set']).toBeUndefined()
+    expect(layout().presets[PRESET_NAMES[0]]).toBeDefined()
+  })
 })
 
 describe('WorkspaceGrid resizing', () => {
-  it('reserves a bottom gutter so resize handles do not cover widget controls', async () => {
+  it('reserves bottom and right gutters so resize handles cover neither controls nor scrollbars', async () => {
     await renderGrid()
 
     const browser = panel('Browser')
@@ -374,5 +410,246 @@ describe('WorkspaceGrid widget controls', () => {
     await renderGrid()
 
     expect(screen.queryByRole('button', { name: 'Add widget' })).toBeNull()
+  })
+})
+
+describe('WorkspaceGrid maximize', () => {
+  it('fills the canvas with one widget and restores the saved layout untouched', async () => {
+    const layout = await renderGrid()
+    const before = rect('Browser')
+    const placeBefore = { ...layout().place }
+
+    await act(async () => {
+      screen.getByLabelText('Maximize Browser').click()
+    })
+
+    // The rest step aside rather than being re-placed.
+    expect(screen.queryByLabelText('Matches')).toBeNull()
+    expect(screen.queryByLabelText('Pool')).toBeNull()
+    expect(rect('Browser')).toEqual({
+      x: 0,
+      y: 0,
+      w: BOUNDS.cols,
+      h: BOUNDS.rows,
+    })
+    // Maximizing is a view state, so the stored rectangles never move.
+    expect(layout().place).toEqual(placeBefore)
+
+    await act(async () => {
+      screen.getByLabelText('Restore Browser').click()
+    })
+
+    expect(rect('Browser')).toEqual(before)
+    expect(screen.getByLabelText('Matches')).toBeInTheDocument()
+    expect(layout().place).toEqual(placeBefore)
+  })
+
+  it('suspends drag and resize while maximized', async () => {
+    await renderGrid()
+    expect(handle('Browser', 'bottom')).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByLabelText('Maximize Browser').click()
+    })
+
+    expect(
+      panel('Browser').querySelector('.ws-handle'),
+    ).toBeNull()
+    expect(
+      panel('Browser').querySelector('.wf-bar--draggable'),
+    ).toBeNull()
+  })
+})
+
+describe('WorkspaceGrid nav bar', () => {
+  it('reveals on hover after a dwell and hides again after leaving', async () => {
+    vi.useFakeTimers()
+    try {
+      await renderGrid()
+      const header = document.querySelector('.ws-header') as HTMLElement
+
+      // Starts out of the way so the canvas gets the whole shell.
+      expect(header.className).toContain('ws-header--hidden')
+
+      fireEvent.mouseMove(document, { clientY: 20 })
+      await act(async () => {
+        vi.advanceTimersByTime(299)
+      })
+      expect(header.className).toContain('ws-header--hidden')
+      await act(async () => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(header.className).not.toContain('ws-header--hidden')
+
+      fireEvent.mouseMove(document, { clientY: 400 })
+      await act(async () => {
+        vi.advanceTimersByTime(599)
+      })
+      expect(header.className).not.toContain('ws-header--hidden')
+      await act(async () => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(header.className).toContain('ws-header--hidden')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('summons from anywhere in the top band, including over a widget', async () => {
+    vi.useFakeTimers()
+    try {
+      await renderGrid()
+      const header = document.querySelector('.ws-header') as HTMLElement
+
+      // The pointer is over a widget, not the bar's own sliver. Proximity to
+      // the top edge is what counts, so the reveal still fires.
+      fireEvent.mouseMove(panel('Browser'), { clientY: 28 })
+      await act(async () => {
+        vi.advanceTimersByTime(300)
+      })
+
+      expect(header.className).not.toContain('ws-header--hidden')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ignores pointer movement below the band', async () => {
+    vi.useFakeTimers()
+    try {
+      await renderGrid()
+      const header = document.querySelector('.ws-header') as HTMLElement
+
+      fireEvent.mouseMove(document, { clientY: 60 })
+      await act(async () => {
+        vi.advanceTimersByTime(2000)
+      })
+
+      expect(header.className).toContain('ws-header--hidden')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not summon over a widget title bar, so its controls stay clickable', async () => {
+    vi.useFakeTimers()
+    try {
+      await renderGrid()
+      const header = document.querySelector('.ws-header') as HTMLElement
+
+      await act(async () => {
+        screen.getByLabelText('Maximize Browser').click()
+      })
+      const bar = panel('Browser').querySelector('.wf-bar') as HTMLElement
+
+      // Reaching for Restore, which sits at y 15-35 on a maximized widget.
+      fireEvent.mouseMove(bar, { clientY: 25 })
+      await act(async () => {
+        vi.advanceTimersByTime(2000)
+      })
+      expect(header.className).toContain('ws-header--hidden')
+      expect(screen.getByLabelText('Restore Browser')).toBeInTheDocument()
+
+      // The extreme top edge still summons it, so the bar is never stranded.
+      fireEvent.mouseMove(bar, { clientY: 4 })
+      await act(async () => {
+        vi.advanceTimersByTime(300)
+      })
+      expect(header.className).not.toContain('ws-header--hidden')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stays revealed while a menu inside it is open', async () => {
+    vi.useFakeTimers()
+    try {
+      await renderGrid()
+      const header = document.querySelector('.ws-header') as HTMLElement
+
+      fireEvent.mouseMove(document, { clientY: 20 })
+      await act(async () => {
+        vi.advanceTimersByTime(300)
+      })
+
+      await act(async () => {
+        screen.getByRole('button', { name: 'Layout preset' }).click()
+      })
+      fireEvent.mouseMove(document, { clientY: 400 })
+      await act(async () => {
+        vi.advanceTimersByTime(2000)
+      })
+
+      // Reaching for an open menu must not pull the bar out from under it.
+      expect(header.className).not.toContain('ws-header--hidden')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('WorkspaceGrid layout row actions', () => {
+  it('still responds to right-click once every saved layout is gone', async () => {
+    const layout = await renderGrid()
+    const picker = screen.getByRole('button', { name: 'Layout preset' })
+
+    fireEvent.click(picker)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New layout…' }))
+    fireEvent.change(screen.getByLabelText('New layout name'), {
+      target: { value: 'Only one' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    fireEvent.click(picker)
+    fireEvent.contextMenu(screen.getByRole('menuitemradio', { name: 'Only one' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Confirm delete' }))
+    expect(layout().presets['Only one']).toBeUndefined()
+
+    // Only built-ins are left. Right-click has to keep answering, or deleting
+    // the last saved layout looks like it broke the whole feature.
+    fireEvent.contextMenu(
+      screen.getByRole('menuitemradio', { name: PRESET_NAMES[1] }),
+    )
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
+  })
+
+  it('hides a deleted built-in and brings the whole set back on restore', async () => {
+    const layout = await renderGrid()
+    const picker = screen.getByRole('button', { name: 'Layout preset' })
+
+    fireEvent.click(picker)
+    fireEvent.contextMenu(
+      screen.getByRole('menuitemradio', { name: PRESET_NAMES[0] }),
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Confirm delete' }))
+    expect(layout().presets[PRESET_NAMES[0]]).toBeUndefined()
+
+    // A built-in is generated from code, so removing it has to be reversible —
+    // otherwise one click destroys something the user cannot rebuild. The menu
+    // is still open: confirming a delete dismisses only the context menu.
+    fireEvent.click(screen.getByRole('menuitem', { name: /Restore built-in/ }))
+    expect(layout().presets[PRESET_NAMES[0]]).toBeDefined()
+  })
+
+  it('renames a built-in by saving it under the new name', async () => {
+    const layout = await renderGrid()
+    const picker = screen.getByRole('button', { name: 'Layout preset' })
+
+    fireEvent.click(picker)
+    fireEvent.contextMenu(
+      screen.getByRole('menuitemradio', { name: PRESET_NAMES[0] }),
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.change(screen.getByLabelText(`Rename ${PRESET_NAMES[0]}`), {
+      target: { value: 'My layout' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    // The new name holds the same rectangles, and the original is gone —
+    // renaming that left the old name behind would just be copying.
+    expect(layout().presets['My layout']).toBeDefined()
+    expect(layout().presets[PRESET_NAMES[0]]).toBeUndefined()
   })
 })

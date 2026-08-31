@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  effectivePlayedBpm,
+  displayBpm,
   type BenchBlock,
   type BlockOverride,
   type LaidBlock,
@@ -44,7 +44,7 @@ export function SequencerFooter({
       <BlockInspector
         key={`committed-${block.entry.track_id}`}
         title={displayTitle(block.entry.track, block.entry.track_id)}
-        bpmSeed={effectivePlayedBpm(block, overrides)}
+        bpmSeed={displayBpm(block, overrides)}
         inSeed={block.t}
         outSeed={block.t + block.dur}
         onOutChange={(minutes) => onPatch({ endPin: minutes })}

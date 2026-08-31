@@ -15,6 +15,12 @@ const SAVE_DEBOUNCE_MS = 400
 export interface SequencerView {
   startMin: number
   endMin: number
+  /**
+   * True once the set carries an end time of its own. Only then does the end
+   * act as a marker the tracks are scaled to reach — a default nobody chose
+   * would otherwise stretch the first track of a new set across hours.
+   */
+  endIsSet: boolean
   pxPerMin: number
   view: 'lanes' | 'list'
   benchTimes: Record<string, number>
@@ -27,6 +33,7 @@ export function defaultView(): SequencerView {
   return {
     startMin: DEFAULT_START_MIN,
     endMin: DEFAULT_END_MIN,
+    endIsSet: false,
     pxPerMin: DEFAULT_PX_PER_MIN,
     view: 'lanes',
     benchTimes: {},
@@ -58,6 +65,8 @@ export function fromSettings(raw: SequencerSettings | null | undefined) {
   return {
     startMin: num(raw.start_minutes, d.startMin),
     endMin: num(raw.end_minutes, d.endMin),
+    endIsSet: typeof raw.end_minutes === 'number' &&
+      Number.isFinite(raw.end_minutes),
     pxPerMin: num(raw.px_per_min, d.pxPerMin),
     view: raw.view === 'list' ? ('list' as const) : ('lanes' as const),
     benchTimes: storedKeys(raw.bench_times),

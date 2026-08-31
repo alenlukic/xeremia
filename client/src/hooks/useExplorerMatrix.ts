@@ -8,10 +8,12 @@ import {
   pairTracks,
 } from '../utils/harmonic'
 import type { PairResult } from '../utils/harmonic'
-import type { PoolEntry, Track } from '../types'
+import type { Track } from '../types'
 
-// The BPM cohort matrix: 24 literal Camelot rows × 26 geometric BPM buckets.
-// The axes are fixed, so a cell address means the same thing for every set.
+// The BPM cohort matrix: 26 geometric BPM bucket rows × 24 literal Camelot
+// columns. The axes are fixed, so a cell address means the same thing for
+// every set. Internally a cell keeps its historical (r, c) address: r indexes
+// CAMELOT_ROWS and c indexes the BPM buckets, whichever way they render.
 
 /**
  * Cell geometry. Developer constants: the mock allows 18–34px, and the shipped
@@ -37,12 +39,11 @@ export function cellKey(r: number, c: number): string {
   return `${r}:${c}`
 }
 
-/** Group plottable pool tracks into their key × BPM cohort. */
-export function bucketPool(pool: PoolEntry[]): Map<string, Track[]> {
+/** Group plottable tracks into their key × BPM cohort. */
+export function bucketTracks(tracks: Track[]): Map<string, Track[]> {
   const buckets = new Map<string, Track[]>()
-  for (const entry of pool) {
-    const track = entry.track
-    if (!track || track.camelot_code == null || track.bpm == null) {
+  for (const track of tracks) {
+    if (track.camelot_code == null || track.bpm == null) {
       continue
     }
     const row = CAMELOT_ROWS.indexOf(track.camelot_code)
@@ -67,7 +68,7 @@ export interface MatrixFocus {
 }
 
 export function useExplorerMatrix(
-  pool: PoolEntry[],
+  tracks: Track[],
   focus?: MatrixFocus | null,
 ) {
   const [selected, setSelected] = useState<MatrixCell | null>(null)
@@ -102,7 +103,7 @@ export function useExplorerMatrix(
     }
   }
 
-  const buckets = useMemo(() => bucketPool(pool), [pool])
+  const buckets = useMemo(() => bucketTracks(tracks), [tracks])
 
   const cohort = useCallback(
     (r: number, c: number) => buckets.get(cellKey(r, c)) ?? [],
@@ -169,11 +170,11 @@ export function useExplorerMatrix(
     selected,
     hover,
     inspectorOpen,
-    /** Side of the grid the inspector opens on: the far half from the selection. */
-    inspectorSide:
-      selected && selected.c >= MATRIX_COLS / 2
-        ? ('left' as const)
-        : ('right' as const),
+    /**
+     * True while the lit cell came from the workspace focus rather than a
+     * click, which is what the grid scrolls to bring into view.
+     */
+    focusDriven,
     selectedCohort: selected ? cohort(selected.r, selected.c) : [],
     cohort,
     bpmOf,

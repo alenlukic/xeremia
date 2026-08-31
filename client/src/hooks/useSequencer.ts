@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { tracklistSetOverrides } from '../api/http'
-import { DUR_MAX, DUR_MIN, colForBpm } from '../utils/harmonic'
+import { colForBpm } from '../utils/harmonic'
 import type {
   PoolEntry,
   PoolSubgroup,
@@ -27,8 +27,6 @@ export const FALLBACK_LEN_MIN = 5
 export const SNAP_MIN = 0.5
 
 /** The bench lane that exists before any subgroup does. */
-export const DEFAULT_LANE_NAME = 'Alt 1'
-
 /**
  * Ruler spacing follows the zoom: the coarsest tick that still leaves a
  * readable gap between labels wins, so there is nothing to pick by hand.
@@ -75,10 +73,7 @@ export interface BenchBlock {
 }
 
 export interface SequencerLane {
-  /**
-   * Null only on the virtual default lane, which exists while the set has no
-   * pool subgroup. The first drop on it creates the backing subgroup.
-   */
+  /** Backing pool subgroup. Null is retained only for legacy helper callers. */
   group: PoolSubgroup | null
   name: string
   entries: PoolEntry[]
@@ -143,15 +138,16 @@ export function buildOverrideMap(
 }
 
 /**
- * Committed lane packs end-to-end from startMin. A pinned end proportionally
- * scales the run before it, but every block's length is clamped to
- * [base·(1−0.083), base·(1+0.0905)] — the BPM pitch window always wins. When
- * the clamp makes a pin unreachable, the next run continues from the length the
- * clamp allowed, so the lane never gains a gap or an overlap.
+ * Committed lane packs end-to-end from startMin. Each track plays
+ * {@link PLAY_FRACTION} of its length by default; a pinned end scales the run
+ * before it by one common factor, which spreads the difference across the run
+ * in proportion to how long each track is. `targetEndMin` acts as a pin on the
+ * final run, so moving the set's end redistributes the same way.
  *
- * `targetEndMin` scales the final unpinned run the same way, so changing the
- * set's end time stretches or squeezes the tracks to fit it — within the pitch
- * window, which still wins.
+ * Nothing is clamped to a pitch window. The scaled lengths are a plan for how
+ * the set is shaped, not an instruction to a deck, so constraining them to what
+ * is playable bought nothing and made the timings miss the marks they were
+ * asked to hit.
  */
 export function layoutCommitted(
   entries: TracklistEntry[],
@@ -163,16 +159,10 @@ export function layoutCommitted(
 ): LaidBlock[] {
   const base = (e: TracklistEntry) =>
     ov[e.track_id]?.durOv ?? Math.round(PLAY_FRACTION * durationOf(e) * 10) / 10
-  const playedRatio = (e: TracklistEntry) => {
-    const bpm = e.track?.bpm
-    const set = ov[e.track_id]?.bpmOv
-    if (!bpm || set == null) {
-      return 1
-    }
-    const clamped = Math.max(bpm * DUR_MIN, Math.min(bpm * DUR_MAX, set))
-    return bpm / clamped
-  }
-  const natural = (e: TracklistEntry) => base(e) * playedRatio(e)
+  // A hand-set BPM is an annotation — typically the BPM a track is mixed out
+  // at, noted so the point can be found again — and annotating the mix must
+  // not silently retime the set. Play length is its own override.
+  const natural = (e: TracklistEntry) => base(e)
   const list = entries.slice().sort((a, b) => a.position - b.position)
   const out: LaidBlock[] = []
   let cursor = startMin
@@ -190,8 +180,7 @@ export function layoutCommitted(
       const f = nat > 0 ? Math.max(0.05, (pin - cursor) / nat) : 1
       for (const e of seg) {
         const n = natural(e)
-        const b = base(e)
-        const d = Math.max(b * DUR_MIN, Math.min(b * DUR_MAX, n * f))
+        const d = n * f
         out.push({
           entry: e,
           t: cursor,
@@ -214,9 +203,7 @@ export function layoutCommitted(
           : 1
       for (const e of seg) {
         const n = natural(e)
-        const b = base(e)
-        const d =
-          f === 1 ? n : Math.max(b * DUR_MIN, Math.min(b * DUR_MAX, n * f))
+        const d = n * f
         out.push({
           entry: e,
           t: cursor,
@@ -233,36 +220,26 @@ export function layoutCommitted(
   return out
 }
 
-/** Effective played BPM after overrides and auto-scale (original when unset). */
-export function effectivePlayedBpm(
-  block: LaidBlock,
-  ov: OverrideMap,
-  durationOf: (e: TracklistEntry) => number = (e) =>
-    trackLengthMinutes(e.track),
-): number | null {
-  const bpm = block.entry.track?.bpm
-  if (!bpm) {
-    return null
-  }
-  const base =
-    ov[block.entry.track_id]?.durOv ??
-    Math.round(PLAY_FRACTION * durationOf(block.entry) * 10) / 10
-  return (bpm * base) / block.dur
+/**
+ * The BPM to show for a block: the track's own, or the one the user set. It is
+ * deliberately not back-computed from how far the run was scaled — that number
+ * is not what anyone would actually play, and reading it as a suggestion is
+ * worse than reading nothing.
+ */
+export function displayBpm(block: LaidBlock, ov: OverrideMap): number | null {
+  return ov[block.entry.track_id]?.bpmOv ?? block.entry.track?.bpm ?? null
 }
 
 /**
- * Alternative lanes map one to one onto the set's pool subgroups. A set with no
- * subgroup shows one virtual default lane instead, and the first drop on that
- * lane creates the backing subgroup, which then replaces it.
+ * Alternative lanes map one to one onto the set's pool subgroups. There is no
+ * virtual fallback: every displayed lane is therefore renameable/deletable,
+ * and the add-lane control visibly creates the first lane.
  */
 export function deriveLanes(
   pool: PoolEntry[],
   subgroups: PoolSubgroup[],
   memberships: PoolSubgroupMembership[],
 ): SequencerLane[] {
-  if (subgroups.length === 0) {
-    return [{ group: null, name: DEFAULT_LANE_NAME, entries: pool.slice() }]
-  }
   const byEntry = new Map(pool.map((e) => [e.id, e]))
   return subgroups
     .slice()
@@ -472,17 +449,36 @@ export function planBenchDrop(
     return start
   }
 
+  const movable = stationary
+    .filter((candidate) => !pinnedTiles[candidate.placementKey])
+    .sort((a, b) => a.t - b.t)
+
+  // Which side of a tile the drop lands on decides the running order. Past a
+  // tile's midpoint means "this track plays after that one" — the gesture for
+  // butting a track up against the one it should follow — so that tile holds
+  // its place and the dropped tile snaps to its end. Only a drop in a tile's
+  // leading half inserts ahead of it and pushes it right. Deciding on overlap
+  // alone used to shunt the left-hand tile to the right of the one just
+  // dropped beside it, inverting the very order the drag was expressing.
+  const precede = movable.filter(
+    (block) => block.t + block.dur / 2 <= desiredStart,
+  )
+  const follow = movable.filter(
+    (block) => block.t + block.dur / 2 > desiredStart,
+  )
+
   const times: Record<string, number> = {}
-  const movingStart = afterFixedSpans(desiredStart, moving.dur)
+  let movingStart = afterFixedSpans(desiredStart, moving.dur)
+  // Clear every tile the drop chose to sit after, so a drop that overlaps one
+  // lands flush against its end rather than on top of it.
+  for (const block of precede) {
+    movingStart = Math.max(movingStart, block.t + block.dur)
+  }
+  movingStart = afterFixedSpans(movingStart, moving.dur)
   times[moving.placementKey] = movingStart
   let occupiedEnd = movingStart + moving.dur
 
-  for (const block of stationary
-    .filter((candidate) => !pinnedTiles[candidate.placementKey])
-    .sort((a, b) => a.t - b.t)) {
-    if (block.t + block.dur <= movingStart + DROP_EPSILON) {
-      continue
-    }
+  for (const block of follow) {
     let next = block.t
     if (next < occupiedEnd - DROP_EPSILON) {
       next = occupiedEnd
