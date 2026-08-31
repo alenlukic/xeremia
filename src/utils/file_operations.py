@@ -1,53 +1,13 @@
-from os import listdir, makedirs, remove, stat as osstat
-from os.path import dirname, isfile, join, splitext
+from os import makedirs, stat as osstat
+from os.path import dirname, isfile, join
 from shutil import copyfile
 
 from src.config import IS_UNIX, PROCESSED_MUSIC_DIR
-from src.utils.audio_path import clear_audio_path_cache, resolve_audio_path
+from src.utils.audio_path import resolve_audio_path
 from src.utils.common import join_config_paths
 
 AUDIO_TYPES = {".mp3", ".wav", ".flac", ".ogg", ".aif", ".aiff", ".m3u"}
 FILE_STAGING_DIR = join_config_paths([["DATA", "ROOT"], ["DATA", "FILE_STAGING_DIR"]])
-
-
-def delete_track_files(track, track_directory=PROCESSED_MUSIC_DIR):
-    file_name = track.file_name
-    file_path = resolve_audio_path(track_directory, file_name)
-    if file_path is not None:
-        remove(file_path)
-        clear_audio_path_cache()
-
-    if FILE_STAGING_DIR is None:
-        return
-
-    staging_path = join(FILE_STAGING_DIR, file_name)
-    if isfile(staging_path):
-        remove(staging_path)
-
-
-def get_audio_files(input_dir=PROCESSED_MUSIC_DIR):
-    return [
-        f
-        for f in listdir(input_dir)
-        if isfile(join(input_dir, f)) and splitext(f)[-1].lower() in AUDIO_TYPES
-    ]
-
-
-def get_flac_files(input_dir):
-    return [
-        f
-        for f in listdir(input_dir)
-        if isfile(join(input_dir, f)) and splitext(f)[-1].lower() == ".flac"
-    ]
-
-
-def get_lossless_files(input_dir):
-    lossless_exts = {".flac", ".wav"}
-    return [
-        f
-        for f in listdir(input_dir)
-        if isfile(join(input_dir, f)) and splitext(f)[-1].lower() in lossless_exts
-    ]
 
 
 def get_file_creation_time(full_path):

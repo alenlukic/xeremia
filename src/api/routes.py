@@ -51,8 +51,6 @@ from src.api.schemas import (
     TrackResponse,
     TrackTraitResponse,
     TransitionMatchResponse,
-    TransitionScoreRequest,
-    TransitionScoreResponse,
     WeightResponse,
     WeightUpdateRequest,
 )
@@ -495,52 +493,6 @@ def api_update_weights(body: WeightUpdateRequest):
 # ---------------------------------------------------------------------------
 # Set builder
 # ---------------------------------------------------------------------------
-
-
-@router.post("/sets/transition-scores", response_model=TransitionScoreResponse)
-def api_transition_scores(body: TransitionScoreRequest):
-    """Compute transition scores for a list of adjacent track pairs."""
-    from src.models.track import Track
-
-    session = _get_session()
-    try:
-        finder = _get_match_finder()
-
-        source_ids = {p[0] for p in body.pairs if len(p) == 2}
-        match_cache: dict = {}
-        for sid in source_ids:
-            source = session.query(Track).filter_by(id=sid).first()
-            if source is None:
-                continue
-            result = finder.get_transition_matches(source)
-            if result is None:
-                continue
-            (same_key, higher_key, lower_key), _ = result
-            scores: dict = {}
-            for m in same_key + higher_key + lower_key:
-                cid = m.metadata.get(TrackDBCols.ID)
-                if cid is not None:
-                    scores[cid] = round(m.get_score(), 2)
-            match_cache[sid] = scores
-
-        results = []
-        for pair in body.pairs:
-            if len(pair) != 2:
-                results.append(None)
-                continue
-            sid, cid = pair
-            source_scores = match_cache.get(sid, {})
-            results.append(source_scores.get(cid))
-
-        return {"scores": results}
-    except HTTPException:
-        raise
-    except Exception:
-        session.rollback()
-        logger.exception("Transition score computation failed")
-        raise HTTPException(status_code=500, detail="Score computation failed")
-    finally:
-        session.close()
 
 
 @router.post("/sets/export-m3u8", response_model=SetExportResponse)

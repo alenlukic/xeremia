@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.db.database import Database
 from src.track_metadata import research
 from src.track_metadata.research import LegacyArtistGenreIndex, SqlAlchemyTrackRepository
 
@@ -141,3 +142,13 @@ def test_artist_match_scores_each_distinct_name_once(monkeypatch):
 
     assert counts.matched_track_count == 50
     assert scored == ["Shared Name", "Other Name"]
+
+
+def test_build_through_database_session_wrapper():
+    """Production wires the Database session wrapper, whose query() must
+    forward multi-column queries to the underlying session."""
+    wrapper = Database._Database__Session(_RecordingSession(_legacy_rows()))
+
+    index = LegacyArtistGenreIndex.build(wrapper)
+
+    assert index.legacy_genre_totals() == {"Techno": 2, "House": 1}

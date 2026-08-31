@@ -39,9 +39,9 @@
 
 ## Testing
 
-- Tests under `src/tests/`
+- Tests under top-level `tests/`
 - Test data alongside tests in `test_data/` subdirectories
-- Runner: `python -m pytest src/tests/ -v`
+- Runner: `python -m pytest tests -m "not integration and not slow"`
 - Test naming: `test_<module_or_feature>.py`
 - Prefer behavior-level tests over implementation-coupled tests
 - Tests requiring external services (e.g., Elasticsearch) use `pytest.mark.skipif` to skip gracefully when unavailable
@@ -173,12 +173,6 @@
   `BPM` are dedicated fixed-width columns, not inline metadata in the title
   cell.
   (evidence: ledger `20260410T004351Z`)
-- Explorer horizontal node placement is persisted as `col_index` on
-  `SetExplorerNode`. Use stored `col_index` values and smallest-gap-first
-  assignment instead of deriving columns from array position. Sparse indices
-  are an accepted invariant — width, rightmost-node, and edge-slot logic must
-  use occupied indices rather than sibling counts.
-  (evidence: ledgers `20260411T064618Z`, `20260410T034725Z`)
 - Explorer interaction modes (node selection, edge selection, swap mode,
   drag-to-connect, modal editing) must be mutually exclusive with explicit
   handoff rules. Any new mode entry must explicitly clear conflicting
@@ -189,21 +183,10 @@
   `Backspace` for edge deletion) must guard against active editable focus
   (`input`, `textarea`) before performing destructive actions.
   (evidence: ledgers `20260410T034738Z`, `20260410T050627Z`)
-- Explorer edge routing uses Y-based horizontal lanes computed from
-  `laneIndex = parentColIdx * EDGE_SLOTS + childColIdx`. Camera math is
-  sign-sensitive; regression tests should assert direction and origin
-  explicitly, not only that values changed.
-  (evidence: ledgers `20260410T204841Z`, `20260412T101355Z`)
 - For explorer-level add affordances, expand drop targets with invisible
   transparent rects rather than changing visible button styling, so the
   droppable is reliably hittable while preserving existing appearance.
   (evidence: ledger `20260412T101355Z`)
-- Explorer multi-tree support uses persisted `SetExplorerTree` records with
-  `tree_id` scoping for nodes and edges. Tree-aware backend mutations must
-  carry or validate `tree_id` explicitly on every path; frontend selection
-  alone is not sufficient isolation.
-  (evidence: ledger `20260412T163104Z`)
-
 ### React performance
 
 - `React.memo` is only effective when memoized children receive primitives or
@@ -326,16 +309,6 @@
   actual injected objects and argument passthrough explicitly; otherwise
   orchestration regressions stay falsely green.
   (evidence: ledger `20260410T060143Z`)
-
-### Ingestion pipeline
-
-- `TAG_COLUMNS` in `ingestion_pipeline/config.py` is a shared base for ALL factory
-  stages. Only add a column if ALL stages' DB tables have that column. Stage-specific
-  fields go in `update_row()` overrides (Template Method pattern).
-- When `_get_final_bpm` or `_get_final_key` returns `None`, downstream write
-  operations must guard before numeric conversions.
-- When changing a function from "always returns a value" to "may return None",
-  audit all callers for `float(x)`, `int(x)`, and attribute access on the result.
 
 ### Audio format conversion
 
