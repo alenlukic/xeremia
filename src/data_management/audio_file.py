@@ -17,6 +17,7 @@ from src.data_management.config import (
     TrackDBCols,
 )
 from src.utils.common import is_empty
+from src.data_management.genre_vocabulary import resolve_canonical_genre
 from src.data_management.utils import (
     dedupe_title,
     load_comment,
@@ -75,6 +76,10 @@ class AudioFile:
         camelot_code = AudioFile.format_camelot_code(key)
         title = dedupe_title(self.generate_title(camelot_code, key, bpm))
 
+        genre = resolve_canonical_genre(
+            transform_genre(self.get_tag(ID3Tag.GENRE, "")),
+            context="audio_file.generate_metadata",
+        )
         metadata = {
             TrackDBCols.FILE_NAME.value: self.file_name,
             TrackDBCols.TITLE.value: title,
@@ -82,10 +87,11 @@ class AudioFile:
             TrackDBCols.KEY.value: key,
             TrackDBCols.CAMELOT_CODE.value: camelot_code,
             TrackDBCols.ENERGY.value: self.parse_energy(),
-            TrackDBCols.GENRE.value: transform_genre(self.get_tag(ID3Tag.GENRE, "")),
             TrackDBCols.LABEL.value: transform_label(self.get_tag(ID3Tag.LABEL, "")),
             TrackDBCols.DATE_ADDED.value: ctime(get_file_creation_time(self.full_path)),
         }
+        if genre is not None:
+            metadata[TrackDBCols.GENRE.value] = genre
         metadata = {k: v for k, v in metadata.items() if not is_empty(v)}
         metadata[TrackDBCols.COMMENT.value] = self.generate_comment(metadata)
 

@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable, Iterable
 from typing import Any, Optional
 
+from src.data_management.genre_vocabulary import resolve_canonical_genre
 from src.data_management.utils import split_artist_string, transform_genre
 from src.track_metadata.research import (
     ArtistGenreCounts,
@@ -20,10 +21,13 @@ _PLACEHOLDER_ARTISTS = frozenset(
     {"unknown", "various artists", "va", "n/a", "none", "artist unknown"}
 )
 _SOURCE_PRIORITY = (
-    "beatport",
-    "lastfm",
+    "beatport_tag",
     "musicbrainz",
     "discogs",
+    "artist_history",
+    "beatport_artist",
+    "lastfm",
+    "beatport_search",
     "web_search",
     "acoustid",
 )
@@ -52,7 +56,9 @@ def normalize_genre_value(genre: Optional[str]) -> Optional[str]:
     transformed = transform_genre(genre.strip())
     if is_unknown_genre(transformed):
         return None
-    return transformed.strip() or None
+    return resolve_canonical_genre(
+        transformed.strip() or None, context="normalize_genre_value"
+    )
 
 
 def resolve_single_genre(
@@ -104,7 +110,7 @@ def resolve_dynamic_genre(
     if beatport_lookup is not None:
         beatport_genre = beatport_lookup(artist, title)
         if beatport_genre:
-            candidates.append(("beatport", beatport_genre, 0.95))
+            candidates.append(("beatport_search", beatport_genre, 0.5))
     if lastfm_lookup is not None:
         lastfm_genre = lastfm_lookup(artist, title)
         if lastfm_genre:
@@ -131,7 +137,10 @@ def extract_usable_artists(artist: str | None) -> list[str]:
     return tokens
 
 
-def _pick_unambiguous_winner(counts: dict[str, int]) -> str | None:
+def _pick_unambiguous_winner(
+    counts: dict[str, int],
+    legacy_totals: dict[str, int] | None = None,
+) -> str | None:
     if not counts:
         return None
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
@@ -139,12 +148,21 @@ def _pick_unambiguous_winner(counts: dict[str, int]) -> str | None:
     if top_count <= 0:
         return None
     if len(ranked) > 1 and ranked[1][1] == top_count:
+        tied = [genre for genre, count in ranked if count == top_count]
+        if legacy_totals is not None:
+            tied_with_totals = [
+                (genre, legacy_totals.get(genre, 0)) for genre in tied
+            ]
+            tied_with_totals.sort(key=lambda item: (-item[1], item[0]))
+            if tied_with_totals[0][1] > tied_with_totals[1][1]:
+                return tied_with_totals[0][0]
         return None
     return top_genre
 
 
 def aggregate_artist_history(
     per_artist: list[ArtistGenreCounts],
+    legacy_totals: dict[str, int] | None = None,
 ) -> tuple[str | None, dict[str, Any]]:
     aggregate: dict[str, int] = {}
     artist_evidence: dict[str, Any] = {}
@@ -159,7 +177,7 @@ def aggregate_artist_history(
                 continue
             aggregate[normalized] = aggregate.get(normalized, 0) + count
 
-    winner = _pick_unambiguous_winner(aggregate)
+    winner = _pick_unambiguous_winner(aggregate, legacy_totals)
     return winner, {"artists": artist_evidence, "aggregate_counts": aggregate}
 
 
@@ -178,7 +196,9 @@ def resolve_artist_history_genre(
         )
         for artist in artists
     ]
-    selected, evidence = aggregate_artist_history(per_artist)
+    legacy_totals_fn = getattr(repository, "legacy_genre_totals", None)
+    legacy_totals = legacy_totals_fn() if callable(legacy_totals_fn) else None
+    selected, evidence = aggregate_artist_history(per_artist, legacy_totals)
     outcome = "resolved" if selected else "unresolved"
     confidence = (
         "high"
@@ -187,13 +207,22 @@ def resolve_artist_history_genre(
         if evidence.get("aggregate_counts")
         else "no_match"
     )
+    provenance_evidence = {**evidence, "selected_genre": selected}
+    if legacy_totals is not None and selected is not None:
+        # Record only the genres the tie-break weighed. The whole legacy map
+        # holds about 40 values and would serialize once for every track.
+        provenance_evidence["legacy_totals"] = {
+            genre: legacy_totals[genre]
+            for genre in evidence.get("aggregate_counts", {})
+            if genre in legacy_totals
+        }
     return selected, ResolutionProvenance(
         field="genre",
         method="artist_history",
         outcome=outcome,
         source="track_repository",
         confidence=confidence,
-        evidence={**evidence, "selected_genre": selected},
+        evidence=provenance_evidence,
         inputs={"artists": artists},
     )
 
@@ -262,6 +291,8 @@ def resolve_genre_fallback(
     enable_beatport: bool = True,
     exclude_track_id: int | None = None,
     exclude_file_name: str | None = None,
+    underground: bool = False,
+    scraped_candidates: Optional[Iterable[tuple[str, Optional[str], float]]] = None,
 ) -> tuple[str | None, list[ResolutionProvenance]]:
     events: list[ResolutionProvenance] = []
     artists = extract_usable_artists(artist)
@@ -276,9 +307,8 @@ def resolve_genre_fallback(
                 inputs={"artist": artist, "title": title},
             )
         )
-        return None, events
 
-    if enable_artist_history and repository is not None:
+    if artists and enable_artist_history and repository is not None:
         genre, event = resolve_artist_history_genre(
             artists,
             repository,
@@ -289,10 +319,40 @@ def resolve_genre_fallback(
         if genre:
             return genre, events
 
-    if enable_beatport and browser is not None:
+    if artists and enable_beatport and browser is not None:
         genre, event = resolve_beatport_artist_genre(artists, browser)
         events.append(event)
         if genre:
             return genre, events
+
+    if scraped_candidates is not None:
+        genre = resolve_single_genre(scraped_candidates)
+        if genre:
+            events.append(
+                ResolutionProvenance(
+                    field="genre",
+                    method="scraped_candidates",
+                    outcome="resolved",
+                    source="hydrator",
+                    confidence="medium",
+                    evidence={"selected_genre": genre},
+                    inputs={"artist": artist, "title": title},
+                )
+            )
+            return genre, events
+
+    if underground:
+        events.append(
+            ResolutionProvenance(
+                field="genre",
+                method="underground_default",
+                outcome="resolved",
+                source="underground_predicate",
+                confidence="medium",
+                evidence={"selected_genre": "Ravevival"},
+                inputs={"artist": artist, "title": title},
+            )
+        )
+        return "Ravevival", events
 
     return None, events

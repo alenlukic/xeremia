@@ -54,6 +54,7 @@ def is_beatport_encoded(file_path: Path) -> bool:
 def lookup_beatport_genre(
     http: RateLimitedHttpClient, artist: str | None, title: str | None
 ) -> str | None:
+    """Parse a Beatport search-results page for a genre string (not a release page)."""
     if not artist or not title:
         return None
     try:

@@ -54,10 +54,10 @@ class Database:
             self.updates_executed = 0
             self.session_limit = session_limit
 
-        def query(self, query):
+        def query(self, *args):
             if self.dry_run:
                 return None
-            return self.session.query(query)
+            return self.session.query(*args)
 
         def add(self, entity):
             if not self.dry_run:

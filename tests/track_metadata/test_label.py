@@ -10,6 +10,7 @@ from src.track_metadata.label import (
     infer_cdr_label,
     is_album_title_candidate,
     is_rejected_catalog_label,
+    is_rejected_identity_source,
     resolve_album_label_for_group,
     resolve_label,
     resolve_label_fallback,
@@ -20,6 +21,14 @@ from src.track_metadata.research import (
     CdrEvidence,
     LabelSearchObservation,
 )
+
+
+def test_canonicalize_label_cdr_variants():
+    assert canonicalize_label("CDR") == "CDR"
+    assert canonicalize_label("cdr") == "CDR"
+    assert canonicalize_label("Cd-r") == "CDR"
+    assert canonicalize_label("CD-R") == "CDR"
+    assert canonicalize_label("cd r") == "CDR"
 
 
 def test_canonicalize_label_maps_cdr_and_white_label():
@@ -35,6 +44,11 @@ def test_reject_catalog_and_album_title_candidates():
     assert is_album_title_candidate("My Album", album="My Album", title="Song") is True
     assert resolve_label("Spotify", album="Album", title="Song") is None
     assert resolve_label("My Album", album="My Album", title="Song") is None
+
+
+def test_distributor_rejected_from_any_source():
+    assert resolve_label("DistroKid", authoritative=True) is None
+    assert resolve_label("TuneCore", authoritative=True) is None
 
 
 def test_resolve_label_accepts_cdr_db_and_web():
@@ -266,6 +280,130 @@ def test_beatport_track_label_runs_after_web_heuristics():
     assert any(event.method == "beatport_track" for event in events)
 
 
+def test_cdr_block_is_reachable():
+    web = _StubWebClient(
+        label_title=[
+            LabelSearchObservation(None, "url", True, snippet="free download"),
+        ],
+    )
+    label, events = resolve_label_fallback(
+        artist="Artist",
+        title="Track",
+        web_client=web,
+        enable_beatport=False,
+    )
+    assert label == "CDR"
+    assert any(event.method == "cdr_inference" for event in events)
+
+
+def test_terminal_cdr_default():
+    label, events = resolve_label_fallback(
+        artist="Artist",
+        title="Track",
+        web_client=None,
+        browser=None,
+        enable_web_search=False,
+        enable_beatport=False,
+        enable_cdr=False,
+        underground=True,
+    )
+    assert label == "CDR"
+    assert events[-1].method == "underground_default"
+
+
+def test_soundtracks_suppresses_default():
+    label, events = resolve_label_fallback(
+        artist="Artist",
+        title="Track",
+        web_client=None,
+        browser=None,
+        enable_web_search=False,
+        enable_beatport=False,
+        enable_cdr=False,
+        underground=True,
+        genre="Soundtracks",
+    )
+    assert label is None
+    assert all(event.method != "underground_default" for event in events)
+
+
+def test_below_threshold_keeps_empty_label():
+    label, _events = resolve_label_fallback(
+        artist="Artist",
+        title="Track",
+        web_client=None,
+        browser=None,
+        enable_web_search=False,
+        enable_beatport=False,
+        enable_cdr=False,
+        underground=False,
+    )
+    assert label is None
+
+
 def test_normalize_key_symbols():
     assert normalize_key_symbols("C♯m") == "C#m"
     assert normalize_key_symbols("E♭m") == "Ebm"
+
+
+def test_identity_source_rejects_streaming_page():
+    # The snippet carries the free-download indicator that drives the CDR
+    # inference, so only the rejected identity source keeps the label empty.
+    web = _StubWebClient(
+        label_title=[
+            LabelSearchObservation(
+                None,
+                "https://open.spotify.com/track/x",
+                True,
+                snippet="stream, free download",
+            )
+        ]
+    )
+    label, events = resolve_label_fallback(
+        artist="Artist",
+        title="Track",
+        web_client=web,
+        enable_beatport=False,
+    )
+    assert label is None
+    assert all(event.method != "cdr_inference" for event in events)
+
+
+def test_identity_source_rejects_distributor():
+    web = _StubWebClient(
+        label_title=[
+            LabelSearchObservation(
+                "DistroKid",
+                "https://example.com",
+                True,
+                snippet="DistroKid distribution, free download",
+                is_distributor=True,
+            )
+        ]
+    )
+    label, events = resolve_label_fallback(
+        artist="Artist",
+        title="Track",
+        web_client=web,
+        enable_beatport=False,
+    )
+    assert label is None
+    assert all(event.method != "cdr_inference" for event in events)
+
+
+def test_identity_source_rejects_streaming_subdomains_and_ports():
+    rejected_urls = (
+        "https://open.spotify.com/track/x",
+        "https://m.spotify.com/track/x",
+        "open.spotify.com/track/x",
+        "https://open.spotify.com:443/track/x",
+        "https://www.distrokid.com/x",
+    )
+    for url in rejected_urls:
+        observation = LabelSearchObservation(None, url, True, snippet="free download")
+        assert is_rejected_identity_source(observation) is True
+
+    artist_controlled = LabelSearchObservation(
+        None, "https://soundcloud.com/artist/track", True, snippet="free download"
+    )
+    assert is_rejected_identity_source(artist_controlled) is False

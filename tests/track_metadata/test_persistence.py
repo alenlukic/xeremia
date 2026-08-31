@@ -5,10 +5,7 @@ from src.models.artist import Artist
 from src.models.artist_track import ArtistTrack
 from src.models.track import Track
 from src.track_metadata.models import SimpleMetadata
-from src.track_metadata.pipeline.persistence import (
-    update_track_records,
-    upsert_track_records,
-)
+from src.track_metadata.pipeline.persistence import upsert_track_records
 
 
 @dataclass
@@ -124,23 +121,6 @@ def test_upsert_track_records_persists_audio_duration(monkeypatch, tmp_path):
     upsert_track_records(session, file_path, metadata)
 
     assert session.data[Track][0].duration_seconds == 390.25
-
-
-def test_update_track_records_persists_audio_duration(monkeypatch, tmp_path):
-    session = _FakeSession()
-    file_path = tmp_path / "track.aiff"
-    file_path.write_bytes(b"audio")
-    existing = Track(file_name="track.aiff", title="Track")
-    session.add(existing)
-    metadata = SimpleMetadata(title="Track", artist="Artist")
-    monkeypatch.setattr(
-        "src.track_metadata.pipeline.persistence.read_duration_seconds",
-        lambda _file_ref: 402.5,
-    )
-
-    update_track_records(session, existing.id, file_path, metadata)
-
-    assert existing.duration_seconds == 402.5
 
 
 def test_upsert_track_records_requires_title():

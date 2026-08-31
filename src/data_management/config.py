@@ -3,14 +3,6 @@ from enum import Enum
 import re
 
 
-class DBUpdateType(Enum):
-    INSERT = "Insert"
-    UPDATE = "Update"
-    DELETE = "Delete"
-    FAILURE = "Failure"
-    NOOP = "No-Op"
-
-
 class ID3Tag(Enum):
     TITLE = "TIT2"
     ARTIST = "TPE1"
@@ -46,28 +38,6 @@ class ArtistFields(Enum):
     REMIXERS = "remixers"
 
 
-COMMENT_FIELDS = set(
-    [
-        c.value
-        for c in TrackDBCols
-        if not (c == TrackDBCols.ID or c == TrackDBCols.COMMENT)
-    ]
-)
-
-ID3_COMMENT_FIELDS = set(
-    [
-        c.value
-        for c in [
-            TrackDBCols.TITLE,
-            TrackDBCols.BPM,
-            TrackDBCols.KEY,
-            TrackDBCols.GENRE,
-            TrackDBCols.LABEL,
-            TrackDBCols.COMMENT,
-        ]
-    ]
-)
-
 METADATA_KEY_TO_ID3 = {
     TrackDBCols.TITLE.value: ID3Tag.TITLE.value,
     TrackDBCols.BPM.value: ID3Tag.BPM.value,
@@ -98,17 +68,7 @@ ID3_TAG_SYNONYMS = {
     ],
 }
 
-ALL_TRACK_DB_COLS = set([c.value for c in TrackDBCols])
-
 TRACK_MD_ID3_TAGS = set([t.value for t in ID3Tag])
-
-REQUIRED_ID3_TAGS = {
-    ID3Tag.TITLE.value,
-    ID3Tag.ARTIST.value,
-    ID3Tag.BPM.value,
-    ID3Tag.KEY.value,
-    ID3Tag.ENERGY.value,
-}
 
 CANONICAL_KEY_MAP = {
     k.lower(): v.lower()
@@ -237,7 +197,5 @@ BAR_REGEX = re.compile(r".*?\|")
 MD_COMPOSITE_REGEX = re.compile(r"\[\d{2}[AB]\s-\s[A-Za-z#]{1,3}\s-\s\d{1,3}\.\d{1,2}]")
 
 PAREN_REGEX = re.compile(r"\(.*\)")
-
-GD_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
 SPECIAL_FILENAME_CHARS = {"<", ">", ":", '"', "/", "\\", "|", "?", "*"}

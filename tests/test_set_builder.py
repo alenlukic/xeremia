@@ -1,7 +1,6 @@
 """Tests for the set-builder API endpoints.
 
 Covers:
-    POST /api/sets/transition-scores
     POST /api/sets/export-m3u8
 
 Run with:
@@ -49,96 +48,6 @@ def client(mock_finder, weight_patches):
 
         app = create_app()
         yield TestClient(app)
-
-
-class TestTransitionScores:
-    def test_returns_scores_for_valid_pairs(self, client, mock_finder):
-        from src.data_management.config import TrackDBCols
-
-        mock_match = MagicMock()
-        mock_match.metadata = {TrackDBCols.ID: 2}
-        mock_match.get_score.return_value = 82.5
-
-        mock_finder.get_transition_matches.return_value = (
-            ([mock_match], [], []),
-            None,
-        )
-
-        mock_track = MagicMock()
-        mock_track.id = 1
-
-        with patch("src.api.routes._get_session") as mock_session_fn:
-            session = MagicMock()
-            session.query.return_value.filter_by.return_value.first.return_value = (
-                mock_track
-            )
-            mock_session_fn.return_value = session
-
-            resp = client.post(
-                "/api/sets/transition-scores",
-                json={
-                    "pairs": [[1, 2]],
-                },
-            )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["scores"]) == 1
-        assert data["scores"][0] == 82.5
-
-    def test_returns_null_when_candidate_not_in_matches(self, client, mock_finder):
-        mock_finder.get_transition_matches.return_value = (
-            ([], [], []),
-            None,
-        )
-
-        mock_track = MagicMock()
-        mock_track.id = 1
-
-        with patch("src.api.routes._get_session") as mock_session_fn:
-            session = MagicMock()
-            session.query.return_value.filter_by.return_value.first.return_value = (
-                mock_track
-            )
-            mock_session_fn.return_value = session
-
-            resp = client.post(
-                "/api/sets/transition-scores",
-                json={
-                    "pairs": [[1, 99]],
-                },
-            )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["scores"] == [None]
-
-    def test_returns_null_when_source_not_found(self, client, mock_finder):
-        with patch("src.api.routes._get_session") as mock_session_fn:
-            session = MagicMock()
-            session.query.return_value.filter_by.return_value.first.return_value = None
-            mock_session_fn.return_value = session
-
-            resp = client.post(
-                "/api/sets/transition-scores",
-                json={
-                    "pairs": [[999, 1]],
-                },
-            )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["scores"] == [None]
-
-    def test_handles_empty_pairs(self, client, mock_finder):
-        resp = client.post(
-            "/api/sets/transition-scores",
-            json={
-                "pairs": [],
-            },
-        )
-        assert resp.status_code == 200
-        assert resp.json()["scores"] == []
 
 
 class TestExportM3u8:

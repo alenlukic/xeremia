@@ -14,7 +14,6 @@ Agents should consult these when working with unfamiliar libraries.
 | mutagen | (see requirements.txt) | Audio metadata (ID3 tags, AIFF tags) | [mutagen docs](https://mutagen.readthedocs.io/) |
 | numpy | (see requirements.txt) | Numerical arrays and operations | [numpy docs](https://numpy.org/doc/) |
 | scipy | (see requirements.txt) | Scientific computing (signal processing) | [scipy docs](https://docs.scipy.org/doc/scipy/) |
-| networkx | (see requirements.txt) | Graph operations (harmonic mixing) | [networkx docs](https://networkx.org/documentation/) |
 | python-dotenv | (see requirements.txt) | Environment variable loading | [dotenv docs](https://saurabh-kumar.com/python-dotenv/) |
 
 ## Audio Processing Notes

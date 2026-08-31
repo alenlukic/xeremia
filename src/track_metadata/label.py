@@ -42,6 +42,23 @@ _CDR_FORMS = frozenset(
         "self",
     }
 )
+_NON_IDENTITY_SOURCE_HOSTS = frozenset(
+    {
+        "open.spotify.com",
+        "spotify.com",
+        "deezer.com",
+        "music.apple.com",
+        "tidal.com",
+        "music.amazon.com",
+        "youtube.com",
+        "music.youtube.com",
+        "distrokid.com",
+        "tunecore.com",
+        "cdbaby.com",
+        "believe.com",
+        "songlyrics.com",
+    }
+)
 
 
 def _normalize_label_value(label: str | None) -> str | None:
@@ -55,7 +72,8 @@ def canonicalize_label(label: str | None) -> str | None:
     if normalized is None:
         return None
 
-    if normalized.lower() == "cdr":
+    compact = re.sub(r"[\s\-_/]+", "", normalized).lower()
+    if compact == "cdr":
         return "CDR"
 
     simplified = re.sub(r"[\s\-]+", " ", normalized).lower()
@@ -159,6 +177,9 @@ def resolve_label(
         return None
 
     if is_album_title_candidate(canonical, album=album, title=title):
+        return None
+
+    if _DISTRIBUTOR_PATTERNS.search(canonical):
         return None
 
     if canonical == "CDR":
@@ -321,6 +342,42 @@ def is_unresolved_label(label: str | None) -> bool:
     return canonicalize_label(label) is None
 
 
+def _host_from_url(url: str) -> str | None:
+    # Search output is untrusted, so a result may arrive without a scheme, with
+    # a port, or with a userinfo prefix that hides the real host.
+    match = re.search(
+        r"^(?:[a-z][a-z0-9+.-]*://)?([^/?#]+)",
+        (url or "").strip(),
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    authority = match.group(1).lower()
+    host = authority.rsplit("@", 1)[-1].split(":", 1)[0]
+    return host or None
+
+
+def _is_non_identity_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    return any(
+        host == blocked or host.endswith(f".{blocked}")
+        for blocked in _NON_IDENTITY_SOURCE_HOSTS
+    )
+
+
+def is_rejected_identity_source(observation: LabelSearchObservation) -> bool:
+    if observation.is_distributor:
+        return True
+    label = observation.label or ""
+    snippet = observation.snippet or ""
+    if _DISTRIBUTOR_PATTERNS.search(label):
+        return True
+    if _DISTRIBUTOR_PATTERNS.search(snippet):
+        return True
+    return _is_non_identity_host(_host_from_url(observation.source_url))
+
+
 def is_rejected_direct_label(observation: LabelSearchObservation) -> bool:
     if observation.is_distributor:
         return True
@@ -396,11 +453,14 @@ def resolve_label_fallback(
     enable_beatport: bool = True,
     enable_cdr: bool = True,
     cdr_min_soundcloud_followers: int = 5000,
+    underground: bool = False,
+    genre: str | None = None,
 ) -> tuple[str | None, list[ResolutionProvenance]]:
     events: list[ResolutionProvenance] = []
     inputs = {"artist": artist, "title": title, "album": album}
     cdr_evidence = CdrEvidence(track_identity_confirmed=False)
     title_label_obs: list[LabelSearchObservation] = []
+    identity_confirmed = False
 
     if enable_web_search and web_client is not None and artist and title:
         try:
@@ -419,9 +479,13 @@ def resolve_label_fallback(
             )
             title_label_obs = []
         else:
-            picked = _pick_confirmed_label(title_label_obs)
-            if picked:
+            identity_confirmed = any(
+                item.identity_confirmed and not is_rejected_identity_source(item)
+                for item in title_label_obs
+            )
+            if identity_confirmed:
                 cdr_evidence.track_identity_confirmed = True
+            picked = _pick_confirmed_label(title_label_obs)
             events.append(
                 ResolutionProvenance(
                     field="label",
@@ -453,9 +517,13 @@ def resolve_label_fallback(
                 )
                 album_label_obs = []
             else:
-                picked = _pick_confirmed_label(album_label_obs)
-                if picked:
+                if any(
+                    item.identity_confirmed and not is_rejected_identity_source(item)
+                    for item in album_label_obs
+                ):
+                    identity_confirmed = True
                     cdr_evidence.track_identity_confirmed = True
+                picked = _pick_confirmed_label(album_label_obs)
                 events.append(
                     ResolutionProvenance(
                         field="label",
@@ -488,15 +556,13 @@ def resolve_label_fallback(
             observation = None
         else:
             label = None
-            if (
-                observation is not None
-                and observation.identity_confirmed
-                and observation.label
-            ):
-                label = canonicalize_label(observation.label)
+            if observation is not None and observation.identity_confirmed:
+                identity_confirmed = True
                 cdr_evidence.track_identity_confirmed = True
-                if label:
-                    cdr_evidence.label_found = True
+                if observation.label:
+                    label = canonicalize_label(observation.label)
+                    if label:
+                        cdr_evidence.label_found = True
             events.append(
                 ResolutionProvenance(
                     field="label",
@@ -514,8 +580,10 @@ def resolve_label_fallback(
             if label:
                 return label, events
 
-    if enable_cdr and cdr_evidence.track_identity_confirmed:
+    if enable_cdr and identity_confirmed:
         for item in title_label_obs:
+            if is_rejected_identity_source(item):
+                continue
             snippet = item.snippet.casefold()
             if "free download" in snippet:
                 cdr_evidence.free_download = True
@@ -549,5 +617,19 @@ def resolve_label_fallback(
                 )
             )
             return "CDR", events
+
+    if underground and genre != "Soundtracks":
+        events.append(
+            ResolutionProvenance(
+                field="label",
+                method="underground_default",
+                outcome="resolved",
+                source="underground_predicate",
+                confidence="medium",
+                evidence={"selected_label": "CDR"},
+                inputs=inputs,
+            )
+        )
+        return "CDR", events
 
     return None, events

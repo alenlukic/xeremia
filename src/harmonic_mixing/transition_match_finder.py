@@ -2,7 +2,6 @@ import logging
 
 from src.db import database
 from src.models.track import Track
-from src.assistant.config import DASHED_LINE
 from src.data_management.config import TrackDBCols
 from src.data_management.mapping_registry import MappingRegistry
 from src.harmonic_mixing.config import (
@@ -126,16 +125,6 @@ class TransitionMatchFinder:
         except Exception as e:
             handle(e)
 
-    def print_transition_matches(self, track):
-        (same_key, higher_key, lower_key), title_mismatch_message = (
-            self.get_transition_matches(track)
-        )
-
-        self._print_transition_ranks("Higher key (step down)", higher_key)
-        self._print_transition_ranks("Lower key (step up)", lower_key)
-        self._print_transition_ranks("Same key", same_key, 1)
-        print(title_mismatch_message)
-
     @staticmethod
     def _get_all_harmonic_codes(cur_track_md):
         camelot_code = cur_track_md[TrackDBCols.CAMELOT_CODE]
@@ -234,27 +223,3 @@ class TransitionMatchFinder:
             lower_key = sorted(lower_key, reverse=True)
 
         return same_key, higher_key, lower_key
-
-    def _print_transition_ranks(self, result_type, results, start_index=0):
-        print("\n\n\n%s results:\n\n\n" % result_type)
-        print(DASHED_LINE)
-        print(TransitionMatch.result_column_header)
-        print(DASHED_LINE)
-
-        num_results = len(results)
-        if num_results == 0:
-            return
-
-        for i, result in enumerate(results[start_index:]):
-            if i == self.max_results:
-                break
-
-            if (
-                num_results >= self.result_threshold
-                and result.get_score() < self.cutoff_threshold_score
-            ):
-                break
-
-            print(result.format())
-            if (i + 1) % 5 == 0:
-                print()

@@ -53,7 +53,6 @@ class TransitionMatch:
     _candidate_descriptor_cache = {}
     _on_deck_trait_cache = {}
     _candidate_trait_cache = {}
-    result_column_header = "   ".join(["Total Score", "Cos Sim", " Track"])
 
     @classmethod
     def clear_descriptor_caches(cls):
@@ -77,13 +76,6 @@ class TransitionMatch:
         self.camelot_priority = camelot_priority
         self.score = None
         self.factors = {}
-
-    def format(self):
-        score = "{:.2f}".format(self.get_score())
-        cos_sim = "{:.2f}".format(100 * self.get_similarity_score())
-        return ("         " * (6 - len(score))).join(
-            [score, cos_sim, self.metadata[TrackDBCols.TITLE]]
-        )
 
     def get_score(self):
         if self.score is None:

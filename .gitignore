@@ -43,4 +43,6 @@ client/node_modules/
 
 # Pancreator
 .pancreator/
+
 .vercel
+static/

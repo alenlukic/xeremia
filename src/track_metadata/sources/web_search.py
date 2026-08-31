@@ -197,7 +197,7 @@ _FREE_DOWNLOAD_AFFORDANCE = re.compile(
 )
 
 
-def _identity_confirmed(seed: SimpleMetadata, result: dict[str, str]) -> bool:
+def identity_confirmed(seed: SimpleMetadata, result: dict[str, str]) -> bool:
     candidate, score = candidate_from_result(result, seed)
     return candidate is not None and score >= _IDENTITY_THRESHOLD
 
@@ -231,7 +231,7 @@ def _label_from_result(
     return LabelSearchObservation(
         label=label,
         source_url=result.get("url", ""),
-        identity_confirmed=_identity_confirmed(seed, result),
+        identity_confirmed=identity_confirmed(seed, result),
         is_distributor=bool(_DISTRIBUTOR_HINT.search(f"{title_text} {snippet}")),
         snippet=snippet,
     )
@@ -262,7 +262,7 @@ class WebSearchResearchClient:
             return False
         seed = self._seed(artist, title)
         return any(
-            _identity_confirmed(seed, result) and is_free_download_result(result)
+            identity_confirmed(seed, result) and is_free_download_result(result)
             for result in self._search(query)
         )
 
@@ -278,7 +278,7 @@ class WebSearchResearchClient:
         return [
             obs
             for result in self._search(query)
-            if (obs := _label_from_result(result, seed)) is not None and obs.label
+            if (obs := _label_from_result(result, seed)) is not None
         ]
 
     def search_label_by_album(
@@ -293,5 +293,5 @@ class WebSearchResearchClient:
         return [
             obs
             for result in self._search(query)
-            if (obs := _label_from_result(result, seed)) is not None and obs.label
+            if (obs := _label_from_result(result, seed)) is not None
         ]

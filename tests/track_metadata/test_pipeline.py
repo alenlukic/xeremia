@@ -345,79 +345,61 @@ def test_pipeline_passes_existing_and_rekordbox_metadata_to_audio_resolution(
     assert row.camelot_code == "12A"
 
 
-def test_db_first_pipeline_updates_matched_track(monkeypatch, tmp_path):
-    source = tmp_path / "Artist - Track.mp3"
-    source.write_text("audio", encoding="utf-8")
-    working = tmp_path / "working.mp3"
-    working.write_text("audio", encoding="utf-8")
-    track = type("Track", (), {"id": 42, "genre": "Techno", "label": "Label"})()
+def test_classify_genre_keeps_existing_genre(monkeypatch, tmp_path):
+    from src.track_metadata.pipeline.stages import stage_classify_genre
 
-    class _DbSessionStub:
-        def query(self, model):
-            if getattr(model, "__name__", "") == "Track":
-                return self
-            raise AssertionError(model)
+    class _GenreHydrator:
+        def classify_free_download_genre(self, metadata):
+            return "Ravevival"
 
-        def filter_by(self, **kwargs):
-            assert kwargs == {"id": 42}
-            return self
+    result = type(
+        "TrackResult",
+        (),
+        {"metadata": SimpleMetadata(genre="Trance", artist="A", title="T", bpm=150.0)},
+    )()
+    context = PipelineContext(hydrator=_GenreHydrator(), run_report=RunReport())
+    stage_classify_genre(result, context)
+    assert result.metadata.genre == "Trance"
 
-        def first(self):
-            return track
 
-        def close(self):
-            return None
+def test_mapping_registry_loaded_before_pipeline_run(monkeypatch, tmp_path):
+    from src.track_metadata import run_pipeline as run_pipeline_mod
 
-    session = _DbSessionStub()
-    updated: dict[str, object] = {}
+    calls: list[str] = []
+
+    class _Registry:
+        @classmethod
+        def load(cls, _session):
+            calls.append("load")
+
+    monkeypatch.setattr(run_pipeline_mod, "discover_new_audio_files", lambda: [])
+    monkeypatch.setattr(run_pipeline_mod, "ensure_directories", lambda: None)
+    monkeypatch.setattr(run_pipeline_mod, "reset_processing_dir", lambda: None)
+    monkeypatch.setattr(run_pipeline_mod, "setup_logging", lambda: None)
+    monkeypatch.setattr(
+        "src.data_management.mapping_registry.MappingRegistry", _Registry
+    )
+
+    run_pipeline_mod.run_pipeline()
+    assert calls == []
 
     monkeypatch.setattr(
-        "src.track_metadata.pipeline.stages.stage_file", lambda _source: working
+        run_pipeline_mod, "discover_new_audio_files", lambda: [tmp_path / "a.mp3"]
     )
+    (tmp_path / "a.mp3").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(run_pipeline_mod, "build_default_pipeline", lambda: type(
+        "Pipeline", (), {"run": lambda *_args, **_kwargs: None}
+    )())
+    monkeypatch.setattr(run_pipeline_mod, "build_metadata_agent", lambda **_kwargs: object())
     monkeypatch.setattr(
-        "src.track_metadata.pipeline.stages.read_existing_metadata",
-        lambda _path: SimpleMetadata(artist="Artist", title="Track"),
+        run_pipeline_mod,
+        "build_context",
+        lambda **_kwargs: type("Context", (), {"agent": None})(),
     )
+    monkeypatch.setattr(run_pipeline_mod, "build_cursor_sdk_agent", lambda: None)
     monkeypatch.setattr(
-        "src.track_metadata.pipeline.stages.analyze_missing_audio_features",
-        lambda _path, metadata, *_args: metadata.update({"bpm": 128.0, "key": "C#m"}),
-    )
-    monkeypatch.setattr(
-        "src.track_metadata.pipeline.stages.write_tags", lambda *_args, **_kwargs: None
-    )
-    monkeypatch.setattr(
-        "src.track_metadata.pipeline.stages.rename_file",
-        lambda path, *_args, **_kwargs: path,
-    )
-    monkeypatch.setattr(
-        "src.track_metadata.pipeline.stages.move_to_augmented",
-        lambda path, **_kwargs: tmp_path / f"augmented-{path.name}",
-    )
-    monkeypatch.setattr(
-        "src.track_metadata.pipeline.stages.AUGMENTED_DIR",
-        tmp_path / "augmented",
-    )
-    monkeypatch.setattr(
-        "src.track_metadata.pipeline.stages.update_track_records",
-        lambda _session, track_id, renamed, metadata: updated.update(
-            {"track_id": track_id, "file": renamed.name, "genre": metadata.genre}
-        ),
+        "src.db.database.create_session", lambda: type("S", (), {"close": lambda self: None})()
     )
 
-    from src.track_metadata.pipeline.framework import TrackResult
-    from src.track_metadata.pipeline.stages import build_db_first_pipeline
-
-    context = PipelineContext(
-        hydrator=None,
-        run_report=RunReport(),
-        shared_state={"session": session},
-    )
-    track_result = TrackResult(source=source, matched_track_id=42)
-    for stage in build_db_first_pipeline().stages:
-        stage.execute(track_result, context)
-
-    assert track_result.status == TrackStatus.SUCCESS
-    assert track_result.metadata.genre == "Techno"
-    assert track_result.metadata.label == "Label"
-    assert updated["track_id"] == 42
-    assert updated["genre"] == "Techno"
+    run_pipeline_mod.run_pipeline()
+    assert calls == ["load"]

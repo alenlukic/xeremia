@@ -6,7 +6,6 @@ import type { PoolSubgroup, SetSummary, HydratedSet, Track } from '../types'
 import { testSetBuilderTableProps } from '../test/tablePreferenceHelpers'
 
 vi.mock('../api/http', () => ({
-  fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
   exportSetM3u8: vi
     .fn()
     .mockResolvedValue({ content: '#EXTM3U\n', filename: 'test.m3u8' }),

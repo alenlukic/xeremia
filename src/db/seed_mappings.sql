@@ -2,7 +2,12 @@
 -- Idempotent: safe to re-run (ON CONFLICT DO NOTHING).
 
 INSERT INTO genre_mapping (raw_genre, canonical_genre) VALUES
-    ('Psy-Trance', 'Psytrance')
+    ('Psy-Trance', 'Psytrance'),
+    ('Psy-trance', 'Psytrance'),
+    ('psy-trance', 'Psytrance'),
+    ('Soundtrack', 'Soundtracks'),
+    ('Electronic', 'Electronica'),
+    ('breaks / breakbeat / uk bass', 'Breaks / Breakbeat / UK Bass')
 ON CONFLICT (raw_genre) DO NOTHING;
 
 INSERT INTO label_mapping (raw_label, canonical_label, match_type, exclude_pattern) VALUES

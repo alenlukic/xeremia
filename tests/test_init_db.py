@@ -112,14 +112,14 @@ def test_subgroup_migration_rerun_preserves_dense_order():
 
 
 def test_migration_verify_reports_missing_table():
-    with patch.object(migrate_table_preferences, "table_exists", return_value=False):
+    with patch.object(migrate_table_preferences, "_table_exists", return_value=False):
         errors = migrate_table_preferences.verify()
     assert errors == ["table_preference table is missing"]
 
 
 def test_migration_verify_passes_when_present():
     with (
-        patch.object(migrate_table_preferences, "table_exists", return_value=True),
+        patch.object(migrate_table_preferences, "_table_exists", return_value=True),
         patch.object(
             migrate_table_preferences,
             "_column_names",
@@ -131,7 +131,7 @@ def test_migration_verify_passes_when_present():
 
 def test_migration_verify_flags_missing_device_hash():
     with (
-        patch.object(migrate_table_preferences, "table_exists", return_value=True),
+        patch.object(migrate_table_preferences, "_table_exists", return_value=True),
         patch.object(
             migrate_table_preferences,
             "_column_names",
@@ -144,7 +144,7 @@ def test_migration_verify_flags_missing_device_hash():
 
 def test_migration_verify_flags_missing_layout():
     with (
-        patch.object(migrate_table_preferences, "table_exists", return_value=True),
+        patch.object(migrate_table_preferences, "_table_exists", return_value=True),
         patch.object(
             migrate_table_preferences,
             "_column_names",

@@ -2,7 +2,7 @@
 
 ## Repository
 
-Xeremia is a Python toolkit for DJ library management: ingestion, feature extraction, harmonic mixing analysis, metadata hydration, and an interactive assistant for finding compatible transition matches. It is backed by PostgreSQL via SQLAlchemy and includes a Vite/React client for live browsing, set building, matching, and administration.
+Xeremia is a Python toolkit for DJ library management: metadata-agent ingestion, feature extraction, harmonic mixing analysis, and transition matching. It is backed by PostgreSQL via SQLAlchemy and includes a Vite/React client for live browsing, set building, matching, and administration.
 
 ## Getting Oriented
 

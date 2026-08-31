@@ -8,7 +8,6 @@ import soundfile as sf
 from mutagen.aiff import AIFF
 from mutagen.id3 import ID3
 
-from src.track_metadata.metadata_agent import purge_invalid_augmented_files
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.tags import read_existing_metadata, write_tags
 
@@ -145,19 +144,43 @@ def test_write_tags_round_trip_aiff(tmp_path):
     assert loaded.to_dict() == metadata.to_dict()
 
 
-def test_purge_invalid_augmented_files(tmp_path):
-    augmented_dir = tmp_path / "augmented"
-    augmented_dir.mkdir()
+def test_generate_metadata_genre(monkeypatch, tmp_path):
+    from src.data_management.audio_file import AudioFile
 
-    valid_src = TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3"
-    valid_copy = augmented_dir / "valid.mp3"
-    shutil.copy2(valid_src, valid_copy)
-    write_tags(valid_copy, SimpleMetadata(title="Valid Title", artist="Artist"))
+    audio = AudioFile.__new__(AudioFile)
+    audio.file_name = "track.mp3"
+    audio.full_path = str(tmp_path / "track.mp3")
 
-    invalid_file = augmented_dir / "invalid.mp3"
-    invalid_file.write_bytes(b"")  # no tags
+    def fake_tag(tag, default=""):
+        tag_key = getattr(tag, "value", tag)
+        values = {
+            "TCON": "Chill House",
+            "TIT2": "Title",
+            "TBPM": "128",
+            "TKEY": "Am",
+            "TPUB": "Label",
+        }
+        return values.get(tag_key, default)
 
-    purge_invalid_augmented_files(augmented_dir)
+    monkeypatch.setattr(audio, "get_tag", fake_tag)
+    monkeypatch.setattr(audio, "format_bpm", lambda: "128")
+    monkeypatch.setattr(audio, "format_key", lambda: "Am")
+    monkeypatch.setattr(audio, "generate_title", lambda *_args, **_kwargs: "Title")
+    monkeypatch.setattr(audio, "parse_energy", lambda: None)
+    monkeypatch.setattr(
+        "src.data_management.audio_file.get_file_creation_time", lambda _path: 0
+    )
+    monkeypatch.setattr(audio, "generate_comment", lambda _metadata: {})
 
-    assert valid_copy.exists()
-    assert not invalid_file.exists()
+    off_vocab = audio.generate_metadata()
+    assert "genre" not in off_vocab
+
+    def psy_tag(tag, default=""):
+        tag_key = getattr(tag, "value", tag)
+        if tag_key == "TCON":
+            return "Psy-Trance"
+        return fake_tag(tag, default)
+
+    monkeypatch.setattr(audio, "get_tag", psy_tag)
+    with_genre = audio.generate_metadata()
+    assert with_genre["genre"] == "Psytrance"
