@@ -8,7 +8,6 @@ import soundfile as sf
 from mutagen.aiff import AIFF
 from mutagen.id3 import ID3
 
-from src.track_metadata.metadata_agent import purge_invalid_augmented_files
 from src.track_metadata.models import SimpleMetadata
 from src.track_metadata.tags import read_existing_metadata, write_tags
 
@@ -143,24 +142,6 @@ def test_write_tags_round_trip_aiff(tmp_path):
     assert container.tags["TIT2"].text[0] == metadata.title
     assert container.tags["TPE1"].text[0] == metadata.artist
     assert loaded.to_dict() == metadata.to_dict()
-
-
-def test_purge_invalid_augmented_files(tmp_path):
-    augmented_dir = tmp_path / "augmented"
-    augmented_dir.mkdir()
-
-    valid_src = TEST_DATA_DIR / "[01A - Abm - 086.00] Cell - Traffic (Live).mp3"
-    valid_copy = augmented_dir / "valid.mp3"
-    shutil.copy2(valid_src, valid_copy)
-    write_tags(valid_copy, SimpleMetadata(title="Valid Title", artist="Artist"))
-
-    invalid_file = augmented_dir / "invalid.mp3"
-    invalid_file.write_bytes(b"")  # no tags
-
-    purge_invalid_augmented_files(augmented_dir)
-
-    assert valid_copy.exists()
-    assert not invalid_file.exists()
 
 
 def test_generate_metadata_genre(monkeypatch, tmp_path):

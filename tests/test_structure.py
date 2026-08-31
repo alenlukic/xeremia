@@ -3,9 +3,9 @@
 Validates the layer hierarchy defined in docs/ARCHITECTURE.md:
 
   L1 (Foundation): models, db, config, errors, utils
-  L2 (Domain Services): track_metadata, data_management, feature_extraction, postprocessing
-  L3 (Orchestration): harmonic_mixing, ingestion_pipeline
-  L4 (Entry Points): assistant, scripts
+  L2 (Domain Services): track_metadata, data_management, feature_extraction
+  L3 (Orchestration): harmonic_mixing
+  L4 (Entry Points): scripts
 
 Rules:
   - L1 must not import from L2, L3, or L4
@@ -24,9 +24,9 @@ import pytest
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 
 LAYER_1 = {"models", "db", "config", "errors", "utils"}
-LAYER_2 = {"track_metadata", "data_management", "feature_extraction", "postprocessing"}
-LAYER_3 = {"harmonic_mixing", "ingestion_pipeline"}
-LAYER_4 = {"assistant", "scripts"}
+LAYER_2 = {"track_metadata", "data_management", "feature_extraction"}
+LAYER_3 = {"harmonic_mixing"}
+LAYER_4 = {"scripts"}
 
 ALL_MODULES = LAYER_1 | LAYER_2 | LAYER_3 | LAYER_4
 
@@ -48,7 +48,6 @@ ALLOWED_IMPORTS = {
 }
 
 KNOWN_VIOLATIONS = {
-    ("harmonic_mixing", "assistant"),
     ("feature_extraction", "harmonic_mixing"),
 }
 

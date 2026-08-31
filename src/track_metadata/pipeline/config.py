@@ -5,9 +5,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Keep track_metadata config deterministic in local/dev shells by loading the
-# repository .env before evaluating any feature toggles.
-load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=True)
+# Load the repository .env before evaluating feature toggles. Exported
+# environment variables take precedence so runs can be sandboxed.
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 MISSION_CRITICAL_FIELDS: tuple[str, ...] = (
     "key",

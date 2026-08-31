@@ -109,13 +109,6 @@ CONFIG = {
         "RESULT_THRESHOLD": _int("HM_RESULT_THRESHOLD", 20),
     },
     "INGESTION_PIPELINE": {
-        "ROOT": _str("INGESTION_PIPELINE_ROOT"),
-        "UNPROCESSED": _str("INGESTION_PIPELINE_UNPROCESSED", "unprocessed"),
-        "PROCESSING": _str("INGESTION_PIPELINE_PROCESSING", "processing"),
-        "FINALIZED": _str("INGESTION_PIPELINE_FINALIZED", "finalized"),
-        "REKORDBOX_TAG_FILE": _str(
-            "INGESTION_PIPELINE_REKORDBOX_TAG_FILE", "rekordbox_tags.txt"
-        ),
         "PROCESSED_MUSIC_DIR": _str("INGESTION_PIPELINE_PROCESSED_MUSIC_DIR"),
     },
     "TRACK_METADATA": {

@@ -8,10 +8,6 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE SEQUENCE IF NOT EXISTS public.artist_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 CREATE SEQUENCE IF NOT EXISTS public.artist_track_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 CREATE SEQUENCE IF NOT EXISTS public.track_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
-CREATE SEQUENCE IF NOT EXISTS public.initial_tags_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
-CREATE SEQUENCE IF NOT EXISTS public.post_mik_tags_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
-CREATE SEQUENCE IF NOT EXISTS public.post_rekordbox_tags_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
-CREATE SEQUENCE IF NOT EXISTS public.final_tags_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 
 CREATE TABLE IF NOT EXISTS public.artist (
     id integer NOT NULL,
@@ -96,20 +92,6 @@ ALTER SEQUENCE public.dj_set_id_seq OWNED BY public.dj_set.id;
 
 
 --
--- Name: final_tags; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE IF NOT EXISTS public.final_tags (
-    id integer NOT NULL,
-    track_id integer NOT NULL,
-    title character varying,
-    key character varying,
-    energy integer,
-    bpm numeric(5,2)
-);
-
-
---
 -- Name: genre_mapping; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -138,19 +120,6 @@ CREATE SEQUENCE IF NOT EXISTS public.genre_mapping_id_seq
 --
 
 ALTER SEQUENCE public.genre_mapping_id_seq OWNED BY public.genre_mapping.id;
-
-
---
--- Name: initial_tags; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE IF NOT EXISTS public.initial_tags (
-    id integer NOT NULL,
-    track_id integer NOT NULL,
-    title character varying,
-    key character varying,
-    bpm numeric(5,2)
-);
 
 
 --
@@ -184,34 +153,6 @@ CREATE SEQUENCE IF NOT EXISTS public.label_mapping_id_seq
 --
 
 ALTER SEQUENCE public.label_mapping_id_seq OWNED BY public.label_mapping.id;
-
-
---
--- Name: post_mik_tags; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE IF NOT EXISTS public.post_mik_tags (
-    id integer NOT NULL,
-    track_id integer NOT NULL,
-    title character varying,
-    key character varying,
-    energy integer,
-    bpm numeric(5,2)
-);
-
-
---
--- Name: post_rekordbox_tags; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE IF NOT EXISTS public.post_rekordbox_tags (
-    id integer NOT NULL,
-    track_id integer NOT NULL,
-    title character varying,
-    key character varying,
-    energy integer,
-    bpm numeric(5,2)
-);
 
 
 --
@@ -478,7 +419,8 @@ CREATE TABLE IF NOT EXISTS public.track (
     genre character varying,
     label character varying,
     date_added character varying,
-    comment character varying
+    comment character varying,
+    duration_seconds numeric(7,2)
 );
 
 
@@ -708,14 +650,6 @@ ALTER TABLE ONLY public.dj_set
 
 
 --
--- Name: final_tags final_tags_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.final_tags
-    ADD CONSTRAINT final_tags_pkey PRIMARY KEY (id, track_id);
-
-
---
 -- Name: genre_mapping genre_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -732,14 +666,6 @@ ALTER TABLE ONLY public.genre_mapping
 
 
 --
--- Name: initial_tags initial_tags_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.initial_tags
-    ADD CONSTRAINT initial_tags_pkey PRIMARY KEY (id, track_id);
-
-
---
 -- Name: label_mapping label_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -753,22 +679,6 @@ ALTER TABLE ONLY public.label_mapping
 
 ALTER TABLE ONLY public.label_mapping
     ADD CONSTRAINT label_mapping_raw_label_key UNIQUE (raw_label);
-
-
---
--- Name: post_mik_tags post_mik_tags_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.post_mik_tags
-    ADD CONSTRAINT post_mik_tags_pkey PRIMARY KEY (id, track_id);
-
-
---
--- Name: post_rekordbox_tags post_rekordbox_tags_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.post_rekordbox_tags
-    ADD CONSTRAINT post_rekordbox_tags_pkey PRIMARY KEY (id, track_id);
 
 
 --
@@ -1044,167 +954,6 @@ CREATE INDEX IF NOT EXISTS ix_artist_track_track_id ON public.artist_track USING
 
 
 --
--- Name: ix_final_tags_bpm; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_final_tags_bpm ON public.final_tags USING btree (bpm);
-
-
---
--- Name: ix_final_tags_energy; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_final_tags_energy ON public.final_tags USING btree (energy);
-
-
---
--- Name: ix_final_tags_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX IF NOT EXISTS ix_final_tags_id ON public.final_tags USING btree (id);
-
-
---
--- Name: ix_final_tags_key; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_final_tags_key ON public.final_tags USING btree (key);
-
-
---
--- Name: ix_final_tags_title; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_final_tags_title ON public.final_tags USING btree (title);
-
-
---
--- Name: ix_final_tags_track_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX IF NOT EXISTS ix_final_tags_track_id ON public.final_tags USING btree (track_id);
-
-
---
--- Name: ix_initial_tags_bpm; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_initial_tags_bpm ON public.initial_tags USING btree (bpm);
-
-
---
--- Name: ix_initial_tags_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX IF NOT EXISTS ix_initial_tags_id ON public.initial_tags USING btree (id);
-
-
---
--- Name: ix_initial_tags_key; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_initial_tags_key ON public.initial_tags USING btree (key);
-
-
---
--- Name: ix_initial_tags_title; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_initial_tags_title ON public.initial_tags USING btree (title);
-
-
---
--- Name: ix_initial_tags_track_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX IF NOT EXISTS ix_initial_tags_track_id ON public.initial_tags USING btree (track_id);
-
-
---
--- Name: ix_post_mik_tags_bpm; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_post_mik_tags_bpm ON public.post_mik_tags USING btree (bpm);
-
-
---
--- Name: ix_post_mik_tags_energy; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_post_mik_tags_energy ON public.post_mik_tags USING btree (energy);
-
-
---
--- Name: ix_post_mik_tags_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX IF NOT EXISTS ix_post_mik_tags_id ON public.post_mik_tags USING btree (id);
-
-
---
--- Name: ix_post_mik_tags_key; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_post_mik_tags_key ON public.post_mik_tags USING btree (key);
-
-
---
--- Name: ix_post_mik_tags_title; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_post_mik_tags_title ON public.post_mik_tags USING btree (title);
-
-
---
--- Name: ix_post_mik_tags_track_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX IF NOT EXISTS ix_post_mik_tags_track_id ON public.post_mik_tags USING btree (track_id);
-
-
---
--- Name: ix_post_rekordbox_tags_bpm; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_post_rekordbox_tags_bpm ON public.post_rekordbox_tags USING btree (bpm);
-
-
---
--- Name: ix_post_rekordbox_tags_energy; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_post_rekordbox_tags_energy ON public.post_rekordbox_tags USING btree (energy);
-
-
---
--- Name: ix_post_rekordbox_tags_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX IF NOT EXISTS ix_post_rekordbox_tags_id ON public.post_rekordbox_tags USING btree (id);
-
-
---
--- Name: ix_post_rekordbox_tags_key; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_post_rekordbox_tags_key ON public.post_rekordbox_tags USING btree (key);
-
-
---
--- Name: ix_post_rekordbox_tags_title; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX IF NOT EXISTS ix_post_rekordbox_tags_title ON public.post_rekordbox_tags USING btree (title);
-
-
---
--- Name: ix_post_rekordbox_tags_track_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX IF NOT EXISTS ix_post_rekordbox_tags_track_id ON public.post_rekordbox_tags USING btree (track_id);
-
-
---
 -- Name: ix_track_bpm; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1330,38 +1079,6 @@ ALTER TABLE ONLY public.artist_track
 
 ALTER TABLE ONLY public.artist_track
     ADD CONSTRAINT artist_track_track_id_fkey FOREIGN KEY (track_id) REFERENCES public.track(id);
-
-
---
--- Name: final_tags final_tags_track_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.final_tags
-    ADD CONSTRAINT final_tags_track_id_fkey FOREIGN KEY (track_id) REFERENCES public.track(id);
-
-
---
--- Name: initial_tags initial_tags_track_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.initial_tags
-    ADD CONSTRAINT initial_tags_track_id_fkey FOREIGN KEY (track_id) REFERENCES public.track(id);
-
-
---
--- Name: post_mik_tags post_mik_tags_track_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.post_mik_tags
-    ADD CONSTRAINT post_mik_tags_track_id_fkey FOREIGN KEY (track_id) REFERENCES public.track(id);
-
-
---
--- Name: post_rekordbox_tags post_rekordbox_tags_track_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.post_rekordbox_tags
-    ADD CONSTRAINT post_rekordbox_tags_track_id_fkey FOREIGN KEY (track_id) REFERENCES public.track(id);
 
 
 --

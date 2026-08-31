@@ -142,17 +142,6 @@ class WeightUpdateRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class TransitionScoreRequest(BaseModel):
-    pairs: List[List[int]] = Field(
-        ...,
-        description="List of [source_id, candidate_id] pairs",
-    )
-
-
-class TransitionScoreResponse(BaseModel):
-    scores: List[Optional[float]]
-
-
 class SetExportRequest(BaseModel):
     track_ids: List[int]
     name: str = "set"

@@ -26,11 +26,6 @@ _CONFIG_VARS = [
     "HM_MAX_RESULTS",
     "HM_SCORE_THRESHOLD",
     "HM_RESULT_THRESHOLD",
-    "INGESTION_PIPELINE_ROOT",
-    "INGESTION_PIPELINE_UNPROCESSED",
-    "INGESTION_PIPELINE_PROCESSING",
-    "INGESTION_PIPELINE_FINALIZED",
-    "INGESTION_PIPELINE_REKORDBOX_TAG_FILE",
     "INGESTION_PIPELINE_PROCESSED_MUSIC_DIR",
     "TRACK_METADATA_DOWNLOAD_DIR",
     "TRACK_METADATA_PROCESSING_DIR",
@@ -179,11 +174,6 @@ class TestConfigStructure:
     def test_ingestion_pipeline_keys(self):
         mod = _reload_config()
         assert set(mod.CONFIG["INGESTION_PIPELINE"].keys()) == {
-            "ROOT",
-            "UNPROCESSED",
-            "PROCESSING",
-            "FINALIZED",
-            "REKORDBOX_TAG_FILE",
             "PROCESSED_MUSIC_DIR",
         }
 
@@ -234,14 +224,6 @@ class TestDefaults:
         assert hm["SCORE_THRESHOLD"] == 25
         assert hm["RESULT_THRESHOLD"] == 20
 
-    def test_ingestion_pipeline_subdir_defaults(self):
-        mod = _reload_config()
-        ip = mod.CONFIG["INGESTION_PIPELINE"]
-        assert ip["UNPROCESSED"] == "unprocessed"
-        assert ip["PROCESSING"] == "processing"
-        assert ip["FINALIZED"] == "finalized"
-        assert ip["REKORDBOX_TAG_FILE"] == "rekordbox_tags.txt"
-
     def test_track_metadata_subdir_defaults(self):
         mod = _reload_config()
         tm = mod.CONFIG["TRACK_METADATA"]
@@ -259,7 +241,6 @@ class TestDefaults:
         assert mod.CONFIG["DB"]["NAME"] == ""
         assert mod.CONFIG["DB"]["USER"] == ""
         assert mod.CONFIG["DB"]["PASSWORD"] == ""
-        assert mod.CONFIG["INGESTION_PIPELINE"]["ROOT"] == ""
         assert mod.CONFIG["TRACK_METADATA"]["DOWNLOAD_DIR"] == ""
 
 

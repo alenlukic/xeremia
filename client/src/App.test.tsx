@@ -60,7 +60,6 @@ vi.mock('./api/http', () => ({
   fetchMatches: vi.fn().mockResolvedValue([]),
   fetchMatchDetail: vi.fn().mockResolvedValue({}),
   updateWeights: vi.fn().mockResolvedValue({}),
-  fetchTransitionScores: vi.fn().mockResolvedValue({ scores: [] }),
   exportSetM3u8: vi.fn().mockResolvedValue({ content: '', filename: '' }),
   fetchSets: vi.fn().mockResolvedValue([]),
   createSet: vi.fn().mockResolvedValue({

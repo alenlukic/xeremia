@@ -2,15 +2,11 @@
 
 ## Overview
 
-A toolkit for DJs that manages a music collection database, runs a multi-source track ingestion pipeline, computes audio-similarity features, and provides both a live CLI assistant and a browser-based client for finding harmonically compatible transition matches.
+A toolkit for DJs that manages a music collection database, enriches and ingests track metadata from multiple sources, computes audio-similarity features, and provides a browser-based client for finding harmonically compatible transition matches and building DJ sets.
 
-### Library ingestion & tagging
+### Metadata agent (ingestion & enrichment)
 
-Processes new audio through a four-step pipeline that reconciles BPM and key from Mixed In Key, Rekordbox, and raw ID3 tags into canonical database records. Files are renamed, tagged, and copied to a processed music directory. Companion scripts sync tags and fields between disk and database, convert lossless formats, and restore backups from Google Drive.
-
-### Metadata enrichment
-
-A batch metadata agent hydrates ID3 tags from AcoustID, MusicBrainz, Discogs, and an optional OpenAI fallback. It estimates missing BPM and key, writes enriched tags back to files, and stages output for ingestion.
+The metadata agent is the single ingestion path. It discovers new audio files, stages them (converting WAV to AIFF), hydrates ID3 tags from AcoustID, MusicBrainz, and Discogs with an optional cursor-sdk fallback agent, resolves genre and label through layered heuristics, and fuses BPM/key from an optional Rekordbox TSV export with essentia/madmom/librosa analyzer consensus. It writes enriched tags back to each file, renames and copies it to the augmented directory, and upserts `track`/`artist`/`artist_track` records into PostgreSQL. Tracks missing mission-critical fields route to a remediation directory for later finalization.
 
 ### Audio features & similarity
 
@@ -18,11 +14,11 @@ Computes compact CQT-based descriptor vectors and ONNX-derived audio traits for 
 
 ### Harmonic mixing & transition matching
 
-Ranks transition candidates using weighted factors — Camelot key compatibility, BPM proximity, genre and mood continuity, vocal clash, danceability, energy, timbre, and audio-similarity. Available via an interactive CLI REPL and the web client's Matches tab, with live-adjustable scoring weights.
+Ranks transition candidates using weighted factors — Camelot key compatibility, BPM proximity, freshness, genre and mood continuity, vocal clash, energy, and compact audio descriptor similarity. Available in the web client's Matches view, with live-adjustable scoring weights.
 
 ### Web client & set building
 
-A React SPA backed by FastAPI provides Elasticsearch-powered search, collection browsing with filters, transition match exploration, DJ set building (pool, tracklist, and visual set explorer), scoring-weight administration, and M3U8 export. See [Web Client & API](#web-client--api) below.
+A React SPA backed by FastAPI provides Elasticsearch-powered search, collection browsing with filters, transition match exploration, DJ set building (pool with subgroups, tracklist with notes and sequencer overrides, visual explorer canvas, sequencer), scoring-weight and cache administration, per-device table and workspace-layout preferences, audio playback, and M3U8 export. See [Web Client & API](#web-client--api) below.
 
 Further architecture and workflow detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/WORKFLOWS.md](docs/WORKFLOWS.md).
 
@@ -34,9 +30,8 @@ Further architecture and workflow detail: [docs/ARCHITECTURE.md](docs/ARCHITECTU
 
 - Python 3.9–3.11 (see [Python version notes](#python-version-notes) below)
 - PostgreSQL
-- ffmpeg (required for lossless-to-AIFF conversion)
+- ffmpeg (required for WAV-to-AIFF conversion during metadata staging)
 - A C compiler and Cython (required to build `madmom` from source; see install steps)
-- Google API credentials (optional; required only for backup/restore)
 
 ### Clone and configure
 
@@ -161,12 +156,12 @@ npm --prefix client test
 
 ## Web Client & API
 
-A browser-based alternative to the CLI assistant, backed by a minimal FastAPI layer.
+A browser-based client backed by a minimal FastAPI layer.
 
 ### Prerequisites
 
 - Node.js ≥ 18
-- A running PostgreSQL database with tracks already ingested
+- A running PostgreSQL database with tracks already processed by the metadata agent
 - Docker (for Elasticsearch)
 
 ### Quick start
@@ -214,64 +209,54 @@ The Vite dev server proxies `/api/*` requests to the API.
 
 ### API endpoints
 
+Primary routes (see [docs/WORKFLOWS.md](docs/WORKFLOWS.md#api-endpoints) for the full set-workspace, explorer, and admin surface):
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/search?q=<query>` | Elasticsearch-powered autocomplete (max 10 results, title-weighted). |
 | `GET` | `/api/tracks?camelot_code=&bpm=&bpm_min=&bpm_max=` | Full track listing with optional filters. Camelot codes are comma-separated. |
-| `GET` | `/api/tracks/{id}/matches` | Transition matches for a track, computed via existing `TransitionMatchFinder`. |
+| `GET` | `/api/track-traits` | Current-version ONNX trait rows for all tracks. |
+| `GET` | `/api/tracks/{id}/matches` | Transition matches for a track, computed via `TransitionMatchFinder`. |
+| `GET` | `/api/tracks/{id}/match-detail/{candidate_id}` | Per-factor score breakdown and trait snapshots for a track pair. |
+| `GET` | `/api/tracks/{id}/audio` | Stream the track's audio file for in-browser playback. |
+| `GET` / `PUT` | `/api/weights` | Read / persist scoring weights. |
+| `GET` | `/api/admin/cache-stats` | Cosine-cache statistics and distributions. |
+| `GET` | `/api/sets` … | Set workspace CRUD: pool, subgroups, tracklist, explorer, sequencer, preferences, m3u8 export. |
 
 ---
 
-## CLI
+## Scripts
 
-### Mixing Assistant
+### Metadata Agent
 
-**Purpose:** Interactive REPL that finds harmonically compatible transition candidates for the track currently on deck.
+**Purpose:** Enriches and ingests audio files: hydrates ID3 tags via AcoustID, MusicBrainz, Discogs, and an optional cursor-sdk fallback; resolves BPM/key with analyzer fusion; writes tags, renames files, copies them to the augmented directory, and upserts track/artist records into PostgreSQL.
 
-**When to use:** During a live set to quickly discover what to play next based on key and BPM compatibility.
+**When to use:** When adding new tracks to the collection.
 
 **Invocation:**
 ```bash
-python -m src.scripts.launch_assistant
+python -m src.track_metadata.metadata_agent
+
+# Optional: use Rekordbox-exported BPM/key metadata
+python -m src.track_metadata.metadata_agent --rekordbox-tsv /path/to/rekordbox.tsv
 ```
 
-**Commands at the prompt:**
-```
-match <track_title>   Find transition matches for the given track
-reload                Reload track data from the database
-exit                  Quit
-```
+The TSV may use named musical keys or Camelot notation (`4A` and `04A` are equivalent).
 
-**Output:** Ranked transition candidates grouped by key relationship (same key / step up / step down), scored across weighted factors (Camelot, BPM, freshness, label, genre, artist, energy, and compact audio descriptor similarity).
+**Location:** `src/track_metadata/`
 
 ---
 
-### Ingestion Pipeline
+### Remediate Track
 
-**Purpose:** Processes new audio files through a 4-step pipeline, reconciling BPM and key from Mixed In Key, Rekordbox, and raw ID3 tags into a canonical DB record, then renames and copies the final file.
+**Purpose:** Finalizes a remediation-track after its missing fields have been resolved externally — writes the resolved tags, finalizes the file into the augmented library, and upserts it into PostgreSQL without re-running the whole pipeline.
 
-**When to use:** When adding new tracks to the collection after tagging them in Mixed In Key and Rekordbox.
-
-**Invocation (full pipeline, interactive):**
+**Invocation:**
 ```bash
-python -m src.scripts.ingestion_pipeline.run_ingestion_pipeline
+python -m src.track_metadata.remediate_track <remediation_file> <resolved.json>
 ```
 
-Type `next` at each prompt to advance to the next step, or `cancel` to abort.
-
-**Invocation (individual steps):**
-```bash
-python -m src.scripts.ingestion_pipeline.load_initial_tag_records       # Step 0
-python -m src.scripts.ingestion_pipeline.load_post_mik_tag_records      # Step 1
-python -m src.scripts.ingestion_pipeline.load_post_rekordbox_tag_records # Step 2
-python -m src.scripts.ingestion_pipeline.load_final_tag_records          # Step 3
-```
-
-**Output:**
-- Step 0: Track rows in DB; files copied to processing directory
-- Step 1: PostMIK tag records in DB (BPM/key from Mixed In Key comment field)
-- Step 2: PostRekordbox tag records in DB (BPM/key from exported Rekordbox tag file)
-- Step 3: Final tag records in DB; ID3 tags written to files; files renamed and copied to `INGESTION_PIPELINE_PROCESSED_MUSIC_DIR`
+`resolved.json` maps `SimpleMetadata` field names (`title`, `artist`, `album`, `label`, `genre`, `remixer`, `year`, `bpm`, `key`) to their resolved values; only the listed fields are overridden.
 
 ---
 
@@ -279,7 +264,7 @@ python -m src.scripts.ingestion_pipeline.load_final_tag_records          # Step 
 
 **Purpose:** Computes compact CQT-based audio descriptor vectors for tracks and stores them in the database. Used for audio-similarity scoring during transition matching.
 
-**When to use:** After new tracks are ingested and before generating transition match rows.
+**When to use:** After new tracks are ingested and before computing cosine similarities or generating transition matches.
 
 **Invocation:**
 ```bash
@@ -294,89 +279,37 @@ python -m src.scripts.feature_extraction.compute_compact_descriptors <id1> <id2>
 
 ---
 
-### Sync Tags
+### Feature extraction batch scripts
 
-**Purpose:** Syncs ID3 tags on disk with the corresponding DB track records.
+| Script | Purpose |
+|--------|---------|
+| `python -m src.scripts.feature_extraction.compute_track_traits` | Batch ONNX trait classifiers (parallelized via `TRAIT_WORKERS`) |
+| `python -m src.scripts.feature_extraction.compute_cosine_similarities` | Precompute pairwise descriptor similarities (`COSINE_WORKERS`) |
+| `python -m src.scripts.feature_extraction.compute_features_for_tracks <ids...>` | Traits + cosine similarities for specific track IDs |
+| `python -m src.scripts.feature_extraction.backfill_genre_mood` | Re-extract stale trait versions |
+| `python -m src.scripts.feature_extraction.retry_failed_traits` | Retry previously failed trait extractions |
+| `bash src/scripts/feature_extraction/extract_features.sh` | Shell wrapper that runs the full feature pipeline |
 
-**When to use:** After manually editing ID3 tags outside the pipeline, to bring DB records in sync.
+---
+
+### Repair Genre/Label
+
+**Purpose:** Repairs genre and label rows damaged by prior ingestion, driven by a JSON snapshot of per-track field deltas.
 
 **Invocation:**
 ```bash
-python -m src.scripts.sync_tags
+python -m src.scripts.repair_genre_label --snapshot PATH [--apply] [--verify-only]
 ```
 
 ---
 
-### Sync Fields
+### Database migrations
 
-**Purpose:** Syncs DB track fields from current on-disk ID3 metadata (reverse direction of sync_tags).
+Schema migrations for existing installations live as `src/scripts/migrate_*.py` and under `src/scripts/migrations/`:
 
-**Invocation:**
 ```bash
-python -m src.scripts.sync_fields
+python -m src.scripts.migrate_table_preferences   # example
 ```
-
----
-
-### Convert Lossless to AIFF
-
-**Purpose:** Converts FLAC and WAV files to AIFF format using ffmpeg.
-
-**When to use:** Before ingesting lossless files into the pipeline, which expects AIFF or MP3.
-
-**Invocation:**
-```bash
-python -m src.scripts.convert_all_lossless_to_aiff <input_dir>
-```
-
-**Output:** AIFF files written to the same directory as the source files.
-
----
-
-### Restore Backup
-
-**Purpose:** Restores audio file backups from Google Drive by revision date.
-
-**Invocation:**
-```bash
-python -m src.scripts.restore_backup <date>
-```
-
-**Output:** Files downloaded to `DATA_BACKUP_RESTORE_MUSIC_DIR`; progress tracked in `backup_progress.json`.
-
----
-
-### Delete Tracks
-
-**Purpose:** Removes track records from the database by ID.
-
-**Invocation:**
-```bash
-# Individual IDs
-python -m src.scripts.delete_tracks <id1> <id2> ...
-
-# Range
-python -m src.scripts.delete_tracks <start>...<end>
-```
-
----
-
-### Metadata Enrichment
-
-**Purpose:** Enriches ID3 tags for audio files using MusicBrainz, Discogs, AcoustID, and an
-OpenAI LLM. Writes enriched metadata back to file tags.
-
-**Invocation:**
-```bash
-python -m src.track_metadata.metadata_agent
-
-# Optional: use Rekordbox-exported BPM/key metadata
-python -m src.track_metadata.metadata_agent --rekordbox-tsv /path/to/rekordbox.tsv
-```
-
-The TSV may use named musical keys or Camelot notation (`4A` and `04A` are equivalent).
-
-**Location:** `src/track_metadata/`
 
 ---
 
@@ -396,37 +329,35 @@ See `.env.example` for a ready-to-copy template.
 | `DB_PASSWORD` | PostgreSQL password |
 | `DB_HOST` | PostgreSQL host (default: `localhost`) |
 | `DB_PORT` | PostgreSQL port (default: `5432`) |
-| `HM_WEIGHT_SIMILARITY` | Harmonic mixing weight — cosine similarity (default: `0.18`) |
-| `HM_WEIGHT_CAMELOT` | Harmonic mixing weight — Camelot key compatibility (default: `0.20`) |
-| `HM_WEIGHT_BPM` | Harmonic mixing weight — BPM proximity (default: `0.20`) |
-| `HM_WEIGHT_FRESHNESS` | Harmonic mixing weight — track recency (default: `0.08`) |
-| `HM_WEIGHT_GENRE_SIMILARITY` | Harmonic mixing weight — genre similarity (default: `0.08`) |
-| `HM_WEIGHT_MOOD_CONTINUITY` | Harmonic mixing weight — mood continuity (default: `0.06`) |
-| `HM_WEIGHT_VOCAL_CLASH` | Harmonic mixing weight — vocal clash penalty (default: `0.05`) |
-| `HM_WEIGHT_DANCEABILITY` | Harmonic mixing weight — danceability proximity (default: `0.07`) |
-| `HM_WEIGHT_ENERGY` | Harmonic mixing weight — energy level proximity (default: `0.04`) |
-| `HM_WEIGHT_TIMBRE` | Harmonic mixing weight — timbre similarity (default: `0.04`) |
-| `HM_WEIGHT_INSTRUMENT_SIMILARITY` | Harmonic mixing weight — instrument similarity (default: `0.02`) |
+| `HM_WEIGHT_SIMILARITY` | Harmonic mixing weight — cosine similarity (default: `0.1922`) |
+| `HM_WEIGHT_CAMELOT` | Harmonic mixing weight — Camelot key compatibility (default: `0.2122`) |
+| `HM_WEIGHT_BPM` | Harmonic mixing weight — BPM proximity (default: `0.2122`) |
+| `HM_WEIGHT_FRESHNESS` | Harmonic mixing weight — track recency (default: `0.0922`) |
+| `HM_WEIGHT_GENRE_SIMILARITY` | Harmonic mixing weight — genre similarity (default: `0.0922`) |
+| `HM_WEIGHT_MOOD_CONTINUITY` | Harmonic mixing weight — mood continuity (default: `0.0722`) |
+| `HM_WEIGHT_VOCAL_CLASH` | Harmonic mixing weight — vocal clash penalty (default: `0.0622`) |
+| `HM_WEIGHT_ENERGY` | Harmonic mixing weight — energy level compatibility (default: `0.0522`) |
+| `HM_WEIGHT_INSTRUMENT_SIMILARITY` | Harmonic mixing weight — instrument similarity (default: `0.0322`) |
 | `HM_MAX_RESULTS` | Max transition match candidates to return (default: `50`) |
 | `HM_SCORE_THRESHOLD` | Minimum composite score to include a candidate (default: `25`) |
 | `HM_RESULT_THRESHOLD` | Min result count before score threshold is enforced (default: `20`) |
-| `INGESTION_PIPELINE_ROOT` | Root directory for ingestion pipeline data |
-| `INGESTION_PIPELINE_UNPROCESSED` | Subdir for incoming tracks (default: `unprocessed`) |
-| `INGESTION_PIPELINE_PROCESSING` | Subdir for in-progress tracks (default: `processing`) |
-| `INGESTION_PIPELINE_FINALIZED` | Subdir for finalized tracks (default: `finalized`) |
-| `INGESTION_PIPELINE_REKORDBOX_TAG_FILE` | Rekordbox exported tag filename (default: `rekordbox_tags.txt`) |
-| `INGESTION_PIPELINE_PROCESSED_MUSIC_DIR` | Final destination for processed music files |
+| `INGESTION_PIPELINE_PROCESSED_MUSIC_DIR` | Processed music library path — used for audio playback streaming and feature-extraction jobs (legacy name retained) |
 | `TRACK_METADATA_DOWNLOAD_DIR` | Input directory for track metadata enrichment |
 | `TRACK_METADATA_PROCESSING_DIR` | Working directory for track-metadata (default: `processing`) |
 | `TRACK_METADATA_AUGMENTED_DIR` | Output directory for enriched tracks (default: `augmented`) |
+| `TRACK_METADATA_REMEDIATION_DIR` | Directory for tracks awaiting manual remediation (default: `Remediation Tracks`) |
 | `TRACK_METADATA_LOG_DIR` | Log directory for track-metadata (default: `logs`) |
 | `TRACK_METADATA_RUN_START` | Override timestamp for metadata run (default: current time) |
+| `TRACK_METADATA_ENABLE_CURSOR_SDK` | Enable the cursor-sdk fallback resolver for missing fields (default: `0`) |
+| `TRACK_METADATA_ENABLE_ESSENTIA` | Add the optional essentia BPM/key analyzer (default: `0`) |
+| `TRACK_METADATA_BEATPORT_SKIP` | Skip hydration of Beatport-encoded files (default: `1`) |
 | `TRACK_METADATA_RESOLUTION_GENRE_ARTIST_HISTORY` | Enable DB artist-history genre fallback (default: `1`) |
 | `TRACK_METADATA_RESOLUTION_GENRE_BEATPORT` | Enable Beatport artist-page genre fallback via cursor-sdk (default: `1`) |
 | `TRACK_METADATA_RESOLUTION_LABEL_WEB_SEARCH` | Enable catalog-number and direct-label web heuristics (default: `1`) |
 | `TRACK_METADATA_RESOLUTION_LABEL_BEATPORT` | Enable Beatport track-page label fallback via cursor-sdk (default: `1`) |
 | `TRACK_METADATA_RESOLUTION_LABEL_CDR` | Enable qualified `CDR` inference when no label is found (default: `1`) |
 | `TRACK_METADATA_RESOLUTION_EXTERNAL_TIMEOUT_SECONDS` | Timeout for external research heuristics (default: `20`) |
+| `TRACK_METADATA_RESOLUTION_EXTERNAL_MAX_RETRIES` | Retries for external research heuristics (default: `1`) |
 | `TRACK_METADATA_RESOLUTION_CDR_MIN_SOUNDCLOUD_FOLLOWERS` | Supporting threshold for SoundCloud follower evidence (default: `5000`) |
 | `LOG_LOCATION` | Global log file path (default: `logs/logs.txt`) |
 | `NUM_CORES` | CPU parallelism override (default: system CPU count) |
@@ -434,10 +365,10 @@ See `.env.example` for a ready-to-copy template.
 | `ES_URL` | Elasticsearch URL (default: `http://127.0.0.1:9200`) |
 | `TRAIT_WORKERS` | Parallel workers for trait extraction (default: `2`) |
 | `COSINE_WORKERS` | Parallel workers for cosine similarity (default: `2`) |
-| `OPENAI_API_KEY` | OpenAI API key (optional — enables LLM metadata fallback) |
-| `OPENAI_METADATA_MODEL` | OpenAI model for metadata resolution (default: `gpt-5.4-mini`) |
 | `ACOUSTID_API_KEY` | AcoustID API key (optional — enables fingerprint lookup) |
 | `DISCOGS_TOKEN` | Discogs API token (optional — enables Discogs search) |
+| `DISCOGS_KEY` / `DISCOGS_SECRET` | Alternative Discogs API key/secret pair |
+| `DISCOGS_USER_AGENT` | Custom Discogs User-Agent |
 | `MUSIC_METADATA_USER_AGENT` | HTTP User-Agent for metadata API requests |
 
 ### Search architecture
