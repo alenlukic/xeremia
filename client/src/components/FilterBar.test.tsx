@@ -281,4 +281,27 @@ describe('TrackTable column visibility', () => {
     const bpmCell = cells.find((c) => c.textContent === '130')
     expect(bpmCell).toBeTruthy()
   })
+
+  it('reports selectable row ids in sorted table order', () => {
+    const onSelectableIdsChange = vi.fn()
+    const tracks: Track[] = [
+      { ...sampleTrack, id: 1, title: 'Zulu' },
+      { ...sampleTrack, id: 2, title: 'Alpha' },
+      { ...sampleTrack, id: 3, title: 'Mike' },
+    ]
+
+    render(
+      <TrackTable
+        selection={NO_SELECTION}
+        tracks={tracks}
+        sorting={[{ id: 'title', desc: false }]}
+        onSelectableIdsChange={onSelectableIdsChange}
+        {...trackTableProps}
+      />,
+    )
+
+    expect(onSelectableIdsChange).toHaveBeenCalled()
+    const lastCall = onSelectableIdsChange.mock.calls.at(-1)?.[0] as number[]
+    expect(lastCall).toEqual([2, 3, 1])
+  })
 })

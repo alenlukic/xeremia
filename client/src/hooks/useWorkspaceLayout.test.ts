@@ -159,6 +159,37 @@ describe('useWorkspaceLayout', () => {
     expect(result.current.place.pool).toBeUndefined()
   })
 
+  it('keeps custom widgets disjoint when the canvas becomes narrow', async () => {
+    localStorage.setItem(
+      'xeremia:workspace-layout:v2',
+      JSON.stringify({
+        preset: 'Custom',
+        bounds: { cols: 300, rows: 100 },
+        place: {
+          browser: { x: 0, y: 0, w: 100, h: 50 },
+          matches: { x: 100, y: 0, w: 100, h: 50 },
+          pool: { x: 200, y: 0, w: 100, h: 50 },
+        },
+        custom: {},
+        hidden: [],
+        shell: 'workspace',
+        locked: {},
+      }),
+    )
+    const { result } = await mounted()
+
+    act(() => {
+      result.current.setBounds({ cols: 60, rows: 100 })
+    })
+
+    const placed = Object.values(result.current.place)
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        expect(overlaps(placed[i]!, placed[j]!)).toBe(false)
+      }
+    }
+  })
+
   it('branches a new layout off an existing one instead of the screen', async () => {
     const { result } = await mounted()
     act(() => {
@@ -320,6 +351,35 @@ describe('normalizeLayout', () => {
     })
     expect(layout.place.browser).toEqual({ x: 0, y: 0, w: 40, h: 40 })
     expect(overlaps(layout.place.browser!, layout.place.matches!)).toBe(false)
+  })
+
+  it('shrinks a crowded ghost placement instead of retaining an overlap', () => {
+    const layout = normalizeLayout({
+      preset: 'Custom',
+      bounds: { cols: 238, rows: 109 },
+      place: {
+        pool: { x: 0, y: 0, w: 77, h: 55 },
+        browser: { x: 184, y: 0, w: 54, h: 109 },
+        matches: { x: 115, y: 0, w: 51, h: 54 },
+        explorer: { x: 0, y: 60, w: 89, h: 49 },
+        sequencer: { x: 0, y: 0, w: 89, h: 59 },
+      },
+      custom: {},
+      shell: 'workspace',
+    })
+
+    expect(layout.place.sequencer).toEqual({
+      x: 77,
+      y: 0,
+      w: MIN_W,
+      h: MIN_H,
+    })
+    const placed = Object.values(layout.place)
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        expect(overlaps(placed[i]!, placed[j]!)).toBe(false)
+      }
+    }
   })
 
   it('clamps a rectangle that runs off the canvas', () => {

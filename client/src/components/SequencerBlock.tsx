@@ -7,6 +7,7 @@ import { harmonyPaint, keyDotColor } from '../utils/harmonic'
 import type { PairResult } from '../utils/harmonic'
 import type { Track } from '../types'
 import { displayTitle } from '../utils/trackTitle'
+import { blockRestWidth } from '../utils/sequencerLayout'
 
 // One block on a lane. The tile carries only a key over a BPM; the full track
 // details live in a hover popover.
@@ -93,7 +94,7 @@ export function SequencerBlock({
   const raised = (pop != null && !raiseDisabled) || selected
 
   const paint = relation && relation.p >= 0 ? harmonyPaint(relation.p) : null
-  const baseWidth = Math.max(1, width)
+  const baseWidth = blockRestWidth(width)
   // Never narrower than the resting tile, or raising a wide block would pull
   // its edges out from under the pointer and flicker.
   const raisedWidth = Math.max(baseWidth, RAISED_WIDTH_PX)

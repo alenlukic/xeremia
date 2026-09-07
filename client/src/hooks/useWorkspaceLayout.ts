@@ -128,9 +128,20 @@ function normalizePlace(raw: unknown, bounds: Bounds): LayoutPlace {
       const seated = place[other]
       return !!seated && overlaps(candidate, seated)
     })
-    place[id] = clash
-      ? (firstFree(place, candidate.w, candidate.h, bounds) ?? candidate)
-      : candidate
+    if (!clash) {
+      place[id] = candidate
+      continue
+    }
+    // A viewport resize can clamp two formerly separate widgets onto the same
+    // cells. Keep the widget at its current size when possible, then try its
+    // minimum footprint. If neither fits, omit it from the canvas instead of
+    // retaining an invisible overlap that blocks both moving and resizing.
+    const relocated =
+      firstFree(place, candidate.w, candidate.h, bounds) ??
+      firstFree(place, MIN_W, MIN_H, bounds)
+    if (relocated) {
+      place[id] = relocated
+    }
   }
   return place
 }
@@ -350,7 +361,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
           place[id] = scaleRect(p, from, next)
         }
       }
-      return { ...s, bounds: next, place }
+      return { ...s, bounds: next, place: normalizePlace(place, next) }
     })
   }, [])
 
@@ -370,10 +381,11 @@ export function useWorkspaceLayout(): WorkspaceLayout {
     mutateState((s) => {
       const saved = s.custom[name]
       if (saved) {
+        const place = normalizePlace(saved.place, boundsRef.current)
         return {
           ...s,
           preset: name,
-          place: saved.place,
+          place,
           locked: saved.locked ?? {},
         }
       }
@@ -415,7 +427,14 @@ export function useWorkspaceLayout(): WorkspaceLayout {
 
   const setPlace = useCallback(
     (fn: (place: LayoutPlace) => LayoutPlace) => {
-      mutateState((s) => writeThrough(s, fn(s.place), s.locked ?? {}))
+      mutateState((s) => {
+        const clean = normalizePlace(s.place, boundsRef.current)
+        return writeThrough(
+          s,
+          normalizePlace(fn(clean), boundsRef.current),
+          s.locked ?? {},
+        )
+      })
     },
     [mutateState, writeThrough],
   )
@@ -593,7 +612,7 @@ export function useWorkspaceLayout(): WorkspaceLayout {
                 place,
                 id,
                 edge,
-                start,
+                place[id] ?? start,
                 dx,
                 dy,
                 boundsRef.current,

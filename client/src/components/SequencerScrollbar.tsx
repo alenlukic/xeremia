@@ -72,7 +72,7 @@ export function SequencerScrollbar({ scrollRef, endOffset }: Props) {
         return
       }
       e.preventDefault()
-      const captureEl = e.currentTarget
+      const captureEl = e.currentTarget as HTMLElement
       if (typeof captureEl.setPointerCapture === 'function') {
         try {
           captureEl.setPointerCapture(e.pointerId)

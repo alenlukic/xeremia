@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * Row multi-selection, shared by every view that lists tracks: the browse and
@@ -37,8 +37,17 @@ export function useMultiSelect(ids: number[]): MultiSelect {
   const [selected, setSelected] = useState<ReadonlySet<number>>(
     () => new Set<number>(),
   )
-  // Anchor for shift-extend; the last row picked without shift.
-  const anchorRef = useRef<number | null>(null)
+  // Index in `ids` for shift-span endpoint one; null when no span is pending.
+  const spanAnchorIndexRef = useRef<number | null>(null)
+  const listedIdsKeyRef = useRef('')
+
+  useEffect(() => {
+    const key = ids.join('\0')
+    if (listedIdsKeyRef.current !== key) {
+      listedIdsKeyRef.current = key
+      spanAnchorIndexRef.current = null
+    }
+  }, [ids])
 
   // Reads are intersected with what the view lists, so a bulk action cannot
   // reach a row the user cannot see — by construction, in the same render the
@@ -51,21 +60,36 @@ export function useMultiSelect(ids: number[]): MultiSelect {
   // Plain functions: consumed by inline row handlers, where identity does not
   // matter, and `ids` would defeat memoization regardless.
   const select = (id: number, modifiers: SelectModifiers = {}) => {
+    const clickedIndex = ids.indexOf(id)
+    if (clickedIndex < 0) {
+      return
+    }
+
     const additive = !!(modifiers.metaKey || modifiers.ctrlKey)
-    if (modifiers.shiftKey && anchorRef.current !== null) {
-      const from = ids.indexOf(anchorRef.current)
-      const to = ids.indexOf(id)
-      if (from >= 0 && to >= 0) {
+    if (modifiers.shiftKey) {
+      if (spanAnchorIndexRef.current !== null) {
+        const from = spanAnchorIndexRef.current
+        const to = clickedIndex
         const [lo, hi] = from <= to ? [from, to] : [to, from]
         const range = ids.slice(lo, hi + 1)
         setSelected((current) =>
           additive ? new Set([...current, ...range]) : new Set(range),
         )
+        spanAnchorIndexRef.current = null
         return
       }
+      spanAnchorIndexRef.current = clickedIndex
+      if (additive) {
+        setSelected((current) => new Set([...current, id]))
+      } else {
+        setSelected(new Set([id]))
+      }
+      return
     }
-    anchorRef.current = id
+
+    spanAnchorIndexRef.current = clickedIndex
     if (additive) {
+      spanAnchorIndexRef.current = null
       setSelected((current) => {
         const next = new Set(current)
         if (next.has(id)) {
@@ -81,7 +105,10 @@ export function useMultiSelect(ids: number[]): MultiSelect {
   }
 
   const toggle = (id: number) => {
-    anchorRef.current = id
+    const clickedIndex = ids.indexOf(id)
+    if (clickedIndex >= 0) {
+      spanAnchorIndexRef.current = clickedIndex
+    }
     setSelected((current) => {
       const next = new Set(current)
       if (next.has(id)) {
@@ -96,7 +123,7 @@ export function useMultiSelect(ids: number[]): MultiSelect {
   const selectAll = () => setSelected(new Set(ids))
 
   const clear = () => {
-    anchorRef.current = null
+    spanAnchorIndexRef.current = null
     setSelected((current) => (current.size === 0 ? current : new Set<number>()))
   }
 

@@ -195,6 +195,8 @@ interface Props {
   scrollRestorationKey?: string
   /** Row multi-selection, owned by the widget so its header can drive it. */
   selection: MultiSelect
+  /** Listed row ids in the order the table renders them (after sort). */
+  onSelectableIdsChange?: (ids: number[]) => void
 }
 
 export const TrackTable = memo(function TrackTable({
@@ -211,6 +213,7 @@ export const TrackTable = memo(function TrackTable({
   onSortingChange: onSortingChangeProp,
   scrollRestorationKey,
   selection,
+  onSelectableIdsChange,
 }: Props) {
   const { onResizeStart, shouldIgnoreSortClick } = useColumnResizeGuard()
   const outerRef = useRef<HTMLDivElement>(null)
@@ -361,6 +364,14 @@ export const TrackTable = memo(function TrackTable({
   const isUnderflowing = containerWidth > 0 && totalWidth < containerWidth
 
   const rows = table.getRowModel().rows
+  const selectableIds = useMemo(
+    () => rows.map((row) => row.original.id),
+    [rows],
+  )
+
+  useLayoutEffect(() => {
+    onSelectableIdsChange?.(selectableIds)
+  }, [onSelectableIdsChange, selectableIds])
 
   // Row virtualization: only the visible window of rows is mounted. With the
   // full collection loaded (thousands of rows), rendering every row made any
@@ -649,7 +660,11 @@ export const TrackTable = memo(function TrackTable({
                         e.dataTransfer.effectAllowed = 'copy'
                       }}
                       onClick={(event) => {
-                        selection.select(row.original.id, event)
+                        selection.select(row.original.id, {
+                          shiftKey: event.shiftKey,
+                          metaKey: event.metaKey,
+                          ctrlKey: event.ctrlKey,
+                        })
                         // A modifier click is building a selection, not asking
                         // to load this track's matches.
                         if (event.metaKey || event.ctrlKey || event.shiftKey) {

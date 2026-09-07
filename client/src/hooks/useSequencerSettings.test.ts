@@ -1,10 +1,20 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fromSettings, useSequencerSettings } from './useSequencerSettings'
+import type { SetSummary } from '../types'
 
 vi.mock('../api/http', () => ({
   updateSetSequencer: vi.fn(),
 }))
+
+const SAVED_SET: SetSummary = {
+  id: 1,
+  name: 'Test set',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  pool_count: 0,
+  tracklist_count: 0,
+}
 
 describe('sequencer tile stars', () => {
   beforeEach(() => {
@@ -47,13 +57,13 @@ describe('useSequencerSettings', () => {
     vi.useFakeTimers()
     try {
       const http = await import('../api/http')
-      vi.mocked(http.updateSetSequencer).mockResolvedValue(undefined)
+      vi.mocked(http.updateSetSequencer).mockResolvedValue(SAVED_SET)
 
       const { result } = renderHook(() => useSequencerSettings(7, null))
 
       await act(async () => {
         result.current.patch({ startMin: 390 })
-        result.current.patch({ endMin: 540 })
+        result.current.patch({ endMin: 540, endIsSet: true })
       })
 
       expect(http.updateSetSequencer).not.toHaveBeenCalled()
@@ -79,7 +89,7 @@ describe('useSequencerSettings', () => {
     vi.useFakeTimers()
     try {
       const http = await import('../api/http')
-      vi.mocked(http.updateSetSequencer).mockResolvedValue(undefined)
+      vi.mocked(http.updateSetSequencer).mockResolvedValue(SAVED_SET)
 
       const { result } = renderHook(() =>
         useSequencerSettings(3, {
@@ -116,7 +126,7 @@ describe('useSequencerSettings', () => {
     vi.useFakeTimers()
     try {
       const http = await import('../api/http')
-      vi.mocked(http.updateSetSequencer).mockResolvedValue(undefined)
+      vi.mocked(http.updateSetSequencer).mockResolvedValue(SAVED_SET)
 
       const { result, rerender } = renderHook(
         ({ setId, stored }) => useSequencerSettings(setId, stored),
@@ -152,7 +162,7 @@ describe('useSequencerSettings', () => {
       const http = await import('../api/http')
       vi.mocked(http.updateSetSequencer)
         .mockRejectedValueOnce(new Error('sequencer save failed'))
-        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(SAVED_SET)
 
       const { result } = renderHook(() => useSequencerSettings(8, null))
 
@@ -180,6 +190,40 @@ describe('useSequencerSettings', () => {
 })
 
 describe('end time as a marker', () => {
+  it('starts at midnight with no end until the set carries one', () => {
+    expect(fromSettings(null)).toMatchObject({
+      startMin: 0,
+      endIsSet: false,
+    })
+  })
+
+  it('does not persist a phantom end time on save', async () => {
+    vi.useFakeTimers()
+    try {
+      const http = await import('../api/http')
+      vi.mocked(http.updateSetSequencer).mockResolvedValue(SAVED_SET)
+
+      const { result } = renderHook(() => useSequencerSettings(7, null))
+
+      await act(async () => {
+        result.current.patch({ pxPerMin: 8 })
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400)
+      })
+
+      expect(http.updateSetSequencer).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({
+          start_minutes: 0,
+          end_minutes: null,
+        }),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('only counts as set once the set carries one', () => {
     // A default nobody chose must not act as a marker: it would stretch the
     // first track of a new set across the whole default window.

@@ -30,12 +30,13 @@ import type { PairResult } from '../utils/harmonic'
 import { formatHM } from '../utils/time'
 import type { Track } from '../types'
 import { POOL_ROW_MIME, TRACKLIST_ROW_MIME, TRACK_DRAG_MIME } from '../utils'
+import { LANE_LABEL_DEFAULT_PX } from '../utils/sequencerLayout'
 
 // Lanes view: a sticky ruler, the committed spine that packs end to end, and
 // one lane per pool subgroup. No virtual lanes are rendered: every alternative
 // lane shown here has real rename/delete persistence.
 
-export const LANE_LABEL_PX = 110
+export const LANE_LABEL_PX = LANE_LABEL_DEFAULT_PX
 
 const LANE_DRAG_MIME = 'text/sq-lane'
 const ALT_LANE_HUES = [174, 221, 268, 315, 2, 125, 195, 290]
@@ -88,6 +89,10 @@ interface Props {
   benchLanes: BenchLane[]
   startMin: number
   endMin: number
+  /** User-chosen set end marker; dashed borders fill the gap up to here. */
+  setEndMin?: number | null
+  /** Responsive lane-label column width in px. */
+  laneLabelPx?: number
   tickMin: number
   pxPerMin: number
   selection: LaneSelection
@@ -129,6 +134,8 @@ export function SequencerLanes({
   benchLanes,
   startMin,
   endMin,
+  setEndMin = null,
+  laneLabelPx = LANE_LABEL_PX,
   tickMin,
   pxPerMin,
   selection,
@@ -224,8 +231,8 @@ export function SequencerLanes({
   const minuteFromClientX = useCallback(
     (lane: Element, clientX: number) =>
       startMin +
-      (clientX - lane.getBoundingClientRect().left - LANE_LABEL_PX) / pxPerMin,
-    [pxPerMin, startMin],
+      (clientX - lane.getBoundingClientRect().left - laneLabelPx) / pxPerMin,
+    [laneLabelPx, pxPerMin, startMin],
   )
 
   const minuteAt = useCallback(
@@ -242,7 +249,7 @@ export function SequencerLanes({
       if (!viewport) {
         return
       }
-      const x = LANE_LABEL_PX + (minutes - startMin) * pxPerMin
+      const x = laneLabelPx + (minutes - startMin) * pxPerMin
       viewport.scrollLeft = Math.max(
         0,
         Math.min(
@@ -251,7 +258,7 @@ export function SequencerLanes({
         ),
       )
     },
-    [pxPerMin, scrollRef, startMin],
+    [laneLabelPx, pxPerMin, scrollRef, startMin],
   )
 
   // Selection drag. It starts on the lane background only, so a pointer-down
@@ -274,7 +281,7 @@ export function SequencerLanes({
       if (e.button !== 0 || e.target !== e.currentTarget) {
         return
       }
-      const element = e.currentTarget
+      const element = e.currentTarget as HTMLElement
       if (typeof element.setPointerCapture === 'function') {
         try {
           element.setPointerCapture(e.pointerId)
@@ -505,13 +512,13 @@ export function SequencerLanes({
   )
 
   const renderPostEndBorder = () =>
-    committedEnd < endMin ? (
+    setEndMin != null && committedEnd < setEndMin ? (
       <span
         className="sq-lane-post-end"
         aria-hidden="true"
         style={{
-          left: LANE_LABEL_PX + (committedEnd - startMin) * pxPerMin,
-          width: (endMin - committedEnd) * pxPerMin,
+          left: laneLabelPx + (committedEnd - startMin) * pxPerMin,
+          width: (setEndMin - committedEnd) * pxPerMin,
         }}
       />
     ) : null
@@ -529,7 +536,7 @@ export function SequencerLanes({
             ].join(' ')}
             aria-hidden="true"
             style={{
-              left: LANE_LABEL_PX + (minutes - startMin) * pxPerMin,
+              left: laneLabelPx + (minutes - startMin) * pxPerMin,
               width: dropPreview.durations[placementKey] * pxPerMin,
             }}
           />
@@ -556,7 +563,7 @@ export function SequencerLanes({
           aria-label={`Linked ${previous.entry.track?.title ?? 'track'} to ${block.entry.track?.title ?? 'track'}`}
           title="Linked edge-to-edge"
           style={{
-            left: LANE_LABEL_PX + (block.t - startMin) * pxPerMin,
+            left: laneLabelPx + (block.t - startMin) * pxPerMin,
           }}
         >
           ⌁
@@ -572,7 +579,7 @@ export function SequencerLanes({
         aria-hidden="true"
         style={{
           left:
-            LANE_LABEL_PX +
+            laneLabelPx +
             (Math.min(marquee.from, marquee.to) - startMin) * pxPerMin,
           width: Math.abs(marquee.to - marquee.from) * pxPerMin,
         }}
@@ -585,7 +592,7 @@ export function SequencerLanes({
         className="sq-paste-cursor"
         aria-label={`Paste cursor at ${formatHM(cursor.minutes)}`}
         style={{
-          left: LANE_LABEL_PX + (cursor.minutes - startMin) * pxPerMin,
+          left: laneLabelPx + (cursor.minutes - startMin) * pxPerMin,
         }}
       />
     ) : null
@@ -742,12 +749,12 @@ export function SequencerLanes({
       className="sq-lanes"
       data-px-per-min={pxPerMin}
       style={
-        { '--sq-lane-label-px': `${LANE_LABEL_PX}px` } as React.CSSProperties
+        { '--sq-lane-label-px': `${laneLabelPx}px` } as React.CSSProperties
       }
     >
       <div
         className="sq-ruler"
-        style={{ width: width + LANE_LABEL_PX }}
+        style={{ width: width + laneLabelPx }}
         aria-label="Timeline ruler"
         onPointerDown={(e) => {
           if (e.button !== 0) {
@@ -764,7 +771,7 @@ export function SequencerLanes({
           <span
             key={m}
             className="sq-tick"
-            style={{ left: LANE_LABEL_PX + (m - startMin) * pxPerMin }}
+            style={{ left: laneLabelPx + (m - startMin) * pxPerMin }}
           >
             {formatHM(m)}
           </span>
@@ -772,7 +779,7 @@ export function SequencerLanes({
       </div>
       <SequencerScrollbar
         scrollRef={scrollRef}
-        endOffset={LANE_LABEL_PX + (committedEnd - startMin) * pxPerMin}
+        endOffset={laneLabelPx + (committedEnd - startMin) * pxPerMin}
       />
       {isEmptyTimeline && (
         <p className="table-status sq-empty">
@@ -781,7 +788,7 @@ export function SequencerLanes({
       )}
       <div
         className="sq-lane sq-lane--committed"
-        style={{ width: width + LANE_LABEL_PX }}
+        style={{ width: width + laneLabelPx }}
         aria-label="Committed lane"
         onDragOver={(e) => {
           if (hasSupportedTrackDrag(e.dataTransfer)) {
@@ -809,7 +816,7 @@ export function SequencerLanes({
             <SequencerBlock
               key={block.entry.id}
               track={block.entry.track}
-              left={LANE_LABEL_PX + (block.t - startMin) * pxPerMin}
+              left={laneLabelPx + (block.t - startMin) * pxPerMin}
               width={block.dur * pxPerMin}
               start={block.t}
               end={block.t + block.dur}
@@ -850,7 +857,7 @@ export function SequencerLanes({
             className="sq-lane sq-lane--alt"
             style={
               {
-                width: width + LANE_LABEL_PX,
+                width: width + laneLabelPx,
                 '--sq-alt-hue': laneHue,
               } as React.CSSProperties
             }
@@ -974,7 +981,7 @@ export function SequencerLanes({
                 <SequencerBlock
                   key={block.entry.id}
                   track={block.entry.track}
-                  left={LANE_LABEL_PX + (block.t - startMin) * pxPerMin}
+                  left={laneLabelPx + (block.t - startMin) * pxPerMin}
                   width={block.dur * pxPerMin}
                   start={block.t}
                   end={block.t + block.dur}

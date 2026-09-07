@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { SortingState } from '@tanstack/react-table'
 import { SearchPanel } from './SearchPanel'
@@ -83,10 +83,15 @@ export function BrowserWidget({
   onAddManyToPool,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
-  // Selectable rows are exactly what the search and filters leave standing.
-  const selection = useMultiSelect(
-    useMemo(() => tracks.map((t) => t.id), [tracks]),
+  // Selection spans the rows TrackTable actually renders — sorted, filtered
+  // browse results — not the unsorted collection order from the parent.
+  const [selectableIds, setSelectableIds] = useState<number[]>(() =>
+    tracks.map((t) => t.id),
   )
+  const handleSelectableIdsChange = useCallback((ids: number[]) => {
+    setSelectableIds(ids)
+  }, [])
+  const selection = useMultiSelect(selectableIds)
   useSelectAllShortcut(hostRef, selection.selectAll)
   const bulk = useBulkAction()
 
@@ -187,6 +192,7 @@ export function BrowserWidget({
         onColumnWidthFlush={onColumnWidthFlush}
         scrollRestorationKey={scrollRestorationKey}
         selection={selection}
+        onSelectableIdsChange={handleSelectableIdsChange}
       />
     </div>
   )

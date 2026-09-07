@@ -1308,10 +1308,11 @@
   z-index: 2;
   display: inline-flex;
   align-items: center;
-  width: calc(var(--sq-lane-label-px, 110px) - 12px);
+  gap: 2px;
+  width: calc(var(--sq-lane-label-px, 110px) - 8px);
   box-sizing: border-box;
   margin-top: 11px;
-  padding: 2px 5px;
+  padding: 2px 4px;
   overflow: hidden;
   border-radius: 3px;
   background: rgba(23, 26, 35, 0.94);

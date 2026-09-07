@@ -33,10 +33,41 @@ describe('useMultiSelect', () => {
     act(() => result.current.select(2, { shiftKey: true }))
     // Reported in list order, not click order.
     expect(result.current.orderedIds).toEqual([2, 3, 4])
+  })
 
-    // The anchor stays put, so a second shift-click re-extends from it.
+  it('starts a fresh span after the previous shift span completes', () => {
+    const { result } = renderHook(() => useMultiSelect(IDS))
+
+    act(() => result.current.select(4))
+    act(() => result.current.select(2, { shiftKey: true }))
+    expect(result.current.orderedIds).toEqual([2, 3, 4])
+
     act(() => result.current.select(5, { shiftKey: true }))
-    expect(result.current.orderedIds).toEqual([4, 5])
+    expect(result.current.orderedIds).toEqual([5])
+  })
+
+  it('selects an inclusive span from two shift-clicks alone', () => {
+    const { result } = renderHook(() => useMultiSelect(IDS))
+
+    act(() => result.current.select(4, { shiftKey: true }))
+    expect(result.current.orderedIds).toEqual([4])
+
+    act(() => result.current.select(2, { shiftKey: true }))
+    expect(result.current.orderedIds).toEqual([2, 3, 4])
+  })
+
+  it('replaces an unrelated prior selection when shift-spanning', () => {
+    const { result } = renderHook(() => useMultiSelect(IDS))
+
+    act(() => result.current.select(1))
+    act(() => result.current.select(5, { metaKey: true }))
+    expect(result.current.orderedIds).toEqual([1, 5])
+
+    act(() => result.current.select(2, { shiftKey: true }))
+    expect(result.current.orderedIds).toEqual([2])
+
+    act(() => result.current.select(4, { shiftKey: true }))
+    expect(result.current.orderedIds).toEqual([2, 3, 4])
   })
 
   it('keeps the earlier selection when shift is combined with ctrl', () => {
@@ -119,5 +150,14 @@ describe('useMultiSelect scope', () => {
     act(() => result.current.select(2))
     act(() => result.current.select(4, { shiftKey: true }))
     expect(result.current.orderedIds).toEqual([2, 4])
+  })
+
+  it('spans the listed order, not a stale collection order', () => {
+    const sortedIds = [3, 1, 2, 4, 5]
+    const { result } = renderHook(() => useMultiSelect(sortedIds))
+
+    act(() => result.current.select(3, { shiftKey: true }))
+    act(() => result.current.select(2, { shiftKey: true }))
+    expect(result.current.orderedIds).toEqual([3, 1, 2])
   })
 })

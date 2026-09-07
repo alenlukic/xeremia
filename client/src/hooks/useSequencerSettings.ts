@@ -6,8 +6,7 @@ import type { SequencerSettings } from '../types'
 // times are a property of the gig, so nothing here may be ephemeral. Edits
 // apply instantly and are written back on a short debounce.
 
-export const DEFAULT_START_MIN = 6 * 60
-export const DEFAULT_END_MIN = 8 * 60
+export const DEFAULT_START_MIN = 0
 export const DEFAULT_PX_PER_MIN = 6
 
 const SAVE_DEBOUNCE_MS = 400
@@ -32,7 +31,7 @@ export interface SequencerView {
 export function defaultView(): SequencerView {
   return {
     startMin: DEFAULT_START_MIN,
-    endMin: DEFAULT_END_MIN,
+    endMin: DEFAULT_START_MIN,
     endIsSet: false,
     pxPerMin: DEFAULT_PX_PER_MIN,
     view: 'lanes',
@@ -79,7 +78,7 @@ export function fromSettings(raw: SequencerSettings | null | undefined) {
 function toSettings(v: SequencerView): SequencerSettings {
   return {
     start_minutes: v.startMin,
-    end_minutes: v.endMin,
+    end_minutes: v.endIsSet ? v.endMin : null,
     px_per_min: v.pxPerMin,
     view: v.view,
     bench_times: v.benchTimes,

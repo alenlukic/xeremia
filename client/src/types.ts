@@ -135,7 +135,7 @@ export interface DjSet {
 /** Sequencer view state, stored on the set so it survives a reload. */
 export interface SequencerSettings {
   start_minutes?: number
-  end_minutes?: number
+  end_minutes?: number | null
   tick_minutes?: number
   px_per_min?: number
   view?: string

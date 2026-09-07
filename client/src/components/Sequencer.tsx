@@ -31,7 +31,6 @@ import {
 import {
   useSequencerSettings,
   DEFAULT_START_MIN,
-  DEFAULT_END_MIN,
 } from '../hooks/useSequencerSettings'
 import { formatHM, parseTimeInput } from '../utils/time'
 import type { HydratedSet, Track } from '../types'
@@ -41,6 +40,11 @@ import {
   SET_START_MAX,
   SET_START_MIN,
 } from '../constants/sequencer'
+import {
+  minuteAtPointer,
+  scrollLeftAfterZoom,
+  sequencerLayout,
+} from '../utils/sequencerLayout'
 
 // The Sequencer widget. It absorbs the tracklist: the committed lane is the
 // server tracklist, and the Tracklist view is the same data as a list.
@@ -174,7 +178,7 @@ export function Sequencer({
   // position would lose the position and fall back to the end of the lane.
   const pendingBenchTrackIdsRef = useRef<Set<number>>(new Set())
   const [startDraft, setStartDraft] = useState(formatHM(DEFAULT_START_MIN))
-  const [endDraft, setEndDraft] = useState(formatHM(DEFAULT_END_MIN))
+  const [endDraft, setEndDraft] = useState('')
 
   const commitStartDraft = useCallback(() => {
     const parsed = parseTimeInput(startDraft)
@@ -183,7 +187,7 @@ export function Sequencer({
       return
     }
     const clamped = Math.min(SET_START_MAX, Math.max(SET_START_MIN, parsed))
-    if (clamped >= targetEndMin) {
+    if (endIsSet && clamped >= targetEndMin) {
       setClipboardError('Start time must be before end time.')
       setStartDraft(formatHM(startMin))
       return
@@ -191,12 +195,18 @@ export function Sequencer({
     patch({ startMin: clamped })
     setStartDraft(formatHM(clamped))
     setClipboardError(null)
-  }, [patch, startDraft, startMin, targetEndMin])
+  }, [endIsSet, patch, startDraft, startMin, targetEndMin])
 
   const commitEndDraft = useCallback(() => {
+    if (endDraft.trim() === '') {
+      patch({ endIsSet: false })
+      setEndDraft('')
+      setClipboardError(null)
+      return
+    }
     const parsed = parseTimeInput(endDraft)
     if (parsed == null) {
-      setEndDraft(formatHM(targetEndMin))
+      setEndDraft(endIsSet ? formatHM(targetEndMin) : '')
       return
     }
     const clamped = Math.min(SET_END_MAX, Math.max(SET_END_MIN, parsed))
@@ -209,15 +219,15 @@ export function Sequencer({
     patch({ endMin: clamped, endIsSet: true })
     setEndDraft(formatHM(clamped))
     setClipboardError(null)
-  }, [endDraft, patch, startMin, targetEndMin])
+  }, [endDraft, endIsSet, patch, startMin, targetEndMin])
 
   // Keep the text inputs in step with the stored values.
   useEffect(() => {
     setStartDraft(formatHM(startMin))
   }, [startMin])
   useEffect(() => {
-    setEndDraft(formatHM(targetEndMin))
-  }, [targetEndMin])
+    setEndDraft(endIsSet ? formatHM(targetEndMin) : '')
+  }, [endIsSet, targetEndMin])
 
   const sequencer = useSequencer({
     setId: activeSet?.set.id ?? null,
@@ -614,23 +624,52 @@ export function Sequencer({
   const timelineEnd = useMemo(
     () =>
       Math.max(
-        targetEndMin,
+        endIsSet ? targetEndMin : 0,
         sequencer.endMinutes,
         ...sequencer.benchLanes.flatMap((lane) =>
           lane.blocks.map((block) => block.t + block.dur),
         ),
       ),
-    [sequencer.benchLanes, sequencer.endMinutes, targetEndMin],
+    [endIsSet, sequencer.benchLanes, sequencer.endMinutes, targetEndMin],
+  )
+
+  const [viewportWidth, setViewportWidth] = useState(0)
+  const layout = useMemo(
+    () =>
+      sequencerLayout({
+        contentEndMin: timelineEnd,
+        startMin,
+        endIsSet,
+        targetEndMin,
+        storedPxPerMin: pxPerMin,
+        viewportWidth,
+      }),
+    [endIsSet, pxPerMin, startMin, targetEndMin, timelineEnd, viewportWidth],
   )
 
   // Ctrl/Cmd + wheel zooms the timeline. Without the modifier the event is
   // left alone so the lanes still scroll normally.
   const mainRef = useRef<HTMLDivElement | null>(null)
+  const wheelScrollRafRef = useRef<number | null>(null)
   useEffect(() => {
     const el = mainRef.current
     if (!el) {
       return
     }
+    const observer = new ResizeObserver(() => {
+      setViewportWidth(el.clientWidth)
+    })
+    observer.observe(el)
+    setViewportWidth(el.clientWidth)
+    return () => observer.disconnect()
+  }, [activeSet?.set.id, view])
+
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) {
+      return
+    }
+    const viewport = el
     function onWheel(e: WheelEvent) {
       if (!e.ctrlKey && !e.metaKey) {
         return
@@ -638,17 +677,81 @@ export function Sequencer({
       // Must be a non-passive listener, or this is ignored and the browser
       // zooms the whole page instead of the timeline.
       e.preventDefault()
+      e.stopPropagation()
       const factor = Math.exp(-e.deltaY / 300)
-      patch({
-        pxPerMin: Math.min(
-          MAX_PX_PER_MIN,
-          Math.max(MIN_PX_PER_MIN, pxPerMin * factor),
-        ),
+      // When the timeline is fitted to a wide viewport, the effective scale
+      // can be much larger than the stored preference. Zoom from what the DJ
+      // can actually see so the first wheel step always has a visible effect.
+      const nextStored = Math.min(
+        MAX_PX_PER_MIN,
+        Math.max(MIN_PX_PER_MIN, layout.effectivePxPerMin * factor),
+      )
+      const rect = viewport.getBoundingClientRect()
+      const minute = minuteAtPointer({
+        scrollLeft: viewport.scrollLeft,
+        clientX: e.clientX,
+        containerLeft: rect.left,
+        laneLabelPx: layout.laneLabelPx,
+        startMin,
+        pxPerMin: layout.effectivePxPerMin,
+      })
+      const nextLayout = sequencerLayout({
+        contentEndMin: timelineEnd,
+        startMin,
+        endIsSet,
+        targetEndMin,
+        storedPxPerMin: nextStored,
+        viewportWidth: viewport.clientWidth,
+        laneLabelPx: layout.laneLabelPx,
+      })
+      if (
+        Math.abs(
+          nextLayout.effectivePxPerMin - layout.effectivePxPerMin,
+        ) < 0.001
+      ) {
+        return
+      }
+      const nextScrollLeft = scrollLeftAfterZoom({
+        clientX: e.clientX,
+        containerLeft: rect.left,
+        laneLabelPx: layout.laneLabelPx,
+        startMin,
+        minute,
+        nextPxPerMin: nextLayout.effectivePxPerMin,
+      })
+      patch({ pxPerMin: nextStored })
+      if (wheelScrollRafRef.current != null) {
+        cancelAnimationFrame(wheelScrollRafRef.current)
+      }
+      // React has to widen the timeline before scrollLeft can reach the new
+      // pointer-preserving offset; assigning it synchronously is clamped to
+      // the old scroll width.
+      wheelScrollRafRef.current = requestAnimationFrame(() => {
+        viewport.scrollLeft = nextScrollLeft
+        wheelScrollRafRef.current = null
       })
     }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [patch, pxPerMin])
+    viewport.addEventListener('wheel', onWheel, {
+      passive: false,
+      capture: true,
+    })
+    return () => {
+      if (wheelScrollRafRef.current != null) {
+        cancelAnimationFrame(wheelScrollRafRef.current)
+        wheelScrollRafRef.current = null
+      }
+      viewport.removeEventListener('wheel', onWheel, { capture: true })
+    }
+  }, [
+    endIsSet,
+    layout.effectivePxPerMin,
+    layout.laneLabelPx,
+    patch,
+    pxPerMin,
+    startMin,
+    targetEndMin,
+    timelineEnd,
+  ])
 
   const handleExport = useCallback(async () => {
     if (!activeSet || sequencer.blocks.length === 0) {
@@ -1047,9 +1150,11 @@ export function Sequencer({
             blocks={sequencer.blocks}
             benchLanes={sequencer.benchLanes}
             startMin={startMin}
-            endMin={timelineEnd}
+            endMin={layout.displayEndMin}
+            setEndMin={endIsSet ? targetEndMin : null}
+            laneLabelPx={layout.laneLabelPx}
             tickMin={tickMin}
-            pxPerMin={pxPerMin}
+            pxPerMin={layout.effectivePxPerMin}
             selection={selection}
             cursor={cursor}
             benchTimes={settings.benchTimes}
